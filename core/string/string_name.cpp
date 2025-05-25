@@ -407,6 +407,13 @@ StringName StringName::search(const String &p_name) {
 	return StringName(); //does not exist
 }
 
+StringName::_Data *StringName::_get_data_by_hash(const uint32_t p_hash) {
+	const uint32_t idx = p_hash & Table::TABLE_MASK;
+	MutexLock lock(Table::mutex);
+	_Data *_data = Table::table[idx];
+	return _data;
+}
+
 bool operator==(const String &p_name, const StringName &p_string_name) {
 	return p_string_name.operator==(p_name);
 }

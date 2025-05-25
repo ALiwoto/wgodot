@@ -138,6 +138,91 @@ public:
 	static StringName search(const char32_t *p_name);
 	static StringName search(const String &p_name);
 
+private:
+	static _Data *_get_data_by_hash(const uint32_t p_hash);
+
+	template <typename T>
+	static uint32_t _append_hash(uint32_t hashv, const Span<T> &part) {
+		using unsigned_char =
+				std::conditional_t<sizeof(T) == 1, uint8_t,
+						std::conditional_t<sizeof(T) == 2, uint16_t, uint32_t>>;
+
+		for (const T &c : part) {
+			hashv = ((hashv << 5) + hashv) + static_cast<unsigned_char>(c);
+		}
+		return hashv;
+	}
+
+	template <typename T, typename... Parts>
+	static uint32_t _append_hash(uint32_t hashv, const Span<T> &first, const Parts &...parts) {
+		hashv = _append_hash(hashv, first);
+		hashv = _append_hash(hashv, parts...);
+		return hashv;
+	}
+
+	template <typename T>
+	static bool _append_equal(const Span<char32_t> &ref, const Span<T> &part) {
+		if (ref.size() != part.size()) {
+			return false;
+		}
+		for (uint64_t i = 0; i < part.size(); ++i) {
+			if (ref[i] != static_cast<char32_t>(part[i])) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	template <typename T, typename... Parts>
+	static bool _append_equal(const Span<char32_t> &ref, const Span<T> &first, const Parts &...parts) {
+		if (ref.size() < first.size()) {
+			return false;
+		}
+		if (!_append_equal(Span(ref.ptr(), first.size()), first)) {
+			return false;
+		}
+		return _append_equal(Span(ref.ptr() + first.size(), ref.size() - first.size()), parts...);
+	}
+
+public:
+	template <typename... Parts>
+	static StringName join(Parts... parts) {
+		static_assert(((std::is_same_v<Span<char>, std::decay_t<Parts>> ||
+							   std::is_same_v<Span<wchar_t>, std::decay_t<Parts>> ||
+							   std::is_same_v<Span<char32_t>, std::decay_t<Parts>>) &&
+							  ...),
+				"All parts must be Span<char/wchar_t/char32_t>");
+
+		uint32_t hashv = 5381;
+
+		hashv = _append_hash(hashv, parts...);
+
+		const uint32_t hash = hashv;
+		_Data *_data = _get_data_by_hash(hash);
+
+		while (_data) {
+			if (_data->hash == hash && _append_equal(_data->name, parts...)) {
+				break;
+			}
+			_data = _data->next;
+		}
+
+		if (_data && _data->refcount.ref()) {
+#ifdef DEBUG_ENABLED
+			if (unlikely(debug_stringname)) {
+				_data->debug_references++;
+			}
+#endif
+			return StringName(_data);
+		}
+
+		// Does not exist, create a new one.
+		String ret;
+		((ret += String(parts.ptr())), ...);
+
+		return StringName(ret);
+	}
+
 	struct AlphCompare {
 		template <typename LT, typename RT>
 		_FORCE_INLINE_ bool operator()(const LT &l, const RT &r) const {
