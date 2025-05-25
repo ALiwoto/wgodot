@@ -49,12 +49,14 @@
 			<return type="Object" />
 			<description>
 				Gets the edited object.
+				[b]Note:[/b] Returns [code]null[/code] if the [EditorProperty] is not fully ready (i.e. its own [method Node._ready] method was not called yet).
 			</description>
 		</method>
 		<method name="get_edited_property" qualifiers="const">
 			<return type="StringName" />
 			<description>
 				Gets the edited property. If your editor is for a single property (added via [method EditorInspectorPlugin._parse_property]), then this will return the property.
+				[b]Note:[/b] Returns [code]null[/code] if the [EditorProperty] is not fully ready (i.e. its own [method Node._ready] method was not called yet).
 			</description>
 		</method>
 		<method name="is_selected" qualifiers="const">
