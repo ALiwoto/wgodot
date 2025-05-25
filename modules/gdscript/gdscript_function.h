@@ -558,6 +558,7 @@ public:
 	static constexpr int MAX_CALL_DEPTH = 2048; // Limit to try to avoid crash because of a stack overflow.
 
 	struct CallState {
+		Signal completed;
 		GDScript *script = nullptr;
 		GDScriptInstance *instance = nullptr;
 #ifdef DEBUG_ENABLED
@@ -602,7 +603,6 @@ class GDScriptFunctionState : public RefCounted {
 	GDScriptFunction *function = nullptr;
 	GDScriptFunction::CallState state;
 	Variant _signal_callback(const Variant **p_args, int p_argcount, Callable::CallError &r_error);
-	Ref<GDScriptFunctionState> first_state;
 
 	SelfList<GDScriptFunctionState> scripts_list;
 	SelfList<GDScriptFunctionState> instances_list;
