@@ -1076,7 +1076,7 @@ void Object::set_meta(const StringName &p_name, const Variant &p_value) {
 		Variant *V = &metadata.insert(p_name, p_value)->value;
 
 		const String &sname = p_name;
-		metadata_properties["metadata/" + sname] = V;
+		metadata_properties[StringName::join(Span("metadata/"), sname.span())] = V;
 		if (!sname.begins_with("_")) {
 			notify_property_list_changed();
 		}
