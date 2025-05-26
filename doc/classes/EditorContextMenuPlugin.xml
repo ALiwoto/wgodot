@@ -14,7 +14,7 @@
 			<return type="void" />
 			<param index="0" name="paths" type="PackedStringArray" />
 			<description>
-				Called when creating a context menu, custom options can be added by using the [method add_context_menu_item] or [method add_context_menu_item_from_shortcut] functions. [param paths] contains currently selected paths (depending on menu), which can be used to conditionally add options.
+				Called when creating a context menu, custom options can be added by using the [method add_context_menu_item] or [method add_context_menu_item_from_shortcut] functions. [param paths] contains currently selected paths (depending on menu), which can be used to conditionally add options. Empty [param paths] indicates clicking the empty space of file system dock, which usually has a "New" prefix before the file type to create (e.g., "New Script..." instead of "Script").
 			</description>
 		</method>
 		<method name="add_context_menu_item">
