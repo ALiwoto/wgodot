@@ -2605,7 +2605,14 @@ void FileSystemDock::_file_option(int p_option, const Vector<String> &p_selected
 		default: {
 			if (p_option >= EditorContextMenuPlugin::BASE_ID) {
 				if (!EditorContextMenuPluginManager::get_singleton()->activate_custom_option(EditorContextMenuPlugin::CONTEXT_SLOT_FILESYSTEM, p_option, p_selected)) {
-					EditorContextMenuPluginManager::get_singleton()->activate_custom_option(EditorContextMenuPlugin::CONTEXT_SLOT_FILESYSTEM_CREATE, p_option, p_selected);
+					// For create new file option, pass the path location of mouse click position instead, to plugin callback.
+					String fpath = current_path;
+					if (!fpath.ends_with("/")) {
+						fpath = fpath.get_base_dir();
+					}
+					Vector<String> paths;
+					paths.push_back(fpath);
+					EditorContextMenuPluginManager::get_singleton()->activate_custom_option(EditorContextMenuPlugin::CONTEXT_SLOT_FILESYSTEM_CREATE, p_option, paths);
 				}
 			} else if (p_option >= CONVERT_BASE_ID) {
 				selected_conversion_id = p_option - CONVERT_BASE_ID;
