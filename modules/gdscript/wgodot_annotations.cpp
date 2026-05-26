@@ -11,6 +11,7 @@
 
 void GDScriptParser::register_wgodot_annotations() {
 	register_annotation(MethodInfo("@private"), AnnotationInfo::CLASS_LEVEL, &GDScriptParser::wgodot_private_annotation);
+	register_annotation(MethodInfo("@protected"), AnnotationInfo::CLASS_LEVEL, &GDScriptParser::wgodot_protected_annotation);
 	register_annotation(MethodInfo("@readonly"), AnnotationInfo::VARIABLE | AnnotationInfo::STATEMENT, &GDScriptParser::wgodot_readonly_annotation);
 	register_annotation(MethodInfo("@partial", PropertyInfo(Variant::STRING, "path")), AnnotationInfo::SCRIPT | AnnotationInfo::CLASS, &GDScriptParser::wgodot_noop_annotation, Vector<Variant>(), true);
 }
@@ -33,6 +34,10 @@ bool GDScriptParser::wgodot_private_annotation(AnnotationNode *p_annotation, Nod
 	switch (p_target->type) {
 		case Node::CLASS: {
 			ClassNode *class_node = static_cast<ClassNode *>(p_target);
+			if (class_node->wgodot_protected) {
+				push_error(R"("@private" annotation cannot be used with "@protected".)", p_annotation);
+				return false;
+			}
 			if (class_node->wgodot_private) {
 				push_error(R"("@private" annotation can only be used once per class.)", p_annotation);
 				return false;
@@ -42,6 +47,10 @@ bool GDScriptParser::wgodot_private_annotation(AnnotationNode *p_annotation, Nod
 		}
 		case Node::CONSTANT: {
 			ConstantNode *constant = static_cast<ConstantNode *>(p_target);
+			if (constant->wgodot_protected) {
+				push_error(R"("@private" annotation cannot be used with "@protected".)", p_annotation);
+				return false;
+			}
 			if (constant->wgodot_private) {
 				push_error(R"("@private" annotation can only be used once per constant.)", p_annotation);
 				return false;
@@ -51,6 +60,10 @@ bool GDScriptParser::wgodot_private_annotation(AnnotationNode *p_annotation, Nod
 		}
 		case Node::FUNCTION: {
 			FunctionNode *function = static_cast<FunctionNode *>(p_target);
+			if (function->wgodot_protected) {
+				push_error(R"("@private" annotation cannot be used with "@protected".)", p_annotation);
+				return false;
+			}
 			if (function->wgodot_private) {
 				push_error(R"("@private" annotation can only be used once per function.)", p_annotation);
 				return false;
@@ -60,6 +73,10 @@ bool GDScriptParser::wgodot_private_annotation(AnnotationNode *p_annotation, Nod
 		}
 		case Node::SIGNAL: {
 			SignalNode *signal = static_cast<SignalNode *>(p_target);
+			if (signal->wgodot_protected) {
+				push_error(R"("@private" annotation cannot be used with "@protected".)", p_annotation);
+				return false;
+			}
 			if (signal->wgodot_private) {
 				push_error(R"("@private" annotation can only be used once per signal.)", p_annotation);
 				return false;
@@ -69,6 +86,10 @@ bool GDScriptParser::wgodot_private_annotation(AnnotationNode *p_annotation, Nod
 		}
 		case Node::VARIABLE: {
 			VariableNode *variable = static_cast<VariableNode *>(p_target);
+			if (variable->wgodot_protected) {
+				push_error(R"("@private" annotation cannot be used with "@protected".)", p_annotation);
+				return false;
+			}
 			if (variable->wgodot_private) {
 				push_error(R"("@private" annotation can only be used once per variable.)", p_annotation);
 				return false;
@@ -78,6 +99,86 @@ bool GDScriptParser::wgodot_private_annotation(AnnotationNode *p_annotation, Nod
 		}
 		default:
 			push_error(R"("@private" annotation can only be applied to class-level members.)", p_annotation);
+			return false;
+	}
+}
+
+bool GDScriptParser::wgodot_protected_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class) {
+	(void)p_class;
+
+	if (p_target == nullptr) {
+		push_error(R"("@protected" annotation can only be applied to class-level members.)", p_annotation);
+		return false;
+	}
+
+	switch (p_target->type) {
+		case Node::CLASS: {
+			ClassNode *class_node = static_cast<ClassNode *>(p_target);
+			if (class_node->wgodot_private) {
+				push_error(R"("@protected" annotation cannot be used with "@private".)", p_annotation);
+				return false;
+			}
+			if (class_node->wgodot_protected) {
+				push_error(R"("@protected" annotation can only be used once per class.)", p_annotation);
+				return false;
+			}
+			class_node->wgodot_protected = true;
+			return true;
+		}
+		case Node::CONSTANT: {
+			ConstantNode *constant = static_cast<ConstantNode *>(p_target);
+			if (constant->wgodot_private) {
+				push_error(R"("@protected" annotation cannot be used with "@private".)", p_annotation);
+				return false;
+			}
+			if (constant->wgodot_protected) {
+				push_error(R"("@protected" annotation can only be used once per constant.)", p_annotation);
+				return false;
+			}
+			constant->wgodot_protected = true;
+			return true;
+		}
+		case Node::FUNCTION: {
+			FunctionNode *function = static_cast<FunctionNode *>(p_target);
+			if (function->wgodot_private) {
+				push_error(R"("@protected" annotation cannot be used with "@private".)", p_annotation);
+				return false;
+			}
+			if (function->wgodot_protected) {
+				push_error(R"("@protected" annotation can only be used once per function.)", p_annotation);
+				return false;
+			}
+			function->wgodot_protected = true;
+			return true;
+		}
+		case Node::SIGNAL: {
+			SignalNode *signal = static_cast<SignalNode *>(p_target);
+			if (signal->wgodot_private) {
+				push_error(R"("@protected" annotation cannot be used with "@private".)", p_annotation);
+				return false;
+			}
+			if (signal->wgodot_protected) {
+				push_error(R"("@protected" annotation can only be used once per signal.)", p_annotation);
+				return false;
+			}
+			signal->wgodot_protected = true;
+			return true;
+		}
+		case Node::VARIABLE: {
+			VariableNode *variable = static_cast<VariableNode *>(p_target);
+			if (variable->wgodot_private) {
+				push_error(R"("@protected" annotation cannot be used with "@private".)", p_annotation);
+				return false;
+			}
+			if (variable->wgodot_protected) {
+				push_error(R"("@protected" annotation can only be used once per variable.)", p_annotation);
+				return false;
+			}
+			variable->wgodot_protected = true;
+			return true;
+		}
+		default:
+			push_error(R"("@protected" annotation can only be applied to class-level members.)", p_annotation);
 			return false;
 	}
 }

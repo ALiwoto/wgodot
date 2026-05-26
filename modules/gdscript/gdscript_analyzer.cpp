@@ -4211,6 +4211,7 @@ void GDScriptAnalyzer::reduce_identifier_from_base(GDScriptParser::IdentifierNod
 			GDScriptParser::ClassNode::Member member = script_class->get_member(name);
 			// wgodot-changes::begin
 			wgodot_validate_private_member_access(member, script_class, p_identifier);
+			wgodot_validate_protected_member_access(member, script_class, p_identifier);
 			// wgodot-changes::end
 			switch (member.type) {
 				case GDScriptParser::ClassNode::Member::CONSTANT: {
@@ -6016,6 +6017,7 @@ bool GDScriptAnalyzer::get_function_signature(GDScriptParser::Node *p_source, bo
 
 		// wgodot-changes::begin
 		wgodot_validate_private_member_access(GDScriptParser::ClassNode::Member(found_function), found_function_class, p_source);
+		wgodot_validate_protected_member_access(GDScriptParser::ClassNode::Member(found_function), found_function_class, p_source);
 		// wgodot-changes::end
 
 		return true;

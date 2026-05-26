@@ -109,3 +109,41 @@ bool GDScriptAnalyzer::wgodot_is_private_member(const GDScriptParser::ClassNode:
 			return false;
 	}
 }
+
+void GDScriptAnalyzer::wgodot_validate_protected_member_access(const GDScriptParser::ClassNode::Member &p_member, const GDScriptParser::ClassNode *p_owner_class, const GDScriptParser::Node *p_source) {
+	if (!wgodot_is_protected_member(p_member)) {
+		return;
+	}
+	if (p_owner_class == nullptr || parser->current_class == nullptr || wgodot_class_inherits_from(parser->current_class, p_owner_class)) {
+		return;
+	}
+
+	push_error(vformat(R"(Cannot access protected %s "%s".)", p_member.get_type_name(), p_member.get_name()), p_source);
+}
+
+bool GDScriptAnalyzer::wgodot_is_protected_member(const GDScriptParser::ClassNode::Member &p_member) const {
+	switch (p_member.type) {
+		case GDScriptParser::ClassNode::Member::CLASS:
+			return p_member.m_class->wgodot_protected;
+		case GDScriptParser::ClassNode::Member::CONSTANT:
+			return p_member.constant->wgodot_protected;
+		case GDScriptParser::ClassNode::Member::FUNCTION:
+			return p_member.function->wgodot_protected;
+		case GDScriptParser::ClassNode::Member::SIGNAL:
+			return p_member.signal->wgodot_protected;
+		case GDScriptParser::ClassNode::Member::VARIABLE:
+			return p_member.variable->wgodot_protected;
+		default:
+			return false;
+	}
+}
+
+bool GDScriptAnalyzer::wgodot_class_inherits_from(const GDScriptParser::ClassNode *p_class, const GDScriptParser::ClassNode *p_base_class) const {
+	for (const GDScriptParser::ClassNode *current = p_class; current != nullptr; current = current->base_type.class_type) {
+		if (current == p_base_class) {
+			return true;
+		}
+	}
+
+	return false;
+}

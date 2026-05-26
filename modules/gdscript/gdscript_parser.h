@@ -758,6 +758,7 @@ public:
 		bool is_abstract = false;
 		// wgodot-changes::begin
 		bool wgodot_private = false;
+		bool wgodot_protected = false;
 		// wgodot-changes::end
 		bool has_static_data = false;
 		bool annotated_static_unload = false;
@@ -815,6 +816,7 @@ public:
 	struct ConstantNode : public AssignableNode {
 		// wgodot-changes::begin
 		bool wgodot_private = false;
+		bool wgodot_protected = false;
 		// wgodot-changes::end
 #ifdef TOOLS_ENABLED
 		MemberDocData doc_data;
@@ -873,6 +875,7 @@ public:
 		bool is_coroutine = false;
 		// wgodot-changes::begin
 		bool wgodot_private = false;
+		bool wgodot_protected = false;
 		// wgodot-changes::end
 		Variant rpc_config;
 		MethodInfo info;
@@ -1081,6 +1084,7 @@ public:
 		MethodInfo method_info;
 		// wgodot-changes::begin
 		bool wgodot_private = false;
+		bool wgodot_protected = false;
 		// wgodot-changes::end
 #ifdef TOOLS_ENABLED
 		MemberDocData doc_data;
@@ -1285,6 +1289,7 @@ public:
 		bool onready = false;
 		// wgodot-changes::begin
 		bool wgodot_private = false;
+		bool wgodot_protected = false;
 		bool wgodot_readonly = false;
 		// wgodot-changes::end
 		PropertyInfo export_info;
@@ -1593,6 +1598,7 @@ private:
 	static void register_wgodot_annotations();
 	bool wgodot_noop_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	bool wgodot_private_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
+	bool wgodot_protected_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	bool wgodot_readonly_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	// wgodot-changes::end
 	// Statements.
