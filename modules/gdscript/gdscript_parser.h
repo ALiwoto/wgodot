@@ -756,6 +756,9 @@ public:
 		bool extends_used = false;
 		bool onready_used = false;
 		bool is_abstract = false;
+		// wgodot-changes::begin
+		bool wgodot_private = false;
+		// wgodot-changes::end
 		bool has_static_data = false;
 		bool annotated_static_unload = false;
 		String extends_path;
@@ -810,6 +813,9 @@ public:
 	};
 
 	struct ConstantNode : public AssignableNode {
+		// wgodot-changes::begin
+		bool wgodot_private = false;
+		// wgodot-changes::end
 #ifdef TOOLS_ENABLED
 		MemberDocData doc_data;
 #endif // TOOLS_ENABLED
@@ -865,6 +871,9 @@ public:
 		bool is_abstract = false;
 		bool is_static = false; // For lambdas it's determined in the analyzer.
 		bool is_coroutine = false;
+		// wgodot-changes::begin
+		bool wgodot_private = false;
+		// wgodot-changes::end
 		Variant rpc_config;
 		MethodInfo info;
 		LambdaNode *source_lambda = nullptr;
@@ -1070,6 +1079,9 @@ public:
 		Vector<ParameterNode *> parameters;
 		HashMap<StringName, int> parameters_indices;
 		MethodInfo method_info;
+		// wgodot-changes::begin
+		bool wgodot_private = false;
+		// wgodot-changes::end
 #ifdef TOOLS_ENABLED
 		MemberDocData doc_data;
 #endif // TOOLS_ENABLED
@@ -1272,6 +1284,7 @@ public:
 		bool exported = false;
 		bool onready = false;
 		// wgodot-changes::begin
+		bool wgodot_private = false;
 		bool wgodot_readonly = false;
 		// wgodot-changes::end
 		PropertyInfo export_info;
@@ -1579,6 +1592,7 @@ private:
 	// wgodot-changes::begin
 	static void register_wgodot_annotations();
 	bool wgodot_noop_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
+	bool wgodot_private_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	bool wgodot_readonly_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	// wgodot-changes::end
 	// Statements.

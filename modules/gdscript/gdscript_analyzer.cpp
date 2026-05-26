@@ -4209,6 +4209,9 @@ void GDScriptAnalyzer::reduce_identifier_from_base(GDScriptParser::IdentifierNod
 			resolve_class_member(script_class, name, p_identifier);
 
 			GDScriptParser::ClassNode::Member member = script_class->get_member(name);
+			// wgodot-changes::begin
+			wgodot_validate_private_member_access(member, script_class, p_identifier);
+			// wgodot-changes::end
 			switch (member.type) {
 				case GDScriptParser::ClassNode::Member::CONSTANT: {
 					p_identifier->set_datatype(member.get_datatype());
@@ -5968,6 +5971,9 @@ bool GDScriptAnalyzer::get_function_signature(GDScriptParser::Node *p_source, bo
 
 	GDScriptParser::ClassNode *base_class = p_base_type.class_type;
 	GDScriptParser::FunctionNode *found_function = nullptr;
+	// wgodot-changes::begin
+	GDScriptParser::ClassNode *found_function_class = nullptr;
+	// wgodot-changes::end
 
 	while (found_function == nullptr && base_class != nullptr) {
 		if (base_class->has_member(function_name)) {
@@ -5979,6 +5985,9 @@ bool GDScriptAnalyzer::get_function_signature(GDScriptParser::Node *p_source, bo
 
 			resolve_class_member(base_class, function_name, p_source);
 			found_function = base_class->get_member(function_name).function;
+			// wgodot-changes::begin
+			found_function_class = base_class;
+			// wgodot-changes::end
 		}
 
 		resolve_class_inheritance(base_class, p_source);
@@ -6004,6 +6013,10 @@ bool GDScriptAnalyzer::get_function_signature(GDScriptParser::Node *p_source, bo
 		r_return_type = p_is_constructor ? p_base_type : found_function->get_datatype();
 		r_return_type.is_meta_type = false;
 		r_return_type.is_coroutine = found_function->is_coroutine;
+
+		// wgodot-changes::begin
+		wgodot_validate_private_member_access(GDScriptParser::ClassNode::Member(found_function), found_function_class, p_source);
+		// wgodot-changes::end
 
 		return true;
 	}

@@ -81,3 +81,31 @@ bool GDScriptAnalyzer::wgodot_can_assign_readonly_variable(const GDScriptParser:
 	const GDScriptParser::ClassNode::Member member = parser->current_class->get_member(p_variable->identifier->name);
 	return member.type == GDScriptParser::ClassNode::Member::VARIABLE && member.variable == p_variable;
 }
+
+void GDScriptAnalyzer::wgodot_validate_private_member_access(const GDScriptParser::ClassNode::Member &p_member, const GDScriptParser::ClassNode *p_owner_class, const GDScriptParser::Node *p_source) {
+	if (!wgodot_is_private_member(p_member)) {
+		return;
+	}
+	if (p_owner_class == nullptr || parser->current_class == nullptr || p_owner_class == parser->current_class) {
+		return;
+	}
+
+	push_error(vformat(R"(Cannot access private %s "%s".)", p_member.get_type_name(), p_member.get_name()), p_source);
+}
+
+bool GDScriptAnalyzer::wgodot_is_private_member(const GDScriptParser::ClassNode::Member &p_member) const {
+	switch (p_member.type) {
+		case GDScriptParser::ClassNode::Member::CLASS:
+			return p_member.m_class->wgodot_private;
+		case GDScriptParser::ClassNode::Member::CONSTANT:
+			return p_member.constant->wgodot_private;
+		case GDScriptParser::ClassNode::Member::FUNCTION:
+			return p_member.function->wgodot_private;
+		case GDScriptParser::ClassNode::Member::SIGNAL:
+			return p_member.signal->wgodot_private;
+		case GDScriptParser::ClassNode::Member::VARIABLE:
+			return p_member.variable->wgodot_private;
+		default:
+			return false;
+	}
+}

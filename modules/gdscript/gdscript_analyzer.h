@@ -99,6 +99,8 @@ class GDScriptAnalyzer {
 	bool wgodot_validate_readonly_assignment(GDScriptParser::AssignmentNode *p_assignment);
 	const GDScriptParser::VariableNode *wgodot_get_readonly_assignment_source(GDScriptParser::ExpressionNode *p_assignee) const;
 	bool wgodot_can_assign_readonly_variable(const GDScriptParser::VariableNode *p_variable) const;
+	void wgodot_validate_private_member_access(const GDScriptParser::ClassNode::Member &p_member, const GDScriptParser::ClassNode *p_owner_class, const GDScriptParser::Node *p_source);
+	bool wgodot_is_private_member(const GDScriptParser::ClassNode::Member &p_member) const;
 	// wgodot-changes::end
 
 	// Reduction functions.
