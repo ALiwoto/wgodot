@@ -1573,6 +1573,10 @@ private:
 	bool warning_ignore_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	bool warning_ignore_region_annotations(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	bool rpc_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
+	// wgodot-changes::begin
+	static void register_wgodot_annotations();
+	bool wgodot_noop_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
+	// wgodot-changes::end
 	// Statements.
 	Node *parse_statement();
 	VariableNode *parse_variable(bool p_is_static);

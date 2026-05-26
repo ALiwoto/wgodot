@@ -185,6 +185,9 @@ GDScriptParser::GDScriptParser() {
 		// Networking.
 		// Keep in sync with `rpc_annotation()` and `SceneRPCInterface::_parse_rpc_config()`.
 		register_annotation(MethodInfo("@rpc", PropertyInfo(Variant::STRING, "mode"), PropertyInfo(Variant::STRING, "sync"), PropertyInfo(Variant::STRING, "transfer_mode"), PropertyInfo(Variant::INT, "transfer_channel")), AnnotationInfo::FUNCTION, &GDScriptParser::rpc_annotation, varray("authority", "call_remote", "reliable", 0));
+		// wgodot-changes::begin
+		register_wgodot_annotations();
+		// wgodot-changes::end
 	}
 
 #ifdef DEBUG_ENABLED
