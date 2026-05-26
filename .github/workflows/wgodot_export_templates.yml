@@ -15,6 +15,103 @@ env:
     module_text_server_fb_enabled=yes
 
 jobs:
+  android-templates:
+    name: Android templates
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Restore Godot build cache
+        uses: ./.github/actions/godot-cache-restore
+        with:
+          cache-name: wgodot-android-templates
+        continue-on-error: true
+
+      - name: Setup Python and SCons
+        uses: ./.github/actions/godot-deps
+
+      - name: Download Swappy
+        run: python ./misc/scripts/install_swappy_android.py
+
+      - name: Compilation release arm64
+        uses: ./.github/actions/godot-build
+        with:
+          platform: android
+          target: template_release
+          scons-flags: ${{ env.SCONS_FLAGS }} swappy=yes arch=arm64
+
+      - name: Compilation debug arm64
+        uses: ./.github/actions/godot-build
+        with:
+          platform: android
+          target: template_debug
+          scons-flags: ${{ env.SCONS_FLAGS }} swappy=yes arch=arm64
+
+      - name: Compilation release arm32
+        uses: ./.github/actions/godot-build
+        with:
+          platform: android
+          target: template_release
+          scons-flags: ${{ env.SCONS_FLAGS }} swappy=yes arch=arm32
+
+      - name: Compilation debug arm32
+        uses: ./.github/actions/godot-build
+        with:
+          platform: android
+          target: template_debug
+          scons-flags: ${{ env.SCONS_FLAGS }} swappy=yes arch=arm32
+
+      - name: Compilation release x86_64
+        uses: ./.github/actions/godot-build
+        with:
+          platform: android
+          target: template_release
+          scons-flags: ${{ env.SCONS_FLAGS }} swappy=yes arch=x86_64
+
+      - name: Compilation debug x86_64
+        uses: ./.github/actions/godot-build
+        with:
+          platform: android
+          target: template_debug
+          scons-flags: ${{ env.SCONS_FLAGS }} swappy=yes arch=x86_64
+
+      - name: Generate Godot templates
+        run: |
+          cd platform/android/java
+          ./gradlew generateGodotTemplates
+          cd ../../..
+          ls -l bin/android_*.apk bin/android_source.zip
+
+      - name: Save Godot build cache
+        uses: ./.github/actions/godot-cache-save
+        with:
+          cache-name: wgodot-android-templates
+        continue-on-error: true
+
+      - name: Prepare export templates
+        run: |
+          mkdir -p export_templates
+          cp bin/android_debug.apk export_templates/android_debug.apk
+          cp bin/android_release.apk export_templates/android_release.apk
+          cp bin/android_source.zip export_templates/android_source.zip
+
+      - name: Upload Android templates
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: wgodot-android-templates
+          path: export_templates/*
+
   linux-templates:
     name: Linux templates
     runs-on: ubuntu-22.04
