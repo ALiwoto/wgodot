@@ -30,6 +30,10 @@
 
 #include "static_body_2d.h"
 
+#include "core/object/callable_mp.h"
+#include "core/object/class_db.h"
+#include "scene/resources/physics_material.h"
+
 #ifndef NAVIGATION_2D_DISABLED
 #include "scene/resources/2d/capsule_shape_2d.h"
 #include "scene/resources/2d/circle_shape_2d.h"
@@ -38,7 +42,7 @@
 #include "scene/resources/2d/navigation_mesh_source_geometry_data_2d.h"
 #include "scene/resources/2d/navigation_polygon.h"
 #include "scene/resources/2d/rectangle_shape_2d.h"
-#include "servers/navigation_server_2d.h"
+#include "servers/navigation_2d/navigation_server_2d.h"
 #endif // NAVIGATION_2D_DISABLED
 
 Callable StaticBody2D::_navmesh_source_geometry_parsing_callback;
@@ -163,12 +167,12 @@ void StaticBody2D::navmesh_parse_source_geometry(const Ref<NavigationPolygon> &p
 				shape_outline.resize(14);
 				int shape_outline_inx = 0;
 				for (int i = 0; i < 12; i++) {
-					Vector2 ofs = Vector2(0, (i > 3 && i <= 9) ? -capsule_height * 0.5 + capsule_radius : capsule_height * 0.5 - capsule_radius);
+					Vector2 ofs = Vector2(0, (i > 3 && i <= 9) ? capsule_height * 0.5 - capsule_radius : -capsule_height * 0.5 + capsule_radius);
 
-					shape_outline.write[shape_outline_inx] = static_body_xform.xform(Vector2(Math::sin(i * turn_step), Math::cos(i * turn_step)) * capsule_radius + ofs);
+					shape_outline.write[shape_outline_inx] = static_body_xform.xform(Vector2(Math::sin(i * turn_step), -Math::cos(i * turn_step)) * capsule_radius + ofs);
 					shape_outline_inx += 1;
 					if (i == 3 || i == 9) {
-						shape_outline.write[shape_outline_inx] = static_body_xform.xform(Vector2(Math::sin(i * turn_step), Math::cos(i * turn_step)) * capsule_radius - ofs);
+						shape_outline.write[shape_outline_inx] = static_body_xform.xform(Vector2(Math::sin(i * turn_step), -Math::cos(i * turn_step)) * capsule_radius - ofs);
 						shape_outline_inx += 1;
 					}
 				}
@@ -227,7 +231,7 @@ void StaticBody2D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_physics_material_override", "physics_material_override"), &StaticBody2D::set_physics_material_override);
 	ClassDB::bind_method(D_METHOD("get_physics_material_override"), &StaticBody2D::get_physics_material_override);
 
-	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "physics_material_override", PROPERTY_HINT_RESOURCE_TYPE, "PhysicsMaterial"), "set_physics_material_override", "get_physics_material_override");
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "physics_material_override", PROPERTY_HINT_RESOURCE_TYPE, PhysicsMaterial::get_class_static()), "set_physics_material_override", "get_physics_material_override");
 	ADD_PROPERTY(PropertyInfo(Variant::VECTOR2, "constant_linear_velocity", PROPERTY_HINT_NONE, "suffix:px/s"), "set_constant_linear_velocity", "get_constant_linear_velocity");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "constant_angular_velocity", PROPERTY_HINT_NONE, U"radians_as_degrees,suffix:\u00B0/s"), "set_constant_angular_velocity", "get_constant_angular_velocity");
 }
