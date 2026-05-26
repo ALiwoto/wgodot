@@ -29,7 +29,10 @@
 /**************************************************************************/
 
 #include "audio_effect_compressor.h"
-#include "servers/audio_server.h"
+
+#include "core/config/engine.h"
+#include "core/object/class_db.h"
+#include "servers/audio/audio_server.h"
 
 void AudioEffectCompressorInstance::process(const AudioFrame *p_src_frames, AudioFrame *p_dst_frames, int p_frame_count) {
 	float threshold = Math::db_to_linear(base->threshold);
@@ -185,6 +188,9 @@ StringName AudioEffectCompressor::get_sidechain() const {
 }
 
 void AudioEffectCompressor::_validate_property(PropertyInfo &p_property) const {
+	if (!Engine::get_singleton()->is_editor_hint()) {
+		return;
+	}
 	if (p_property.name == "sidechain") {
 		String buses = "";
 		for (int i = 0; i < AudioServer::get_singleton()->get_bus_count(); i++) {
