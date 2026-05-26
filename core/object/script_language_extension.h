@@ -30,8 +30,8 @@
 
 #pragma once
 
-#include "core/extension/ext_wrappers.gen.inc"
-#include "core/object/gdvirtual.gen.inc"
+#include "core/extension/ext_wrappers.gen.h"
+#include "core/object/gdvirtual.gen.h"
 #include "core/object/script_language.h"
 #include "core/variant/native_ptr.h"
 #include "core/variant/typed_array.h"
@@ -69,7 +69,6 @@ public:
 		return reinterpret_cast<PlaceHolderScriptInstance *>(ret.operator void *());
 	}
 
-	EXBIND1RC(bool, instance_has, const Object *)
 	EXBIND0RC(bool, has_source_code)
 	EXBIND0RC(String, get_source_code)
 	EXBIND1(set_source_code, const String &)
@@ -209,13 +208,15 @@ public:
 
 	GDVIRTUAL0RC_REQUIRED(Variant, _get_rpc_config)
 
-	virtual Variant get_rpc_config() const override {
+	virtual const Variant get_rpc_config() const override {
 		Variant ret;
 		GDVIRTUAL_CALL(_get_rpc_config, ret);
 		return ret;
 	}
 
-	ScriptExtension() {}
+#ifndef DISABLE_DEPRECATED
+	GDVIRTUAL1RC(bool, _instance_has, const Object *)
+#endif // !DISABLE_DEPRECATED
 };
 
 typedef ScriptLanguage::ProfilingInfo ScriptLanguageExtensionProfilingInfo;
@@ -339,8 +340,6 @@ public:
 				Dictionary warn = warning;
 				ERR_CONTINUE(!warn.has("start_line"));
 				ERR_CONTINUE(!warn.has("end_line"));
-				ERR_CONTINUE(!warn.has("leftmost_column"));
-				ERR_CONTINUE(!warn.has("rightmost_column"));
 				ERR_CONTINUE(!warn.has("code"));
 				ERR_CONTINUE(!warn.has("string_code"));
 				ERR_CONTINUE(!warn.has("message"));
@@ -348,8 +347,6 @@ public:
 				Warning swarn;
 				swarn.start_line = warn["start_line"];
 				swarn.end_line = warn["end_line"];
-				swarn.leftmost_column = warn["leftmost_column"];
-				swarn.rightmost_column = warn["rightmost_column"];
 				swarn.code = warn["code"];
 				swarn.string_code = warn["string_code"];
 				swarn.message = warn["message"];
@@ -367,14 +364,9 @@ public:
 	}
 
 	EXBIND1RC(String, validate_path, const String &)
-	GDVIRTUAL0RC_REQUIRED(Object *, _create_script)
-	Script *create_script() const override {
-		Object *ret = nullptr;
-		GDVIRTUAL_CALL(_create_script, ret);
-		return Object::cast_to<Script>(ret);
-	}
 #ifndef DISABLE_DEPRECATED
-	EXBIND0RC(bool, has_named_classes)
+	GDVIRTUAL0RC(Object *, _create_script)
+	GDVIRTUAL0RC(bool, _has_named_classes)
 #endif
 	EXBIND0RC(bool, supports_builtin_mode)
 	EXBIND0RC(bool, supports_documentation)
@@ -431,6 +423,7 @@ public:
 						option.matches.push_back(Pair<int, int>(matches[j], matches[j + 1]));
 					}
 				}
+				option.matches_dirty = true;
 				r_options->push_back(option);
 			}
 		}
@@ -463,7 +456,7 @@ public:
 		r_result.description = ret.get("description", "");
 		r_result.is_deprecated = ret.get("is_deprecated", false);
 		r_result.deprecated_message = ret.get("deprecated_message", "");
-		r_result.is_deprecated = ret.get("is_deprecated", false);
+		r_result.is_experimental = ret.get("is_experimental", false);
 		r_result.experimental_message = ret.get("experimental_message", "");
 
 		r_result.doc_type = ret.get("doc_type", "");

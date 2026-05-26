@@ -32,6 +32,8 @@
 
 #include "core/crypto/crypto_core.h"
 #include "core/io/resource_loader.h"
+#include "core/io/resource_uid.h"
+#include "core/object/class_db.h"
 #include "core/object/script_language.h"
 #include "core/string/string_buffer.h"
 
@@ -1123,13 +1125,55 @@ Error VariantParser::parse_value(Token &token, Variant &value, Stream *p_stream,
 				get_token(p_stream, token, line, r_err_str);
 				if (token.type == TK_STRING) {
 					String path = token.value;
-					Ref<Resource> res = ResourceLoader::load(path);
+					String uid_string;
+
+					get_token(p_stream, token, line, r_err_str);
+
+					if (path.begins_with("uid://")) {
+						uid_string = path;
+						path = "";
+					}
+					if (token.type == TK_COMMA) {
+						get_token(p_stream, token, line, r_err_str);
+						if (token.type != TK_STRING) {
+							r_err_str = "Expected string in Resource reference";
+							return ERR_PARSE_ERROR;
+						}
+						String extra_path = token.value;
+						if (extra_path.begins_with("uid://")) {
+							if (!uid_string.is_empty()) {
+								r_err_str = "Two uid:// paths in one Resource reference";
+								return ERR_PARSE_ERROR;
+							}
+							uid_string = extra_path;
+						} else {
+							if (!path.is_empty()) {
+								r_err_str = "Two non-uid paths in one Resource reference";
+								return ERR_PARSE_ERROR;
+							}
+							path = extra_path;
+						}
+						get_token(p_stream, token, line, r_err_str);
+					}
+
+					Ref<Resource> res;
+					if (!uid_string.is_empty()) {
+						ResourceUID::ID uid = ResourceUID::get_singleton()->text_to_id(uid_string);
+						if (uid != ResourceUID::INVALID_ID && ResourceUID::get_singleton()->has_id(uid)) {
+							const String id_path = ResourceUID::get_singleton()->get_id_path(uid);
+							if (!id_path.is_empty()) {
+								res = ResourceLoader::load(id_path);
+							}
+						}
+					}
+					if (res.is_null() && !path.is_empty()) {
+						res = ResourceLoader::load(path);
+					}
 					if (res.is_null()) {
-						r_err_str = "Can't load resource at path: " + path;
+						r_err_str = "Can't load resource at path: " + path + " with uid: " + uid_string;
 						return ERR_PARSE_ERROR;
 					}
 
-					get_token(p_stream, token, line, r_err_str);
 					if (token.type != TK_PARENTHESIS_CLOSE) {
 						r_err_str = "Expected ')'";
 						return ERR_PARSE_ERROR;
@@ -1935,19 +1979,10 @@ Error VariantParser::parse(Stream *p_stream, Variant &r_ret, String &r_err_str, 
 //////////////////////////////////////////////////////////////////////////////////
 
 // These two functions serialize floats or doubles using num_scientific to ensure
-// it can be read back in the same way (except collapsing -0 to 0, and NaN values).
-static String rtos_fix(float p_value, bool p_compat) {
-	if (p_value == 0.0f) {
-		return "0"; // Avoid negative zero (-0) being written, which may annoy git, svn, etc. for changes when they don't exist.
-	} else if (p_compat) {
-		// Write old inf_neg for compatibility.
-		if (std::isinf(p_value) && p_value < 0.0f) {
-			return "inf_neg";
-		}
-	}
-	return String::num_scientific(p_value);
-}
-
+// it can be read back in the same way, except collapsing -0 to 0, collapsing
+// NaN values, handling old inf_neg for compatibility, and collapsing doubles
+// that match their 32-bit float representation to avoid serializing garbage
+// digits when the underlying float is 32-bit.
 static String rtos_fix(double p_value, bool p_compat) {
 	if (p_value == 0.0) {
 		return "0"; // Avoid negative zero (-0) being written, which may annoy git, svn, etc. for changes when they don't exist.
@@ -1957,7 +1992,21 @@ static String rtos_fix(double p_value, bool p_compat) {
 			return "inf_neg";
 		}
 	}
+	// Hack to avoid garbage digits when the underlying float is 32-bit.
+	if ((double)(float)p_value == p_value) {
+		return String::num_scientific((float)p_value);
+	}
 	return String::num_scientific(p_value);
+}
+
+static String encode_resource_reference(const String &path) {
+	ResourceUID::ID uid = ResourceLoader::get_resource_uid(path);
+	if (uid != ResourceUID::INVALID_ID) {
+		return "Resource(\"" + ResourceUID::get_singleton()->id_to_text(uid) +
+				"\", \"" + path.c_escape_multiline() + "\")";
+	} else {
+		return "Resource(\"" + path.c_escape_multiline() + "\")";
+	}
 }
 
 Error VariantWriter::write(const Variant &p_variant, StoreStringFunc p_store_string_func, void *p_store_string_ud, EncodeResourceFunc p_encode_res_func, void *p_encode_res_ud, int p_recursion_count, bool p_compat) {
@@ -1973,13 +2022,7 @@ Error VariantWriter::write(const Variant &p_variant, StoreStringFunc p_store_str
 		} break;
 		case Variant::FLOAT: {
 			const double value = p_variant.operator double();
-			String s;
-			// Hack to avoid garbage digits when the underlying float is 32-bit.
-			if ((double)(float)value == value) {
-				s = rtos_fix((float)value, p_compat);
-			} else {
-				s = rtos_fix(value, p_compat);
-			}
+			String s = rtos_fix(value, p_compat);
 			// Append ".0" to floats to ensure they are float literals.
 			if (s != "inf" && s != "-inf" && s != "nan" && !s.contains_char('.') && !s.contains_char('e') && !s.contains_char('E')) {
 				s += ".0";
@@ -2146,22 +2189,21 @@ Error VariantWriter::write(const Variant &p_variant, StoreStringFunc p_store_str
 
 			Ref<Resource> res = p_variant;
 			if (res.is_valid()) {
-				//is resource
 				String res_text;
 
-				//try external function
+				// Try external function.
 				if (p_encode_res_func) {
 					res_text = p_encode_res_func(p_encode_res_ud, res);
 				}
 
-				//try path because it's a file
+				// Try path, because it's a file.
 				if (res_text.is_empty() && res->get_path().is_resource_file()) {
-					//external resource
+					// External resource.
 					String path = res->get_path();
-					res_text = "Resource(\"" + path + "\")";
+					res_text = encode_resource_reference(path);
 				}
 
-				//could come up with some sort of text
+				// Could come up with some sort of text.
 				if (!res_text.is_empty()) {
 					p_store_string_func(p_store_string_ud, res_text);
 					break;
@@ -2209,7 +2251,7 @@ Error VariantWriter::write(const Variant &p_variant, StoreStringFunc p_store_str
 						resource_text = p_encode_res_func(p_encode_res_ud, key_script);
 					}
 					if (resource_text.is_empty() && key_script->get_path().is_resource_file()) {
-						resource_text = "Resource(\"" + key_script->get_path() + "\")";
+						resource_text = encode_resource_reference(key_script->get_path());
 					}
 
 					if (!resource_text.is_empty()) {
@@ -2238,7 +2280,7 @@ Error VariantWriter::write(const Variant &p_variant, StoreStringFunc p_store_str
 						resource_text = p_encode_res_func(p_encode_res_ud, value_script);
 					}
 					if (resource_text.is_empty() && value_script->get_path().is_resource_file()) {
-						resource_text = "Resource(\"" + value_script->get_path() + "\")";
+						resource_text = encode_resource_reference(value_script->get_path());
 					}
 
 					if (!resource_text.is_empty()) {
@@ -2310,7 +2352,7 @@ Error VariantWriter::write(const Variant &p_variant, StoreStringFunc p_store_str
 						resource_text = p_encode_res_func(p_encode_res_ud, script);
 					}
 					if (resource_text.is_empty() && script->get_path().is_resource_file()) {
-						resource_text = "Resource(\"" + script->get_path() + "\")";
+						resource_text = encode_resource_reference(script->get_path());
 					}
 
 					if (!resource_text.is_empty()) {

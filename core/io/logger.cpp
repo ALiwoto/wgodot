@@ -32,10 +32,14 @@
 
 #include "core/core_globals.h"
 #include "core/io/dir_access.h"
+#include "core/io/file_access.h"
+#include "core/object/script_backtrace.h"
 #include "core/os/time.h"
 #include "core/templates/rb_set.h"
 
 #include "modules/modules_enabled.gen.h" // For regex.
+
+#include <cstdio>
 
 #ifdef MODULE_REGEX_ENABLED
 #include "modules/regex/regex.h"
@@ -58,24 +62,7 @@ void Logger::log_error(const char *p_function, const char *p_file, int p_line, c
 		return;
 	}
 
-	const char *err_type = "ERROR";
-	switch (p_type) {
-		case ERR_ERROR:
-			err_type = "ERROR";
-			break;
-		case ERR_WARNING:
-			err_type = "WARNING";
-			break;
-		case ERR_SCRIPT:
-			err_type = "SCRIPT ERROR";
-			break;
-		case ERR_SHADER:
-			err_type = "SHADER ERROR";
-			break;
-		default:
-			ERR_PRINT("Unknown error type");
-			break;
-	}
+	const char *err_type = error_type_string(p_type);
 
 	const char *err_details;
 	if (p_rationale && *p_rationale) {
