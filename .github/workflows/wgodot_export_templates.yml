@@ -1,0 +1,251 @@
+name: wgodot export templates
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: wgodot-export-templates-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONIOENCODING: utf8
+  SCONS_FLAGS: >-
+    production=yes
+    debug_symbols=no
+    module_text_server_fb_enabled=yes
+
+jobs:
+  linux-templates:
+    name: Linux templates
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Restore Godot build cache
+        uses: ./.github/actions/godot-cache-restore
+        with:
+          cache-name: wgodot-linux-templates
+        continue-on-error: true
+
+      - name: Setup Python and SCons
+        uses: ./.github/actions/godot-deps
+
+      - name: Compilation release
+        uses: ./.github/actions/godot-build
+        with:
+          platform: linuxbsd
+          target: template_release
+          scons-flags: ${{ env.SCONS_FLAGS }} accesskit=no
+
+      - name: Compilation debug
+        uses: ./.github/actions/godot-build
+        with:
+          platform: linuxbsd
+          target: template_debug
+          scons-flags: ${{ env.SCONS_FLAGS }} accesskit=no
+
+      - name: Save Godot build cache
+        uses: ./.github/actions/godot-cache-save
+        with:
+          cache-name: wgodot-linux-templates
+        continue-on-error: true
+
+      - name: Prepare export templates
+        run: |
+          mkdir -p export_templates
+          cp bin/godot.linuxbsd.template_release.x86_64 export_templates/linux_release.x86_64
+          cp bin/godot.linuxbsd.template_debug.x86_64 export_templates/linux_debug.x86_64
+          chmod +x export_templates/linux_*.x86_64
+
+      - name: Upload Linux templates
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: wgodot-linux-templates
+          path: export_templates/*
+
+  windows-templates:
+    name: Windows templates
+    runs-on: windows-latest
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Restore Godot build cache
+        uses: ./.github/actions/godot-cache-restore
+        with:
+          cache-name: wgodot-windows-templates
+        continue-on-error: true
+
+      - name: Setup Python and SCons
+        uses: ./.github/actions/godot-deps
+
+      - name: Download Direct3D 12 SDK components
+        shell: sh
+        id: d3d12-sdk
+        run: |
+          if python ./misc/scripts/install_d3d12_sdk_windows.py; then
+            echo "D3D12_ENABLED=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Windows: Direct3D 12 SDK installation failed, building without Direct3D 12 support."
+            echo "D3D12_ENABLED=no" >> "$GITHUB_OUTPUT"
+          fi
+        continue-on-error: true
+
+      - name: Download pre-built ANGLE
+        shell: sh
+        id: angle-sdk
+        run: |
+          if python ./misc/scripts/install_angle.py; then
+            echo "ANGLE_ENABLED=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::ANGLE SDK installation failed, building without ANGLE support."
+            echo "ANGLE_ENABLED=no" >> "$GITHUB_OUTPUT"
+          fi
+        continue-on-error: true
+
+      - name: Download WinRT components
+        shell: sh
+        run: python ./misc/scripts/install_winrt.py
+        continue-on-error: true
+
+      - name: Download pre-built AccessKit
+        shell: sh
+        id: accesskit-sdk
+        run: |
+          if python ./misc/scripts/install_accesskit.py; then
+            echo "ACCESSKIT_ENABLED=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::AccessKit SDK installation failed, building without AccessKit support."
+            echo "ACCESSKIT_ENABLED=no" >> "$GITHUB_OUTPUT"
+          fi
+        continue-on-error: true
+
+      - name: Compilation release
+        uses: ./.github/actions/godot-build
+        with:
+          platform: windows
+          target: template_release
+          scons-flags: >-
+            ${{ env.SCONS_FLAGS }}
+            d3d12=${{ steps.d3d12-sdk.outputs.D3D12_ENABLED }}
+            accesskit=${{ steps.accesskit-sdk.outputs.ACCESSKIT_ENABLED }}
+            angle=${{ steps.angle-sdk.outputs.ANGLE_ENABLED }}
+
+      - name: Compilation debug
+        uses: ./.github/actions/godot-build
+        with:
+          platform: windows
+          target: template_debug
+          scons-flags: >-
+            ${{ env.SCONS_FLAGS }}
+            d3d12=${{ steps.d3d12-sdk.outputs.D3D12_ENABLED }}
+            accesskit=${{ steps.accesskit-sdk.outputs.ACCESSKIT_ENABLED }}
+            angle=${{ steps.angle-sdk.outputs.ANGLE_ENABLED }}
+
+      - name: Save Godot build cache
+        uses: ./.github/actions/godot-cache-save
+        with:
+          cache-name: wgodot-windows-templates
+        continue-on-error: true
+
+      - name: Prepare export templates
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path export_templates -Force | Out-Null
+          Copy-Item bin/godot.windows.template_release.x86_64.exe export_templates/windows_release_x86_64.exe
+          Copy-Item bin/godot.windows.template_debug.x86_64.exe export_templates/windows_debug_x86_64.exe
+          if (Test-Path bin/godot.windows.template_release.x86_64.console.exe) {
+            Copy-Item bin/godot.windows.template_release.x86_64.console.exe export_templates/windows_release_x86_64.console.exe
+          }
+          if (Test-Path bin/godot.windows.template_debug.x86_64.console.exe) {
+            Copy-Item bin/godot.windows.template_debug.x86_64.console.exe export_templates/windows_debug_x86_64.console.exe
+          }
+
+      - name: Upload Windows templates
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: wgodot-windows-templates
+          path: export_templates/*
+
+  web-templates:
+    name: Web templates
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Set up Emscripten
+        uses: emscripten-core/setup-emsdk@v16
+        with:
+          version: 4.0.11
+          no-cache: true
+
+      - name: Restore Godot build cache
+        uses: ./.github/actions/godot-cache-restore
+        with:
+          cache-name: wgodot-web-templates
+        continue-on-error: true
+
+      - name: Setup Python and SCons
+        uses: ./.github/actions/godot-deps
+
+      - name: Compilation release
+        uses: ./.github/actions/godot-build
+        with:
+          platform: web
+          target: template_release
+          scons-flags: ${{ env.SCONS_FLAGS }} threads=yes arch=wasm32 use_closure_compiler=yes
+
+      - name: Compilation debug
+        uses: ./.github/actions/godot-build
+        with:
+          platform: web
+          target: template_debug
+          scons-flags: ${{ env.SCONS_FLAGS }} threads=yes arch=wasm32 use_closure_compiler=yes
+
+      - name: Compilation release without threads
+        uses: ./.github/actions/godot-build
+        with:
+          platform: web
+          target: template_release
+          scons-flags: ${{ env.SCONS_FLAGS }} threads=no arch=wasm32 use_closure_compiler=yes
+
+      - name: Compilation debug without threads
+        uses: ./.github/actions/godot-build
+        with:
+          platform: web
+          target: template_debug
+          scons-flags: ${{ env.SCONS_FLAGS }} threads=no arch=wasm32 use_closure_compiler=yes
+
+      - name: Save Godot build cache
+        uses: ./.github/actions/godot-cache-save
+        with:
+          cache-name: wgodot-web-templates
+        continue-on-error: true
+
+      - name: Prepare export templates
+        run: |
+          mkdir -p export_templates
+          cp bin/godot.web.template_release.wasm32.zip export_templates/web_release.zip
+          cp bin/godot.web.template_debug.wasm32.zip export_templates/web_debug.zip
+          cp bin/godot.web.template_release.wasm32.nothreads.zip export_templates/web_nothreads_release.zip
+          cp bin/godot.web.template_debug.wasm32.nothreads.zip export_templates/web_nothreads_debug.zip
+
+      - name: Upload Web templates
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: wgodot-web-templates
+          path: export_templates/*

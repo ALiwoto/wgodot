@@ -1,0 +1,169 @@
+name: wgodot CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: wgodot-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONIOENCODING: utf8
+  SCONS_FLAGS: >-
+    debug_symbols=no
+    module_text_server_fb_enabled=yes
+
+jobs:
+  windows-editor:
+    name: Windows editor smoke
+    runs-on: windows-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Restore Godot build cache
+        uses: ./.github/actions/godot-cache-restore
+        with:
+          cache-name: wgodot-windows-editor
+        continue-on-error: true
+
+      - name: Setup Python and SCons
+        uses: ./.github/actions/godot-deps
+
+      - name: Download Direct3D 12 SDK components
+        shell: sh
+        id: d3d12-sdk
+        run: |
+          if python ./misc/scripts/install_d3d12_sdk_windows.py; then
+            echo "D3D12_ENABLED=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Windows: Direct3D 12 SDK installation failed, building without Direct3D 12 support."
+            echo "D3D12_ENABLED=no" >> "$GITHUB_OUTPUT"
+          fi
+        continue-on-error: true
+
+      - name: Download pre-built ANGLE
+        shell: sh
+        id: angle-sdk
+        run: |
+          if python ./misc/scripts/install_angle.py; then
+            echo "ANGLE_ENABLED=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::ANGLE SDK installation failed, building without ANGLE support."
+            echo "ANGLE_ENABLED=no" >> "$GITHUB_OUTPUT"
+          fi
+        continue-on-error: true
+
+      - name: Download WinRT components
+        shell: sh
+        run: python ./misc/scripts/install_winrt.py
+        continue-on-error: true
+
+      - name: Download pre-built AccessKit
+        shell: sh
+        id: accesskit-sdk
+        run: |
+          if python ./misc/scripts/install_accesskit.py; then
+            echo "ACCESSKIT_ENABLED=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::AccessKit SDK installation failed, building without AccessKit support."
+            echo "ACCESSKIT_ENABLED=no" >> "$GITHUB_OUTPUT"
+          fi
+        continue-on-error: true
+
+      - name: Compilation
+        uses: ./.github/actions/godot-build
+        with:
+          platform: windows
+          target: editor
+          scons-flags: >-
+            ${{ env.SCONS_FLAGS }}
+            windows_subsystem=console
+            d3d12=${{ steps.d3d12-sdk.outputs.D3D12_ENABLED }}
+            accesskit=${{ steps.accesskit-sdk.outputs.ACCESSKIT_ENABLED }}
+            angle=${{ steps.angle-sdk.outputs.ANGLE_ENABLED }}
+
+      - name: Save Godot build cache
+        uses: ./.github/actions/godot-cache-save
+        with:
+          cache-name: wgodot-windows-editor
+        continue-on-error: true
+
+      - name: Verify editor starts
+        shell: pwsh
+        run: |
+          ./bin/godot.windows.editor.x86_64.exe --version
+          ./bin/godot.windows.editor.x86_64.exe --help
+
+  export-template-smoke:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux release template smoke
+            runner: ubuntu-22.04
+            platform: linuxbsd
+            target: template_release
+            cache-name: wgodot-linux-template-release
+            scons-flags: accesskit=no
+
+          - name: Windows release template smoke
+            runner: windows-latest
+            platform: windows
+            target: template_release
+            cache-name: wgodot-windows-template-release
+            scons-flags: d3d12=no accesskit=no angle=no winrt=no
+
+          - name: Web release template smoke
+            runner: ubuntu-24.04
+            platform: web
+            target: template_release
+            cache-name: wgodot-web-template-release
+            scons-flags: threads=yes arch=wasm32 use_closure_compiler=no
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Set up Emscripten
+        if: matrix.platform == 'web'
+        uses: emscripten-core/setup-emsdk@v16
+        with:
+          version: 4.0.11
+          no-cache: true
+
+      - name: Restore Godot build cache
+        uses: ./.github/actions/godot-cache-restore
+        with:
+          cache-name: ${{ matrix.cache-name }}
+        continue-on-error: true
+
+      - name: Setup Python and SCons
+        uses: ./.github/actions/godot-deps
+
+      - name: Compilation
+        uses: ./.github/actions/godot-build
+        with:
+          platform: ${{ matrix.platform }}
+          target: ${{ matrix.target }}
+          scons-flags: ${{ env.SCONS_FLAGS }} ${{ matrix.scons-flags }}
+
+      - name: Save Godot build cache
+        uses: ./.github/actions/godot-cache-save
+        with:
+          cache-name: ${{ matrix.cache-name }}
+        continue-on-error: true
