@@ -94,6 +94,13 @@ class GDScriptAnalyzer {
 	void resolve_match_pattern(GDScriptParser::PatternNode *p_match_pattern, GDScriptParser::ExpressionNode *p_match_test);
 	void resolve_return(GDScriptParser::ReturnNode *p_return);
 
+	// wgodot-changes::begin
+	void wgodot_validate_readonly_variable(GDScriptParser::VariableNode *p_variable, bool p_is_local);
+	bool wgodot_validate_readonly_assignment(GDScriptParser::AssignmentNode *p_assignment);
+	const GDScriptParser::VariableNode *wgodot_get_readonly_assignment_source(GDScriptParser::ExpressionNode *p_assignee) const;
+	bool wgodot_can_assign_readonly_variable(const GDScriptParser::VariableNode *p_variable) const;
+	// wgodot-changes::end
+
 	// Reduction functions.
 	void reduce_expression(GDScriptParser::ExpressionNode *p_expression, bool p_is_root = false);
 	void reduce_array(GDScriptParser::ArrayNode *p_array);

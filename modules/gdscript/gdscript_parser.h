@@ -1271,6 +1271,9 @@ public:
 
 		bool exported = false;
 		bool onready = false;
+		// wgodot-changes::begin
+		bool wgodot_readonly = false;
+		// wgodot-changes::end
 		PropertyInfo export_info;
 		int assignments = 0;
 		bool is_static = false;
@@ -1576,6 +1579,7 @@ private:
 	// wgodot-changes::begin
 	static void register_wgodot_annotations();
 	bool wgodot_noop_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
+	bool wgodot_readonly_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	// wgodot-changes::end
 	// Statements.
 	Node *parse_statement();

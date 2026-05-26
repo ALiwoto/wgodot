@@ -1,0 +1,83 @@
+// wgodot-changes::file
+/**************************************************************************/
+/*  wgodot_analyzer.cpp                                                   */
+/**************************************************************************/
+/*                         This file is part of:                          */
+/*                             GODOT ENGINE                               */
+/*                        https://godotengine.org                         */
+/**************************************************************************/
+
+#include "gdscript_analyzer.h"
+
+void GDScriptAnalyzer::wgodot_validate_readonly_variable(GDScriptParser::VariableNode *p_variable, bool p_is_local) {
+	ERR_FAIL_NULL(p_variable);
+
+	if (!p_variable->wgodot_readonly) {
+		return;
+	}
+
+	if (p_is_local && p_variable->initializer == nullptr) {
+		push_error(R"("@readonly" local variables must be assigned in-place.)", p_variable);
+	}
+}
+
+bool GDScriptAnalyzer::wgodot_validate_readonly_assignment(GDScriptParser::AssignmentNode *p_assignment) {
+	ERR_FAIL_NULL_V(p_assignment, true);
+
+	const GDScriptParser::VariableNode *readonly_source = wgodot_get_readonly_assignment_source(p_assignment->assignee);
+	if (readonly_source == nullptr || wgodot_can_assign_readonly_variable(readonly_source)) {
+		return true;
+	}
+
+	push_error(vformat(R"(Cannot assign a new value to @readonly variable "%s".)", readonly_source->identifier->name), p_assignment->assignee);
+	return false;
+}
+
+const GDScriptParser::VariableNode *GDScriptAnalyzer::wgodot_get_readonly_assignment_source(GDScriptParser::ExpressionNode *p_assignee) const {
+	ERR_FAIL_NULL_V(p_assignee, nullptr);
+
+	GDScriptParser::IdentifierNode *identifier = nullptr;
+	if (p_assignee->type == GDScriptParser::Node::IDENTIFIER) {
+		identifier = static_cast<GDScriptParser::IdentifierNode *>(p_assignee);
+	} else if (p_assignee->type == GDScriptParser::Node::SUBSCRIPT) {
+		GDScriptParser::SubscriptNode *subscript = static_cast<GDScriptParser::SubscriptNode *>(p_assignee);
+		if (subscript->is_attribute) {
+			identifier = subscript->attribute;
+		}
+	}
+
+	if (identifier == nullptr) {
+		return nullptr;
+	}
+
+	switch (identifier->source) {
+		case GDScriptParser::IdentifierNode::LOCAL_VARIABLE:
+		case GDScriptParser::IdentifierNode::MEMBER_VARIABLE:
+		case GDScriptParser::IdentifierNode::STATIC_VARIABLE:
+			if (identifier->variable_source != nullptr && identifier->variable_source->wgodot_readonly) {
+				return identifier->variable_source;
+			}
+			break;
+		default:
+			break;
+	}
+
+	return nullptr;
+}
+
+bool GDScriptAnalyzer::wgodot_can_assign_readonly_variable(const GDScriptParser::VariableNode *p_variable) const {
+	ERR_FAIL_NULL_V(p_variable, true);
+
+	if (p_variable->is_static || parser->current_function == nullptr || parser->current_function->identifier == nullptr) {
+		return false;
+	}
+	if (parser->current_function->identifier->name != SNAME("_init")) {
+		return false;
+	}
+	if (parser->current_class == nullptr || p_variable->identifier == nullptr || !parser->current_class->has_member(p_variable->identifier->name)) {
+		return false;
+	}
+
+	const GDScriptParser::ClassNode::Member member = parser->current_class->get_member(p_variable->identifier->name);
+	return member.type == GDScriptParser::ClassNode::Member::VARIABLE && member.variable == p_variable;
+}

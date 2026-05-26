@@ -2228,6 +2228,10 @@ void GDScriptAnalyzer::resolve_variable(GDScriptParser::VariableNode *p_variable
 	static constexpr const char *kind = "variable";
 	resolve_assignable(p_variable, kind);
 
+	// wgodot-changes::begin
+	wgodot_validate_readonly_variable(p_variable, p_is_local);
+	// wgodot-changes::end
+
 #ifdef DEBUG_ENABLED
 	if (p_is_local) {
 		if (p_variable->usages == 0 && !String(p_variable->identifier->name).begins_with("_")) {
@@ -2926,6 +2930,12 @@ void GDScriptAnalyzer::reduce_assignment(GDScriptParser::AssignmentNode *p_assig
 	if (p_assignment->assigned_value == nullptr || p_assignment->assignee == nullptr) {
 		return;
 	}
+
+	// wgodot-changes::begin
+	if (!wgodot_validate_readonly_assignment(p_assignment)) {
+		return;
+	}
+	// wgodot-changes::end
 
 	GDScriptParser::DataType assignee_type = p_assignment->assignee->get_datatype();
 
