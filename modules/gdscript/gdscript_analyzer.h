@@ -106,6 +106,10 @@ class GDScriptAnalyzer {
 	bool wgodot_class_inherits_from(const GDScriptParser::ClassNode *p_class, const GDScriptParser::ClassNode *p_base_class) const;
 	void wgodot_validate_override_annotation(GDScriptParser::FunctionNode *p_function, bool p_overrides_parent);
 	bool wgodot_strict_override_checking_enabled() const;
+	void wgodot_validate_signal_callable_connection(GDScriptParser::CallNode *p_call);
+	bool wgodot_try_get_connect_signal_info(const GDScriptParser::CallNode *p_call, MethodInfo &r_signal_info) const;
+	bool wgodot_try_get_callable_info(const GDScriptParser::ExpressionNode *p_expression, MethodInfo &r_callable_info) const;
+	bool wgodot_strict_signal_callable_checking_enabled() const;
 	// wgodot-changes::end
 
 	// Reduction functions.

@@ -173,5 +173,138 @@ void GDScriptAnalyzer::wgodot_validate_override_annotation(GDScriptParser::Funct
 }
 
 bool GDScriptAnalyzer::wgodot_strict_override_checking_enabled() const {
-	return GLOBAL_GET_CACHED(bool, "debug/gdscript/wgodot/strict_override_checking");
+	const char *setting = "debug/gdscript/wgodot/strict_override_checking";
+	if (!ProjectSettings::get_singleton()->has_setting(setting)) {
+		return true;
+	}
+
+	return GLOBAL_GET_CACHED(bool, setting);
+}
+
+void GDScriptAnalyzer::wgodot_validate_signal_callable_connection(GDScriptParser::CallNode *p_call) {
+	ERR_FAIL_NULL(p_call);
+
+	if (!wgodot_strict_signal_callable_checking_enabled()) {
+		return;
+	}
+
+	MethodInfo signal_info;
+	if (!wgodot_try_get_connect_signal_info(p_call, signal_info)) {
+		return;
+	}
+
+	if (p_call->arguments.is_empty()) {
+		return;
+	}
+
+	MethodInfo callable_info;
+	if (!wgodot_try_get_callable_info(p_call->arguments[0], callable_info)) {
+		return;
+	}
+
+	const int signal_arg_count = signal_info.arguments.size();
+	const int callable_required_arg_count = callable_info.arguments.size() - callable_info.default_arguments.size();
+	const bool callable_is_vararg = (callable_info.flags & METHOD_FLAG_VARARG) != 0;
+	const int callable_max_arg_count = callable_is_vararg ? INT_MAX : callable_info.arguments.size();
+	const String signal_name = signal_info.name == StringName() ? String("<unknown signal>") : String(signal_info.name);
+	const String callable_name = callable_info.name == StringName() ? String("<anonymous callable>") : String(callable_info.name);
+
+	if (signal_arg_count < callable_required_arg_count) {
+		push_error(vformat(R"*(Cannot connect signal "%s" to callable "%s": the signal emits %d arguments, but the callable requires at least %d.)*",
+						   signal_name, callable_name, signal_arg_count, callable_required_arg_count),
+				p_call->arguments[0]);
+		return;
+	}
+
+	if (signal_arg_count > callable_max_arg_count) {
+		push_error(vformat(R"*(Cannot connect signal "%s" to callable "%s": the signal emits %d arguments, but the callable accepts at most %d.)*",
+						   signal_name, callable_name, signal_arg_count, callable_max_arg_count),
+				p_call->arguments[0]);
+		return;
+	}
+
+	for (int i = 0; i < signal_arg_count && i < callable_info.arguments.size(); i++) {
+		const GDScriptParser::DataType signal_arg_type = type_from_property(signal_info.arguments[i], true);
+		const GDScriptParser::DataType callable_arg_type = type_from_property(callable_info.arguments[i], true);
+
+		if (!signal_arg_type.is_hard_type() || !callable_arg_type.is_hard_type() ||
+				signal_arg_type.is_variant() || callable_arg_type.is_variant()) {
+			continue;
+		}
+
+		if (!is_type_compatible(callable_arg_type, signal_arg_type, true)) {
+			push_error(vformat(R"*(Cannot connect signal "%s" to callable "%s": signal argument %d emits "%s", but the callable expects "%s".)*",
+							   signal_name, callable_name, i + 1, signal_arg_type.to_string(), callable_arg_type.to_string()),
+					p_call->arguments[0]);
+			return;
+		}
+	}
+}
+
+bool GDScriptAnalyzer::wgodot_try_get_connect_signal_info(const GDScriptParser::CallNode *p_call, MethodInfo &r_signal_info) const {
+	ERR_FAIL_NULL_V(p_call, false);
+
+	if (p_call->function_name != SNAME("connect")) {
+		return false;
+	}
+	if (p_call->callee == nullptr || p_call->callee->type != GDScriptParser::Node::SUBSCRIPT) {
+		return false;
+	}
+
+	const GDScriptParser::SubscriptNode *callee = static_cast<const GDScriptParser::SubscriptNode *>(p_call->callee);
+	if (!callee->is_attribute || callee->base == nullptr) {
+		return false;
+	}
+
+	const GDScriptParser::DataType signal_type = callee->base->get_datatype();
+	if (!signal_type.is_hard_type() ||
+			signal_type.kind != GDScriptParser::DataType::BUILTIN ||
+			signal_type.builtin_type != Variant::SIGNAL) {
+		return false;
+	}
+	if (signal_type.method_info.name == StringName() && signal_type.method_info.arguments.is_empty()) {
+		return false;
+	}
+
+	r_signal_info = signal_type.method_info;
+	return true;
+}
+
+bool GDScriptAnalyzer::wgodot_try_get_callable_info(const GDScriptParser::ExpressionNode *p_expression, MethodInfo &r_callable_info) const {
+	ERR_FAIL_NULL_V(p_expression, false);
+
+	if (p_expression->type == GDScriptParser::Node::LAMBDA) {
+		const GDScriptParser::LambdaNode *lambda = static_cast<const GDScriptParser::LambdaNode *>(p_expression);
+		if (lambda->function == nullptr) {
+			return false;
+		}
+
+		r_callable_info = lambda->function->info;
+		return true;
+	}
+
+	const GDScriptParser::DataType callable_type = p_expression->get_datatype();
+	if (!callable_type.is_hard_type() ||
+			callable_type.kind != GDScriptParser::DataType::BUILTIN ||
+			callable_type.builtin_type != Variant::CALLABLE) {
+		return false;
+	}
+	if (callable_type.method_info.name == StringName() &&
+			callable_type.method_info.arguments.is_empty() &&
+			callable_type.method_info.default_arguments.is_empty() &&
+			!(callable_type.method_info.flags & METHOD_FLAG_VARARG)) {
+		return false;
+	}
+
+	r_callable_info = callable_type.method_info;
+	return true;
+}
+
+bool GDScriptAnalyzer::wgodot_strict_signal_callable_checking_enabled() const {
+	const char *setting = "debug/gdscript/wgodot/strict_signal_callable_checking";
+	if (!ProjectSettings::get_singleton()->has_setting(setting)) {
+		return true;
+	}
+
+	return GLOBAL_GET_CACHED(bool, setting);
 }
