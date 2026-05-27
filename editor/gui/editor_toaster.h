@@ -33,6 +33,7 @@
 #include "scene/gui/box_container.h"
 
 class Button;
+class InputEvent;
 class PanelContainer;
 class StyleBoxFlat;
 
@@ -80,6 +81,11 @@ private:
 		// Messages
 		String message;
 		String tooltip;
+		// wgodot-changes::begin
+		String wgodot_script_path;
+		int wgodot_script_line = -1;
+		int wgodot_script_column = 0;
+		// wgodot-changes::end
 		int count = 0;
 		Label *message_label = nullptr;
 		Label *message_count_label = nullptr;
@@ -103,6 +109,10 @@ private:
 	void _repop_old();
 	void _popup_str(const String &p_message, Severity p_severity, const String &p_tooltip);
 	void _toast_theme_changed(Control *p_control);
+	// wgodot-changes::begin
+	void wgodot_update_toast_script_location(Control *p_control, const String &p_message, const String &p_tooltip);
+	void wgodot_open_toast_script_location(const Ref<InputEvent> &p_event, Control *p_control);
+	// wgodot-changes::end
 
 protected:
 	static void _bind_methods();

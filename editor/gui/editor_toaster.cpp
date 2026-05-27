@@ -393,6 +393,9 @@ Control *EditorToaster::popup(Control *p_control, Severity p_severity, double p_
 	panel->set_modulate(Color(1, 1, 1, 0));
 	panel->connect(SceneStringName(draw), callable_mp(this, &EditorToaster::_draw_progress).bind(panel));
 	panel->connect(SceneStringName(theme_changed), callable_mp(this, &EditorToaster::_toast_theme_changed).bind(panel));
+	// wgodot-changes::begin
+	panel->connect(SceneStringName(gui_input), callable_mp(this, &EditorToaster::wgodot_open_toast_script_location).bind(panel));
+	// wgodot-changes::end
 
 	Toast &toast = toasts[panel];
 
@@ -485,6 +488,9 @@ void EditorToaster::_popup_str(const String &p_message, Severity p_severity, con
 		toast.count = 1;
 		toast.message_label = label;
 		toast.message_count_label = count_label;
+		// wgodot-changes::begin
+		wgodot_update_toast_script_location(control, p_message, p_tooltip);
+		// wgodot-changes::end
 	} else {
 		Toast &toast = toasts[control];
 		if (toast.popped) {
@@ -500,6 +506,9 @@ void EditorToaster::_popup_str(const String &p_message, Severity p_severity, con
 		_update_vbox_position();
 		_update_disable_notifications_button();
 		main_button->queue_redraw();
+		// wgodot-changes::begin
+		wgodot_update_toast_script_location(control, p_message, p_tooltip);
+		// wgodot-changes::end
 	}
 
 	// Retrieve the label back, then update the text.
