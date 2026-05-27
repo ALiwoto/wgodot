@@ -2877,6 +2877,10 @@ GDScriptLanguage::GDScriptLanguage() {
 
 	GLOBAL_DEF("debug/gdscript/warnings/enable", true);
 
+	// wgodot-changes::begin
+	GLOBAL_DEF("debug/gdscript/wgodot/strict_override_checking", false);
+	// wgodot-changes::end
+
 	GLOBAL_DEF(PropertyInfo(Variant::DICTIONARY,
 					   "debug/gdscript/warnings/directory_rules",
 					   PROPERTY_HINT_TYPE_STRING,

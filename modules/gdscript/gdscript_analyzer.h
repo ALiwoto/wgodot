@@ -104,6 +104,8 @@ class GDScriptAnalyzer {
 	void wgodot_validate_protected_member_access(const GDScriptParser::ClassNode::Member &p_member, const GDScriptParser::ClassNode *p_owner_class, const GDScriptParser::Node *p_source);
 	bool wgodot_is_protected_member(const GDScriptParser::ClassNode::Member &p_member) const;
 	bool wgodot_class_inherits_from(const GDScriptParser::ClassNode *p_class, const GDScriptParser::ClassNode *p_base_class) const;
+	void wgodot_validate_override_annotation(GDScriptParser::FunctionNode *p_function, bool p_overrides_parent);
+	bool wgodot_strict_override_checking_enabled() const;
 	// wgodot-changes::end
 
 	// Reduction functions.

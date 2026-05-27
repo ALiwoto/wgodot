@@ -1872,7 +1872,14 @@ void GDScriptAnalyzer::resolve_function_signature(GDScriptParser::FunctionNode *
 		int default_par_count = 0;
 		BitField<MethodFlags> method_flags = {};
 		StringName native_base;
+		// wgodot-changes::begin
+		bool wgodot_overrides_parent = false;
+		// wgodot-changes::end
 		if (!p_is_lambda && get_function_signature(p_function, false, base_type, function_name, parent_return_type, parameters_types, default_par_count, method_flags, &native_base)) {
+			// wgodot-changes::begin
+			wgodot_overrides_parent = true;
+			// wgodot-changes::end
+
 			bool valid = p_function->is_static == method_flags.has_flag(METHOD_FLAG_STATIC);
 
 			if (p_function->return_type == nullptr) {
@@ -1978,6 +1985,11 @@ void GDScriptAnalyzer::resolve_function_signature(GDScriptParser::FunctionNode *
 			}
 #endif // DEBUG_ENABLED
 		}
+		// wgodot-changes::begin
+		if (!p_is_lambda) {
+			wgodot_validate_override_annotation(p_function, wgodot_overrides_parent);
+		}
+		// wgodot-changes::end
 #endif // TOOLS_ENABLED
 	}
 

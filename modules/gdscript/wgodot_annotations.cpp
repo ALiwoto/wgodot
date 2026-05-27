@@ -10,6 +10,7 @@
 #include "gdscript_parser.h"
 
 void GDScriptParser::register_wgodot_annotations() {
+	register_annotation(MethodInfo("@override"), AnnotationInfo::FUNCTION, &GDScriptParser::wgodot_override_annotation);
 	register_annotation(MethodInfo("@private"), AnnotationInfo::CLASS_LEVEL, &GDScriptParser::wgodot_private_annotation);
 	register_annotation(MethodInfo("@protected"), AnnotationInfo::CLASS_LEVEL, &GDScriptParser::wgodot_protected_annotation);
 	register_annotation(MethodInfo("@readonly"), AnnotationInfo::VARIABLE | AnnotationInfo::STATEMENT, &GDScriptParser::wgodot_readonly_annotation);
@@ -20,6 +21,28 @@ bool GDScriptParser::wgodot_noop_annotation(AnnotationNode *p_annotation, Node *
 	(void)p_annotation;
 	(void)p_target;
 	(void)p_class;
+	return true;
+}
+
+bool GDScriptParser::wgodot_override_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class) {
+	(void)p_class;
+
+	if (p_target == nullptr || p_target->type != Node::FUNCTION) {
+		push_error(R"("@override" annotation can only be applied to functions.)", p_annotation);
+		return false;
+	}
+
+	FunctionNode *function = static_cast<FunctionNode *>(p_target);
+	if (function->is_static) {
+		push_error(R"("@override" annotation cannot be applied to static functions.)", p_annotation);
+		return false;
+	}
+	if (function->wgodot_override) {
+		push_error(R"("@override" annotation can only be used once per function.)", p_annotation);
+		return false;
+	}
+
+	function->wgodot_override = true;
 	return true;
 }
 

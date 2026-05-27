@@ -876,6 +876,7 @@ public:
 		// wgodot-changes::begin
 		bool wgodot_private = false;
 		bool wgodot_protected = false;
+		bool wgodot_override = false;
 		// wgodot-changes::end
 		Variant rpc_config;
 		MethodInfo info;
@@ -1597,6 +1598,7 @@ private:
 	// wgodot-changes::begin
 	static void register_wgodot_annotations();
 	bool wgodot_noop_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
+	bool wgodot_override_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	bool wgodot_private_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	bool wgodot_protected_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	bool wgodot_readonly_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);

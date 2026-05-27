@@ -9,6 +9,10 @@
 
 #include "gdscript_analyzer.h"
 
+#include "gdscript.h"
+
+#include "core/config/project_settings.h"
+
 void GDScriptAnalyzer::wgodot_validate_readonly_variable(GDScriptParser::VariableNode *p_variable, bool p_is_local) {
 	ERR_FAIL_NULL(p_variable);
 
@@ -146,4 +150,28 @@ bool GDScriptAnalyzer::wgodot_class_inherits_from(const GDScriptParser::ClassNod
 	}
 
 	return false;
+}
+
+void GDScriptAnalyzer::wgodot_validate_override_annotation(GDScriptParser::FunctionNode *p_function, bool p_overrides_parent) {
+	ERR_FAIL_NULL(p_function);
+
+	if (p_function->is_static || p_function->identifier == nullptr) {
+		return;
+	}
+	if (p_function->identifier->name == GDScriptLanguage::get_singleton()->strings._init ||
+			p_function->identifier->name == GDScriptLanguage::get_singleton()->strings._static_init) {
+		return;
+	}
+
+	if (p_function->wgodot_override && !p_overrides_parent) {
+		push_error(vformat(R"*(Function "%s()" is marked "@override", but no parent function with that name exists.)*", p_function->identifier->name), p_function);
+		return;
+	}
+	if (!p_function->wgodot_override && p_overrides_parent && wgodot_strict_override_checking_enabled()) {
+		push_error(vformat(R"*(Function "%s()" overrides a parent function and must be marked with "@override".)*", p_function->identifier->name), p_function);
+	}
+}
+
+bool GDScriptAnalyzer::wgodot_strict_override_checking_enabled() const {
+	return GLOBAL_GET_CACHED(bool, "debug/gdscript/wgodot/strict_override_checking");
 }
