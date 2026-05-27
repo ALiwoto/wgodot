@@ -2878,6 +2878,7 @@ GDScriptLanguage::GDScriptLanguage() {
 	GLOBAL_DEF("debug/gdscript/warnings/enable", true);
 
 	// wgodot-changes::begin
+	GLOBAL_DEF("debug/gdscript/wgodot/disable_embedded_gdscript", true);
 	GLOBAL_DEF("debug/gdscript/wgodot/strict_override_checking", true);
 	GLOBAL_DEF("debug/gdscript/wgodot/strict_signal_callable_checking", true);
 	// wgodot-changes::end

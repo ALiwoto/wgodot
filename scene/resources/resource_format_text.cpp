@@ -1763,11 +1763,6 @@ Error ResourceFormatSaverTextInstance::save(const String &p_path, const Ref<Reso
 		packed_scene = p_resource;
 	}
 
-	Error err;
-	Ref<FileAccess> f = FileAccess::open(p_path, FileAccess::WRITE, &err);
-	ERR_FAIL_COND_V_MSG(err, ERR_CANT_OPEN, "Cannot save file '" + p_path + "'.");
-	Ref<FileAccess> _fref(f);
-
 	local_path = ProjectSettings::get_singleton()->localize_path(p_path);
 
 	relative_paths = p_flags & ResourceSaver::FLAG_RELATIVE_PATHS;
@@ -1777,6 +1772,19 @@ Error ResourceFormatSaverTextInstance::save(const String &p_path, const Ref<Reso
 	if (!p_path.begins_with("res://")) {
 		takeover_paths = false;
 	}
+
+	// wgodot-changes::begin
+	if (wgodot_embedded_gdscript_save_guard_enabled()) {
+		HashSet<Ref<Resource>> wgodot_seen_resources;
+		ERR_FAIL_COND_V_MSG(wgodot_variant_contains_embedded_gdscript(p_resource, wgodot_seen_resources, true), ERR_FILE_CANT_WRITE,
+				"Cannot save resource '" + p_path + "' because it contains an embedded GDScript. WGodot disables embedded GDScript by default. Save the script as an external .gd file and reference it with ExtResource instead.");
+	}
+	// wgodot-changes::end
+
+	Error err;
+	Ref<FileAccess> f = FileAccess::open(p_path, FileAccess::WRITE, &err);
+	ERR_FAIL_COND_V_MSG(err, ERR_CANT_OPEN, "Cannot save file '" + p_path + "'.");
+	Ref<FileAccess> _fref(f);
 
 	// Save resources.
 	use_compat = true; // _find_resources() changes this.

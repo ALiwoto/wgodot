@@ -200,6 +200,12 @@ class ResourceFormatSaverTextInstance {
 
 	void _find_resources(const Variant &p_variant, bool p_main = false);
 
+	// wgodot-changes::begin
+	bool wgodot_embedded_gdscript_save_guard_enabled() const;
+	bool wgodot_is_embedded_gdscript_resource(const Ref<Resource> &p_resource) const;
+	bool wgodot_variant_contains_embedded_gdscript(const Variant &p_variant, HashSet<Ref<Resource>> &r_seen, bool p_main = false) const;
+	// wgodot-changes::end
+
 	static String _write_resources(void *ud, const Ref<Resource> &p_resource);
 	String _write_resource(const Ref<Resource> &res);
 
