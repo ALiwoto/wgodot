@@ -441,7 +441,7 @@ HashSet<StringName> GDScriptAnalyzer::wgodot_validate_implemented_interface_conf
 GDScriptParser::ClassNode *GDScriptAnalyzer::wgodot_resolve_interface_reference(GDScriptParser::ClassNode *p_class, const GDScriptParser::ClassNode::WGodotInterfaceReference &p_reference) {
 	ERR_FAIL_NULL_V(p_class, nullptr);
 
-	const GDScriptParser::Node *source = p_class;
+	GDScriptParser::Node *source = p_class;
 	if (!p_reference.identifiers.is_empty()) {
 		source = p_reference.identifiers[0];
 	}
