@@ -5464,6 +5464,11 @@ String GDScriptParser::DataType::to_string() const {
 			if (is_meta_type) {
 				return GDScriptNativeClass::get_class_static();
 			}
+			// wgodot-changes::begin
+			if (native_type == SNAME("ValueContainer") && has_container_element_type(0)) {
+				return vformat("ValueContainer[%s]", get_container_element_type(0).to_string());
+			}
+			// wgodot-changes::end
 			return native_type.operator String();
 		case CLASS:
 			if (class_type->identifier != nullptr) {

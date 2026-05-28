@@ -939,7 +939,14 @@ GDScriptParser::DataType GDScriptAnalyzer::resolve_datatype(GDScriptParser::Type
 	}
 
 	if (!p_type->container_types.is_empty()) {
-		if (result.builtin_type == Variant::ARRAY) {
+		// wgodot-changes::begin
+		bool wgodot_value_container_type_hint_valid = true;
+		if (wgodot_try_resolve_value_container_type_hint(p_type, result, wgodot_value_container_type_hint_valid)) {
+			if (!wgodot_value_container_type_hint_valid) {
+				return bad_type;
+			}
+		// wgodot-changes::end
+		} else if (result.builtin_type == Variant::ARRAY) {
 			if (p_type->container_types.size() != 1) {
 				push_error(R"(Typed arrays require exactly one collection element type.)", p_type);
 				return bad_type;
@@ -956,6 +963,10 @@ GDScriptParser::DataType GDScriptAnalyzer::resolve_datatype(GDScriptParser::Type
 	}
 
 	// wgodot-changes::begin
+	if (wgodot_is_value_container_type(result) && p_type->container_types.is_empty()) {
+		push_error("ValueContainer type hints must specify exactly one type parameter.", p_type);
+		return bad_type;
+	}
 	if (wgodot_validate_static_class_type_hint(p_type, result)) {
 		return bad_type;
 	}
@@ -3703,6 +3714,7 @@ void GDScriptAnalyzer::reduce_call(GDScriptParser::CallNode *p_call, bool p_is_a
 		validate_call_arg(par_types, default_arg_count, method_flags.has_flag(METHOD_FLAG_VARARG), p_call);
 
 		// wgodot-changes::begin
+		wgodot_validate_value_container_call(base_type, p_call);
 		wgodot_validate_signal_callable_connection(p_call);
 		// wgodot-changes::end
 
@@ -4386,6 +4398,15 @@ void GDScriptAnalyzer::reduce_identifier_from_base(GDScriptParser::IdentifierNod
 		if (is_constructor) {
 			name = "_init";
 		}
+
+		// wgodot-changes::begin
+		GDScriptParser::DataType wgodot_value_container_signal_type;
+		if (wgodot_try_get_value_container_signal_type(base, name, wgodot_value_container_signal_type)) {
+			p_identifier->set_datatype(wgodot_value_container_signal_type);
+			p_identifier->source = GDScriptParser::IdentifierNode::INHERITED_VARIABLE;
+			return;
+		}
+		// wgodot-changes::end
 
 		MethodInfo method_info;
 		if (ClassDB::has_property(native, name)) {
@@ -6005,6 +6026,12 @@ bool GDScriptAnalyzer::get_function_signature(GDScriptParser::Node *p_source, bo
 		r_method_flags.set_flag(METHOD_FLAG_STATIC);
 	}
 
+	// wgodot-changes::begin
+	if (wgodot_try_get_value_container_function_signature(p_source, p_is_constructor, p_base_type, p_function, r_return_type, r_par_types, r_default_arg_count, r_method_flags)) {
+		return true;
+	}
+	// wgodot-changes::end
+
 	GDScriptParser::ClassNode *base_class = p_base_type.class_type;
 	GDScriptParser::FunctionNode *found_function = nullptr;
 	// wgodot-changes::begin
@@ -6526,7 +6553,13 @@ bool GDScriptAnalyzer::check_type_compatibility(const GDScriptParser::DataType &
 			if (p_target.is_meta_type) {
 				return ClassDB::is_parent_class(src_native, GDScriptNativeClass::get_class_static());
 			}
-			return ClassDB::is_parent_class(src_native, p_target.native_type);
+			bool valid = ClassDB::is_parent_class(src_native, p_target.native_type);
+			// wgodot-changes::begin
+			if (valid && wgodot_is_value_container_type(p_target) && wgodot_is_value_container_type(p_source) && p_target.has_container_element_type(0) && p_source.has_container_element_type(0)) {
+				valid = check_type_compatibility(p_target.get_container_element_type(0), p_source.get_container_element_type(0), false, p_source_node);
+			}
+			// wgodot-changes::end
+			return valid;
 		}
 		case GDScriptParser::DataType::SCRIPT:
 			if (p_target.is_meta_type) {

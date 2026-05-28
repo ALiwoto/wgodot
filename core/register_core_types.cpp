@@ -81,6 +81,9 @@
 #include "core/object/script_backtrace.h"
 #include "core/object/script_language_extension.h"
 #include "core/object/undo_redo.h"
+// wgodot-changes::begin
+#include "core/object/value_container.h"
+// wgodot-changes::end
 #include "core/object/worker_thread_pool.h"
 #include "core/os/main_loop.h"
 #include "core/os/os.h"
@@ -145,6 +148,9 @@ void register_core_types() {
 	GDREGISTER_CLASS(Object);
 	GDREGISTER_CLASS(RefCounted);
 	GDREGISTER_CLASS(WeakRef);
+	// wgodot-changes::begin
+	GDREGISTER_CLASS(ValueContainer);
+	// wgodot-changes::end
 	GDREGISTER_CLASS(Resource);
 
 	GDREGISTER_CLASS(Time);
