@@ -530,6 +530,39 @@ GDScriptParser::ClassNode *GDScriptAnalyzer::wgodot_get_static_class_from_dataty
 	return nullptr;
 }
 
+bool GDScriptAnalyzer::wgodot_try_resolve_stdlib_interface_type(GDScriptParser::TypeNode *p_type, const StringName &p_type_name, GDScriptParser::DataType &r_datatype, bool &r_valid) {
+	ERR_FAIL_NULL_V(p_type, false);
+	r_valid = true;
+
+	if (!WGodotGDScriptStdLib::has_global_interface(p_type_name)) {
+		return false;
+	}
+
+	if (p_type->type_chain.size() > 1) {
+		push_error(vformat(R"(Built-in interface "%s" does not contain nested types.)", p_type_name), p_type->type_chain[1]);
+		r_valid = false;
+		return true;
+	}
+
+	const String interface_path = WGodotGDScriptStdLib::get_global_interface_path(p_type_name);
+	Ref<GDScriptParserRef> interface_parser_ref = parser->get_depended_parser_for(interface_path);
+	if (interface_parser_ref.is_null() || interface_parser_ref->raise_status(GDScriptParserRef::INTERFACE_SOLVED) != OK) {
+		push_error(vformat(R"(Could not resolve built-in interface "%s".)", p_type_name), p_type);
+		r_valid = false;
+		return true;
+	}
+
+	GDScriptParser::ClassNode *interface_class = interface_parser_ref->get_parser()->get_tree();
+	if (interface_class == nullptr || !interface_class->wgodot_is_interface) {
+		push_error(vformat(R"(Built-in type "%s" is not an interface.)", p_type_name), p_type);
+		r_valid = false;
+		return true;
+	}
+
+	r_datatype = interface_class->get_datatype();
+	return true;
+}
+
 bool GDScriptAnalyzer::wgodot_try_resolve_value_container_type_hint(GDScriptParser::TypeNode *p_type, GDScriptParser::DataType &r_datatype, bool &r_valid) {
 	ERR_FAIL_NULL_V(p_type, false);
 	r_valid = true;

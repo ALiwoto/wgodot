@@ -1129,6 +1129,20 @@ Error GDScript::load_source_code(const String &p_path) {
 		return OK;
 	}
 
+	// wgodot-changes::begin
+	if (WGodotGDScriptStdLib::has_script_path(p_path)) {
+		source = WGodotGDScriptStdLib::get_script_source(p_path);
+		path = p_path;
+		path_valid = true;
+#ifdef TOOLS_ENABLED
+		source_changed_cache = true;
+		set_edited(false);
+		set_last_modified_time(0);
+#endif // TOOLS_ENABLED
+		return OK;
+	}
+	// wgodot-changes::end
+
 	Vector<uint8_t> sourcef;
 	Error err;
 	Ref<FileAccess> f = FileAccess::open(p_path, FileAccess::READ, &err);

@@ -33,6 +33,9 @@
 #include "gdscript.h"
 #include "gdscript_utility_callable.h"
 #include "gdscript_utility_functions.h"
+// wgodot-changes::begin
+#include "wgodot_stdlib.h"
+// wgodot-changes::end
 
 #include "core/config/engine.h"
 #include "core/config/project_settings.h"
@@ -51,6 +54,50 @@
 
 #define UNNAMED_ENUM "<anonymous enum>"
 #define ENUM_SEPARATOR "."
+
+// wgodot-changes::begin
+static StringName wgodot_get_interface_type_name(const GDScriptParser::ClassNode *p_interface) {
+	if (p_interface == nullptr) {
+		return StringName();
+	}
+	if (p_interface->wgodot_interface_name != StringName()) {
+		return p_interface->wgodot_interface_name;
+	}
+	if (p_interface->identifier != nullptr) {
+		return p_interface->identifier->name;
+	}
+	return StringName();
+}
+
+static bool wgodot_interface_reference_matches_type(const GDScriptParser::ClassNode::WGodotInterfaceReference &p_reference, const GDScriptParser::ClassNode *p_interface) {
+	if (p_interface == nullptr || !p_interface->wgodot_is_interface || p_reference.identifiers.is_empty()) {
+		return false;
+	}
+
+	return p_reference.identifiers[0]->name == wgodot_get_interface_type_name(p_interface);
+}
+
+static bool wgodot_class_implements_interface_type(const GDScriptParser::ClassNode *p_class, const GDScriptParser::ClassNode *p_interface) {
+	if (p_class == nullptr || p_interface == nullptr || !p_interface->wgodot_is_interface) {
+		return false;
+	}
+
+	for (const GDScriptParser::ClassNode *current_class = p_class; current_class != nullptr;) {
+		if (current_class == p_interface || current_class->fqcn == p_interface->fqcn) {
+			return true;
+		}
+		for (const GDScriptParser::ClassNode::WGodotInterfaceReference &interface_reference : current_class->wgodot_implements) {
+			if (wgodot_interface_reference_matches_type(interface_reference, p_interface)) {
+				return true;
+			}
+		}
+
+		current_class = current_class->base_type.kind == GDScriptParser::DataType::CLASS ? current_class->base_type.class_type : nullptr;
+	}
+
+	return false;
+}
+// wgodot-changes::end
 
 static MethodInfo info_from_utility_func(const StringName &p_function) {
 	ERR_FAIL_COND_V(!Variant::has_utility_function(p_function), MethodInfo());
@@ -786,6 +833,14 @@ GDScriptParser::DataType GDScriptAnalyzer::resolve_datatype(GDScriptParser::Type
 			result.kind = GDScriptParser::DataType::NATIVE;
 			result.builtin_type = Variant::OBJECT;
 			result.native_type = first;
+		// wgodot-changes::begin
+		} else if (WGodotGDScriptStdLib::has_global_interface(first)) {
+			bool wgodot_stdlib_interface_type_valid = true;
+			wgodot_try_resolve_stdlib_interface_type(p_type, first, result, wgodot_stdlib_interface_type_valid);
+			if (!wgodot_stdlib_interface_type_valid) {
+				return bad_type;
+			}
+		// wgodot-changes::end
 		} else if (ScriptServer::is_global_class(first)) {
 			if (GDScript::is_canonically_equal_paths(parser->script_path, ScriptServer::get_global_class_path(first))) {
 				result = parser->head->get_datatype();
@@ -6583,6 +6638,11 @@ bool GDScriptAnalyzer::check_type_compatibility(const GDScriptParser::DataType &
 			if (p_target.is_meta_type) {
 				return ClassDB::is_parent_class(src_native, GDScript::get_class_static());
 			}
+			// wgodot-changes::begin
+			if (p_target.class_type != nullptr && p_target.class_type->wgodot_is_interface && src_class != nullptr) {
+				return wgodot_class_implements_interface_type(src_class, p_target.class_type);
+			}
+			// wgodot-changes::end
 			while (src_class != nullptr) {
 				if (src_class == p_target.class_type || src_class->fqcn == p_target.class_type->fqcn) {
 					return true;

@@ -117,6 +117,7 @@ class GDScriptAnalyzer {
 	bool wgodot_validate_static_class_type_hint(GDScriptParser::TypeNode *p_type, const GDScriptParser::DataType &p_datatype);
 	bool wgodot_validate_static_class_constructor_call(GDScriptParser::CallNode *p_call, const GDScriptParser::DataType &p_base_type);
 	GDScriptParser::ClassNode *wgodot_get_static_class_from_datatype(const GDScriptParser::DataType &p_type, const GDScriptParser::Node *p_source);
+	bool wgodot_try_resolve_stdlib_interface_type(GDScriptParser::TypeNode *p_type, const StringName &p_type_name, GDScriptParser::DataType &r_datatype, bool &r_valid);
 	bool wgodot_try_resolve_value_container_type_hint(GDScriptParser::TypeNode *p_type, GDScriptParser::DataType &r_datatype, bool &r_valid);
 	bool wgodot_try_get_value_container_function_signature(GDScriptParser::Node *p_source, bool p_is_constructor, const GDScriptParser::DataType &p_base_type, const StringName &p_function, GDScriptParser::DataType &r_return_type, List<GDScriptParser::DataType> &r_par_types, int &r_default_arg_count, BitField<MethodFlags> &r_method_flags);
 	bool wgodot_try_get_value_container_signal_type(const GDScriptParser::DataType &p_base_type, const StringName &p_signal, GDScriptParser::DataType &r_signal_type) const;
