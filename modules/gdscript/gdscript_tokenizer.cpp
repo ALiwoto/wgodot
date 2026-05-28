@@ -111,6 +111,11 @@ static const char *token_names[] = {
 	"enum", // ENUM,
 	"extends", // EXTENDS,
 	"func", // FUNC,
+	// wgodot-changes::begin
+	"implements", // IMPLEMENTS,
+	"interface", // INTERFACE,
+	"interface_name", // INTERFACE_NAME,
+	// wgodot-changes::end
 	"in", // TK_IN,
 	"is", // IS,
 	"namespace", // NAMESPACE
@@ -234,6 +239,11 @@ bool GDScriptTokenizer::Token::is_node_name() const {
 		case EXTENDS:
 		case FOR:
 		case FUNC:
+		// wgodot-changes::begin
+		case IMPLEMENTS:
+		case INTERFACE:
+		case INTERFACE_NAME:
+		// wgodot-changes::end
 		case IF:
 		case TK_IN:
 		case IS:
@@ -507,7 +517,14 @@ GDScriptTokenizer::Token GDScriptTokenizerText::annotation() {
 	KEYWORD("func", Token::FUNC) \
 	KEYWORD_GROUP('i') \
 	KEYWORD("if", Token::IF) \
+	/* wgodot-changes::begin */ \
+	KEYWORD("implements", Token::IMPLEMENTS) \
+	/* wgodot-changes::end */ \
 	KEYWORD("in", Token::TK_IN) \
+	/* wgodot-changes::begin */ \
+	KEYWORD("interface", Token::INTERFACE) \
+	KEYWORD("interface_name", Token::INTERFACE_NAME) \
+	/* wgodot-changes::end */ \
 	KEYWORD("is", Token::IS) \
 	KEYWORD_GROUP('m') \
 	KEYWORD("match", Token::MATCH) \
@@ -546,7 +563,9 @@ GDScriptTokenizer::Token GDScriptTokenizerText::annotation() {
 	KEYWORD("TAU", Token::CONST_TAU)
 
 #define MIN_KEYWORD_LENGTH 2
-#define MAX_KEYWORD_LENGTH 10
+// wgodot-changes::begin
+#define MAX_KEYWORD_LENGTH 14
+// wgodot-changes::end
 
 #ifdef DEBUG_ENABLED
 void GDScriptTokenizerText::make_keyword_list() {

@@ -116,6 +116,11 @@ public:
 			ENUM,
 			EXTENDS,
 			FUNC,
+			// wgodot-changes::begin
+			IMPLEMENTS,
+			INTERFACE,
+			INTERFACE_NAME,
+			// wgodot-changes::end
 			TK_IN, // Conflict with WinAPI.
 			IS,
 			NAMESPACE,

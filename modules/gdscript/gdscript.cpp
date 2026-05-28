@@ -2653,6 +2653,11 @@ Vector<String> GDScriptLanguage::get_reserved_words() const {
 		"enum",
 		"extends",
 		"func",
+		// wgodot-changes::begin
+		"implements",
+		"interface",
+		"interface_name",
+		// wgodot-changes::end
 		"namespace", // Reserved for potential future use.
 		"signal",
 		"static",

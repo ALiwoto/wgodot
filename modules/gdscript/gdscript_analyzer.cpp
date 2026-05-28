@@ -1327,6 +1327,11 @@ void GDScriptAnalyzer::resolve_class_interface(GDScriptParser::ClassNode *p_clas
 #endif // DEBUG_ENABLED
 		}
 
+		// wgodot-changes::begin
+		wgodot_validate_interface_class(p_class);
+		wgodot_validate_implemented_interfaces(p_class);
+		// wgodot-changes::end
+
 #ifdef DEBUG_ENABLED
 		if (!has_static_data && p_class->annotated_static_unload) {
 			GDScriptParser::Node *static_unload = nullptr;

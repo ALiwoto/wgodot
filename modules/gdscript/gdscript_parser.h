@@ -759,6 +759,14 @@ public:
 		// wgodot-changes::begin
 		bool wgodot_private = false;
 		bool wgodot_protected = false;
+		bool wgodot_is_interface = false;
+		bool wgodot_interface_global_name = false;
+		StringName wgodot_interface_name;
+		struct WGodotInterfaceReference {
+			String path;
+			Vector<IdentifierNode *> identifiers;
+		};
+		Vector<WGodotInterfaceReference> wgodot_implements;
 		// wgodot-changes::end
 		bool has_static_data = false;
 		bool annotated_static_unload = false;
@@ -1565,6 +1573,10 @@ private:
 	void parse_program();
 	ClassNode *parse_class(bool p_is_static);
 	void parse_class_name();
+	// wgodot-changes::begin
+	void parse_wgodot_interface(bool p_global_name);
+	void parse_wgodot_implements();
+	// wgodot-changes::end
 	void parse_extends();
 	void parse_class_body(bool p_is_multiline);
 	template <typename T>

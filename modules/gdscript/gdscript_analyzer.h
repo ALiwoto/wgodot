@@ -110,6 +110,12 @@ class GDScriptAnalyzer {
 	bool wgodot_try_get_connect_signal_info(const GDScriptParser::CallNode *p_call, MethodInfo &r_signal_info) const;
 	bool wgodot_try_get_callable_info(const GDScriptParser::ExpressionNode *p_expression, MethodInfo &r_callable_info) const;
 	bool wgodot_strict_signal_callable_checking_enabled() const;
+	void wgodot_validate_interface_class(GDScriptParser::ClassNode *p_class);
+	void wgodot_validate_implemented_interfaces(GDScriptParser::ClassNode *p_class);
+	GDScriptParser::ClassNode *wgodot_resolve_interface_reference(GDScriptParser::ClassNode *p_class, const GDScriptParser::ClassNode::WGodotInterfaceReference &p_reference);
+	GDScriptParser::FunctionNode *wgodot_find_function_in_class_hierarchy(GDScriptParser::ClassNode *p_class, const StringName &p_function_name);
+	bool wgodot_interface_method_signature_matches(const GDScriptParser::FunctionNode *p_interface_function, const GDScriptParser::FunctionNode *p_implementation_function, String &r_error);
+	String wgodot_get_class_display_name(const GDScriptParser::ClassNode *p_class) const;
 	// wgodot-changes::end
 
 	// Reduction functions.

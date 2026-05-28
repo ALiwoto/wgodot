@@ -767,7 +767,11 @@ void GDScriptParser::parse_program() {
 		}
 	}
 
-	if (current.type == GDScriptTokenizer::Token::CLASS_NAME || current.type == GDScriptTokenizer::Token::EXTENDS) {
+	if (current.type == GDScriptTokenizer::Token::CLASS_NAME || current.type == GDScriptTokenizer::Token::EXTENDS
+			// wgodot-changes::begin
+			|| current.type == GDScriptTokenizer::Token::INTERFACE || current.type == GDScriptTokenizer::Token::INTERFACE_NAME || current.type == GDScriptTokenizer::Token::IMPLEMENTS
+			// wgodot-changes::end
+	) {
 		// Set range of the class to only start at extends or class_name if present.
 		reset_extents(head, current);
 	}
@@ -780,10 +784,35 @@ void GDScriptParser::parse_program() {
 				advance();
 				if (head->identifier != nullptr) {
 					push_error(R"("class_name" can only be used once.)");
+				// wgodot-changes::begin
+				} else if (head->wgodot_is_interface) {
+					push_error(R"("class_name" cannot be used with "interface" or "interface_name".)");
+				// wgodot-changes::end
 				} else {
 					parse_class_name();
 				}
 				break;
+			// wgodot-changes::begin
+			case GDScriptTokenizer::Token::INTERFACE:
+			case GDScriptTokenizer::Token::INTERFACE_NAME: {
+				PUSH_PENDING_ANNOTATIONS_TO_HEAD;
+				const bool global_name = current.type == GDScriptTokenizer::Token::INTERFACE_NAME;
+				advance();
+				if (head->wgodot_is_interface) {
+					push_error(R"("interface" or "interface_name" can only be used once.)");
+				} else if (head->identifier != nullptr) {
+					push_error(R"("interface" or "interface_name" cannot be used with "class_name".)");
+				} else {
+					parse_wgodot_interface(global_name);
+				}
+			} break;
+			case GDScriptTokenizer::Token::IMPLEMENTS:
+				PUSH_PENDING_ANNOTATIONS_TO_HEAD;
+				advance();
+				parse_wgodot_implements();
+				end_statement("implemented interface");
+				break;
+			// wgodot-changes::end
 			case GDScriptTokenizer::Token::EXTENDS:
 				PUSH_PENDING_ANNOTATIONS_TO_HEAD;
 				advance();
@@ -963,6 +992,11 @@ GDScriptParser::ClassNode *GDScriptParser::parse_class(bool p_is_static) {
 	if (match(GDScriptTokenizer::Token::EXTENDS)) {
 		parse_extends();
 	}
+	// wgodot-changes::begin
+	if (match(GDScriptTokenizer::Token::IMPLEMENTS)) {
+		parse_wgodot_implements();
+	}
+	// wgodot-changes::end
 
 	consume(GDScriptTokenizer::Token::COLON, R"(Expected ":" after class declaration.)");
 
@@ -981,6 +1015,12 @@ GDScriptParser::ClassNode *GDScriptParser::parse_class(bool p_is_static) {
 		parse_extends();
 		end_statement("superclass");
 	}
+	// wgodot-changes::begin
+	if (match(GDScriptTokenizer::Token::IMPLEMENTS)) {
+		parse_wgodot_implements();
+		end_statement("implemented interface");
+	}
+	// wgodot-changes::end
 
 	parse_class_body(multiline);
 	complete_extents(n_class);
@@ -1013,6 +1053,65 @@ void GDScriptParser::parse_class_name() {
 		end_statement("class_name statement");
 	}
 }
+
+// wgodot-changes::begin
+void GDScriptParser::parse_wgodot_interface(bool p_global_name) {
+	current_class->wgodot_is_interface = true;
+	current_class->wgodot_interface_global_name = p_global_name;
+	current_class->is_abstract = true;
+
+	if (consume(GDScriptTokenizer::Token::IDENTIFIER, p_global_name ? R"(Expected identifier for the global interface name after "interface_name".)" : R"(Expected identifier for the interface name after "interface".)")) {
+		IdentifierNode *interface_identifier = parse_identifier();
+		current_class->wgodot_interface_name = interface_identifier->name;
+		if (p_global_name) {
+			current_class->identifier = interface_identifier;
+			current_class->fqcn = String(current_class->identifier->name);
+		}
+	}
+
+	if (p_global_name && script_path.begins_with("res://") && script_path.contains("::")) {
+		push_error(R"("interface_name" isn't allowed in built-in scripts.)");
+	}
+
+	make_completion_context(COMPLETION_DECLARATION, current_class);
+	end_statement(p_global_name ? "interface_name statement" : "interface statement");
+}
+
+void GDScriptParser::parse_wgodot_implements() {
+	if (current_class->wgodot_is_interface) {
+		push_error(R"("implements" cannot be used on an interface yet.)");
+	}
+
+	do {
+		ClassNode::WGodotInterfaceReference interface_ref;
+
+		if (match(GDScriptTokenizer::Token::LITERAL)) {
+			if (previous.literal.get_type() != Variant::STRING) {
+				push_error(vformat(R"(Only strings or identifiers can be used after "implements", found "%s" instead.)", Variant::get_type_name(previous.literal.get_type())));
+			} else {
+				interface_ref.path = previous.literal;
+			}
+		} else {
+			int chain_index = 0;
+			make_completion_context(COMPLETION_INHERIT_TYPE, current_class, chain_index++);
+			if (!consume(GDScriptTokenizer::Token::IDENTIFIER, R"(Expected interface name after "implements".)")) {
+				return;
+			}
+			interface_ref.identifiers.push_back(parse_identifier());
+
+			while (match(GDScriptTokenizer::Token::PERIOD)) {
+				make_completion_context(COMPLETION_INHERIT_TYPE, current_class, chain_index++);
+				if (!consume(GDScriptTokenizer::Token::IDENTIFIER, R"(Expected interface name after ".".)")) {
+					return;
+				}
+				interface_ref.identifiers.push_back(parse_identifier());
+			}
+		}
+
+		current_class->wgodot_implements.push_back(interface_ref);
+	} while (match(GDScriptTokenizer::Token::COMMA));
+}
+// wgodot-changes::end
 
 void GDScriptParser::parse_extends() {
 	current_class->extends_used = true;
@@ -1820,6 +1919,11 @@ GDScriptParser::FunctionNode *GDScriptParser::parse_function(bool p_is_static) {
 #endif // TOOLS_ENABLED
 
 	if (!has_body) {
+		// wgodot-changes::begin
+		if (current_class != nullptr && current_class->wgodot_is_interface) {
+			function->is_abstract = true;
+		}
+		// wgodot-changes::end
 		// Abstract functions do not have a body.
 		end_statement("bodyless function declaration");
 		reset_extents(body, current);
@@ -4321,6 +4425,11 @@ GDScriptParser::ParseRule *GDScriptParser::get_rule(GDScriptTokenizer::Token::Ty
 		{ nullptr,                                          nullptr,                                        PREC_NONE }, // ENUM,
 		{ nullptr,                                          nullptr,                                        PREC_NONE }, // EXTENDS,
 		{ &GDScriptParser::parse_lambda,                    nullptr,                                        PREC_NONE }, // FUNC,
+		// wgodot-changes::begin
+		{ nullptr,                                          nullptr,                                        PREC_NONE }, // IMPLEMENTS,
+		{ nullptr,                                          nullptr,                                        PREC_NONE }, // INTERFACE,
+		{ nullptr,                                          nullptr,                                        PREC_NONE }, // INTERFACE_NAME,
+		// wgodot-changes::end
 		{ nullptr,                                          &GDScriptParser::parse_binary_operator,      	PREC_CONTENT_TEST }, // TK_IN,
 		{ nullptr,                                          &GDScriptParser::parse_type_test,            	PREC_TYPE_TEST }, // IS,
 		{ nullptr,                                          nullptr,                                        PREC_NONE }, // NAMESPACE,
