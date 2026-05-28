@@ -438,6 +438,97 @@ HashSet<StringName> GDScriptAnalyzer::wgodot_validate_implemented_interface_conf
 	return conflicted_methods;
 }
 
+void GDScriptAnalyzer::wgodot_validate_static_class(GDScriptParser::ClassNode *p_class) {
+	ERR_FAIL_NULL(p_class);
+
+	if (!p_class->wgodot_static_class) {
+		return;
+	}
+
+	if (p_class->extends_used) {
+		push_error("@static_class classes cannot use extends.", p_class);
+	}
+	if (!p_class->wgodot_implements.is_empty()) {
+		push_error("@static_class classes cannot use implements.", p_class);
+	}
+
+	for (GDScriptParser::ClassNode::Member member : p_class->members) {
+		switch (member.type) {
+			case GDScriptParser::ClassNode::Member::CONSTANT:
+			case GDScriptParser::ClassNode::Member::ENUM:
+			case GDScriptParser::ClassNode::Member::ENUM_VALUE:
+			case GDScriptParser::ClassNode::Member::GROUP:
+				break;
+			case GDScriptParser::ClassNode::Member::FUNCTION:
+				if (!member.function->is_static) {
+					push_error(vformat(R"*(@static_class class members must be static or const, but function "%s()" is not static.)*", member.function->identifier->name), member.function);
+				}
+				break;
+			case GDScriptParser::ClassNode::Member::VARIABLE:
+				if (!member.variable->is_static) {
+					push_error(vformat(R"*(@static_class class members must be static or const, but variable "%s" is not static.)*", member.variable->identifier->name), member.variable);
+				}
+				break;
+			case GDScriptParser::ClassNode::Member::CLASS:
+				push_error(vformat(R"*(@static_class class members must be static or const, but nested class "%s" is not static.)*", member.m_class->identifier->name), member.m_class);
+				break;
+			case GDScriptParser::ClassNode::Member::SIGNAL:
+				push_error(vformat(R"*(@static_class class members must be static or const, but signal "%s" is not static.)*", member.signal->identifier->name), member.signal);
+				break;
+			case GDScriptParser::ClassNode::Member::UNDEFINED:
+				break;
+		}
+	}
+}
+
+bool GDScriptAnalyzer::wgodot_validate_static_class_type_hint(GDScriptParser::TypeNode *p_type, const GDScriptParser::DataType &p_datatype) {
+	ERR_FAIL_NULL_V(p_type, false);
+
+	GDScriptParser::ClassNode *static_class = wgodot_get_static_class_from_datatype(p_datatype, p_type);
+	if (static_class == nullptr) {
+		return false;
+	}
+
+	push_error(vformat(R"(Cannot use @static_class "%s" as a type hint.)", wgodot_get_class_display_name(static_class)), p_type);
+	return true;
+}
+
+bool GDScriptAnalyzer::wgodot_validate_static_class_constructor_call(GDScriptParser::CallNode *p_call, const GDScriptParser::DataType &p_base_type) {
+	ERR_FAIL_NULL_V(p_call, false);
+
+	GDScriptParser::ClassNode *static_class = wgodot_get_static_class_from_datatype(p_base_type, p_call);
+	if (static_class == nullptr) {
+		return false;
+	}
+
+	push_error(vformat(R"(Cannot construct @static_class "%s".)", wgodot_get_class_display_name(static_class)), p_call);
+	return true;
+}
+
+GDScriptParser::ClassNode *GDScriptAnalyzer::wgodot_get_static_class_from_datatype(const GDScriptParser::DataType &p_type, const GDScriptParser::Node *p_source) {
+	if (p_type.kind == GDScriptParser::DataType::CLASS) {
+		if (p_type.class_type != nullptr && p_type.class_type->wgodot_static_class) {
+			return p_type.class_type;
+		}
+		return nullptr;
+	}
+
+	if (p_type.kind == GDScriptParser::DataType::SCRIPT && !p_type.script_path.is_empty()) {
+		Ref<GDScriptParserRef> script_parser_ref = parser->get_depended_parser_for(p_type.script_path);
+		if (script_parser_ref.is_null() || script_parser_ref->raise_status(GDScriptParserRef::INTERFACE_SOLVED) != OK) {
+			return nullptr;
+		}
+
+		GDScriptParser::ClassNode *script_class = script_parser_ref->get_parser()->head;
+		if (script_class != nullptr && script_class->wgodot_static_class) {
+			return script_class;
+		}
+	}
+
+	(void)p_source;
+	return nullptr;
+}
+
 GDScriptParser::ClassNode *GDScriptAnalyzer::wgodot_resolve_interface_reference(GDScriptParser::ClassNode *p_class, const GDScriptParser::ClassNode::WGodotInterfaceReference &p_reference) {
 	ERR_FAIL_NULL_V(p_class, nullptr);
 

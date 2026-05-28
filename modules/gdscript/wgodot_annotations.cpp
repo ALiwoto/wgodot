@@ -14,6 +14,7 @@ void GDScriptParser::register_wgodot_annotations() {
 	register_annotation(MethodInfo("@private"), AnnotationInfo::CLASS_LEVEL, &GDScriptParser::wgodot_private_annotation);
 	register_annotation(MethodInfo("@protected"), AnnotationInfo::CLASS_LEVEL, &GDScriptParser::wgodot_protected_annotation);
 	register_annotation(MethodInfo("@readonly"), AnnotationInfo::VARIABLE | AnnotationInfo::STATEMENT, &GDScriptParser::wgodot_readonly_annotation);
+	register_annotation(MethodInfo("@static_class"), AnnotationInfo::CLASS, &GDScriptParser::wgodot_static_class_annotation);
 	register_annotation(MethodInfo("@partial", PropertyInfo(Variant::STRING, "path")), AnnotationInfo::SCRIPT | AnnotationInfo::CLASS, &GDScriptParser::wgodot_noop_annotation, Vector<Variant>(), true);
 }
 
@@ -221,5 +222,23 @@ bool GDScriptParser::wgodot_readonly_annotation(AnnotationNode *p_annotation, No
 	}
 
 	variable->wgodot_readonly = true;
+	return true;
+}
+
+bool GDScriptParser::wgodot_static_class_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class) {
+	(void)p_class;
+
+	if (p_target == nullptr || p_target->type != Node::CLASS) {
+		push_error(R"("@static_class" annotation can only be applied to classes.)", p_annotation);
+		return false;
+	}
+
+	ClassNode *class_node = static_cast<ClassNode *>(p_target);
+	if (class_node->wgodot_static_class) {
+		push_error(R"("@static_class" annotation can only be used once per class.)", p_annotation);
+		return false;
+	}
+
+	class_node->wgodot_static_class = true;
 	return true;
 }

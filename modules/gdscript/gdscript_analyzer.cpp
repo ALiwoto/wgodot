@@ -955,6 +955,12 @@ GDScriptParser::DataType GDScriptAnalyzer::resolve_datatype(GDScriptParser::Type
 		}
 	}
 
+	// wgodot-changes::begin
+	if (wgodot_validate_static_class_type_hint(p_type, result)) {
+		return bad_type;
+	}
+	// wgodot-changes::end
+
 	p_type->set_datatype(result);
 	return result;
 }
@@ -1328,6 +1334,7 @@ void GDScriptAnalyzer::resolve_class_interface(GDScriptParser::ClassNode *p_clas
 		}
 
 		// wgodot-changes::begin
+		wgodot_validate_static_class(p_class);
 		wgodot_validate_interface_class(p_class);
 		wgodot_validate_implemented_interfaces(p_class);
 		// wgodot-changes::end
@@ -3649,6 +3656,13 @@ void GDScriptAnalyzer::reduce_call(GDScriptParser::CallNode *p_call, bool p_is_a
 	bool is_constructor = (base_type.is_meta_type || (p_call->callee && p_call->callee->type == GDScriptParser::Node::IDENTIFIER)) && p_call->function_name == SNAME("new");
 
 	if (is_constructor) {
+		// wgodot-changes::begin
+		if (wgodot_validate_static_class_constructor_call(p_call, base_type)) {
+			p_call->set_datatype(call_type);
+			return;
+		}
+		// wgodot-changes::end
+
 		if (Engine::get_singleton()->has_singleton(base_type.native_type)) {
 			push_error(vformat(R"(Cannot construct native class "%s" because it is an engine singleton.)", base_type.native_type), p_call);
 			p_call->set_datatype(call_type);

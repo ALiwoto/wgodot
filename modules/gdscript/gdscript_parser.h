@@ -759,6 +759,7 @@ public:
 		// wgodot-changes::begin
 		bool wgodot_private = false;
 		bool wgodot_protected = false;
+		bool wgodot_static_class = false;
 		bool wgodot_is_interface = false;
 		bool wgodot_interface_global_name = false;
 		StringName wgodot_interface_name;
@@ -1614,6 +1615,7 @@ private:
 	bool wgodot_private_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	bool wgodot_protected_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	bool wgodot_readonly_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
+	bool wgodot_static_class_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	// wgodot-changes::end
 	// Statements.
 	Node *parse_statement();

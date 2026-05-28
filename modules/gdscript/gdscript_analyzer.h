@@ -113,6 +113,10 @@ class GDScriptAnalyzer {
 	void wgodot_validate_interface_class(GDScriptParser::ClassNode *p_class);
 	void wgodot_validate_implemented_interfaces(GDScriptParser::ClassNode *p_class);
 	HashSet<StringName> wgodot_validate_implemented_interface_conflicts(GDScriptParser::ClassNode *p_class, const Vector<GDScriptParser::ClassNode *> &p_interfaces);
+	void wgodot_validate_static_class(GDScriptParser::ClassNode *p_class);
+	bool wgodot_validate_static_class_type_hint(GDScriptParser::TypeNode *p_type, const GDScriptParser::DataType &p_datatype);
+	bool wgodot_validate_static_class_constructor_call(GDScriptParser::CallNode *p_call, const GDScriptParser::DataType &p_base_type);
+	GDScriptParser::ClassNode *wgodot_get_static_class_from_datatype(const GDScriptParser::DataType &p_type, const GDScriptParser::Node *p_source);
 	GDScriptParser::ClassNode *wgodot_resolve_interface_reference(GDScriptParser::ClassNode *p_class, const GDScriptParser::ClassNode::WGodotInterfaceReference &p_reference);
 	GDScriptParser::FunctionNode *wgodot_find_function_in_class_hierarchy(GDScriptParser::ClassNode *p_class, const StringName &p_function_name);
 	bool wgodot_interface_methods_conflict(const GDScriptParser::FunctionNode *p_first_function, const GDScriptParser::FunctionNode *p_second_function, String &r_error) const;
