@@ -32,6 +32,9 @@
 
 #include "../gdscript.h"
 #include "../gdscript_tokenizer.h"
+// wgodot-changes::begin
+#include "../wgodot_stdlib.h"
+// wgodot-changes::end
 
 #include "core/config/project_settings.h"
 #include "core/core_constants.h"
@@ -788,6 +791,13 @@ void GDScriptSyntaxHighlighter::_update_cache() {
 	for (const StringName &class_name : global_classes) {
 		class_names[class_name] = usertype_color;
 	}
+	// wgodot-changes::begin
+	LocalVector<StringName> wgodot_stdlib_interfaces;
+	WGodotGDScriptStdLib::get_global_interface_list(wgodot_stdlib_interfaces);
+	for (const StringName &interface_name : wgodot_stdlib_interfaces) {
+		class_names[interface_name] = usertype_color;
+	}
+	// wgodot-changes::end
 
 	/* Autoloads. */
 	for (const KeyValue<StringName, ProjectSettings::AutoloadInfo> &E : ProjectSettings::get_singleton()->get_autoload_list()) {

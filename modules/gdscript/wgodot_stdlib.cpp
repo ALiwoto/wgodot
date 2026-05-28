@@ -58,6 +58,12 @@ String WGodotGDScriptStdLib::get_global_interface_path(const StringName &p_name)
 	return script != nullptr ? String(script->path) : String();
 }
 
+void WGodotGDScriptStdLib::get_global_interface_list(LocalVector<StringName> &r_interfaces) {
+	for (const WGodotStdLibScript &script : builtin_interfaces) {
+		r_interfaces.push_back(StringName(script.global_name));
+	}
+}
+
 bool WGodotGDScriptStdLib::has_script_path(const String &p_path) {
 	return find_script_by_path(p_path) != nullptr;
 }

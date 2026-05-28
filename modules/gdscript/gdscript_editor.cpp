@@ -33,6 +33,9 @@
 #include "gdscript_parser.h"
 #include "gdscript_tokenizer.h"
 #include "gdscript_utility_functions.h"
+// wgodot-changes::begin
+#include "wgodot_stdlib.h"
+// wgodot-changes::end
 
 #ifdef TOOLS_ENABLED
 #include "editor/gdscript_docgen.h"
@@ -1090,6 +1093,17 @@ static void _find_built_in_variants(HashMap<String, ScriptLanguage::CodeCompleti
 	}
 }
 
+// wgodot-changes::begin
+static void _find_wgodot_stdlib_interfaces(HashMap<String, ScriptLanguage::CodeCompletionOption> &r_result) {
+	LocalVector<StringName> interfaces;
+	WGodotGDScriptStdLib::get_global_interface_list(interfaces);
+	for (const StringName &interface_name : interfaces) {
+		ScriptLanguage::CodeCompletionOption option(interface_name, ScriptLanguage::CODE_COMPLETION_KIND_CLASS, ScriptLanguage::LOCATION_OTHER_USER_CODE);
+		r_result.insert(option.display, option);
+	}
+}
+// wgodot-changes::end
+
 static void _find_global_enums(HashMap<String, ScriptLanguage::CodeCompletionOption> &r_result) {
 	List<StringName> global_enums;
 	CoreConstants::get_global_enums(&global_enums);
@@ -1169,6 +1183,11 @@ static void _list_available_types(bool p_inherit_only, GDScriptParser::Completio
 		ScriptLanguage::CodeCompletionOption option(class_name, ScriptLanguage::CODE_COMPLETION_KIND_CLASS, ScriptLanguage::LOCATION_OTHER_USER_CODE);
 		r_result.insert(option.display, option);
 	}
+	// wgodot-changes::begin
+	if (!p_inherit_only) {
+		_find_wgodot_stdlib_interfaces(r_result);
+	}
+	// wgodot-changes::end
 
 	// Global enums
 	if (!p_inherit_only) {
@@ -1701,6 +1720,9 @@ static void _find_identifiers(const GDScriptParser::CompletionContext &p_context
 		ScriptLanguage::CodeCompletionOption option(class_name, ScriptLanguage::CODE_COMPLETION_KIND_CLASS, ScriptLanguage::LOCATION_OTHER_USER_CODE);
 		r_result.insert(option.display, option);
 	}
+	// wgodot-changes::begin
+	_find_wgodot_stdlib_interfaces(r_result);
+	// wgodot-changes::end
 }
 
 static GDScriptCompletionIdentifier _type_from_variant(const Variant &p_value, GDScriptParser::CompletionContext &p_context) {
@@ -3512,6 +3534,18 @@ static void _find_call_arguments(GDScriptParser::CompletionContext &p_context, c
 			_list_available_types(true, completion_context, options);
 			r_forced = true;
 		} break;
+		// wgodot-changes::begin
+		case GDScriptParser::COMPLETION_WGODOT_INTERFACE_TYPE: {
+			LocalVector<StringName> global_classes;
+			ScriptServer::get_global_class_list(global_classes);
+			for (const StringName &class_name : global_classes) {
+				ScriptLanguage::CodeCompletionOption option(class_name, ScriptLanguage::CODE_COMPLETION_KIND_CLASS, ScriptLanguage::LOCATION_OTHER_USER_CODE);
+				options.insert(option.display, option);
+			}
+			_find_wgodot_stdlib_interfaces(options);
+			r_forced = true;
+		} break;
+		// wgodot-changes::end
 		case GDScriptParser::COMPLETION_TYPE_NAME_OR_VOID: {
 			ScriptLanguage::CodeCompletionOption option("void", ScriptLanguage::CODE_COMPLETION_KIND_PLAIN_TEXT);
 			options.insert(option.display, option);

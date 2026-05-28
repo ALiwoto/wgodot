@@ -1093,14 +1093,14 @@ void GDScriptParser::parse_wgodot_implements() {
 			}
 		} else {
 			int chain_index = 0;
-			make_completion_context(COMPLETION_INHERIT_TYPE, current_class, chain_index++);
+			make_completion_context(COMPLETION_WGODOT_INTERFACE_TYPE, current_class, chain_index++);
 			if (!consume(GDScriptTokenizer::Token::IDENTIFIER, R"(Expected interface name after "implements".)")) {
 				return;
 			}
 			interface_ref.identifiers.push_back(parse_identifier());
 
 			while (match(GDScriptTokenizer::Token::PERIOD)) {
-				make_completion_context(COMPLETION_INHERIT_TYPE, current_class, chain_index++);
+				make_completion_context(COMPLETION_WGODOT_INTERFACE_TYPE, current_class, chain_index++);
 				if (!consume(GDScriptTokenizer::Token::IDENTIFIER, R"(Expected interface name after ".".)")) {
 					return;
 				}

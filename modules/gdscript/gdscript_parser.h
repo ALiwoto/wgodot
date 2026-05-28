@@ -1348,6 +1348,9 @@ public:
 		COMPLETION_TYPE_ATTRIBUTE, // Attribute in type name (Type.|).
 		COMPLETION_TYPE_NAME, // Name of type (after :).
 		COMPLETION_TYPE_NAME_OR_VOID, // Same as TYPE_NAME, but allows void (in function return type).
+		// wgodot-changes::begin
+		COMPLETION_WGODOT_INTERFACE_TYPE, // Type after implements.
+		// wgodot-changes::end
 	};
 
 	struct CompletionCall {
