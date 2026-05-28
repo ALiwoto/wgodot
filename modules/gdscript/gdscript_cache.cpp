@@ -34,6 +34,9 @@
 #include "gdscript_analyzer.h"
 #include "gdscript_compiler.h"
 #include "gdscript_parser.h"
+// wgodot-changes::begin
+#include "wgodot_stdlib.h"
+// wgodot-changes::end
 
 #include "core/io/file_access.h"
 #include "core/io/resource_loader.h"
@@ -229,10 +232,12 @@ Ref<GDScriptParserRef> GDScriptCache::get_parser(const String &p_path, GDScriptP
 		}
 	} else {
 		String remapped_path = ResourceLoader::path_remap(p_path);
-		if (!FileAccess::exists(remapped_path)) {
+		// wgodot-changes::begin
+		if (!WGodotGDScriptStdLib::has_script_path(remapped_path) && !FileAccess::exists(remapped_path)) {
 			r_error = ERR_FILE_NOT_FOUND;
 			return ref;
 		}
+		// wgodot-changes::end
 		ref.instantiate();
 		ref->path = p_path;
 		singleton->parser_map[p_path] = ref.ptr();
@@ -268,6 +273,12 @@ void GDScriptCache::remove_parser(const String &p_path) {
 }
 
 String GDScriptCache::get_source_code(const String &p_path) {
+	// wgodot-changes::begin
+	if (WGodotGDScriptStdLib::has_script_path(p_path)) {
+		return WGodotGDScriptStdLib::get_script_source(p_path);
+	}
+	// wgodot-changes::end
+
 	Vector<uint8_t> source_file;
 	Error err;
 	Ref<FileAccess> f = FileAccess::open(p_path, FileAccess::READ, &err);

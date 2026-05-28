@@ -37,6 +37,9 @@
 #include "gdscript_rpc_callable.h"
 #include "gdscript_tokenizer_buffer.h"
 #include "gdscript_warning.h"
+// wgodot-changes::begin
+#include "wgodot_stdlib.h"
+// wgodot-changes::end
 
 #include "core/io/resource_loader.h"
 #include "core/object/callable_mp.h"
@@ -2145,6 +2148,10 @@ void GDScriptLanguage::remove_named_global_constant(const StringName &p_name) {
 }
 
 void GDScriptLanguage::init() {
+	// wgodot-changes::begin
+	WGodotGDScriptStdLib::register_global_classes();
+	// wgodot-changes::end
+
 	//populate global constants
 	int gcc = CoreConstants::get_global_constant_count();
 	for (int i = 0; i < gcc; i++) {

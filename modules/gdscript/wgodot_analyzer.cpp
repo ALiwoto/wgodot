@@ -10,6 +10,7 @@
 #include "gdscript_analyzer.h"
 
 #include "gdscript.h"
+#include "wgodot_stdlib.h"
 
 #include "core/config/project_settings.h"
 
@@ -704,7 +705,14 @@ GDScriptParser::ClassNode *GDScriptAnalyzer::wgodot_resolve_interface_reference(
 		}
 
 		const StringName &interface_name = p_reference.identifiers[0]->name;
-		if (ScriptServer::is_global_class(interface_name)) {
+		if (WGodotGDScriptStdLib::has_global_interface(interface_name)) {
+			String interface_path = WGodotGDScriptStdLib::get_global_interface_path(interface_name);
+			interface_parser_ref = parser->get_depended_parser_for(interface_path);
+			if (interface_parser_ref.is_null()) {
+				push_error(vformat(R"(Could not resolve built-in interface "%s".)", interface_name), source);
+				return nullptr;
+			}
+		} else if (ScriptServer::is_global_class(interface_name)) {
 			String interface_path = ScriptServer::get_global_class_path(interface_name);
 			if (GDScript::is_canonically_equal_paths(interface_path, parser->script_path)) {
 				interface_class = parser->head;
