@@ -3811,7 +3811,14 @@ void GDScriptAnalyzer::reduce_call(GDScriptParser::CallNode *p_call, bool p_is_a
 				}
 			}
 		}
-		if (!found && (is_self || (base_type.is_hard_type() && base_type.kind == GDScriptParser::DataType::BUILTIN))) {
+		// wgodot-changes::begin
+		bool wgodot_value_container_function_missing = false;
+		if (!found && !base_type.is_meta_type && wgodot_is_value_container_type(base_type)) {
+			push_error(vformat(R"*(Function "%s()" not found in base %s.)*", p_call->function_name, base_type.to_string()), p_call->is_super ? p_call : p_call->callee);
+			wgodot_value_container_function_missing = true;
+		}
+		// wgodot-changes::end
+		if (!wgodot_value_container_function_missing && !found && (is_self || (base_type.is_hard_type() && base_type.kind == GDScriptParser::DataType::BUILTIN))) {
 			String base_name = is_self && !p_call->is_super ? "self" : base_type.to_string();
 #ifdef SUGGEST_GODOT4_RENAMES
 			String rename_hint;
