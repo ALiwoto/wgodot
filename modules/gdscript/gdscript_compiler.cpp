@@ -35,6 +35,9 @@
 #include "gdscript_byte_codegen.h"
 #include "gdscript_cache.h"
 #include "gdscript_utility_functions.h"
+// wgodot-changes::begin
+#include "wgodot_stdlib.h"
+// wgodot-changes::end
 
 #include "core/config/engine.h"
 #include "core/config/project_settings.h"
@@ -86,6 +89,103 @@ void GDScriptCompiler::_set_error(const String &p_error, const GDScriptParser::N
 		err_column = 0;
 	}
 }
+
+// wgodot-changes::begin
+String GDScriptCompiler::_wgodot_make_interface_key(const String &p_script_path, const String &p_fqcn) const {
+	if (p_script_path.is_empty() || p_fqcn.is_empty()) {
+		return String();
+	}
+
+	return GDScript::canonicalize_path(p_script_path) + "::" + p_fqcn;
+}
+
+String GDScriptCompiler::_wgodot_get_interface_key_from_datatype(const GDScriptParser::DataType &p_datatype) const {
+	if (p_datatype.kind != GDScriptParser::DataType::CLASS || p_datatype.class_type == nullptr || !p_datatype.class_type->wgodot_is_interface) {
+		return String();
+	}
+
+	return _wgodot_make_interface_key(p_datatype.script_path, p_datatype.class_type->fqcn);
+}
+
+String GDScriptCompiler::_wgodot_get_interface_key_from_reference(GDScript *p_script, const GDScriptParser::ClassNode *p_class, const GDScriptParser::ClassNode::WGodotInterfaceReference &p_reference) const {
+	ERR_FAIL_NULL_V(p_script, String());
+	ERR_FAIL_NULL_V(p_class, String());
+
+	String interface_path;
+	const GDScriptParser::ClassNode *interface_class = nullptr;
+
+	if (!p_reference.path.is_empty()) {
+		interface_path = p_reference.path;
+		if (interface_path.is_relative_path()) {
+			interface_path = p_script->path.get_base_dir().path_join(interface_path).simplify_path();
+		}
+
+		Error err = OK;
+		Ref<GDScriptParserRef> interface_parser_ref = GDScriptCache::get_parser(interface_path, GDScriptParserRef::INTERFACE_SOLVED, err, p_script->path);
+		if (err != OK || interface_parser_ref.is_null()) {
+			return String();
+		}
+		interface_class = interface_parser_ref->get_parser()->get_tree();
+	} else if (!p_reference.identifiers.is_empty()) {
+		const StringName interface_name = p_reference.identifiers[0]->name;
+		if (WGodotGDScriptStdLib::has_global_interface(interface_name)) {
+			interface_path = WGodotGDScriptStdLib::get_global_interface_path(interface_name);
+		} else if (ScriptServer::is_global_class(interface_name)) {
+			interface_path = ScriptServer::get_global_class_path(interface_name);
+		}
+
+		if (interface_path.is_empty()) {
+			return String();
+		}
+
+		if (GDScript::is_canonically_equal_paths(interface_path, p_script->path)) {
+			interface_class = parser->get_tree();
+		} else {
+			Error err = OK;
+			Ref<GDScriptParserRef> interface_parser_ref = GDScriptCache::get_parser(interface_path, GDScriptParserRef::INTERFACE_SOLVED, err, p_script->path);
+			if (err != OK || interface_parser_ref.is_null()) {
+				return String();
+			}
+			interface_class = interface_parser_ref->get_parser()->get_tree();
+		}
+
+		for (int i = 1; interface_class != nullptr && i < p_reference.identifiers.size(); i++) {
+			const StringName nested_name = p_reference.identifiers[i]->name;
+			if (!interface_class->has_member(nested_name)) {
+				return String();
+			}
+
+			const GDScriptParser::ClassNode::Member nested_member = interface_class->get_member(nested_name);
+			if (nested_member.type != GDScriptParser::ClassNode::Member::CLASS) {
+				return String();
+			}
+			interface_class = nested_member.m_class;
+		}
+	}
+
+	if (interface_class == nullptr || !interface_class->wgodot_is_interface) {
+		return String();
+	}
+
+	return _wgodot_make_interface_key(interface_path, interface_class->fqcn);
+}
+
+void GDScriptCompiler::_wgodot_prepare_interface_metadata(GDScript *p_script, const GDScriptParser::ClassNode *p_class) {
+	ERR_FAIL_NULL(p_script);
+	ERR_FAIL_NULL(p_class);
+
+	p_script->wgodot_is_interface = p_class->wgodot_is_interface;
+	p_script->wgodot_interface_key = p_class->wgodot_is_interface ? _wgodot_make_interface_key(p_script->path, p_class->fqcn) : String();
+	p_script->wgodot_implemented_interfaces.clear();
+
+	for (const GDScriptParser::ClassNode::WGodotInterfaceReference &interface_reference : p_class->wgodot_implements) {
+		const String interface_key = _wgodot_get_interface_key_from_reference(p_script, p_class, interface_reference);
+		if (!interface_key.is_empty()) {
+			p_script->wgodot_implemented_interfaces.insert(interface_key);
+		}
+	}
+}
+// wgodot-changes::end
 
 GDScriptDataType GDScriptCompiler::_gdtype_from_datatype(const GDScriptParser::DataType &p_datatype, GDScript *p_owner, bool p_handle_metatype) {
 	if (!p_datatype.is_set() || !p_datatype.is_hard_type() || p_datatype.is_coroutine) {
@@ -173,6 +273,15 @@ GDScriptDataType GDScriptCompiler::_gdtype_from_datatype(const GDScriptParser::D
 				_set_error(vformat(R"(Could not find class "%s" in "%s".)", p_datatype.class_type->fqcn, p_datatype.script_path), nullptr);
 				return GDScriptDataType();
 			} else {
+				// wgodot-changes::begin
+				if (p_datatype.class_type->wgodot_is_interface) {
+					Ref<GDScript> interface_script = script;
+					if (interface_script.is_valid()) {
+						interface_script->wgodot_is_interface = true;
+						interface_script->wgodot_interface_key = _wgodot_get_interface_key_from_datatype(p_datatype);
+					}
+				}
+				// wgodot-changes::end
 				// Only hold a strong reference if the owner of the element qualified with this type is not local, to avoid cyclic references (leaks).
 				// TODO: Might lead to use after free if script_type is a subclass and is used after its parent is freed.
 				if (!is_local_class) {
@@ -2748,6 +2857,9 @@ Error GDScriptCompiler::_prepare_compilation(GDScript *p_script, const GDScriptP
 
 	p_script->tool = parser->is_tool();
 	p_script->_is_abstract = p_class->is_abstract;
+	// wgodot-changes::begin
+	_wgodot_prepare_interface_metadata(p_script, p_class);
+	// wgodot-changes::end
 
 	if (p_script->local_name != StringName()) {
 		if (GDScriptAnalyzer::class_exists(p_script->local_name)) {

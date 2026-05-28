@@ -148,6 +148,12 @@ class GDScriptCompiler {
 	void _set_error(const String &p_error, const GDScriptParser::Node *p_node);
 
 	GDScriptDataType _gdtype_from_datatype(const GDScriptParser::DataType &p_datatype, GDScript *p_owner, bool p_handle_metatype = true);
+	// wgodot-changes::begin
+	String _wgodot_make_interface_key(const String &p_script_path, const String &p_fqcn) const;
+	String _wgodot_get_interface_key_from_datatype(const GDScriptParser::DataType &p_datatype) const;
+	String _wgodot_get_interface_key_from_reference(GDScript *p_script, const GDScriptParser::ClassNode *p_class, const GDScriptParser::ClassNode::WGodotInterfaceReference &p_reference) const;
+	void _wgodot_prepare_interface_metadata(GDScript *p_script, const GDScriptParser::ClassNode *p_class);
+	// wgodot-changes::end
 
 	GDScriptCodeGenerator::Address _parse_expression(CodeGen &codegen, Error &r_error, const GDScriptParser::ExpressionNode *p_expression, bool p_root = false, bool p_initializer = false);
 	GDScriptCodeGenerator::Address _parse_match_pattern(CodeGen &codegen, Error &r_error, const GDScriptParser::PatternNode *p_pattern, const GDScriptCodeGenerator::Address &p_value_addr, const GDScriptCodeGenerator::Address &p_type_addr, const GDScriptCodeGenerator::Address &p_previous_test, bool p_is_first, bool p_is_nested);

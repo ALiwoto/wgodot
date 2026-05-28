@@ -1402,6 +1402,46 @@ String GDScript::canonicalize_path(const String &p_path) {
 	return p_path;
 }
 
+// wgodot-changes::begin
+bool GDScript::wgodot_is_interface_type() const {
+	return wgodot_is_interface;
+}
+
+const String &GDScript::wgodot_get_interface_key() const {
+	return wgodot_interface_key;
+}
+
+bool GDScript::wgodot_implements_interface(const String &p_interface_key) const {
+	if (wgodot_implemented_interfaces.has(p_interface_key)) {
+		return true;
+	}
+
+	return base.is_valid() && base->wgodot_implements_interface(p_interface_key);
+}
+
+bool GDScript::wgodot_object_implements_interface(Object *p_object, const GDScript *p_interface_script) {
+	if (p_object == nullptr || p_interface_script == nullptr || !p_interface_script->wgodot_is_interface_type()) {
+		return false;
+	}
+
+	ScriptInstance *script_instance = p_object->get_script_instance();
+	if (script_instance == nullptr) {
+		return false;
+	}
+
+	Ref<Script> current_script = script_instance->get_script();
+	while (current_script.is_valid()) {
+		Ref<GDScript> current_gdscript = current_script;
+		if (current_gdscript.is_valid() && current_gdscript->wgodot_implements_interface(p_interface_script->wgodot_get_interface_key())) {
+			return true;
+		}
+		current_script = current_script->get_base_script();
+	}
+
+	return false;
+}
+// wgodot-changes::end
+
 GDScript::UpdatableFuncPtr::UpdatableFuncPtr(GDScriptFunction *p_function) {
 	if (p_function == nullptr) {
 		return;
@@ -1469,6 +1509,11 @@ void GDScript::clear() {
 	member_indices.clear();
 	static_variables.clear();
 	static_variables_indices.clear();
+	// wgodot-changes::begin
+	wgodot_is_interface = false;
+	wgodot_interface_key = String();
+	wgodot_implemented_interfaces.clear();
+	// wgodot-changes::end
 
 	if (implicit_initializer) {
 		functions_to_clear.insert(implicit_initializer);

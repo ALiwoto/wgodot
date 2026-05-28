@@ -134,6 +134,13 @@ bool GDScriptDataType::is_type(const Variant &p_variant, bool p_allow_implicit_c
 				return !was_freed;
 			}
 
+			// wgodot-changes::begin
+			GDScript *interface_script = Object::cast_to<GDScript>(script_type);
+			if (interface_script != nullptr && interface_script->wgodot_is_interface_type()) {
+				return GDScript::wgodot_object_implements_interface(obj, interface_script);
+			}
+			// wgodot-changes::end
+
 			Ref<Script> base = obj && obj->get_script_instance() ? obj->get_script_instance()->get_script() : nullptr;
 			bool valid = false;
 			while (base.is_valid()) {

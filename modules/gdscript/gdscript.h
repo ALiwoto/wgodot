@@ -106,6 +106,11 @@ class GDScript : public Script {
 	HashMap<StringName, Ref<GDScript>> subclasses;
 	HashMap<StringName, MethodInfo> _signals;
 	Dictionary rpc_config;
+	// wgodot-changes::begin
+	bool wgodot_is_interface = false;
+	String wgodot_interface_key;
+	HashSet<String> wgodot_implemented_interfaces;
+	// wgodot-changes::end
 
 public:
 	struct LambdaInfo {
@@ -242,6 +247,12 @@ public:
 	virtual bool is_valid() const override { return valid; }
 
 	bool inherits_script(const Ref<Script> &p_script) const override;
+	// wgodot-changes::begin
+	bool wgodot_is_interface_type() const;
+	const String &wgodot_get_interface_key() const;
+	bool wgodot_implements_interface(const String &p_interface_key) const;
+	static bool wgodot_object_implements_interface(Object *p_object, const GDScript *p_interface_script);
+	// wgodot-changes::end
 
 	GDScript *find_class(const String &p_qualified_name);
 	bool has_class(const GDScript *p_script);

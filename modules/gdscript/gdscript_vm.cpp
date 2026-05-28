@@ -968,6 +968,15 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 					OPCODE_BREAK;
 				}
 
+				// wgodot-changes::begin
+				GDScript *interface_script = Object::cast_to<GDScript>(script_type);
+				if (interface_script != nullptr && interface_script->wgodot_is_interface_type()) {
+					*dst = object && GDScript::wgodot_object_implements_interface(object, interface_script);
+					ip += 4;
+					DISPATCH_OPCODE;
+				}
+				// wgodot-changes::end
+
 				bool result = false;
 				if (object && object->get_script_instance()) {
 					Script *script_ptr = object->get_script_instance()->get_script().ptr();
@@ -1591,29 +1600,41 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 					}
 
 					if (val_obj) { // src is not null
-						ScriptInstance *scr_inst = val_obj->get_script_instance();
-						if (!scr_inst) {
-							err_text = "Trying to assign value of type '" + val_obj->get_class_name() +
-									"' to a variable of type '" + base_type->get_path().get_file() + "'.";
-							OPCODE_BREAK;
-						}
-
-						Script *src_type = scr_inst->get_script().ptr();
-						bool valid = false;
-
-						while (src_type) {
-							if (src_type == base_type) {
-								valid = true;
-								break;
+						// wgodot-changes::begin
+						GDScript *interface_script = Object::cast_to<GDScript>(base_type);
+						if (interface_script != nullptr && interface_script->wgodot_is_interface_type()) {
+							if (!GDScript::wgodot_object_implements_interface(val_obj, interface_script)) {
+								err_text = "Trying to assign value of type '" + _get_var_type(src) + "' to a variable of type '" + base_type->get_path().get_file() + "'.";
+								OPCODE_BREAK;
 							}
-							src_type = src_type->get_base_script().ptr();
-						}
+						} else {
+							// wgodot-changes::end
+							ScriptInstance *scr_inst = val_obj->get_script_instance();
+							if (!scr_inst) {
+								err_text = "Trying to assign value of type '" + val_obj->get_class_name() +
+										"' to a variable of type '" + base_type->get_path().get_file() + "'.";
+								OPCODE_BREAK;
+							}
 
-						if (!valid) {
-							err_text = "Trying to assign value of type '" + val_obj->get_script_instance()->get_script()->get_path().get_file() +
-									"' to a variable of type '" + base_type->get_path().get_file() + "'.";
-							OPCODE_BREAK;
+							Script *src_type = scr_inst->get_script().ptr();
+							bool valid = false;
+
+							while (src_type) {
+								if (src_type == base_type) {
+									valid = true;
+									break;
+								}
+								src_type = src_type->get_base_script().ptr();
+							}
+
+							if (!valid) {
+								err_text = "Trying to assign value of type '" + val_obj->get_script_instance()->get_script()->get_path().get_file() +
+										"' to a variable of type '" + base_type->get_path().get_file() + "'.";
+								OPCODE_BREAK;
+							}
+							// wgodot-changes::begin
 						}
+						// wgodot-changes::end
 					}
 				}
 #endif // DEBUG_ENABLED
@@ -1704,6 +1725,21 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 					OPCODE_BREAK;
 				}
 #endif
+
+				// wgodot-changes::begin
+				GDScript *interface_script = Object::cast_to<GDScript>(base_type);
+				if (interface_script != nullptr && interface_script->wgodot_is_interface_type()) {
+					Object *src_obj = src->operator Object *();
+					if (src->get_type() == Variant::NIL || src_obj == nullptr || GDScript::wgodot_object_implements_interface(src_obj, interface_script)) {
+						*dst = *src;
+					} else {
+						*dst = Variant();
+					}
+
+					ip += 4;
+					DISPATCH_OPCODE;
+				}
+				// wgodot-changes::end
 
 				bool valid = false;
 
@@ -2991,7 +3027,18 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 				Object *ret_obj = r->operator Object *();
 #endif // DEBUG_ENABLED
 
-				if (ret_obj) {
+				// wgodot-changes::begin
+				GDScript *interface_script = Object::cast_to<GDScript>(base_type);
+				if (ret_obj && interface_script != nullptr && interface_script->wgodot_is_interface_type()) {
+					if (!GDScript::wgodot_object_implements_interface(ret_obj, interface_script)) {
+#ifdef DEBUG_ENABLED
+						err_text = vformat(R"(Trying to return a value of type "%s" from a function whose return type is "%s".)",
+								_get_var_type(r), GDScript::debug_get_script_name(Ref<GDScript>(base_type)));
+#endif // DEBUG_ENABLED
+						OPCODE_BREAK;
+					}
+				} else if (ret_obj) {
+					// wgodot-changes::end
 					ScriptInstance *ret_inst = ret_obj->get_script_instance();
 					if (!ret_inst) {
 #ifdef DEBUG_ENABLED
@@ -3019,7 +3066,9 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 #endif // DEBUG_ENABLED
 						OPCODE_BREAK;
 					}
+					// wgodot-changes::begin
 				}
+				// wgodot-changes::end
 				retvalue = *r;
 
 #ifdef DEBUG_ENABLED
