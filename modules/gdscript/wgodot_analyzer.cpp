@@ -346,6 +346,7 @@ void GDScriptAnalyzer::wgodot_validate_implemented_interfaces(GDScriptParser::Cl
 		return;
 	}
 
+	Vector<GDScriptParser::ClassNode *> interface_classes;
 	for (const GDScriptParser::ClassNode::WGodotInterfaceReference &interface_reference : p_class->wgodot_implements) {
 		GDScriptParser::ClassNode *interface_class = wgodot_resolve_interface_reference(p_class, interface_reference);
 		if (interface_class == nullptr) {
@@ -359,8 +360,17 @@ void GDScriptAnalyzer::wgodot_validate_implemented_interfaces(GDScriptParser::Cl
 			continue;
 		}
 
+		interface_classes.push_back(interface_class);
+	}
+
+	HashSet<StringName> conflicted_methods = wgodot_validate_implemented_interface_conflicts(p_class, interface_classes);
+
+	for (GDScriptParser::ClassNode *interface_class : interface_classes) {
 		for (GDScriptParser::ClassNode::Member interface_member : interface_class->members) {
 			if (interface_member.type != GDScriptParser::ClassNode::Member::FUNCTION) {
+				continue;
+			}
+			if (conflicted_methods.has(interface_member.function->identifier->name)) {
 				continue;
 			}
 
@@ -380,6 +390,52 @@ void GDScriptAnalyzer::wgodot_validate_implemented_interfaces(GDScriptParser::Cl
 			}
 		}
 	}
+}
+
+HashSet<StringName> GDScriptAnalyzer::wgodot_validate_implemented_interface_conflicts(GDScriptParser::ClassNode *p_class, const Vector<GDScriptParser::ClassNode *> &p_interfaces) {
+	struct SeenInterfaceMethod {
+		StringName name;
+		GDScriptParser::FunctionNode *function = nullptr;
+		GDScriptParser::ClassNode *interface_class = nullptr;
+	};
+
+	HashSet<StringName> conflicted_methods;
+	Vector<SeenInterfaceMethod> seen_methods;
+
+	for (GDScriptParser::ClassNode *interface_class : p_interfaces) {
+		for (GDScriptParser::ClassNode::Member interface_member : interface_class->members) {
+			if (interface_member.type != GDScriptParser::ClassNode::Member::FUNCTION) {
+				continue;
+			}
+
+			const StringName method_name = interface_member.function->identifier->name;
+			for (const SeenInterfaceMethod &seen_method : seen_methods) {
+				if (seen_method.name != method_name) {
+					continue;
+				}
+
+				String signature_error;
+				if (wgodot_interface_methods_conflict(seen_method.function, interface_member.function, signature_error)) {
+					conflicted_methods.insert(method_name);
+					push_error(vformat(R"*(Class "%s" cannot implement interfaces "%s" and "%s" together because method "%s()" has conflicting signatures: %s)*",
+									   wgodot_get_class_display_name(p_class),
+									   wgodot_get_class_display_name(seen_method.interface_class),
+									   wgodot_get_class_display_name(interface_class),
+									   method_name,
+									   signature_error),
+							p_class);
+				}
+			}
+
+			SeenInterfaceMethod seen_method;
+			seen_method.name = method_name;
+			seen_method.function = interface_member.function;
+			seen_method.interface_class = interface_class;
+			seen_methods.push_back(seen_method);
+		}
+	}
+
+	return conflicted_methods;
 }
 
 GDScriptParser::ClassNode *GDScriptAnalyzer::wgodot_resolve_interface_reference(GDScriptParser::ClassNode *p_class, const GDScriptParser::ClassNode::WGodotInterfaceReference &p_reference) {
@@ -491,6 +547,46 @@ GDScriptParser::FunctionNode *GDScriptAnalyzer::wgodot_find_function_in_class_hi
 	}
 
 	return nullptr;
+}
+
+bool GDScriptAnalyzer::wgodot_interface_methods_conflict(const GDScriptParser::FunctionNode *p_first_function, const GDScriptParser::FunctionNode *p_second_function, String &r_error) const {
+	ERR_FAIL_NULL_V(p_first_function, false);
+	ERR_FAIL_NULL_V(p_second_function, false);
+
+	if (p_first_function->is_static != p_second_function->is_static) {
+		r_error = "one method is static and the other is not";
+		return true;
+	}
+	if (p_first_function->is_vararg() != p_second_function->is_vararg()) {
+		r_error = "one method is vararg and the other is not";
+		return true;
+	}
+	if (p_first_function->parameters.size() != p_second_function->parameters.size()) {
+		r_error = vformat("one method has %d parameter(s), the other has %d", p_first_function->parameters.size(), p_second_function->parameters.size());
+		return true;
+	}
+	if (p_first_function->default_arg_values.size() != p_second_function->default_arg_values.size()) {
+		r_error = "the methods have different required parameter counts";
+		return true;
+	}
+
+	for (int i = 0; i < p_first_function->parameters.size(); i++) {
+		const String first_parameter_type = p_first_function->parameters[i]->datatype.to_string_strict();
+		const String second_parameter_type = p_second_function->parameters[i]->datatype.to_string_strict();
+		if (first_parameter_type != second_parameter_type) {
+			r_error = vformat("parameter %d is \"%s\" in one interface but \"%s\" in the other", i + 1, first_parameter_type, second_parameter_type);
+			return true;
+		}
+	}
+
+	const String first_return_type = p_first_function->get_datatype().to_string_strict();
+	const String second_return_type = p_second_function->get_datatype().to_string_strict();
+	if (first_return_type != second_return_type) {
+		r_error = vformat("return type is \"%s\" in one interface but \"%s\" in the other", first_return_type, second_return_type);
+		return true;
+	}
+
+	return false;
 }
 
 bool GDScriptAnalyzer::wgodot_interface_method_signature_matches(const GDScriptParser::FunctionNode *p_interface_function, const GDScriptParser::FunctionNode *p_implementation_function, String &r_error) {
