@@ -1,3 +1,8 @@
+# WGodot
+This is a custom unofficial fork of Godot Engine, used personally by myself for my own project. Feel free to use it but there is no guarantee that it will work fine for your project.
+
+Check the [features](./wgodot_docs/features.md) and [todo](./wgodot_docs/features_todo.md).
+
 # Godot Engine
 
 <p align="center">
