@@ -1353,7 +1353,13 @@ Error DocTools::_load(Ref<XMLParser> parser) {
 
 		ERR_FAIL_COND_V(!parser->has_attribute("name"), ERR_FILE_CORRUPT);
 		const String name = parser->get_named_attribute_value("name");
-		class_list[name] = DocData::ClassDoc();
+		// wgodot-changes::begin
+		// Allow small wgodot doc fragments to extend an existing class doc, e.g.
+		// documenting wgodot GDScript annotations without editing @GDScript.xml.
+		if (!class_list.has(name)) {
+			class_list[name] = DocData::ClassDoc();
+		}
+		// wgodot-changes::end
 		DocData::ClassDoc &c = class_list[name];
 
 		c.name = name;

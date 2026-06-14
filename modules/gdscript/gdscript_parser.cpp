@@ -1241,7 +1241,9 @@ void GDScriptParser::parse_class_body(bool p_is_multiline) {
 				parse_class_member(&GDScriptParser::parse_class, AnnotationInfo::CLASS, "class");
 				break;
 			case GDScriptTokenizer::Token::ENUM:
-				parse_class_member(&GDScriptParser::parse_enum, AnnotationInfo::NONE, "enum");
+				// wgodot-changes::begin
+				parse_class_member(&GDScriptParser::parse_enum, AnnotationInfo::ENUM, "enum");
+				// wgodot-changes::end
 				break;
 			case GDScriptTokenizer::Token::STATIC: {
 				advance();
@@ -1254,7 +1256,9 @@ void GDScriptParser::parse_class_body(bool p_is_multiline) {
 				advance();
 
 				// Check for class-level and standalone annotations.
-				AnnotationNode *annotation = parse_annotation(AnnotationInfo::CLASS_LEVEL | AnnotationInfo::STANDALONE);
+				// wgodot-changes::begin
+				AnnotationNode *annotation = parse_annotation(AnnotationInfo::CLASS_LEVEL | AnnotationInfo::STANDALONE | AnnotationInfo::ENUM);
+				// wgodot-changes::end
 				if (annotation != nullptr) {
 					if (annotation->applies_to(AnnotationInfo::STANDALONE)) {
 						if (previous.type != GDScriptTokenizer::Token::NEWLINE) {

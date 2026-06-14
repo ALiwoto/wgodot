@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!-- wgodot-changes::file -->
+<class name="@GDScript">
+	<annotations>
+		<annotation name="@no_mangle">
+			<return type="void" />
+			<description>
+				Marks the following named declaration as excluded from export-time mangling or rewriting done by wgodot.
+				For constants, this prevents de-const export processing from inlining the constant value and removing the constant metadata. The constant remains visible in exported scripts and in [method Script.get_script_constant_map].
+				This annotation can be used on classes, constants, functions, enums, signals, and variables. It is also accepted on local constants inside functions.
+				[codeblock]
+				@no_mangle
+				const API_ENDPOINT = "https://example.com"
+
+				func example():
+					@no_mangle
+					const DEBUG_LABEL = "debug"
+				[/codeblock]
+			</description>
+		</annotation>
+		<annotation name="@override">
+			<return type="void" />
+			<description>
+				Marks the following instance method as intentionally overriding a method inherited from a base class.
+				When [code]debug/gdscript/wgodot/strict_override_checking[/code] is enabled, overriding an inherited method requires [annotation @override]. Marking a method that does not override any inherited method is an error.
+				[codeblock]
+				@override
+				func _ready() -> void:
+					pass
+				[/codeblock]
+			</description>
+		</annotation>
+		<annotation name="@partial" qualifiers="vararg">
+			<return type="void" />
+			<param index="0" name="path" type="String" />
+			<description>
+				Marks a script or class as participating in wgodot partial-script declarations. The optional [param path] argument can identify the source fragment or companion script path used by tooling.
+				This annotation is currently recognized by the parser so projects and tools can use the marker without producing an unknown annotation error.
+				[codeblock]
+				@partial
+				class_name PlayerController
+
+				@partial("res://player/player_controller_input.gd")
+				class InputPart:
+					pass
+				[/codeblock]
+			</description>
+		</annotation>
+		<annotation name="@private">
+			<return type="void" />
+			<description>
+				Marks the following class-level member as private to the current class.
+				Private members cannot be accessed from outside the class that declares them. This annotation can be used on nested classes, constants, functions, signals, and variables, and cannot be combined with [annotation @protected].
+				[codeblock]
+				@private
+				var inventory_cache: Dictionary
+
+				@private
+				func rebuild_cache() -> void:
+					pass
+				[/codeblock]
+			</description>
+		</annotation>
+		<annotation name="@protected">
+			<return type="void" />
+			<description>
+				Marks the following class-level member as protected.
+				Protected members can be accessed from the class that declares them and from inherited classes, but not from unrelated classes. This annotation can be used on nested classes, constants, functions, signals, and variables, and cannot be combined with [annotation @private].
+				[codeblock]
+				@protected
+				var health: int
+
+				@protected
+				func apply_damage(amount: int) -> void:
+					pass
+				[/codeblock]
+			</description>
+		</annotation>
+		<annotation name="@readonly">
+			<return type="void" />
+			<description>
+				Marks the following variable as assignable only during initialization.
+				Local variables marked [annotation @readonly] must be assigned where they are declared. Class fields marked [annotation @readonly] can be assigned where they are declared or inside the class initializer, but cannot be reassigned later.
+				[codeblock]
+				@readonly
+				var id := 0
+
+				func example() -> void:
+					@readonly
+					var label := "ready"
+				[/codeblock]
+			</description>
+		</annotation>
+		<annotation name="@static_class">
+			<return type="void" />
+			<description>
+				Marks the following class as a static utility class.
+				Static classes cannot be constructed or used as type hints. They cannot use inheritance or interfaces, and their members must be static or constant.
+				[codeblock]
+				@static_class
+				class MathHelpers:
+					const SCALE = 100
+
+					static func percent(value: float) -> float:
+						return value * SCALE
+				[/codeblock]
+			</description>
+		</annotation>
+	</annotations>
+</class>

@@ -32,4 +32,10 @@ in gdscript code, then export it, and decompile the code, you should not see `MA
 self.check_health(100)
 ```
 
-10. `@no_mangle`: when this is added on a constant, wgodot does not replace/change that constant during de-const export. The constant remains in exported source/bytecode metadata. Current scope is constants; functions and other symbols can be added later.
+10. `@no_mangle`: marks a named declaration as something export-time transforms must not rename, remove, or rewrite. De-const currently uses it for constants, including local constants inside functions; future obfuscation/name-hashing features can use the same marker for classes, functions, enums, signals, and variables.
+
+## Annotation documentation
+
+WGodot-specific GDScript annotations are registered in `modules/gdscript/wgodot_annotations.cpp`. Their editor-visible help text is documented in `modules/gdscript/doc_classes/@GDScript_wgodot.xml`, which is merged into the built-in `@GDScript` docs by the wgodot duplicate-doc merge hook in `editor/doc/doc_tools.cpp`.
+
+When adding or changing a wgodot annotation, update both places so code completion, editor help, and the language server show useful explanations instead of only listing the annotation name.

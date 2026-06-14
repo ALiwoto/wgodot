@@ -553,6 +553,9 @@ public:
 		IdentifierNode *identifier = nullptr;
 		Vector<Value> values;
 		Variant dictionary;
+		// wgodot-changes::begin
+		bool wgodot_no_mangle = false;
+		// wgodot-changes::end
 #ifdef TOOLS_ENABLED
 		MemberDocData doc_data;
 #endif // TOOLS_ENABLED
@@ -760,6 +763,7 @@ public:
 		bool wgodot_private = false;
 		bool wgodot_protected = false;
 		bool wgodot_static_class = false;
+		bool wgodot_no_mangle = false;
 		bool wgodot_is_interface = false;
 		bool wgodot_interface_global_name = false;
 		StringName wgodot_interface_name;
@@ -887,6 +891,7 @@ public:
 		bool wgodot_private = false;
 		bool wgodot_protected = false;
 		bool wgodot_override = false;
+		bool wgodot_no_mangle = false;
 		// wgodot-changes::end
 		Variant rpc_config;
 		MethodInfo info;
@@ -1096,6 +1101,7 @@ public:
 		// wgodot-changes::begin
 		bool wgodot_private = false;
 		bool wgodot_protected = false;
+		bool wgodot_no_mangle = false;
 		// wgodot-changes::end
 #ifdef TOOLS_ENABLED
 		MemberDocData doc_data;
@@ -1302,6 +1308,7 @@ public:
 		bool wgodot_private = false;
 		bool wgodot_protected = false;
 		bool wgodot_readonly = false;
+		bool wgodot_no_mangle = false;
 		// wgodot-changes::end
 		PropertyInfo export_info;
 		int assignments = 0;
@@ -1453,6 +1460,9 @@ private:
 			FUNCTION = 1 << 5,
 			STATEMENT = 1 << 6,
 			STANDALONE = 1 << 7,
+			// wgodot-changes::begin
+			ENUM = 1 << 8,
+			// wgodot-changes::end
 			CLASS_LEVEL = CLASS | VARIABLE | CONSTANT | SIGNAL | FUNCTION,
 		};
 		uint32_t target_kind = 0; // Flags.
