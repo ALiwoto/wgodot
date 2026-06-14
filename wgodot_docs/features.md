@@ -34,6 +34,10 @@ self.check_health(100)
 
 10. `@no_mangle`: marks a named declaration as something export-time transforms must not rename, remove, or rewrite. De-const currently uses it for constants, including local constants inside functions; future obfuscation/name-hashing features can use the same marker for classes, functions, enums, signals, and variables.
 
+11. Local variable obfuscation: controlled by `debug/gdscript/wgodot/obfuscate_local_variables` (true by default). During export, function parameters, local variables, `for` iterators, and match-pattern binds are renamed before text, binary-token, and compressed-binary-token script export. Local variables marked `@no_mangle` are not renamed.
+
+12. Obfuscation strategy: controlled by `debug/gdscript/wgodot/obfuscation_strategy` (`Short`, `Hash`, `Unicode`). The setting is exposed as an enum, but only `Short` is implemented right now; selecting `Hash` or `Unicode` falls back to `Short` for now.
+
 ## Annotation documentation
 
 WGodot-specific GDScript annotations are registered in `modules/gdscript/wgodot_annotations.cpp`. Their editor-visible help text is documented in `modules/gdscript/doc_classes/@GDScript_wgodot.xml`, which is merged into the built-in `@GDScript` docs by the wgodot duplicate-doc merge hook in `editor/doc/doc_tools.cpp`.

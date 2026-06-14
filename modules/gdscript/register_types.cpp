@@ -120,12 +120,18 @@ protected:
 		String source = String::utf8(reinterpret_cast<const char *>(file.ptr()), file.size());
 		// wgodot-changes::begin
 		bool source_changed = false;
-		const bool deconst_exports_enabled = GLOBAL_GET_CACHED(bool, "debug/gdscript/wgodot/deconst_exports");
-		if (deconst_exports_enabled) {
-			source = WGodotGDScriptDeconstExport::sanitize_source(source, p_path, &source_changed);
+		WGodotGDScriptDeconstExport::TransformOptions transform_options;
+		transform_options.deconst_exports = GLOBAL_GET_CACHED(bool, "debug/gdscript/wgodot/deconst_exports");
+		transform_options.obfuscate_local_variables = GLOBAL_GET_CACHED(bool, "debug/gdscript/wgodot/obfuscate_local_variables");
+		const int obfuscation_strategy = GLOBAL_GET_CACHED(int, "debug/gdscript/wgodot/obfuscation_strategy");
+		if (obfuscation_strategy >= WGodotGDScriptDeconstExport::OBFUSCATION_STRATEGY_SHORT && obfuscation_strategy <= WGodotGDScriptDeconstExport::OBFUSCATION_STRATEGY_UNICODE) {
+			transform_options.obfuscation_strategy = static_cast<WGodotGDScriptDeconstExport::ObfuscationStrategy>(obfuscation_strategy);
+		}
+		if (transform_options.deconst_exports || transform_options.obfuscate_local_variables) {
+			source = WGodotGDScriptDeconstExport::transform_source(source, p_path, transform_options, &source_changed);
 		}
 		if (script_mode == EditorExportPreset::MODE_SCRIPT_TEXT) {
-			if (deconst_exports_enabled && source_changed) {
+			if (source_changed) {
 				add_file(p_path, source.to_utf8_buffer(), false);
 				skip();
 			}

@@ -9,6 +9,8 @@
 #include "gdscript_parser.h"
 
 #include "core/error/error_macros.h"
+#include "core/templates/hash_map.h"
+#include "core/templates/hash_set.h"
 #include "core/variant/variant_parser.h"
 
 namespace {
@@ -21,8 +23,12 @@ struct WGodotDeconstReplacement {
 
 struct WGodotDeconstContext {
 	String source;
+	WGodotGDScriptDeconstExport::TransformOptions options;
 	Vector<int> line_offsets;
 	Vector<WGodotDeconstReplacement> replacements;
+	HashSet<StringName> reserved_obfuscated_names;
+	HashMap<const GDScriptParser::Node *, String> obfuscated_local_names;
+	int obfuscated_local_counter = 0;
 };
 
 struct WGodotDeconstReplacementSort {
@@ -88,7 +94,11 @@ bool wgodot_should_mangle_constant(const GDScriptParser::ConstantNode *p_constan
 	return p_constant != nullptr && !p_constant->wgodot_no_mangle;
 }
 
-bool wgodot_is_declared_constant_identifier(const GDScriptParser::IdentifierNode *p_identifier) {
+bool wgodot_should_deconst_constant(const WGodotDeconstContext &p_context, const GDScriptParser::ConstantNode *p_constant) {
+	return p_context.options.deconst_exports && wgodot_should_mangle_constant(p_constant);
+}
+
+bool wgodot_is_declared_constant_identifier(const WGodotDeconstContext &p_context, const GDScriptParser::IdentifierNode *p_identifier) {
 	if (p_identifier == nullptr) {
 		return false;
 	}
@@ -98,7 +108,7 @@ bool wgodot_is_declared_constant_identifier(const GDScriptParser::IdentifierNode
 		return false;
 	}
 
-	return wgodot_should_mangle_constant(p_identifier->constant_source);
+	return wgodot_should_deconst_constant(p_context, p_identifier->constant_source);
 }
 
 void wgodot_add_replacement(WGodotDeconstContext &r_context, const GDScriptParser::Node *p_node, const String &p_text) {
@@ -115,6 +125,144 @@ void wgodot_add_replacement(WGodotDeconstContext &r_context, const GDScriptParse
 	replacement.end = end;
 	replacement.text = p_text;
 	r_context.replacements.push_back(replacement);
+}
+
+String wgodot_make_short_obfuscated_name(int p_index) {
+	static const char *letters = "abcdefghijklmnopqrstuvwxyz";
+	const int digit = p_index % 10;
+	int group = p_index / 10;
+
+	String prefix;
+	do {
+		prefix = String::chr(letters[group % 26]) + prefix;
+		group = (group / 26) - 1;
+	} while (group >= 0);
+
+	return prefix + itos(digit);
+}
+
+String wgodot_make_obfuscated_local_name(WGodotDeconstContext &r_context) {
+	if (r_context.options.obfuscation_strategy != WGodotGDScriptDeconstExport::OBFUSCATION_STRATEGY_SHORT) {
+		WARN_PRINT_ONCE("WGodot local variable obfuscation currently only supports the 'short' strategy. Falling back to 'short'.");
+	}
+
+	while (true) {
+		const String candidate = wgodot_make_short_obfuscated_name(r_context.obfuscated_local_counter++);
+		const StringName candidate_name(candidate);
+		if (!r_context.reserved_obfuscated_names.has(candidate_name)) {
+			r_context.reserved_obfuscated_names.insert(candidate_name);
+			return candidate;
+		}
+	}
+}
+
+const GDScriptParser::Node *wgodot_get_local_declaration_node(const GDScriptParser::SuiteNode::Local &p_local) {
+	switch (p_local.type) {
+		case GDScriptParser::SuiteNode::Local::VARIABLE:
+			return p_local.variable;
+		case GDScriptParser::SuiteNode::Local::PARAMETER:
+			return p_local.parameter;
+		case GDScriptParser::SuiteNode::Local::FOR_VARIABLE:
+		case GDScriptParser::SuiteNode::Local::PATTERN_BIND:
+			return p_local.bind;
+		default:
+			return nullptr;
+	}
+}
+
+const GDScriptParser::IdentifierNode *wgodot_get_local_declaration_identifier(const GDScriptParser::SuiteNode::Local &p_local) {
+	switch (p_local.type) {
+		case GDScriptParser::SuiteNode::Local::VARIABLE:
+			return p_local.variable != nullptr ? p_local.variable->identifier : nullptr;
+		case GDScriptParser::SuiteNode::Local::PARAMETER:
+			return p_local.parameter != nullptr ? p_local.parameter->identifier : nullptr;
+		case GDScriptParser::SuiteNode::Local::FOR_VARIABLE:
+		case GDScriptParser::SuiteNode::Local::PATTERN_BIND:
+			return p_local.bind;
+		default:
+			return nullptr;
+	}
+}
+
+bool wgodot_should_obfuscate_local(const GDScriptParser::SuiteNode::Local &p_local) {
+	switch (p_local.type) {
+		case GDScriptParser::SuiteNode::Local::VARIABLE:
+			return p_local.variable != nullptr && !p_local.variable->wgodot_no_mangle;
+		case GDScriptParser::SuiteNode::Local::PARAMETER:
+		case GDScriptParser::SuiteNode::Local::FOR_VARIABLE:
+		case GDScriptParser::SuiteNode::Local::PATTERN_BIND:
+			return true;
+		default:
+			return false;
+	}
+}
+
+const GDScriptParser::Node *wgodot_get_local_identifier_source(const GDScriptParser::IdentifierNode *p_identifier) {
+	if (p_identifier == nullptr) {
+		return nullptr;
+	}
+
+	switch (p_identifier->source) {
+		case GDScriptParser::IdentifierNode::FUNCTION_PARAMETER:
+			return p_identifier->parameter_source;
+		case GDScriptParser::IdentifierNode::LOCAL_VARIABLE:
+			return p_identifier->variable_source;
+		case GDScriptParser::IdentifierNode::LOCAL_ITERATOR:
+		case GDScriptParser::IdentifierNode::LOCAL_BIND:
+			return p_identifier->bind_source;
+		default:
+			return nullptr;
+	}
+}
+
+void wgodot_add_local_reference_replacement(WGodotDeconstContext &r_context, const GDScriptParser::IdentifierNode *p_identifier) {
+	if (!r_context.options.obfuscate_local_variables) {
+		return;
+	}
+
+	const GDScriptParser::Node *source = wgodot_get_local_identifier_source(p_identifier);
+	if (source == nullptr) {
+		return;
+	}
+
+	const String *obfuscated_name = r_context.obfuscated_local_names.getptr(source);
+	if (obfuscated_name == nullptr) {
+		return;
+	}
+
+	wgodot_add_replacement(r_context, p_identifier, *obfuscated_name);
+}
+
+void wgodot_collect_suite_local_obfuscation(WGodotDeconstContext &r_context, const GDScriptParser::SuiteNode *p_suite) {
+	if (!r_context.options.obfuscate_local_variables || p_suite == nullptr) {
+		return;
+	}
+
+	for (const GDScriptParser::SuiteNode::Local &local : p_suite->locals) {
+		if (!String(local.name).is_empty()) {
+			r_context.reserved_obfuscated_names.insert(local.name);
+		}
+	}
+
+	for (const GDScriptParser::SuiteNode::Local &local : p_suite->locals) {
+		if (!wgodot_should_obfuscate_local(local)) {
+			continue;
+		}
+
+		const GDScriptParser::Node *declaration = wgodot_get_local_declaration_node(local);
+		const GDScriptParser::IdentifierNode *identifier = wgodot_get_local_declaration_identifier(local);
+		if (declaration == nullptr || identifier == nullptr || String(identifier->name).is_empty()) {
+			continue;
+		}
+
+		if (r_context.obfuscated_local_names.has(declaration)) {
+			continue;
+		}
+
+		const String obfuscated_name = wgodot_make_obfuscated_local_name(r_context);
+		r_context.obfuscated_local_names[declaration] = obfuscated_name;
+		wgodot_add_replacement(r_context, identifier, obfuscated_name);
+	}
 }
 
 void wgodot_add_constant_reference_replacement(WGodotDeconstContext &r_context, const GDScriptParser::Node *p_node, const GDScriptParser::ConstantNode *p_constant) {
@@ -242,13 +390,15 @@ void wgodot_collect_expression_replacements(WGodotDeconstContext &r_context, con
 	switch (p_expression->type) {
 		case GDScriptParser::Node::IDENTIFIER: {
 			const GDScriptParser::IdentifierNode *identifier = static_cast<const GDScriptParser::IdentifierNode *>(p_expression);
-			if (wgodot_is_declared_constant_identifier(identifier)) {
+			if (wgodot_is_declared_constant_identifier(r_context, identifier)) {
 				wgodot_add_constant_reference_replacement(r_context, identifier, identifier->constant_source);
+			} else {
+				wgodot_add_local_reference_replacement(r_context, identifier);
 			}
 		} break;
 		case GDScriptParser::Node::SUBSCRIPT: {
 			const GDScriptParser::SubscriptNode *subscript = static_cast<const GDScriptParser::SubscriptNode *>(p_expression);
-			if (subscript->is_attribute && wgodot_is_declared_constant_identifier(subscript->attribute)) {
+			if (subscript->is_attribute && wgodot_is_declared_constant_identifier(r_context, subscript->attribute)) {
 				wgodot_add_constant_reference_replacement(r_context, subscript, subscript->attribute->constant_source);
 				break;
 			}
@@ -362,7 +512,7 @@ void wgodot_collect_node_replacements(WGodotDeconstContext &r_context, const GDS
 			bool has_mangled_constants = false;
 			bool has_remaining_members = false;
 			for (const GDScriptParser::ClassNode::Member &member : class_node->members) {
-				if (member.type == GDScriptParser::ClassNode::Member::CONSTANT && wgodot_should_mangle_constant(member.constant)) {
+				if (member.type == GDScriptParser::ClassNode::Member::CONSTANT && wgodot_should_deconst_constant(r_context, member.constant)) {
 					has_mangled_constants = true;
 				} else {
 					has_remaining_members = true;
@@ -376,7 +526,7 @@ void wgodot_collect_node_replacements(WGodotDeconstContext &r_context, const GDS
 						wgodot_collect_node_replacements(r_context, member.m_class);
 						break;
 					case GDScriptParser::ClassNode::Member::CONSTANT:
-						if (wgodot_should_mangle_constant(member.constant)) {
+						if (wgodot_should_deconst_constant(r_context, member.constant)) {
 							wgodot_add_constant_declaration_replacement(r_context, member.constant, leave_pass_for_first_constant);
 							leave_pass_for_first_constant = false;
 						} else {
@@ -405,7 +555,7 @@ void wgodot_collect_node_replacements(WGodotDeconstContext &r_context, const GDS
 		} break;
 		case GDScriptParser::Node::CONSTANT: {
 			const GDScriptParser::ConstantNode *constant = static_cast<const GDScriptParser::ConstantNode *>(p_node);
-			if (wgodot_should_mangle_constant(constant)) {
+			if (wgodot_should_deconst_constant(r_context, constant)) {
 				wgodot_add_constant_declaration_replacement(r_context, constant, false);
 			} else {
 				wgodot_collect_constant_contents_replacements(r_context, constant);
@@ -427,11 +577,13 @@ void wgodot_collect_node_replacements(WGodotDeconstContext &r_context, const GDS
 		} break;
 		case GDScriptParser::Node::SUITE: {
 			const GDScriptParser::SuiteNode *suite = static_cast<const GDScriptParser::SuiteNode *>(p_node);
+			wgodot_collect_suite_local_obfuscation(r_context, suite);
+
 			bool has_mangled_constants = false;
 			bool has_remaining_statements = false;
 			for (const GDScriptParser::Node *statement : suite->statements) {
 				const GDScriptParser::ConstantNode *constant = statement != nullptr && statement->type == GDScriptParser::Node::CONSTANT ? static_cast<const GDScriptParser::ConstantNode *>(statement) : nullptr;
-				if (wgodot_should_mangle_constant(constant)) {
+				if (wgodot_should_deconst_constant(r_context, constant)) {
 					has_mangled_constants = true;
 				} else {
 					has_remaining_statements = true;
@@ -441,7 +593,7 @@ void wgodot_collect_node_replacements(WGodotDeconstContext &r_context, const GDS
 			bool leave_pass_for_first_constant = has_mangled_constants && !has_remaining_statements;
 			for (const GDScriptParser::Node *statement : suite->statements) {
 				const GDScriptParser::ConstantNode *constant = statement != nullptr && statement->type == GDScriptParser::Node::CONSTANT ? static_cast<const GDScriptParser::ConstantNode *>(statement) : nullptr;
-				if (wgodot_should_mangle_constant(constant)) {
+				if (wgodot_should_deconst_constant(r_context, constant)) {
 					wgodot_add_constant_declaration_replacement(r_context, constant, leave_pass_for_first_constant);
 					leave_pass_for_first_constant = false;
 				} else {
@@ -541,9 +693,13 @@ bool wgodot_parse_and_analyze(const String &p_source, const String &p_path) {
 
 } // namespace
 
-String WGodotGDScriptDeconstExport::sanitize_source(const String &p_source, const String &p_path, bool *r_changed) {
+String WGodotGDScriptDeconstExport::transform_source(const String &p_source, const String &p_path, const TransformOptions &p_options, bool *r_changed) {
 	if (r_changed != nullptr) {
 		*r_changed = false;
+	}
+
+	if (!p_options.deconst_exports && !p_options.obfuscate_local_variables) {
+		return p_source;
 	}
 
 	GDScriptParser parser;
@@ -558,6 +714,7 @@ String WGodotGDScriptDeconstExport::sanitize_source(const String &p_source, cons
 
 	WGodotDeconstContext context;
 	context.source = p_source;
+	context.options = p_options;
 	wgodot_build_line_offsets(context);
 	wgodot_collect_node_replacements(context, parser.get_tree());
 	if (context.replacements.is_empty()) {
@@ -570,7 +727,7 @@ String WGodotGDScriptDeconstExport::sanitize_source(const String &p_source, cons
 	}
 
 	if (!wgodot_parse_and_analyze(sanitized, p_path)) {
-		WARN_PRINT("Failed to validate de-const sanitized GDScript export for '" + p_path + "'. Exporting original script source.");
+		WARN_PRINT("Failed to validate wgodot-transformed GDScript export for '" + p_path + "'. Exporting original script source.");
 		return p_source;
 	}
 
@@ -578,4 +735,12 @@ String WGodotGDScriptDeconstExport::sanitize_source(const String &p_source, cons
 		*r_changed = true;
 	}
 	return sanitized;
+}
+
+String WGodotGDScriptDeconstExport::sanitize_source(const String &p_source, const String &p_path, bool *r_changed) {
+	TransformOptions options;
+	options.deconst_exports = true;
+	options.obfuscate_local_variables = false;
+	options.obfuscation_strategy = OBFUSCATION_STRATEGY_SHORT;
+	return transform_source(p_source, p_path, options, r_changed);
 }
