@@ -15,6 +15,7 @@ void GDScriptParser::register_wgodot_annotations() {
 	register_annotation(MethodInfo("@protected"), AnnotationInfo::CLASS_LEVEL, &GDScriptParser::wgodot_protected_annotation);
 	register_annotation(MethodInfo("@readonly"), AnnotationInfo::VARIABLE | AnnotationInfo::STATEMENT, &GDScriptParser::wgodot_readonly_annotation);
 	register_annotation(MethodInfo("@static_class"), AnnotationInfo::CLASS, &GDScriptParser::wgodot_static_class_annotation);
+	register_annotation(MethodInfo("@no_mangle"), AnnotationInfo::CONSTANT, &GDScriptParser::wgodot_no_mangle_annotation);
 	register_annotation(MethodInfo("@partial", PropertyInfo(Variant::STRING, "path")), AnnotationInfo::SCRIPT | AnnotationInfo::CLASS, &GDScriptParser::wgodot_noop_annotation, Vector<Variant>(), true);
 }
 
@@ -240,5 +241,23 @@ bool GDScriptParser::wgodot_static_class_annotation(AnnotationNode *p_annotation
 	}
 
 	class_node->wgodot_static_class = true;
+	return true;
+}
+
+bool GDScriptParser::wgodot_no_mangle_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class) {
+	(void)p_class;
+
+	if (p_target == nullptr || p_target->type != Node::CONSTANT) {
+		push_error(R"("@no_mangle" annotation can only be applied to constants.)", p_annotation);
+		return false;
+	}
+
+	ConstantNode *constant = static_cast<ConstantNode *>(p_target);
+	if (constant->wgodot_no_mangle) {
+		push_error(R"("@no_mangle" annotation can only be used once per constant.)", p_annotation);
+		return false;
+	}
+
+	constant->wgodot_no_mangle = true;
 	return true;
 }

@@ -36,6 +36,9 @@
 #include "core/object/script_language.h"
 #include "core/os/thread.h"
 #include "core/string/string_name.h"
+// wgodot-changes::begin
+#include "core/templates/hash_set.h"
+// wgodot-changes::end
 #include "core/templates/pair.h"
 #include "core/templates/self_list.h"
 #include "core/variant/variant.h"
@@ -367,6 +370,9 @@ private:
 	Vector<int> default_arguments;
 	Vector<Variant> constants;
 	HashMap<StringName, Variant> constant_map;
+	// wgodot-changes::begin
+	HashSet<StringName> wgodot_declared_local_constants;
+	// wgodot-changes::end
 	Vector<StringName> global_names;
 	Vector<Variant::ValidatedOperatorEvaluator> operator_funcs;
 	Vector<Variant::ValidatedSetter> setters;

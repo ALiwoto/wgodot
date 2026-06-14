@@ -102,6 +102,9 @@ class GDScript : public Script {
 	Vector<Variant> static_variables; // Static variable values.
 
 	HashMap<StringName, Variant> constants;
+	// wgodot-changes::begin
+	HashSet<StringName> wgodot_declared_constants;
+	// wgodot-changes::end
 	HashMap<StringName, GDScriptFunction *> member_functions;
 	HashMap<StringName, Ref<GDScript>> subclasses;
 	HashMap<StringName, MethodInfo> _signals;
@@ -176,6 +179,10 @@ private:
 
 	Error _static_init();
 	void _static_default_init(); // Initialize static variables with default values based on their types.
+	// wgodot-changes::begin
+	void _wgodot_strip_function_export_constants(GDScriptFunction *p_function);
+	void _wgodot_strip_export_constants();
+	// wgodot-changes::end
 
 	SelfList<GDScriptInstance>::List instances;
 	bool destructing = false;

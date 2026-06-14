@@ -826,6 +826,7 @@ public:
 		// wgodot-changes::begin
 		bool wgodot_private = false;
 		bool wgodot_protected = false;
+		bool wgodot_no_mangle = false;
 		// wgodot-changes::end
 #ifdef TOOLS_ENABLED
 		MemberDocData doc_data;
@@ -1619,6 +1620,7 @@ private:
 	bool wgodot_protected_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	bool wgodot_readonly_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	bool wgodot_static_class_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
+	bool wgodot_no_mangle_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	// wgodot-changes::end
 	// Statements.
 	Node *parse_statement();

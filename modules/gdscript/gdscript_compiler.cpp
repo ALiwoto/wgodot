@@ -2361,6 +2361,11 @@ Error GDScriptCompiler::_parse_block(CodeGen &codegen, const GDScriptParser::Sui
 				}
 
 				codegen.add_local_constant(lc->identifier->name, lc->initializer->reduced_value);
+				// wgodot-changes::begin
+				if (!lc->wgodot_no_mangle) {
+					codegen.wgodot_declared_local_constants.insert(lc->identifier->name);
+				}
+				// wgodot-changes::end
 			} break;
 			case GDScriptParser::Node::PASS:
 				// Nothing to do.
@@ -2609,6 +2614,9 @@ GDScriptFunction *GDScriptCompiler::_parse_function(Error &r_error, GDScript *p_
 	}
 
 	GDScriptFunction *gd_function = codegen.generator->write_end();
+	// wgodot-changes::begin
+	gd_function->wgodot_declared_local_constants = codegen.wgodot_declared_local_constants;
+	// wgodot-changes::end
 
 	if (is_initializer) {
 		p_script->initializer = gd_function;
@@ -2818,6 +2826,9 @@ Error GDScriptCompiler::_prepare_compilation(GDScript *p_script, const GDScriptP
 		constants.insert(E.key, E.value);
 	}
 	p_script->constants.clear();
+	// wgodot-changes::begin
+	p_script->wgodot_declared_constants.clear();
+	// wgodot-changes::end
 	constants.clear();
 	HashMap<StringName, GDScriptFunction *> member_functions;
 	for (const KeyValue<StringName, GDScriptFunction *> &E : p_script->member_functions) {
@@ -3033,6 +3044,11 @@ Error GDScriptCompiler::_prepare_compilation(GDScript *p_script, const GDScriptP
 				StringName name = constant->identifier->name;
 
 				p_script->constants.insert(name, constant->initializer->reduced_value);
+				// wgodot-changes::begin
+				if (!constant->wgodot_no_mangle) {
+					p_script->wgodot_declared_constants.insert(name);
+				}
+				// wgodot-changes::end
 			} break;
 
 			case GDScriptParser::ClassNode::Member::ENUM_VALUE: {

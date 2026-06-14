@@ -36,6 +36,9 @@
 #include "gdscript_resource_format.h"
 #include "gdscript_tokenizer_buffer.h"
 #include "gdscript_utility_functions.h"
+// wgodot-changes::begin
+#include "wgodot_deconst_export.h"
+// wgodot-changes::end
 
 #ifdef TOOLS_ENABLED
 #include "editor/gdscript_highlighter.h"
@@ -56,6 +59,9 @@
 #include "core/io/resource_loader.h"
 #include "core/io/resource_saver.h"
 #include "core/object/class_db.h"
+// wgodot-changes::begin
+#include "core/config/project_settings.h"
+// wgodot-changes::end
 
 #ifdef TOOLS_ENABLED
 #include "editor/editor_node.h"
@@ -97,9 +103,14 @@ protected:
 	}
 
 	virtual void _export_file(const String &p_path, const String &p_type, const HashSet<String> &p_features) override {
-		if (p_path.get_extension() != "gd" || script_mode == EditorExportPreset::MODE_SCRIPT_TEXT) {
+		// wgodot-changes::begin
+		// Text-mode `.gd` exports still need to pass through the de-const sanitizer.
+		// Do not return early for MODE_SCRIPT_TEXT here; text mode is handled below
+		// after the sanitizer gets a chance to replace constants in exported source.
+		if (p_path.get_extension() != "gd") {
 			return;
 		}
+		// wgodot-changes::end
 
 		Vector<uint8_t> file = FileAccess::get_file_as_bytes(p_path);
 		if (file.is_empty()) {
@@ -107,6 +118,20 @@ protected:
 		}
 
 		String source = String::utf8(reinterpret_cast<const char *>(file.ptr()), file.size());
+		// wgodot-changes::begin
+		bool source_changed = false;
+		const bool deconst_exports_enabled = GLOBAL_GET_CACHED(bool, "debug/gdscript/wgodot/deconst_exports");
+		if (deconst_exports_enabled) {
+			source = WGodotGDScriptDeconstExport::sanitize_source(source, p_path, &source_changed);
+		}
+		if (script_mode == EditorExportPreset::MODE_SCRIPT_TEXT) {
+			if (deconst_exports_enabled && source_changed) {
+				add_file(p_path, source.to_utf8_buffer(), false);
+				skip();
+			}
+			return;
+		}
+		// wgodot-changes::end
 		GDScriptTokenizerBuffer::CompressMode compress_mode = script_mode == EditorExportPreset::MODE_SCRIPT_BINARY_TOKENS_COMPRESSED ? GDScriptTokenizerBuffer::COMPRESS_ZSTD : GDScriptTokenizerBuffer::COMPRESS_NONE;
 		file = GDScriptTokenizerBuffer::parse_code_string(source, compress_mode);
 		if (file.is_empty()) {

@@ -80,6 +80,9 @@ class GDScriptCompiler {
 		HashMap<StringName, GDScriptCodeGenerator::Address> parameters;
 		HashMap<StringName, GDScriptCodeGenerator::Address> locals;
 		List<HashMap<StringName, GDScriptCodeGenerator::Address>> locals_stack;
+		// wgodot-changes::begin
+		HashSet<StringName> wgodot_declared_local_constants;
+		// wgodot-changes::end
 		bool is_static = false;
 
 		GDScriptCodeGenerator::Address add_local(const StringName &p_name, const GDScriptDataType &p_type) {

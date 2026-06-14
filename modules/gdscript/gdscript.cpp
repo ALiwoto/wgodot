@@ -712,6 +712,43 @@ void GDScript::_static_default_init() {
 	}
 }
 
+// wgodot-changes::begin
+void GDScript::_wgodot_strip_function_export_constants(GDScriptFunction *p_function) {
+	if (p_function == nullptr) {
+		return;
+	}
+
+	// The compiler only records local constants that are allowed to be stripped.
+	// Constants marked @no_mangle are never added to this set.
+	for (const StringName &constant_name : p_function->wgodot_declared_local_constants) {
+		p_function->constant_map.erase(constant_name);
+	}
+	p_function->wgodot_declared_local_constants.clear();
+	for (GDScriptFunction *lambda : p_function->lambdas) {
+		_wgodot_strip_function_export_constants(lambda);
+	}
+}
+
+void GDScript::_wgodot_strip_export_constants() {
+	for (const StringName &constant_name : wgodot_declared_constants) {
+		constants.erase(constant_name);
+	}
+	wgodot_declared_constants.clear();
+
+	for (const KeyValue<StringName, GDScriptFunction *> &function : member_functions) {
+		_wgodot_strip_function_export_constants(function.value);
+	}
+	_wgodot_strip_function_export_constants(initializer);
+	_wgodot_strip_function_export_constants(implicit_initializer);
+	_wgodot_strip_function_export_constants(implicit_ready);
+	_wgodot_strip_function_export_constants(static_initializer);
+
+	for (const KeyValue<StringName, Ref<GDScript>> &subclass : subclasses) {
+		subclass.value->_wgodot_strip_export_constants();
+	}
+}
+// wgodot-changes::end
+
 #ifdef TOOLS_ENABLED
 
 void GDScript::_save_old_static_data() {
@@ -899,6 +936,14 @@ Error GDScript::reload(bool p_keep_state) {
 		update_exports();
 	}
 #endif
+
+// wgodot-changes::begin
+#ifndef TOOLS_ENABLED
+	if (GLOBAL_GET_CACHED(bool, "debug/gdscript/wgodot/deconst_exports")) {
+		_wgodot_strip_export_constants();
+	}
+#endif // !TOOLS_ENABLED
+// wgodot-changes::end
 
 	reloading = false;
 	return OK;
@@ -1358,6 +1403,9 @@ void GDScript::_save_orphaned_subclasses() {
 	subclasses.clear();
 	// subclasses are also held by constants, clear those as well
 	constants.clear();
+	// wgodot-changes::begin
+	wgodot_declared_constants.clear();
+	// wgodot-changes::end
 
 	// keep orphan subclass only for subclasses that are still in use
 	for (int i = 0; i < weak_subclasses.size(); i++) {
@@ -2952,6 +3000,7 @@ GDScriptLanguage::GDScriptLanguage() {
 	GLOBAL_DEF("debug/gdscript/wgodot/disable_embedded_gdscript", true);
 	GLOBAL_DEF("debug/gdscript/wgodot/strict_override_checking", true);
 	GLOBAL_DEF("debug/gdscript/wgodot/strict_signal_callable_checking", true);
+	GLOBAL_DEF("debug/gdscript/wgodot/deconst_exports", true);
 	// wgodot-changes::end
 
 	GLOBAL_DEF(PropertyInfo(Variant::DICTIONARY,
