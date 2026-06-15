@@ -31,9 +31,9 @@ jobs:
           submodules: recursive
 
       - name: Restore Godot build cache
-        uses: ./.github/actions/godot-cache-restore
+        uses: ./.github/actions/wgodot-cache-restore
         with:
-          cache-name: wgodot-windows-editor
+          cache-name: wgodot-ci-windows-editor
         continue-on-error: true
 
       - name: Setup Python and SCons
@@ -93,9 +93,9 @@ jobs:
             angle=${{ steps.angle-sdk.outputs.ANGLE_ENABLED }}
 
       - name: Save Godot build cache
-        uses: ./.github/actions/godot-cache-save
+        uses: ./.github/actions/wgodot-cache-save
         with:
-          cache-name: wgodot-windows-editor
+          cache-name: wgodot-ci-windows-editor
         continue-on-error: true
 
       - name: Verify editor starts
@@ -116,21 +116,21 @@ jobs:
             runner: ubuntu-22.04
             platform: linuxbsd
             target: template_release
-            cache-name: wgodot-linux-template-release
+            cache-name: wgodot-ci-linux-template-release
             scons-flags: accesskit=no
 
           - name: Windows release template smoke
             runner: windows-latest
             platform: windows
             target: template_release
-            cache-name: wgodot-windows-template-release
+            cache-name: wgodot-ci-windows-template-release
             scons-flags: d3d12=no accesskit=no angle=no winrt=no
 
           - name: Web release template smoke
             runner: ubuntu-24.04
             platform: web
             target: template_release
-            cache-name: wgodot-web-template-release
+            cache-name: wgodot-ci-web-template-release
             scons-flags: threads=yes arch=wasm32 use_closure_compiler=no
 
     steps:
@@ -147,7 +147,7 @@ jobs:
           no-cache: true
 
       - name: Restore Godot build cache
-        uses: ./.github/actions/godot-cache-restore
+        uses: ./.github/actions/wgodot-cache-restore
         with:
           cache-name: ${{ matrix.cache-name }}
         continue-on-error: true
@@ -163,7 +163,7 @@ jobs:
           scons-flags: ${{ env.SCONS_FLAGS }} ${{ matrix.scons-flags }}
 
       - name: Save Godot build cache
-        uses: ./.github/actions/godot-cache-save
+        uses: ./.github/actions/wgodot-cache-save
         with:
           cache-name: ${{ matrix.cache-name }}
         continue-on-error: true
