@@ -71,7 +71,7 @@ private:
 };
 
 void collect_no_mangle_constants(RewriteContext &r_context, const GDScriptParser::Node *p_node, bool p_no_mangle_scope);
-void collect_private_function_names(RewriteContext &r_context, const GDScriptParser::Node *p_node, bool p_no_mangle_scope);
+void collect_private_member_names(RewriteContext &r_context, const GDScriptParser::Node *p_node, bool p_no_mangle_scope);
 void collect_expression_replacements(RewriteContext &r_context, const GDScriptParser::ExpressionNode *p_expression, bool p_no_mangle_scope);
 void collect_node_replacements(RewriteContext &r_context, const GDScriptParser::Node *p_node, bool p_no_mangle_scope);
 
@@ -133,9 +133,11 @@ void collect_expression_replacements(RewriteContext &r_context, const GDScriptPa
 			const GDScriptParser::IdentifierNode *identifier = static_cast<const GDScriptParser::IdentifierNode *>(p_expression);
 			if (is_declared_constant_identifier(r_context, identifier)) {
 				add_constant_reference_replacement(r_context, identifier, identifier->constant_source);
-			} else if (!p_no_mangle_scope) {
-				add_private_function_name_reference_replacement(r_context, identifier);
-				add_local_name_reference_replacement(r_context, identifier);
+			} else {
+				add_private_member_name_reference_replacement(r_context, identifier);
+				if (!p_no_mangle_scope) {
+					add_local_name_reference_replacement(r_context, identifier);
+				}
 			}
 		} break;
 		case GDScriptParser::Node::SUBSCRIPT: {
@@ -151,8 +153,8 @@ void collect_expression_replacements(RewriteContext &r_context, const GDScriptPa
 			// into `position.a0`.
 			if (!subscript->is_attribute) {
 				collect_expression_replacements(r_context, subscript->index, p_no_mangle_scope);
-			} else if (!p_no_mangle_scope) {
-				add_private_function_name_reference_replacement(r_context, subscript->attribute);
+			} else {
+				add_private_member_name_reference_replacement(r_context, subscript->attribute);
 			}
 		} break;
 		case GDScriptParser::Node::ARRAY: {
@@ -292,6 +294,10 @@ void collect_node_replacements(RewriteContext &r_context, const GDScriptParser::
 						collect_node_replacements(r_context, member.function, no_mangle_scope);
 						break;
 					case GDScriptParser::ClassNode::Member::VARIABLE:
+						if (!no_mangle_scope && member.variable != nullptr && member.variable->property == GDScriptParser::VariableNode::PROP_SETGET) {
+							add_private_function_pointer_replacement(r_context, class_node, member.variable->setter_pointer);
+							add_private_function_pointer_replacement(r_context, class_node, member.variable->getter_pointer);
+						}
 						collect_node_replacements(r_context, member.variable, no_mangle_scope);
 						break;
 					case GDScriptParser::ClassNode::Member::SIGNAL:
@@ -555,13 +561,13 @@ void collect_no_mangle_constants(RewriteContext &r_context, const GDScriptParser
 	}
 }
 
-void collect_private_function_names(RewriteContext &r_context, const GDScriptParser::Node *p_node, bool p_no_mangle_scope) {
-	if (!r_context.options.obfuscate_local_variables || p_node == nullptr) {
+void collect_private_member_names(RewriteContext &r_context, const GDScriptParser::Node *p_node, bool p_no_mangle_scope) {
+	if (!r_context.options.obfuscate_names || p_node == nullptr) {
 		return;
 	}
 
 	if (p_node->type == GDScriptParser::Node::CLASS) {
-		collect_private_function_name_obfuscation(r_context, static_cast<const GDScriptParser::ClassNode *>(p_node), p_no_mangle_scope);
+		collect_private_member_name_obfuscation(r_context, static_cast<const GDScriptParser::ClassNode *>(p_node), p_no_mangle_scope);
 	}
 }
 
@@ -617,7 +623,7 @@ namespace WGodotGDScriptExportTransform {
 TransformOptions setup_params() {
 	TransformOptions options;
 	options.deconst_exports = GLOBAL_GET_CACHED(bool, "debug/gdscript/wgodot/deconst_exports");
-	options.obfuscate_local_variables = GLOBAL_GET_CACHED(bool, "debug/gdscript/wgodot/obfuscate_local_variables");
+	options.obfuscate_names = GLOBAL_GET_CACHED(bool, "debug/gdscript/wgodot/obfuscate_names");
 
 	const int obfuscation_strategy = GLOBAL_GET_CACHED(int, "debug/gdscript/wgodot/obfuscation_strategy");
 	if (obfuscation_strategy >= OBFUSCATION_STRATEGY_SHORT && obfuscation_strategy <= OBFUSCATION_STRATEGY_UNICODE) {
@@ -636,7 +642,7 @@ String transform_source(const String &p_source, const String &p_path, const Tran
 		*r_changed = false;
 	}
 
-	if (!p_options.deconst_exports && !p_options.obfuscate_local_variables) {
+	if (!p_options.deconst_exports && !p_options.obfuscate_names) {
 		return p_source;
 	}
 
@@ -651,7 +657,7 @@ String transform_source(const String &p_source, const String &p_path, const Tran
 	build_line_offsets(context);
 	const GDScriptParser::ClassNode *tree = analyzed_source.parser->get_tree();
 	collect_no_mangle_constants(context, tree, false);
-	collect_private_function_names(context, tree, false);
+	collect_private_member_names(context, tree, false);
 	collect_node_replacements(context, tree, false);
 	if (context.replacements.is_empty()) {
 		return p_source;

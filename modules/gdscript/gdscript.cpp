@@ -3002,7 +3002,7 @@ GDScriptLanguage::GDScriptLanguage() {
 	GLOBAL_DEF("debug/gdscript/wgodot/strict_override_checking", true);
 	GLOBAL_DEF("debug/gdscript/wgodot/strict_signal_callable_checking", true);
 	GLOBAL_DEF("debug/gdscript/wgodot/deconst_exports", true);
-	GLOBAL_DEF("debug/gdscript/wgodot/obfuscate_local_variables", true);
+	GLOBAL_DEF("debug/gdscript/wgodot/obfuscate_names", true);
 	GLOBAL_DEF(PropertyInfo(Variant::INT, "debug/gdscript/wgodot/obfuscation_strategy", PROPERTY_HINT_ENUM, "Short,Hash,Unicode"), WGodotGDScriptExportTransform::OBFUSCATION_STRATEGY_SHORT);
 	// wgodot-changes::end
 

@@ -17,7 +17,7 @@ enum ObfuscationStrategy {
 
 struct TransformOptions {
 	bool deconst_exports = true;
-	bool obfuscate_local_variables = false;
+	bool obfuscate_names = false;
 	ObfuscationStrategy obfuscation_strategy = OBFUSCATION_STRATEGY_SHORT;
 };
 
