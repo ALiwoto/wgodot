@@ -79,6 +79,14 @@ bool should_obfuscate_local(const GDScriptParser::SuiteNode::Local &p_local) {
 	}
 }
 
+bool should_obfuscate_function(const GDScriptParser::FunctionNode *p_function, bool p_no_mangle_scope) {
+	return !p_no_mangle_scope &&
+			p_function != nullptr &&
+			p_function->identifier != nullptr &&
+			p_function->wgodot_private &&
+			!p_function->wgodot_no_mangle;
+}
+
 const GDScriptParser::Node *get_local_identifier_source(const GDScriptParser::IdentifierNode *p_identifier) {
 	if (p_identifier == nullptr) {
 		return nullptr;
@@ -100,6 +108,59 @@ const GDScriptParser::Node *get_local_identifier_source(const GDScriptParser::Id
 } // namespace
 
 namespace WGodotGDScriptExportTransform {
+
+void collect_private_function_name_obfuscation(RewriteContext &r_context, const GDScriptParser::ClassNode *p_class, bool p_no_mangle_scope) {
+	if (!r_context.options.obfuscate_local_variables || p_class == nullptr) {
+		return;
+	}
+
+	const bool no_mangle_scope = p_no_mangle_scope || p_class->wgodot_no_mangle;
+	for (const GDScriptParser::ClassNode::Member &member : p_class->members) {
+		if (!String(member.get_name()).is_empty()) {
+			r_context.reserved_obfuscated_names.insert(StringName(member.get_name()));
+		}
+	}
+
+	if (no_mangle_scope) {
+		return;
+	}
+
+	for (const GDScriptParser::ClassNode::Member &member : p_class->members) {
+		switch (member.type) {
+			case GDScriptParser::ClassNode::Member::CLASS:
+				collect_private_function_name_obfuscation(r_context, member.m_class, no_mangle_scope);
+				break;
+			case GDScriptParser::ClassNode::Member::FUNCTION: {
+				if (!should_obfuscate_function(member.function, no_mangle_scope) || r_context.obfuscated_function_names.has(member.function)) {
+					break;
+				}
+
+				const String obfuscated_name = make_obfuscated_local_name(r_context);
+				r_context.obfuscated_function_names[member.function] = obfuscated_name;
+				add_replacement(r_context, member.function->identifier, obfuscated_name);
+			} break;
+			default:
+				break;
+		}
+	}
+}
+
+void add_private_function_name_reference_replacement(RewriteContext &r_context, const GDScriptParser::IdentifierNode *p_identifier) {
+	if (!r_context.options.obfuscate_local_variables || p_identifier == nullptr) {
+		return;
+	}
+
+	if (p_identifier->source != GDScriptParser::IdentifierNode::MEMBER_FUNCTION || p_identifier->function_source == nullptr) {
+		return;
+	}
+
+	const String *obfuscated_name = r_context.obfuscated_function_names.getptr(p_identifier->function_source);
+	if (obfuscated_name == nullptr) {
+		return;
+	}
+
+	add_replacement(r_context, p_identifier, *obfuscated_name);
+}
 
 void add_local_name_reference_replacement(RewriteContext &r_context, const GDScriptParser::IdentifierNode *p_identifier) {
 	if (!r_context.options.obfuscate_local_variables) {

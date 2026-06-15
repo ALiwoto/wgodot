@@ -28,7 +28,7 @@ bool should_mangle_constant(const GDScriptParser::ConstantNode *p_constant) {
 namespace WGodotGDScriptExportTransform {
 
 bool should_deconst_constant(const RewriteContext &p_context, const GDScriptParser::ConstantNode *p_constant) {
-	return p_context.options.deconst_exports && should_mangle_constant(p_constant);
+	return p_context.options.deconst_exports && should_mangle_constant(p_constant) && !p_context.no_mangle_constants.has(p_constant);
 }
 
 bool is_declared_constant_identifier(const RewriteContext &p_context, const GDScriptParser::IdentifierNode *p_identifier) {

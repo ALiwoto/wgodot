@@ -70,8 +70,10 @@ private:
 	}
 };
 
-void collect_expression_replacements(RewriteContext &r_context, const GDScriptParser::ExpressionNode *p_expression);
-void collect_node_replacements(RewriteContext &r_context, const GDScriptParser::Node *p_node);
+void collect_no_mangle_constants(RewriteContext &r_context, const GDScriptParser::Node *p_node, bool p_no_mangle_scope);
+void collect_private_function_names(RewriteContext &r_context, const GDScriptParser::Node *p_node, bool p_no_mangle_scope);
+void collect_expression_replacements(RewriteContext &r_context, const GDScriptParser::ExpressionNode *p_expression, bool p_no_mangle_scope);
+void collect_node_replacements(RewriteContext &r_context, const GDScriptParser::Node *p_node, bool p_no_mangle_scope);
 
 void collect_type_replacements(RewriteContext &r_context, const GDScriptParser::TypeNode *p_type) {
 	if (p_type == nullptr) {
@@ -83,33 +85,37 @@ void collect_type_replacements(RewriteContext &r_context, const GDScriptParser::
 	}
 }
 
-void collect_parameter_replacements(RewriteContext &r_context, const GDScriptParser::ParameterNode *p_parameter) {
+bool is_no_mangle_property_scope(const GDScriptParser::VariableNode *p_variable) {
+	return p_variable != nullptr && p_variable->wgodot_no_mangle && (p_variable->setter != nullptr || p_variable->getter != nullptr);
+}
+
+void collect_parameter_replacements(RewriteContext &r_context, const GDScriptParser::ParameterNode *p_parameter, bool p_no_mangle_scope) {
 	if (p_parameter == nullptr) {
 		return;
 	}
 
 	collect_type_replacements(r_context, p_parameter->datatype_specifier);
-	collect_expression_replacements(r_context, p_parameter->initializer);
+	collect_expression_replacements(r_context, p_parameter->initializer, p_no_mangle_scope);
 }
 
-void collect_pattern_replacements(RewriteContext &r_context, const GDScriptParser::PatternNode *p_pattern) {
+void collect_pattern_replacements(RewriteContext &r_context, const GDScriptParser::PatternNode *p_pattern, bool p_no_mangle_scope) {
 	if (p_pattern == nullptr) {
 		return;
 	}
 
 	switch (p_pattern->pattern_type) {
 		case GDScriptParser::PatternNode::PT_EXPRESSION:
-			collect_expression_replacements(r_context, p_pattern->expression);
+			collect_expression_replacements(r_context, p_pattern->expression, p_no_mangle_scope);
 			break;
 		case GDScriptParser::PatternNode::PT_ARRAY:
 			for (const GDScriptParser::PatternNode *sub_pattern : p_pattern->array) {
-				collect_pattern_replacements(r_context, sub_pattern);
+				collect_pattern_replacements(r_context, sub_pattern, p_no_mangle_scope);
 			}
 			break;
 		case GDScriptParser::PatternNode::PT_DICTIONARY:
 			for (const GDScriptParser::PatternNode::Pair &pair : p_pattern->dictionary) {
-				collect_expression_replacements(r_context, pair.key);
-				collect_pattern_replacements(r_context, pair.value_pattern);
+				collect_expression_replacements(r_context, pair.key, p_no_mangle_scope);
+				collect_pattern_replacements(r_context, pair.value_pattern, p_no_mangle_scope);
 			}
 			break;
 		default:
@@ -117,7 +123,7 @@ void collect_pattern_replacements(RewriteContext &r_context, const GDScriptParse
 	}
 }
 
-void collect_expression_replacements(RewriteContext &r_context, const GDScriptParser::ExpressionNode *p_expression) {
+void collect_expression_replacements(RewriteContext &r_context, const GDScriptParser::ExpressionNode *p_expression, bool p_no_mangle_scope) {
 	if (p_expression == nullptr) {
 		return;
 	}
@@ -127,7 +133,8 @@ void collect_expression_replacements(RewriteContext &r_context, const GDScriptPa
 			const GDScriptParser::IdentifierNode *identifier = static_cast<const GDScriptParser::IdentifierNode *>(p_expression);
 			if (is_declared_constant_identifier(r_context, identifier)) {
 				add_constant_reference_replacement(r_context, identifier, identifier->constant_source);
-			} else {
+			} else if (!p_no_mangle_scope) {
+				add_private_function_name_reference_replacement(r_context, identifier);
 				add_local_name_reference_replacement(r_context, identifier);
 			}
 		} break;
@@ -138,80 +145,82 @@ void collect_expression_replacements(RewriteContext &r_context, const GDScriptPa
 				break;
 			}
 
-			collect_expression_replacements(r_context, subscript->base);
+			collect_expression_replacements(r_context, subscript->base, p_no_mangle_scope);
 			// Attribute names are member/property lookups on the base expression, not local
 			// variable references. Local name obfuscation must not turn `position.x`
 			// into `position.a0`.
 			if (!subscript->is_attribute) {
-				collect_expression_replacements(r_context, subscript->index);
+				collect_expression_replacements(r_context, subscript->index, p_no_mangle_scope);
+			} else if (!p_no_mangle_scope) {
+				add_private_function_name_reference_replacement(r_context, subscript->attribute);
 			}
 		} break;
 		case GDScriptParser::Node::ARRAY: {
 			const GDScriptParser::ArrayNode *array = static_cast<const GDScriptParser::ArrayNode *>(p_expression);
 			for (const GDScriptParser::ExpressionNode *element : array->elements) {
-				collect_expression_replacements(r_context, element);
+				collect_expression_replacements(r_context, element, p_no_mangle_scope);
 			}
 		} break;
 		case GDScriptParser::Node::ASSIGNMENT: {
 			const GDScriptParser::AssignmentNode *assignment = static_cast<const GDScriptParser::AssignmentNode *>(p_expression);
-			collect_expression_replacements(r_context, assignment->assignee);
-			collect_expression_replacements(r_context, assignment->assigned_value);
+			collect_expression_replacements(r_context, assignment->assignee, p_no_mangle_scope);
+			collect_expression_replacements(r_context, assignment->assigned_value, p_no_mangle_scope);
 		} break;
 		case GDScriptParser::Node::AWAIT:
-			collect_expression_replacements(r_context, static_cast<const GDScriptParser::AwaitNode *>(p_expression)->to_await);
+			collect_expression_replacements(r_context, static_cast<const GDScriptParser::AwaitNode *>(p_expression)->to_await, p_no_mangle_scope);
 			break;
 		case GDScriptParser::Node::BINARY_OPERATOR: {
 			const GDScriptParser::BinaryOpNode *binary = static_cast<const GDScriptParser::BinaryOpNode *>(p_expression);
-			collect_expression_replacements(r_context, binary->left_operand);
-			collect_expression_replacements(r_context, binary->right_operand);
+			collect_expression_replacements(r_context, binary->left_operand, p_no_mangle_scope);
+			collect_expression_replacements(r_context, binary->right_operand, p_no_mangle_scope);
 		} break;
 		case GDScriptParser::Node::CALL: {
 			const GDScriptParser::CallNode *call = static_cast<const GDScriptParser::CallNode *>(p_expression);
-			collect_expression_replacements(r_context, call->callee);
+			collect_expression_replacements(r_context, call->callee, p_no_mangle_scope);
 			for (const GDScriptParser::ExpressionNode *argument : call->arguments) {
-				collect_expression_replacements(r_context, argument);
+				collect_expression_replacements(r_context, argument, p_no_mangle_scope);
 			}
 		} break;
 		case GDScriptParser::Node::CAST: {
 			const GDScriptParser::CastNode *cast = static_cast<const GDScriptParser::CastNode *>(p_expression);
-			collect_expression_replacements(r_context, cast->operand);
+			collect_expression_replacements(r_context, cast->operand, p_no_mangle_scope);
 			collect_type_replacements(r_context, cast->cast_type);
 		} break;
 		case GDScriptParser::Node::DICTIONARY: {
 			const GDScriptParser::DictionaryNode *dictionary = static_cast<const GDScriptParser::DictionaryNode *>(p_expression);
 			for (const GDScriptParser::DictionaryNode::Pair &pair : dictionary->elements) {
-				collect_expression_replacements(r_context, pair.key);
-				collect_expression_replacements(r_context, pair.value);
+				collect_expression_replacements(r_context, pair.key, p_no_mangle_scope);
+				collect_expression_replacements(r_context, pair.value, p_no_mangle_scope);
 			}
 		} break;
 		case GDScriptParser::Node::GET_NODE:
 			break;
 		case GDScriptParser::Node::LAMBDA:
-			collect_node_replacements(r_context, static_cast<const GDScriptParser::LambdaNode *>(p_expression)->function);
+			collect_node_replacements(r_context, static_cast<const GDScriptParser::LambdaNode *>(p_expression)->function, p_no_mangle_scope);
 			break;
 		case GDScriptParser::Node::PRELOAD:
-			collect_expression_replacements(r_context, static_cast<const GDScriptParser::PreloadNode *>(p_expression)->path);
+			collect_expression_replacements(r_context, static_cast<const GDScriptParser::PreloadNode *>(p_expression)->path, p_no_mangle_scope);
 			break;
 		case GDScriptParser::Node::TERNARY_OPERATOR: {
 			const GDScriptParser::TernaryOpNode *ternary = static_cast<const GDScriptParser::TernaryOpNode *>(p_expression);
-			collect_expression_replacements(r_context, ternary->condition);
-			collect_expression_replacements(r_context, ternary->true_expr);
-			collect_expression_replacements(r_context, ternary->false_expr);
+			collect_expression_replacements(r_context, ternary->condition, p_no_mangle_scope);
+			collect_expression_replacements(r_context, ternary->true_expr, p_no_mangle_scope);
+			collect_expression_replacements(r_context, ternary->false_expr, p_no_mangle_scope);
 		} break;
 		case GDScriptParser::Node::TYPE_TEST: {
 			const GDScriptParser::TypeTestNode *type_test = static_cast<const GDScriptParser::TypeTestNode *>(p_expression);
-			collect_expression_replacements(r_context, type_test->operand);
+			collect_expression_replacements(r_context, type_test->operand, p_no_mangle_scope);
 			collect_type_replacements(r_context, type_test->test_type);
 		} break;
 		case GDScriptParser::Node::UNARY_OPERATOR:
-			collect_expression_replacements(r_context, static_cast<const GDScriptParser::UnaryOpNode *>(p_expression)->operand);
+			collect_expression_replacements(r_context, static_cast<const GDScriptParser::UnaryOpNode *>(p_expression)->operand, p_no_mangle_scope);
 			break;
 		default:
 			break;
 	}
 }
 
-void collect_annotation_replacements(RewriteContext &r_context, const GDScriptParser::Node *p_node) {
+void collect_annotation_replacements(RewriteContext &r_context, const GDScriptParser::Node *p_node, bool p_no_mangle_scope) {
 	if (p_node == nullptr) {
 		return;
 	}
@@ -221,26 +230,35 @@ void collect_annotation_replacements(RewriteContext &r_context, const GDScriptPa
 			continue;
 		}
 		for (const GDScriptParser::ExpressionNode *argument : annotation->arguments) {
-			collect_expression_replacements(r_context, argument);
+			collect_expression_replacements(r_context, argument, p_no_mangle_scope);
 		}
 	}
 }
 
-void collect_constant_contents_replacements(RewriteContext &r_context, const GDScriptParser::ConstantNode *p_constant) {
+void collect_constant_contents_replacements(RewriteContext &r_context, const GDScriptParser::ConstantNode *p_constant, bool p_no_mangle_scope) {
 	if (p_constant == nullptr) {
 		return;
 	}
 
 	collect_type_replacements(r_context, p_constant->datatype_specifier);
-	collect_expression_replacements(r_context, p_constant->initializer);
+	collect_expression_replacements(r_context, p_constant->initializer, p_no_mangle_scope);
 }
 
-void collect_node_replacements(RewriteContext &r_context, const GDScriptParser::Node *p_node) {
+void collect_node_replacements(RewriteContext &r_context, const GDScriptParser::Node *p_node, bool p_no_mangle_scope) {
 	if (p_node == nullptr) {
 		return;
 	}
 
-	collect_annotation_replacements(r_context, p_node);
+	bool no_mangle_scope = p_no_mangle_scope;
+	if (p_node->type == GDScriptParser::Node::CLASS) {
+		no_mangle_scope = no_mangle_scope || static_cast<const GDScriptParser::ClassNode *>(p_node)->wgodot_no_mangle;
+	} else if (p_node->type == GDScriptParser::Node::FUNCTION) {
+		no_mangle_scope = no_mangle_scope || static_cast<const GDScriptParser::FunctionNode *>(p_node)->wgodot_no_mangle;
+	} else if (p_node->type == GDScriptParser::Node::VARIABLE) {
+		no_mangle_scope = no_mangle_scope || is_no_mangle_property_scope(static_cast<const GDScriptParser::VariableNode *>(p_node));
+	}
+
+	collect_annotation_replacements(r_context, p_node, no_mangle_scope);
 
 	switch (p_node->type) {
 		case GDScriptParser::Node::CLASS: {
@@ -259,29 +277,29 @@ void collect_node_replacements(RewriteContext &r_context, const GDScriptParser::
 			for (const GDScriptParser::ClassNode::Member &member : class_node->members) {
 				switch (member.type) {
 					case GDScriptParser::ClassNode::Member::CLASS:
-						collect_node_replacements(r_context, member.m_class);
+						collect_node_replacements(r_context, member.m_class, no_mangle_scope);
 						break;
 					case GDScriptParser::ClassNode::Member::CONSTANT:
 						if (should_deconst_constant(r_context, member.constant)) {
 							add_constant_declaration_replacement(r_context, member.constant, leave_pass_for_first_constant);
 							leave_pass_for_first_constant = false;
 						} else {
-							collect_annotation_replacements(r_context, member.constant);
-							collect_constant_contents_replacements(r_context, member.constant);
+							collect_annotation_replacements(r_context, member.constant, no_mangle_scope);
+							collect_constant_contents_replacements(r_context, member.constant, no_mangle_scope);
 						}
 						break;
 					case GDScriptParser::ClassNode::Member::FUNCTION:
-						collect_node_replacements(r_context, member.function);
+						collect_node_replacements(r_context, member.function, no_mangle_scope);
 						break;
 					case GDScriptParser::ClassNode::Member::VARIABLE:
-						collect_node_replacements(r_context, member.variable);
+						collect_node_replacements(r_context, member.variable, no_mangle_scope);
 						break;
 					case GDScriptParser::ClassNode::Member::SIGNAL:
-						collect_node_replacements(r_context, member.signal);
+						collect_node_replacements(r_context, member.signal, no_mangle_scope);
 						break;
 					case GDScriptParser::ClassNode::Member::ENUM:
 						for (const GDScriptParser::EnumNode::Value &value : member.m_enum->values) {
-							collect_expression_replacements(r_context, value.custom_value);
+							collect_expression_replacements(r_context, value.custom_value, no_mangle_scope);
 						}
 						break;
 					default:
@@ -294,26 +312,28 @@ void collect_node_replacements(RewriteContext &r_context, const GDScriptParser::
 			if (should_deconst_constant(r_context, constant)) {
 				add_constant_declaration_replacement(r_context, constant, false);
 			} else {
-				collect_constant_contents_replacements(r_context, constant);
+				collect_constant_contents_replacements(r_context, constant, no_mangle_scope);
 			}
 		} break;
 		case GDScriptParser::Node::FUNCTION: {
 			const GDScriptParser::FunctionNode *function = static_cast<const GDScriptParser::FunctionNode *>(p_node);
 			for (const GDScriptParser::ParameterNode *parameter : function->parameters) {
-				collect_parameter_replacements(r_context, parameter);
+				collect_parameter_replacements(r_context, parameter, no_mangle_scope);
 			}
 			collect_type_replacements(r_context, function->return_type);
-			collect_node_replacements(r_context, function->body);
+			collect_node_replacements(r_context, function->body, no_mangle_scope);
 		} break;
 		case GDScriptParser::Node::SIGNAL: {
 			const GDScriptParser::SignalNode *signal = static_cast<const GDScriptParser::SignalNode *>(p_node);
 			for (const GDScriptParser::ParameterNode *parameter : signal->parameters) {
-				collect_parameter_replacements(r_context, parameter);
+				collect_parameter_replacements(r_context, parameter, no_mangle_scope);
 			}
 		} break;
 		case GDScriptParser::Node::SUITE: {
 			const GDScriptParser::SuiteNode *suite = static_cast<const GDScriptParser::SuiteNode *>(p_node);
-			collect_suite_local_name_obfuscation(r_context, suite);
+			if (!no_mangle_scope) {
+				collect_suite_local_name_obfuscation(r_context, suite);
+			}
 
 			bool has_mangled_constants = false;
 			bool has_remaining_statements = false;
@@ -333,66 +353,215 @@ void collect_node_replacements(RewriteContext &r_context, const GDScriptParser::
 					add_constant_declaration_replacement(r_context, constant, leave_pass_for_first_constant);
 					leave_pass_for_first_constant = false;
 				} else {
-					collect_node_replacements(r_context, statement);
+					collect_node_replacements(r_context, statement, no_mangle_scope);
 				}
 			}
 		} break;
 		case GDScriptParser::Node::VARIABLE: {
 			const GDScriptParser::VariableNode *variable = static_cast<const GDScriptParser::VariableNode *>(p_node);
 			collect_type_replacements(r_context, variable->datatype_specifier);
-			collect_expression_replacements(r_context, variable->initializer);
+			collect_expression_replacements(r_context, variable->initializer, no_mangle_scope);
 			if (variable->setter != nullptr) {
-				collect_node_replacements(r_context, variable->setter);
+				collect_node_replacements(r_context, variable->setter, no_mangle_scope);
 			}
 			if (variable->getter != nullptr) {
-				collect_node_replacements(r_context, variable->getter);
+				collect_node_replacements(r_context, variable->getter, no_mangle_scope);
 			}
 		} break;
 		case GDScriptParser::Node::ASSERT: {
 			const GDScriptParser::AssertNode *assert_node = static_cast<const GDScriptParser::AssertNode *>(p_node);
-			collect_expression_replacements(r_context, assert_node->condition);
-			collect_expression_replacements(r_context, assert_node->message);
+			collect_expression_replacements(r_context, assert_node->condition, no_mangle_scope);
+			collect_expression_replacements(r_context, assert_node->message, no_mangle_scope);
 		} break;
 		case GDScriptParser::Node::FOR: {
 			const GDScriptParser::ForNode *for_node = static_cast<const GDScriptParser::ForNode *>(p_node);
 			collect_type_replacements(r_context, for_node->datatype_specifier);
-			collect_expression_replacements(r_context, for_node->list);
-			collect_node_replacements(r_context, for_node->loop);
+			collect_expression_replacements(r_context, for_node->list, no_mangle_scope);
+			collect_node_replacements(r_context, for_node->loop, no_mangle_scope);
 		} break;
 		case GDScriptParser::Node::IF: {
 			const GDScriptParser::IfNode *if_node = static_cast<const GDScriptParser::IfNode *>(p_node);
-			collect_expression_replacements(r_context, if_node->condition);
-			collect_node_replacements(r_context, if_node->true_block);
-			collect_node_replacements(r_context, if_node->false_block);
+			collect_expression_replacements(r_context, if_node->condition, no_mangle_scope);
+			collect_node_replacements(r_context, if_node->true_block, no_mangle_scope);
+			collect_node_replacements(r_context, if_node->false_block, no_mangle_scope);
 		} break;
 		case GDScriptParser::Node::MATCH: {
 			const GDScriptParser::MatchNode *match = static_cast<const GDScriptParser::MatchNode *>(p_node);
-			collect_expression_replacements(r_context, match->test);
+			collect_expression_replacements(r_context, match->test, no_mangle_scope);
 			for (const GDScriptParser::MatchBranchNode *branch : match->branches) {
-				collect_node_replacements(r_context, branch);
+				collect_node_replacements(r_context, branch, no_mangle_scope);
 			}
 		} break;
 		case GDScriptParser::Node::MATCH_BRANCH: {
 			const GDScriptParser::MatchBranchNode *branch = static_cast<const GDScriptParser::MatchBranchNode *>(p_node);
 			for (const GDScriptParser::PatternNode *pattern : branch->patterns) {
-				collect_pattern_replacements(r_context, pattern);
+				collect_pattern_replacements(r_context, pattern, no_mangle_scope);
 			}
-			collect_node_replacements(r_context, branch->guard_body);
-			collect_node_replacements(r_context, branch->block);
+			collect_node_replacements(r_context, branch->guard_body, no_mangle_scope);
+			collect_node_replacements(r_context, branch->block, no_mangle_scope);
 		} break;
 		case GDScriptParser::Node::RETURN:
-			collect_expression_replacements(r_context, static_cast<const GDScriptParser::ReturnNode *>(p_node)->return_value);
+			collect_expression_replacements(r_context, static_cast<const GDScriptParser::ReturnNode *>(p_node)->return_value, no_mangle_scope);
 			break;
 		case GDScriptParser::Node::WHILE: {
 			const GDScriptParser::WhileNode *while_node = static_cast<const GDScriptParser::WhileNode *>(p_node);
-			collect_expression_replacements(r_context, while_node->condition);
-			collect_node_replacements(r_context, while_node->loop);
+			collect_expression_replacements(r_context, while_node->condition, no_mangle_scope);
+			collect_node_replacements(r_context, while_node->loop, no_mangle_scope);
 		} break;
 		default:
 			if (p_node->is_expression()) {
-				collect_expression_replacements(r_context, static_cast<const GDScriptParser::ExpressionNode *>(p_node));
+				collect_expression_replacements(r_context, static_cast<const GDScriptParser::ExpressionNode *>(p_node), no_mangle_scope);
 			}
 			break;
+	}
+}
+
+void collect_no_mangle_constants_in_expression(RewriteContext &r_context, const GDScriptParser::ExpressionNode *p_expression, bool p_no_mangle_scope) {
+	if (p_expression == nullptr) {
+		return;
+	}
+
+	switch (p_expression->type) {
+		case GDScriptParser::Node::ARRAY: {
+			const GDScriptParser::ArrayNode *array = static_cast<const GDScriptParser::ArrayNode *>(p_expression);
+			for (const GDScriptParser::ExpressionNode *element : array->elements) {
+				collect_no_mangle_constants_in_expression(r_context, element, p_no_mangle_scope);
+			}
+		} break;
+		case GDScriptParser::Node::ASSIGNMENT: {
+			const GDScriptParser::AssignmentNode *assignment = static_cast<const GDScriptParser::AssignmentNode *>(p_expression);
+			collect_no_mangle_constants_in_expression(r_context, assignment->assignee, p_no_mangle_scope);
+			collect_no_mangle_constants_in_expression(r_context, assignment->assigned_value, p_no_mangle_scope);
+		} break;
+		case GDScriptParser::Node::AWAIT:
+			collect_no_mangle_constants_in_expression(r_context, static_cast<const GDScriptParser::AwaitNode *>(p_expression)->to_await, p_no_mangle_scope);
+			break;
+		case GDScriptParser::Node::BINARY_OPERATOR: {
+			const GDScriptParser::BinaryOpNode *binary = static_cast<const GDScriptParser::BinaryOpNode *>(p_expression);
+			collect_no_mangle_constants_in_expression(r_context, binary->left_operand, p_no_mangle_scope);
+			collect_no_mangle_constants_in_expression(r_context, binary->right_operand, p_no_mangle_scope);
+		} break;
+		case GDScriptParser::Node::CALL: {
+			const GDScriptParser::CallNode *call = static_cast<const GDScriptParser::CallNode *>(p_expression);
+			collect_no_mangle_constants_in_expression(r_context, call->callee, p_no_mangle_scope);
+			for (const GDScriptParser::ExpressionNode *argument : call->arguments) {
+				collect_no_mangle_constants_in_expression(r_context, argument, p_no_mangle_scope);
+			}
+		} break;
+		case GDScriptParser::Node::CAST: {
+			const GDScriptParser::CastNode *cast = static_cast<const GDScriptParser::CastNode *>(p_expression);
+			collect_no_mangle_constants_in_expression(r_context, cast->operand, p_no_mangle_scope);
+		} break;
+		case GDScriptParser::Node::DICTIONARY: {
+			const GDScriptParser::DictionaryNode *dictionary = static_cast<const GDScriptParser::DictionaryNode *>(p_expression);
+			for (const GDScriptParser::DictionaryNode::Pair &pair : dictionary->elements) {
+				collect_no_mangle_constants_in_expression(r_context, pair.key, p_no_mangle_scope);
+				collect_no_mangle_constants_in_expression(r_context, pair.value, p_no_mangle_scope);
+			}
+		} break;
+		case GDScriptParser::Node::LAMBDA:
+			collect_no_mangle_constants(r_context, static_cast<const GDScriptParser::LambdaNode *>(p_expression)->function, p_no_mangle_scope);
+			break;
+		case GDScriptParser::Node::PRELOAD:
+			collect_no_mangle_constants_in_expression(r_context, static_cast<const GDScriptParser::PreloadNode *>(p_expression)->path, p_no_mangle_scope);
+			break;
+		case GDScriptParser::Node::SUBSCRIPT: {
+			const GDScriptParser::SubscriptNode *subscript = static_cast<const GDScriptParser::SubscriptNode *>(p_expression);
+			collect_no_mangle_constants_in_expression(r_context, subscript->base, p_no_mangle_scope);
+			if (!subscript->is_attribute) {
+				collect_no_mangle_constants_in_expression(r_context, subscript->index, p_no_mangle_scope);
+			}
+		} break;
+		case GDScriptParser::Node::TERNARY_OPERATOR: {
+			const GDScriptParser::TernaryOpNode *ternary = static_cast<const GDScriptParser::TernaryOpNode *>(p_expression);
+			collect_no_mangle_constants_in_expression(r_context, ternary->condition, p_no_mangle_scope);
+			collect_no_mangle_constants_in_expression(r_context, ternary->true_expr, p_no_mangle_scope);
+			collect_no_mangle_constants_in_expression(r_context, ternary->false_expr, p_no_mangle_scope);
+		} break;
+		case GDScriptParser::Node::TYPE_TEST:
+			collect_no_mangle_constants_in_expression(r_context, static_cast<const GDScriptParser::TypeTestNode *>(p_expression)->operand, p_no_mangle_scope);
+			break;
+		case GDScriptParser::Node::UNARY_OPERATOR:
+			collect_no_mangle_constants_in_expression(r_context, static_cast<const GDScriptParser::UnaryOpNode *>(p_expression)->operand, p_no_mangle_scope);
+			break;
+		default:
+			break;
+	}
+}
+
+void collect_no_mangle_constants(RewriteContext &r_context, const GDScriptParser::Node *p_node, bool p_no_mangle_scope) {
+	if (p_node == nullptr) {
+		return;
+	}
+
+	bool no_mangle_scope = p_no_mangle_scope;
+	if (p_node->type == GDScriptParser::Node::CLASS) {
+		no_mangle_scope = no_mangle_scope || static_cast<const GDScriptParser::ClassNode *>(p_node)->wgodot_no_mangle;
+	} else if (p_node->type == GDScriptParser::Node::FUNCTION) {
+		no_mangle_scope = no_mangle_scope || static_cast<const GDScriptParser::FunctionNode *>(p_node)->wgodot_no_mangle;
+	} else if (p_node->type == GDScriptParser::Node::VARIABLE) {
+		no_mangle_scope = no_mangle_scope || is_no_mangle_property_scope(static_cast<const GDScriptParser::VariableNode *>(p_node));
+	}
+
+	switch (p_node->type) {
+		case GDScriptParser::Node::CLASS: {
+			const GDScriptParser::ClassNode *class_node = static_cast<const GDScriptParser::ClassNode *>(p_node);
+			for (const GDScriptParser::ClassNode::Member &member : class_node->members) {
+				switch (member.type) {
+					case GDScriptParser::ClassNode::Member::CLASS:
+						collect_no_mangle_constants(r_context, member.m_class, no_mangle_scope);
+						break;
+					case GDScriptParser::ClassNode::Member::CONSTANT:
+						collect_no_mangle_constants(r_context, member.constant, no_mangle_scope);
+						break;
+					case GDScriptParser::ClassNode::Member::FUNCTION:
+						collect_no_mangle_constants(r_context, member.function, no_mangle_scope);
+						break;
+					case GDScriptParser::ClassNode::Member::VARIABLE:
+						collect_no_mangle_constants(r_context, member.variable, no_mangle_scope);
+						break;
+					default:
+						break;
+				}
+			}
+		} break;
+		case GDScriptParser::Node::CONSTANT: {
+			const GDScriptParser::ConstantNode *constant = static_cast<const GDScriptParser::ConstantNode *>(p_node);
+			if (no_mangle_scope || constant->wgodot_no_mangle) {
+				r_context.no_mangle_constants.insert(constant);
+			}
+			collect_no_mangle_constants_in_expression(r_context, constant->initializer, no_mangle_scope || constant->wgodot_no_mangle);
+		} break;
+		case GDScriptParser::Node::FUNCTION:
+			collect_no_mangle_constants(r_context, static_cast<const GDScriptParser::FunctionNode *>(p_node)->body, no_mangle_scope);
+			break;
+		case GDScriptParser::Node::SUITE: {
+			const GDScriptParser::SuiteNode *suite = static_cast<const GDScriptParser::SuiteNode *>(p_node);
+			for (const GDScriptParser::Node *statement : suite->statements) {
+				collect_no_mangle_constants(r_context, statement, no_mangle_scope);
+			}
+		} break;
+		case GDScriptParser::Node::VARIABLE: {
+			const GDScriptParser::VariableNode *variable = static_cast<const GDScriptParser::VariableNode *>(p_node);
+			collect_no_mangle_constants_in_expression(r_context, variable->initializer, no_mangle_scope);
+			collect_no_mangle_constants(r_context, variable->setter, no_mangle_scope);
+			collect_no_mangle_constants(r_context, variable->getter, no_mangle_scope);
+		} break;
+		default:
+			if (p_node->is_expression()) {
+				collect_no_mangle_constants_in_expression(r_context, static_cast<const GDScriptParser::ExpressionNode *>(p_node), no_mangle_scope);
+			}
+			break;
+	}
+}
+
+void collect_private_function_names(RewriteContext &r_context, const GDScriptParser::Node *p_node, bool p_no_mangle_scope) {
+	if (!r_context.options.obfuscate_local_variables || p_node == nullptr) {
+		return;
+	}
+
+	if (p_node->type == GDScriptParser::Node::CLASS) {
+		collect_private_function_name_obfuscation(r_context, static_cast<const GDScriptParser::ClassNode *>(p_node), p_no_mangle_scope);
 	}
 }
 
@@ -480,7 +649,10 @@ String transform_source(const String &p_source, const String &p_path, const Tran
 	context.source = p_source;
 	context.options = p_options;
 	build_line_offsets(context);
-	collect_node_replacements(context, analyzed_source.parser->get_tree());
+	const GDScriptParser::ClassNode *tree = analyzed_source.parser->get_tree();
+	collect_no_mangle_constants(context, tree, false);
+	collect_private_function_names(context, tree, false);
+	collect_node_replacements(context, tree, false);
 	if (context.replacements.is_empty()) {
 		return p_source;
 	}

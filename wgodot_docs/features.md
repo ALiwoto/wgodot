@@ -32,9 +32,9 @@ in gdscript code, then export it, and decompile the code, you should not see `MA
 self.check_health(100)
 ```
 
-10. `@no_mangle`: marks a named declaration as something export-time transforms must not rename, remove, or rewrite. De-const currently uses it for constants, including local constants inside functions; future obfuscation/name-hashing features can use the same marker for classes, functions, enums, signals, and variables.
+10. `@no_mangle`: marks a named declaration as something export-time transforms must not rename, remove, or rewrite. On constants, it protects only that constant. On classes, functions, and properties with getter/setter bodies, it protects the whole subtree from name obfuscation and from removing constants declared inside that subtree. References to constants declared outside the no-mangle subtree may still be inlined if those outside constants are removed from their declaration site.
 
-11. Local variable obfuscation: controlled by `debug/gdscript/wgodot/obfuscate_local_variables` (true by default). During export, function parameters, local variables, `for` iterators, and match-pattern binds are renamed before text, binary-token, and compressed-binary-token script export. Local variables marked `@no_mangle` are not renamed.
+11. Name obfuscation: controlled by `debug/gdscript/wgodot/obfuscate_local_variables` (true by default). During export, function parameters, local variables, `for` iterators, match-pattern binds, and `@private` method names are renamed before text, binary-token, and compressed-binary-token script export. Local variables marked `@no_mangle` are not renamed, and `@no_mangle` function/class/property scopes are skipped recursively.
 
 12. Obfuscation strategy: controlled by `debug/gdscript/wgodot/obfuscation_strategy` (`Short`, `Hash`, `Unicode`). The setting is exposed as an enum, but only `Short` is implemented right now; selecting `Hash` or `Unicode` falls back to `Short` for now.
 
