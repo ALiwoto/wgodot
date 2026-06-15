@@ -12,6 +12,10 @@ concurrency:
   group: wgodot-ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  actions: write
+  contents: read
+
 env:
   PYTHONIOENCODING: utf8
   SCONS_FLAGS: >-
@@ -93,6 +97,7 @@ jobs:
             angle=${{ steps.angle-sdk.outputs.ANGLE_ENABLED }}
 
       - name: Save Godot build cache
+        if: github.event_name != 'pull_request'
         uses: ./.github/actions/wgodot-cache-save
         with:
           cache-name: wgodot-ci-windows-editor
@@ -163,6 +168,7 @@ jobs:
           scons-flags: ${{ env.SCONS_FLAGS }} ${{ matrix.scons-flags }}
 
       - name: Save Godot build cache
+        if: github.event_name != 'pull_request'
         uses: ./.github/actions/wgodot-cache-save
         with:
           cache-name: ${{ matrix.cache-name }}
