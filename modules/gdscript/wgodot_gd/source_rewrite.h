@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "export_context.h"
 #include "export_transform.h"
 
 #include "../gdscript_parser.h"
@@ -25,7 +26,9 @@ struct Replacement {
 
 struct RewriteContext {
 	String source;
+	String script_path;
 	TransformOptions options;
+	ExportContext *export_context = nullptr;
 	Vector<int> line_offsets;
 	Vector<Replacement> replacements;
 	HashSet<StringName> reserved_obfuscated_names;

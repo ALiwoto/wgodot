@@ -329,6 +329,11 @@ void EditorExportPlugin::_export_file(const String &p_path, const String &p_type
 void EditorExportPlugin::_export_begin(const HashSet<String> &p_features, bool p_debug, const String &p_path, int p_flags) {
 }
 
+// wgodot-changes::begin
+void EditorExportPlugin::_export_paths_ready(const HashSet<String> &p_paths) {
+}
+// wgodot-changes::end
+
 void EditorExportPlugin::_export_end() {}
 
 void EditorExportPlugin::_end_generate_apple_embedded_project(const String &p_path, bool p_p_will_build_archive) {}

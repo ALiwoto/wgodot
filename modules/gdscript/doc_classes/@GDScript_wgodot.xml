@@ -31,6 +31,22 @@
 				[/codeblock]
 			</description>
 		</annotation>
+		<annotation name="@obfuscate">
+			<return type="void" />
+			<description>
+				Marks the following function or variable/property declaration for export-time name obfuscation without changing its access rules.
+				When [code]debug/gdscript/wgodot/obfuscate_names[/code] is enabled, exported GDScript rewrites this declaration and analyzed member usages to the same obfuscated name. This is intentionally explicit and does not rewrite string-reflection calls such as [code]get("member_name")[/code]; use [annotation @no_mangle] when a dynamically accessed member must keep its original name.
+				This annotation can be combined with [annotation @no_mangle]; in that case, [annotation @no_mangle] wins and the declaration keeps its original name.
+				[codeblock]
+				@obfuscate
+				var public_cache: Dictionary
+
+				@obfuscate
+				func rebuild_cache() -> void:
+					pass
+				[/codeblock]
+			</description>
+		</annotation>
 		<annotation name="@partial" qualifiers="vararg">
 			<return type="void" />
 			<param index="0" name="path" type="String" />

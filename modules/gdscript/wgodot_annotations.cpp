@@ -16,6 +16,7 @@ void GDScriptParser::register_wgodot_annotations() {
 	register_annotation(MethodInfo("@readonly"), AnnotationInfo::VARIABLE | AnnotationInfo::STATEMENT, &GDScriptParser::wgodot_readonly_annotation);
 	register_annotation(MethodInfo("@static_class"), AnnotationInfo::CLASS, &GDScriptParser::wgodot_static_class_annotation);
 	register_annotation(MethodInfo("@no_mangle"), AnnotationInfo::SCRIPT | AnnotationInfo::CLASS_LEVEL | AnnotationInfo::STATEMENT | AnnotationInfo::ENUM, &GDScriptParser::wgodot_no_mangle_annotation);
+	register_annotation(MethodInfo("@obfuscate"), AnnotationInfo::FUNCTION | AnnotationInfo::VARIABLE, &GDScriptParser::wgodot_obfuscate_annotation);
 	register_annotation(MethodInfo("@partial", PropertyInfo(Variant::STRING, "path")), AnnotationInfo::SCRIPT | AnnotationInfo::CLASS, &GDScriptParser::wgodot_noop_annotation, Vector<Variant>(), true);
 }
 
@@ -309,6 +310,39 @@ bool GDScriptParser::wgodot_no_mangle_annotation(AnnotationNode *p_annotation, N
 		}
 		default:
 			push_error(R"("@no_mangle" annotation can only be applied to named declarations.)", p_annotation);
+			return false;
+	}
+}
+
+bool GDScriptParser::wgodot_obfuscate_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class) {
+	(void)p_class;
+
+	if (p_target == nullptr) {
+		push_error(R"("@obfuscate" annotation can only be applied to functions and variables.)", p_annotation);
+		return false;
+	}
+
+	switch (p_target->type) {
+		case Node::FUNCTION: {
+			FunctionNode *function = static_cast<FunctionNode *>(p_target);
+			if (function->wgodot_obfuscate) {
+				push_error(R"("@obfuscate" annotation can only be used once per function.)", p_annotation);
+				return false;
+			}
+			function->wgodot_obfuscate = true;
+			return true;
+		}
+		case Node::VARIABLE: {
+			VariableNode *variable = static_cast<VariableNode *>(p_target);
+			if (variable->wgodot_obfuscate) {
+				push_error(R"("@obfuscate" annotation can only be used once per variable.)", p_annotation);
+				return false;
+			}
+			variable->wgodot_obfuscate = true;
+			return true;
+		}
+		default:
+			push_error(R"("@obfuscate" annotation can only be applied to functions and variables.)", p_annotation);
 			return false;
 	}
 }

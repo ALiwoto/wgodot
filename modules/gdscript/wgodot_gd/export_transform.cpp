@@ -6,6 +6,7 @@
 #include "export_transform.h"
 
 #include "deconst_transform.h"
+#include "export_context.h"
 #include "name_obfuscation.h"
 #include "source_rewrite.h"
 
@@ -15,6 +16,7 @@
 
 #include "core/config/project_settings.h"
 #include "core/error/error_macros.h"
+#include "core/io/file_access.h"
 
 namespace {
 
@@ -71,7 +73,7 @@ private:
 };
 
 void collect_no_mangle_constants(RewriteContext &r_context, const GDScriptParser::Node *p_node, bool p_no_mangle_scope);
-void collect_private_member_names(RewriteContext &r_context, const GDScriptParser::Node *p_node, bool p_no_mangle_scope);
+void collect_member_names(RewriteContext &r_context, const GDScriptParser::Node *p_node, bool p_no_mangle_scope);
 void collect_expression_replacements(RewriteContext &r_context, const GDScriptParser::ExpressionNode *p_expression, bool p_no_mangle_scope);
 void collect_node_replacements(RewriteContext &r_context, const GDScriptParser::Node *p_node, bool p_no_mangle_scope);
 
@@ -97,6 +99,7 @@ bool should_strip_export_annotation(const GDScriptParser::AnnotationNode *p_anno
 	static const StringName stripped_annotations[] = {
 		SNAME("@private"),
 		SNAME("@no_mangle"),
+		SNAME("@obfuscate"),
 	};
 
 	for (const StringName &annotation_name : stripped_annotations) {
@@ -184,7 +187,7 @@ void collect_expression_replacements(RewriteContext &r_context, const GDScriptPa
 			if (is_declared_constant_identifier(r_context, identifier)) {
 				add_constant_reference_replacement(r_context, identifier, identifier->constant_source);
 			} else {
-				add_private_member_name_reference_replacement(r_context, identifier);
+				add_member_name_reference_replacement(r_context, identifier);
 				if (!p_no_mangle_scope) {
 					add_local_name_reference_replacement(r_context, identifier);
 				}
@@ -204,7 +207,7 @@ void collect_expression_replacements(RewriteContext &r_context, const GDScriptPa
 			if (!subscript->is_attribute) {
 				collect_expression_replacements(r_context, subscript->index, p_no_mangle_scope);
 			} else {
-				add_private_member_name_reference_replacement(r_context, subscript->attribute);
+				add_attribute_member_name_reference_replacement(r_context, subscript->base, subscript->attribute);
 			}
 		} break;
 		case GDScriptParser::Node::ARRAY: {
@@ -348,8 +351,8 @@ void collect_node_replacements(RewriteContext &r_context, const GDScriptParser::
 						break;
 					case GDScriptParser::ClassNode::Member::VARIABLE:
 						if (!no_mangle_scope && member.variable != nullptr && member.variable->property == GDScriptParser::VariableNode::PROP_SETGET) {
-							add_private_function_pointer_replacement(r_context, class_node, member.variable->setter_pointer);
-							add_private_function_pointer_replacement(r_context, class_node, member.variable->getter_pointer);
+							add_function_pointer_replacement(r_context, class_node, member.variable->setter_pointer);
+							add_function_pointer_replacement(r_context, class_node, member.variable->getter_pointer);
 						}
 						collect_node_replacements(r_context, member.variable, no_mangle_scope);
 						break;
@@ -614,13 +617,13 @@ void collect_no_mangle_constants(RewriteContext &r_context, const GDScriptParser
 	}
 }
 
-void collect_private_member_names(RewriteContext &r_context, const GDScriptParser::Node *p_node, bool p_no_mangle_scope) {
+void collect_member_names(RewriteContext &r_context, const GDScriptParser::Node *p_node, bool p_no_mangle_scope) {
 	if (!r_context.options.obfuscate_names || p_node == nullptr) {
 		return;
 	}
 
 	if (p_node->type == GDScriptParser::Node::CLASS) {
-		collect_private_member_name_obfuscation(r_context, static_cast<const GDScriptParser::ClassNode *>(p_node), p_no_mangle_scope);
+		collect_member_name_obfuscation(r_context, static_cast<const GDScriptParser::ClassNode *>(p_node), p_no_mangle_scope);
 	}
 }
 
@@ -649,17 +652,9 @@ String get_parser_errors_text(const GDScriptParser &p_parser) {
 	return details;
 }
 
-bool parse_and_analyze(const String &p_source, const String &p_path, String *r_error_details = nullptr) {
+bool parse_only(const String &p_source, const String &p_path, String *r_error_details = nullptr) {
 	GDScriptParser parser;
 	if (parser.parse(p_source, p_path, false) != OK) {
-		if (r_error_details != nullptr) {
-			*r_error_details = get_parser_errors_text(parser);
-		}
-		return false;
-	}
-
-	GDScriptAnalyzer analyzer(&parser);
-	if (analyzer.analyze() != OK) {
 		if (r_error_details != nullptr) {
 			*r_error_details = get_parser_errors_text(parser);
 		}
@@ -686,11 +681,50 @@ TransformOptions setup_params() {
 	return options;
 }
 
+void prescan_project_scripts(ExportContext *p_context, const HashSet<String> &p_paths) {
+	if (p_context == nullptr) {
+		return;
+	}
+
+	const TransformOptions options = setup_params();
+	p_context->set_options(options);
+	if (!options.obfuscate_names) {
+		return;
+	}
+
+	for (const String &path : p_paths) {
+		if (path.get_extension() != "gd") {
+			continue;
+		}
+
+		const Vector<uint8_t> file = FileAccess::get_file_as_bytes(path);
+		if (file.is_empty()) {
+			continue;
+		}
+
+		const String source = String::utf8(reinterpret_cast<const char *>(file.ptr()), file.size());
+		AnalyzedSource analyzed_source;
+		if (!analyzed_source.load(source, path)) {
+			continue;
+		}
+
+		p_context->index_script(analyzed_source.parser->get_tree(), path);
+	}
+}
+
 String transform_source(const String &p_source, const String &p_path, bool *r_changed) {
-	return transform_source(p_source, p_path, setup_params(), r_changed);
+	return transform_source(p_source, p_path, setup_params(), nullptr, r_changed);
+}
+
+String transform_source(const String &p_source, const String &p_path, ExportContext *p_context, bool *r_changed) {
+	return transform_source(p_source, p_path, setup_params(), p_context, r_changed);
 }
 
 String transform_source(const String &p_source, const String &p_path, const TransformOptions &p_options, bool *r_changed) {
+	return transform_source(p_source, p_path, p_options, nullptr, r_changed);
+}
+
+String transform_source(const String &p_source, const String &p_path, const TransformOptions &p_options, ExportContext *p_context, bool *r_changed) {
 	if (r_changed != nullptr) {
 		*r_changed = false;
 	}
@@ -706,11 +740,16 @@ String transform_source(const String &p_source, const String &p_path, const Tran
 
 	RewriteContext context;
 	context.source = p_source;
+	context.script_path = p_path;
 	context.options = p_options;
+	context.export_context = p_context;
+	if (context.export_context != nullptr) {
+		context.export_context->set_options(p_options);
+	}
 	build_line_offsets(context);
 	const GDScriptParser::ClassNode *tree = analyzed_source.parser->get_tree();
 	collect_no_mangle_constants(context, tree, false);
-	collect_private_member_names(context, tree, false);
+	collect_member_names(context, tree, false);
 	collect_node_replacements(context, tree, false);
 	if (context.replacements.is_empty()) {
 		return p_source;
@@ -722,7 +761,7 @@ String transform_source(const String &p_source, const String &p_path, const Tran
 	}
 
 	String validation_error;
-	if (!parse_and_analyze(transformed, p_path, &validation_error)) {
+	if (!parse_only(transformed, p_path, &validation_error)) {
 		WARN_PRINT("Failed to validate wgodot-transformed GDScript export for '" + p_path + "'. Exporting original script source.\n" + validation_error);
 		return p_source;
 	}

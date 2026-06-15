@@ -1441,6 +1441,15 @@ Error EditorExportPlatform::export_project_files(const Ref<EditorExportPreset> &
 	// Always sort by name, to so if for some reason they are re-arranged, it still works.
 	export_plugins.sort_custom<SortByName>();
 
+	// wgodot-changes::begin
+	// Let wgodot export transforms pre-index exactly the files Godot is about
+	// to export. This uses the already-built export path set, including preset
+	// filters and EditorFileSystem ignore rules, instead of rescanning `res://`.
+	for (int i = 0; i < export_plugins.size(); i++) {
+		export_plugins.write[i]->_export_paths_ready(paths);
+	}
+	// wgodot-changes::end
+
 	HashSet<String> features = get_features(p_preset, p_debug);
 	PackedStringArray features_psa;
 	for (const String &feature : features) {

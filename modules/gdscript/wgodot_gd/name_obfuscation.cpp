@@ -5,37 +5,15 @@
 
 #include "name_obfuscation.h"
 
+#include "export_context.h"
+#include "obfuscation_names.h"
+
 #include "core/error/error_macros.h"
 
 namespace {
 
-String make_short_obfuscated_name(int p_index) {
-	static const char *letters = "abcdefghijklmnopqrstuvwxyz";
-	const int digit = p_index % 10;
-	int group = p_index / 10;
-
-	String prefix;
-	do {
-		prefix = String::chr(letters[group % 26]) + prefix;
-		group = (group / 26) - 1;
-	} while (group >= 0);
-
-	return prefix + itos(digit);
-}
-
 String make_obfuscated_local_name(WGodotGDScriptExportTransform::RewriteContext &r_context) {
-	if (r_context.options.obfuscation_strategy != WGodotGDScriptExportTransform::OBFUSCATION_STRATEGY_SHORT) {
-		WARN_PRINT_ONCE("WGodot local variable obfuscation currently only supports the 'short' strategy. Falling back to 'short'.");
-	}
-
-	while (true) {
-		const String candidate = make_short_obfuscated_name(r_context.obfuscated_local_counter++);
-		const StringName candidate_name(candidate);
-		if (!r_context.reserved_obfuscated_names.has(candidate_name)) {
-			r_context.reserved_obfuscated_names.insert(candidate_name);
-			return candidate;
-		}
-	}
+	return WGodotGDScriptExportTransform::make_obfuscated_name(r_context.options.obfuscation_strategy, r_context.obfuscated_local_counter, r_context.reserved_obfuscated_names, "local variable");
 }
 
 const GDScriptParser::Node *get_local_declaration_node(const GDScriptParser::SuiteNode::Local &p_local) {
@@ -83,7 +61,7 @@ bool should_obfuscate_function(const GDScriptParser::FunctionNode *p_function, b
 	return !p_no_mangle_scope &&
 			p_function != nullptr &&
 			p_function->identifier != nullptr &&
-			p_function->wgodot_private &&
+			(p_function->wgodot_private || p_function->wgodot_obfuscate) &&
 			!p_function->wgodot_no_mangle;
 }
 
@@ -91,8 +69,79 @@ bool should_obfuscate_variable(const GDScriptParser::VariableNode *p_variable, b
 	return !p_no_mangle_scope &&
 			p_variable != nullptr &&
 			p_variable->identifier != nullptr &&
-			p_variable->wgodot_private &&
+			(p_variable->wgodot_private || p_variable->wgodot_obfuscate) &&
 			!p_variable->wgodot_no_mangle;
+}
+
+String get_or_create_context_member_name(WGodotGDScriptExportTransform::RewriteContext &r_context, const Vector<String> &p_keys) {
+	if (r_context.export_context == nullptr || p_keys.is_empty()) {
+		return String();
+	}
+
+	for (const String &key : p_keys) {
+		const String *existing = r_context.export_context->get_member_rename(key);
+		if (existing != nullptr) {
+			for (const String &alias_key : p_keys) {
+				r_context.export_context->bind_member_rename(alias_key, *existing);
+			}
+			return *existing;
+		}
+	}
+
+	const String obfuscated_name = r_context.export_context->get_or_create_member_rename(p_keys[0]);
+	for (int i = 1; i < p_keys.size(); i++) {
+		r_context.export_context->bind_member_rename(p_keys[i], obfuscated_name);
+	}
+	return obfuscated_name;
+}
+
+String get_datatype_class_key(const GDScriptParser::DataType &p_datatype) {
+	if (p_datatype.class_type != nullptr && !p_datatype.class_type->fqcn.is_empty()) {
+		return p_datatype.class_type->fqcn;
+	}
+	if (!p_datatype.script_path.is_empty()) {
+		return p_datatype.script_path;
+	}
+	if (p_datatype.class_type != nullptr && p_datatype.class_type->identifier != nullptr) {
+		return String(p_datatype.class_type->identifier->name);
+	}
+	return String();
+}
+
+bool is_no_mangle_datatype_class(const GDScriptParser::DataType &p_datatype) {
+	return p_datatype.class_type != nullptr && p_datatype.class_type->wgodot_no_mangle;
+}
+
+void reserve_datatype_class_member_names(WGodotGDScriptExportTransform::RewriteContext &r_context, const GDScriptParser::DataType &p_datatype) {
+	if (r_context.export_context == nullptr || p_datatype.class_type == nullptr) {
+		return;
+	}
+
+	for (const GDScriptParser::ClassNode::Member &member : p_datatype.class_type->members) {
+		const String member_name = member.get_name();
+		if (!member_name.is_empty()) {
+			r_context.export_context->reserve_member_name(StringName(member_name));
+		}
+	}
+}
+
+bool source_allows_context_member_obfuscation(const GDScriptParser::IdentifierNode *p_identifier) {
+	if (p_identifier == nullptr) {
+		return false;
+	}
+
+	if (p_identifier->source == GDScriptParser::IdentifierNode::MEMBER_FUNCTION && p_identifier->function_source != nullptr) {
+		return p_identifier->function_source->wgodot_obfuscate && !p_identifier->function_source->wgodot_no_mangle;
+	}
+
+	if ((p_identifier->source == GDScriptParser::IdentifierNode::MEMBER_VARIABLE ||
+				p_identifier->source == GDScriptParser::IdentifierNode::STATIC_VARIABLE ||
+				p_identifier->source == GDScriptParser::IdentifierNode::INHERITED_VARIABLE) &&
+			p_identifier->variable_source != nullptr) {
+		return p_identifier->variable_source->wgodot_obfuscate && !p_identifier->variable_source->wgodot_no_mangle;
+	}
+
+	return false;
 }
 
 const GDScriptParser::Node *get_local_identifier_source(const GDScriptParser::IdentifierNode *p_identifier) {
@@ -117,7 +166,7 @@ const GDScriptParser::Node *get_local_identifier_source(const GDScriptParser::Id
 
 namespace WGodotGDScriptExportTransform {
 
-void collect_private_member_name_obfuscation(RewriteContext &r_context, const GDScriptParser::ClassNode *p_class, bool p_no_mangle_scope) {
+void collect_member_name_obfuscation(RewriteContext &r_context, const GDScriptParser::ClassNode *p_class, bool p_no_mangle_scope) {
 	if (!r_context.options.obfuscate_names || p_class == nullptr) {
 		return;
 	}
@@ -126,6 +175,9 @@ void collect_private_member_name_obfuscation(RewriteContext &r_context, const GD
 	for (const GDScriptParser::ClassNode::Member &member : p_class->members) {
 		if (!String(member.get_name()).is_empty()) {
 			r_context.reserved_obfuscated_names.insert(StringName(member.get_name()));
+			if (r_context.export_context != nullptr) {
+				r_context.export_context->reserve_member_name(StringName(member.get_name()));
+			}
 		}
 	}
 
@@ -136,14 +188,22 @@ void collect_private_member_name_obfuscation(RewriteContext &r_context, const GD
 	for (const GDScriptParser::ClassNode::Member &member : p_class->members) {
 		switch (member.type) {
 			case GDScriptParser::ClassNode::Member::CLASS:
-				collect_private_member_name_obfuscation(r_context, member.m_class, no_mangle_scope);
+				collect_member_name_obfuscation(r_context, member.m_class, no_mangle_scope);
 				break;
 			case GDScriptParser::ClassNode::Member::FUNCTION: {
 				if (!should_obfuscate_function(member.function, no_mangle_scope) || r_context.obfuscated_function_names.has(member.function)) {
 					break;
 				}
 
-				const String obfuscated_name = make_obfuscated_local_name(r_context);
+				String obfuscated_name;
+				if (member.function->wgodot_obfuscate) {
+					Vector<String> keys;
+					ExportContext::make_member_keys(p_class, r_context.script_path, member.function->identifier->name, keys);
+					obfuscated_name = get_or_create_context_member_name(r_context, keys);
+				}
+				if (obfuscated_name.is_empty()) {
+					obfuscated_name = make_obfuscated_local_name(r_context);
+				}
 				r_context.obfuscated_function_names[member.function] = obfuscated_name;
 				add_replacement(r_context, member.function->identifier, obfuscated_name);
 			} break;
@@ -152,7 +212,15 @@ void collect_private_member_name_obfuscation(RewriteContext &r_context, const GD
 					break;
 				}
 
-				const String obfuscated_name = make_obfuscated_local_name(r_context);
+				String obfuscated_name;
+				if (member.variable->wgodot_obfuscate) {
+					Vector<String> keys;
+					ExportContext::make_member_keys(p_class, r_context.script_path, member.variable->identifier->name, keys);
+					obfuscated_name = get_or_create_context_member_name(r_context, keys);
+				}
+				if (obfuscated_name.is_empty()) {
+					obfuscated_name = make_obfuscated_local_name(r_context);
+				}
 				r_context.obfuscated_variable_names[member.variable] = obfuscated_name;
 				add_replacement(r_context, member.variable->identifier, obfuscated_name);
 			} break;
@@ -162,7 +230,7 @@ void collect_private_member_name_obfuscation(RewriteContext &r_context, const GD
 	}
 }
 
-void add_private_member_name_reference_replacement(RewriteContext &r_context, const GDScriptParser::IdentifierNode *p_identifier) {
+void add_member_name_reference_replacement(RewriteContext &r_context, const GDScriptParser::IdentifierNode *p_identifier) {
 	if (!r_context.options.obfuscate_names || p_identifier == nullptr) {
 		return;
 	}
@@ -183,7 +251,37 @@ void add_private_member_name_reference_replacement(RewriteContext &r_context, co
 	}
 }
 
-void add_private_function_pointer_replacement(RewriteContext &r_context, const GDScriptParser::ClassNode *p_class, const GDScriptParser::IdentifierNode *p_identifier) {
+void add_attribute_member_name_reference_replacement(RewriteContext &r_context, const GDScriptParser::ExpressionNode *p_base, const GDScriptParser::IdentifierNode *p_identifier) {
+	add_member_name_reference_replacement(r_context, p_identifier);
+
+	if (!r_context.options.obfuscate_names || r_context.export_context == nullptr || p_base == nullptr || p_identifier == nullptr) {
+		return;
+	}
+	if (!source_allows_context_member_obfuscation(p_identifier)) {
+		return;
+	}
+
+	const GDScriptParser::DataType base_type = p_base->get_datatype();
+	if (is_no_mangle_datatype_class(base_type)) {
+		return;
+	}
+	reserve_datatype_class_member_names(r_context, base_type);
+
+	const String class_key = get_datatype_class_key(base_type);
+	const String member_key = ExportContext::make_member_key(class_key, p_identifier->name);
+	if (member_key.is_empty()) {
+		return;
+	}
+
+	const String obfuscated_name = r_context.export_context->get_or_create_member_rename(member_key);
+	if (obfuscated_name.is_empty()) {
+		return;
+	}
+
+	add_replacement(r_context, p_identifier, obfuscated_name);
+}
+
+void add_function_pointer_replacement(RewriteContext &r_context, const GDScriptParser::ClassNode *p_class, const GDScriptParser::IdentifierNode *p_identifier) {
 	if (!r_context.options.obfuscate_names || p_class == nullptr || p_identifier == nullptr || !p_class->has_function(p_identifier->name)) {
 		return;
 	}

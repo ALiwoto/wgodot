@@ -892,6 +892,7 @@ public:
 		bool wgodot_protected = false;
 		bool wgodot_override = false;
 		bool wgodot_no_mangle = false;
+		bool wgodot_obfuscate = false;
 		// wgodot-changes::end
 		Variant rpc_config;
 		MethodInfo info;
@@ -1309,6 +1310,7 @@ public:
 		bool wgodot_protected = false;
 		bool wgodot_readonly = false;
 		bool wgodot_no_mangle = false;
+		bool wgodot_obfuscate = false;
 		// wgodot-changes::end
 		PropertyInfo export_info;
 		int assignments = 0;
@@ -1631,6 +1633,7 @@ private:
 	bool wgodot_readonly_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	bool wgodot_static_class_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	bool wgodot_no_mangle_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
+	bool wgodot_obfuscate_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	// wgodot-changes::end
 	// Statements.
 	Node *parse_statement();

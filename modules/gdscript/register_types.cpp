@@ -37,6 +37,7 @@
 #include "gdscript_tokenizer_buffer.h"
 #include "gdscript_utility_functions.h"
 // wgodot-changes::begin
+#include "wgodot_gd/export_context.h"
 #include "wgodot_gd/export_transform.h"
 // wgodot-changes::end
 
@@ -88,16 +89,29 @@ class EditorExportGDScript : public EditorExportPlugin {
 
 	static constexpr EditorExportPreset::ScriptExportMode DEFAULT_SCRIPT_MODE = EditorExportPreset::MODE_SCRIPT_BINARY_TOKENS_COMPRESSED;
 	EditorExportPreset::ScriptExportMode script_mode = DEFAULT_SCRIPT_MODE;
+	// wgodot-changes::begin
+	WGodotGDScriptExportTransform::ExportContext transform_context;
+	// wgodot-changes::end
 
 protected:
 	virtual void _export_begin(const HashSet<String> &p_features, bool p_debug, const String &p_path, int p_flags) override {
 		script_mode = DEFAULT_SCRIPT_MODE;
+		// wgodot-changes::begin
+		transform_context.reset();
+		// wgodot-changes::end
 
 		const Ref<EditorExportPreset> &preset = get_export_preset();
 		if (preset.is_valid()) {
 			script_mode = preset->get_script_export_mode();
 		}
 	}
+
+	// wgodot-changes::begin
+	virtual void _export_paths_ready(const HashSet<String> &p_paths) override {
+		transform_context.reset();
+		WGodotGDScriptExportTransform::prescan_project_scripts(&transform_context, p_paths);
+	}
+	// wgodot-changes::end
 
 	virtual void _export_file(const String &p_path, const String &p_type, const HashSet<String> &p_features) override {
 		// wgodot-changes::begin
@@ -117,7 +131,7 @@ protected:
 		String source = String::utf8(reinterpret_cast<const char *>(file.ptr()), file.size());
 		// wgodot-changes::begin
 		bool source_changed = false;
-		source = WGodotGDScriptExportTransform::transform_source(source, p_path, &source_changed);
+		source = WGodotGDScriptExportTransform::transform_source(source, p_path, &transform_context, &source_changed);
 		if (script_mode == EditorExportPreset::MODE_SCRIPT_TEXT) {
 			if (source_changed) {
 				add_file(p_path, source.to_utf8_buffer(), false);

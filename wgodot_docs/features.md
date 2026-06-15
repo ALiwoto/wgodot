@@ -34,11 +34,13 @@ self.check_health(100)
 
 10. `@no_mangle`: marks a named declaration as something export-time transforms must not rename, remove, or rewrite. On constants, it protects only that constant. On classes, functions, and properties with getter/setter bodies, it protects declarations inside that subtree from name obfuscation and from removing constants declared inside that subtree. Usages inside the subtree still follow the declaration they reference; for example, a use of an outside `@private` field is renamed if that outside field declaration is renamed.
 
-11. Name obfuscation: controlled by `debug/gdscript/wgodot/obfuscate_names` (true by default). During export, function parameters, local variables, `for` iterators, match-pattern binds, and `@private` field/property/method names are renamed before text, binary-token, and compressed-binary-token script export. Local variables marked `@no_mangle` are not renamed, and `@no_mangle` function/class/property scopes are skipped recursively. Combining `@no_mangle` with `@private` keeps the private access rule, but opts that declaration out of export-time name obfuscation.
+11. Name obfuscation: controlled by `debug/gdscript/wgodot/obfuscate_names` (true by default). During export, function parameters, local variables, `for` iterators, match-pattern binds, `@private` field/property/method names, and explicit `@obfuscate` field/property/method names are renamed before text, binary-token, and compressed-binary-token script export. Local variables marked `@no_mangle` are not renamed, and `@no_mangle` function/class/property scopes are skipped recursively. Combining `@no_mangle` with `@private` or `@obfuscate` opts that declaration out of export-time name obfuscation.
 
-12. Export annotation stripping: wgodot strips `@private` and `@no_mangle` annotations from exported GDScript after they have been used by export-time transforms, so exported code does not keep those reverse-engineering hints.
+12. `@obfuscate`: marks a function or variable/property declaration for export-time name obfuscation without applying the access restrictions of `@private`. This is explicit and does not try to rewrite string-reflection calls such as `get("member_name")`; use `@no_mangle` if a dynamically accessed member must keep its original name.
 
-13. Obfuscation strategy: controlled by `debug/gdscript/wgodot/obfuscation_strategy` (`Short`, `Hash`, `Unicode`). The setting is exposed as an enum, but only `Short` is implemented right now; selecting `Hash` or `Unicode` falls back to `Short` for now.
+13. Export annotation stripping: wgodot strips `@private`, `@no_mangle`, and `@obfuscate` annotations from exported GDScript after they have been used by export-time transforms, so exported code does not keep those reverse-engineering hints.
+
+14. Obfuscation strategy: controlled by `debug/gdscript/wgodot/obfuscation_strategy` (`Short`, `Hash`, `Unicode`). The setting is exposed as an enum, but only `Short` is implemented right now; selecting `Hash` or `Unicode` falls back to `Short` for now.
 
 ## Annotation documentation
 
