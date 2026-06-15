@@ -10,6 +10,7 @@
 #include "source_rewrite.h"
 
 #include "../gdscript_analyzer.h"
+#include "../gdscript_cache.h"
 #include "../gdscript_parser.h"
 
 #include "core/config/project_settings.h"
@@ -18,6 +19,56 @@
 namespace {
 
 using namespace WGodotGDScriptExportTransform;
+
+struct AnalyzedSource {
+	GDScriptParser local_parser;
+	Ref<GDScriptParserRef> cached_parser_ref;
+	GDScriptParser *parser = nullptr;
+
+	bool load(const String &p_source, const String &p_path) {
+		if (load_from_cache(p_source, p_path)) {
+			return true;
+		}
+
+		return load_local(p_source, p_path);
+	}
+
+private:
+	bool load_from_cache(const String &p_source, const String &p_path) {
+		if (!GDScriptCache::has_parser(p_path)) {
+			return false;
+		}
+
+		Error err = OK;
+		cached_parser_ref = GDScriptCache::get_parser(p_path, GDScriptParserRef::FULLY_SOLVED, err);
+		if (err != OK || cached_parser_ref.is_null()) {
+			cached_parser_ref.unref();
+			return false;
+		}
+
+		if (cached_parser_ref->get_source_hash() != p_source.hash()) {
+			cached_parser_ref.unref();
+			return false;
+		}
+
+		parser = cached_parser_ref->get_parser();
+		return parser != nullptr;
+	}
+
+	bool load_local(const String &p_source, const String &p_path) {
+		if (local_parser.parse(p_source, p_path, false) != OK) {
+			return false;
+		}
+
+		GDScriptAnalyzer analyzer(&local_parser);
+		if (analyzer.analyze() != OK) {
+			return false;
+		}
+
+		parser = &local_parser;
+		return true;
+	}
+};
 
 void collect_expression_replacements(RewriteContext &r_context, const GDScriptParser::ExpressionNode *p_expression);
 void collect_node_replacements(RewriteContext &r_context, const GDScriptParser::Node *p_node);
@@ -384,13 +435,8 @@ String transform_source(const String &p_source, const String &p_path, const Tran
 		return p_source;
 	}
 
-	GDScriptParser parser;
-	if (parser.parse(p_source, p_path, false) != OK) {
-		return p_source;
-	}
-
-	GDScriptAnalyzer analyzer(&parser);
-	if (analyzer.analyze() != OK) {
+	AnalyzedSource analyzed_source;
+	if (!analyzed_source.load(p_source, p_path)) {
 		return p_source;
 	}
 
@@ -398,7 +444,7 @@ String transform_source(const String &p_source, const String &p_path, const Tran
 	context.source = p_source;
 	context.options = p_options;
 	build_line_offsets(context);
-	collect_node_replacements(context, parser.get_tree());
+	collect_node_replacements(context, analyzed_source.parser->get_tree());
 	if (context.replacements.is_empty()) {
 		return p_source;
 	}
