@@ -395,14 +395,49 @@ void collect_node_replacements(RewriteContext &r_context, const GDScriptParser::
 	}
 }
 
-bool parse_and_analyze(const String &p_source, const String &p_path) {
+String get_parser_errors_text(const GDScriptParser &p_parser) {
+	const List<GDScriptParser::ParserError> &errors = p_parser.get_errors();
+	if (errors.is_empty()) {
+		return "no parser/analyzer error details were reported";
+	}
+
+	String details;
+	const int max_errors = 5;
+	int error_count = 0;
+	for (const GDScriptParser::ParserError &error : errors) {
+		if (error_count >= max_errors) {
+			details += "\n  ...";
+			break;
+		}
+
+		if (!details.is_empty()) {
+			details += "\n";
+		}
+		details += vformat("  line %d, column %d: %s", error.start_line, error.start_column, error.message);
+		error_count++;
+	}
+
+	return details;
+}
+
+bool parse_and_analyze(const String &p_source, const String &p_path, String *r_error_details = nullptr) {
 	GDScriptParser parser;
 	if (parser.parse(p_source, p_path, false) != OK) {
+		if (r_error_details != nullptr) {
+			*r_error_details = get_parser_errors_text(parser);
+		}
 		return false;
 	}
 
 	GDScriptAnalyzer analyzer(&parser);
-	return analyzer.analyze() == OK;
+	if (analyzer.analyze() != OK) {
+		if (r_error_details != nullptr) {
+			*r_error_details = get_parser_errors_text(parser);
+		}
+		return false;
+	}
+
+	return true;
 }
 
 } // namespace
@@ -454,8 +489,9 @@ String transform_source(const String &p_source, const String &p_path, const Tran
 		return p_source;
 	}
 
-	if (!parse_and_analyze(transformed, p_path)) {
-		WARN_PRINT("Failed to validate wgodot-transformed GDScript export for '" + p_path + "'. Exporting original script source.");
+	String validation_error;
+	if (!parse_and_analyze(transformed, p_path, &validation_error)) {
+		WARN_PRINT("Failed to validate wgodot-transformed GDScript export for '" + p_path + "'. Exporting original script source.\n" + validation_error);
 		return p_source;
 	}
 
