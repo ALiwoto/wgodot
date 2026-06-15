@@ -89,6 +89,56 @@ bool is_no_mangle_property_scope(const GDScriptParser::VariableNode *p_variable)
 	return p_variable != nullptr && p_variable->wgodot_no_mangle && (p_variable->setter != nullptr || p_variable->getter != nullptr);
 }
 
+bool should_strip_export_annotation(const GDScriptParser::AnnotationNode *p_annotation) {
+	if (p_annotation == nullptr) {
+		return false;
+	}
+
+	static const StringName stripped_annotations[] = {
+		SNAME("@private"),
+		SNAME("@no_mangle"),
+	};
+
+	for (const StringName &annotation_name : stripped_annotations) {
+		if (p_annotation->name == annotation_name) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+void add_annotation_strip_replacement(RewriteContext &r_context, const GDScriptParser::AnnotationNode *p_annotation) {
+	ERR_FAIL_NULL(p_annotation);
+
+	int start = get_offset(r_context, p_annotation->start_line, p_annotation->start_column);
+	int end = get_offset(r_context, p_annotation->end_line, p_annotation->end_column);
+	if (start < 0 || end < start) {
+		return;
+	}
+
+	const int line_start = get_line_start_offset(r_context, p_annotation->start_line);
+	const int line_end = get_line_end_offset(r_context, p_annotation->end_line);
+	if (line_start >= 0 && line_end >= end) {
+		const String before = r_context.source.substr(line_start, start - line_start).strip_edges();
+		const String after = r_context.source.substr(end, line_end - end).strip_edges();
+		if (before.is_empty() && (after.is_empty() || after.begins_with("#"))) {
+			start = line_start;
+			if (p_annotation->end_line < r_context.line_offsets.size()) {
+				end = r_context.line_offsets[p_annotation->end_line];
+			} else {
+				end = line_end;
+			}
+		}
+	}
+
+	Replacement replacement;
+	replacement.start = start;
+	replacement.end = end;
+	replacement.text = "";
+	r_context.replacements.push_back(replacement);
+}
+
 void collect_parameter_replacements(RewriteContext &r_context, const GDScriptParser::ParameterNode *p_parameter, bool p_no_mangle_scope) {
 	if (p_parameter == nullptr) {
 		return;
@@ -230,6 +280,9 @@ void collect_annotation_replacements(RewriteContext &r_context, const GDScriptPa
 	for (const GDScriptParser::AnnotationNode *annotation : p_node->annotations) {
 		if (annotation == nullptr) {
 			continue;
+		}
+		if (should_strip_export_annotation(annotation)) {
+			add_annotation_strip_replacement(r_context, annotation);
 		}
 		for (const GDScriptParser::ExpressionNode *argument : annotation->arguments) {
 			collect_expression_replacements(r_context, argument, p_no_mangle_scope);

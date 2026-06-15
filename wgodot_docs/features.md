@@ -36,7 +36,9 @@ self.check_health(100)
 
 11. Name obfuscation: controlled by `debug/gdscript/wgodot/obfuscate_names` (true by default). During export, function parameters, local variables, `for` iterators, match-pattern binds, and `@private` field/property/method names are renamed before text, binary-token, and compressed-binary-token script export. Local variables marked `@no_mangle` are not renamed, and `@no_mangle` function/class/property scopes are skipped recursively. Combining `@no_mangle` with `@private` keeps the private access rule, but opts that declaration out of export-time name obfuscation.
 
-12. Obfuscation strategy: controlled by `debug/gdscript/wgodot/obfuscation_strategy` (`Short`, `Hash`, `Unicode`). The setting is exposed as an enum, but only `Short` is implemented right now; selecting `Hash` or `Unicode` falls back to `Short` for now.
+12. Export annotation stripping: wgodot strips `@private` and `@no_mangle` annotations from exported GDScript after they have been used by export-time transforms, so exported code does not keep those reverse-engineering hints.
+
+13. Obfuscation strategy: controlled by `debug/gdscript/wgodot/obfuscation_strategy` (`Short`, `Hash`, `Unicode`). The setting is exposed as an enum, but only `Short` is implemented right now; selecting `Hash` or `Unicode` falls back to `Short` for now.
 
 ## Annotation documentation
 
