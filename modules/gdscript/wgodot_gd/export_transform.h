@@ -1,13 +1,13 @@
 // wgodot-changes::file
 /**************************************************************************/
-/*  wgodot_deconst_export.h                                               */
+/*  export_transform.h                                                    */
 /**************************************************************************/
 
 #pragma once
 
 #include "core/string/ustring.h"
 
-namespace WGodotGDScriptDeconstExport {
+namespace WGodotGDScriptExportTransform {
 
 enum ObfuscationStrategy {
 	OBFUSCATION_STRATEGY_SHORT,
@@ -21,7 +21,8 @@ struct TransformOptions {
 	ObfuscationStrategy obfuscation_strategy = OBFUSCATION_STRATEGY_SHORT;
 };
 
+TransformOptions setup_params();
+String transform_source(const String &p_source, const String &p_path, bool *r_changed = nullptr);
 String transform_source(const String &p_source, const String &p_path, const TransformOptions &p_options, bool *r_changed = nullptr);
-String sanitize_source(const String &p_source, const String &p_path, bool *r_changed = nullptr);
 
-} // namespace WGodotGDScriptDeconstExport
+} // namespace WGodotGDScriptExportTransform

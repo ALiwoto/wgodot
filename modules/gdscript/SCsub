@@ -7,6 +7,9 @@ Import("env_modules")
 env_gdscript = env_modules.Clone()
 
 env_gdscript.add_source_files(env.modules_sources, "*.cpp")
+# wgodot-changes::begin
+env_gdscript.add_source_files(env.modules_sources, "./wgodot_gd/*.cpp")
+# wgodot-changes::end
 
 if env.editor_build:
     env_gdscript.add_source_files(env.modules_sources, "./editor/*.cpp")

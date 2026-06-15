@@ -37,7 +37,7 @@
 #include "gdscript_tokenizer_buffer.h"
 #include "gdscript_utility_functions.h"
 // wgodot-changes::begin
-#include "wgodot_deconst_export.h"
+#include "wgodot_gd/export_transform.h"
 // wgodot-changes::end
 
 #ifdef TOOLS_ENABLED
@@ -59,9 +59,6 @@
 #include "core/io/resource_loader.h"
 #include "core/io/resource_saver.h"
 #include "core/object/class_db.h"
-// wgodot-changes::begin
-#include "core/config/project_settings.h"
-// wgodot-changes::end
 
 #ifdef TOOLS_ENABLED
 #include "editor/editor_node.h"
@@ -120,16 +117,7 @@ protected:
 		String source = String::utf8(reinterpret_cast<const char *>(file.ptr()), file.size());
 		// wgodot-changes::begin
 		bool source_changed = false;
-		WGodotGDScriptDeconstExport::TransformOptions transform_options;
-		transform_options.deconst_exports = GLOBAL_GET_CACHED(bool, "debug/gdscript/wgodot/deconst_exports");
-		transform_options.obfuscate_local_variables = GLOBAL_GET_CACHED(bool, "debug/gdscript/wgodot/obfuscate_local_variables");
-		const int obfuscation_strategy = GLOBAL_GET_CACHED(int, "debug/gdscript/wgodot/obfuscation_strategy");
-		if (obfuscation_strategy >= WGodotGDScriptDeconstExport::OBFUSCATION_STRATEGY_SHORT && obfuscation_strategy <= WGodotGDScriptDeconstExport::OBFUSCATION_STRATEGY_UNICODE) {
-			transform_options.obfuscation_strategy = static_cast<WGodotGDScriptDeconstExport::ObfuscationStrategy>(obfuscation_strategy);
-		}
-		if (transform_options.deconst_exports || transform_options.obfuscate_local_variables) {
-			source = WGodotGDScriptDeconstExport::transform_source(source, p_path, transform_options, &source_changed);
-		}
+		source = WGodotGDScriptExportTransform::transform_source(source, p_path, &source_changed);
 		if (script_mode == EditorExportPreset::MODE_SCRIPT_TEXT) {
 			if (source_changed) {
 				add_file(p_path, source.to_utf8_buffer(), false);
