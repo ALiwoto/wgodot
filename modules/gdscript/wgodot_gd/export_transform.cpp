@@ -139,9 +139,10 @@ void collect_expression_replacements(RewriteContext &r_context, const GDScriptPa
 			}
 
 			collect_expression_replacements(r_context, subscript->base);
-			if (subscript->is_attribute) {
-				collect_expression_replacements(r_context, subscript->attribute);
-			} else {
+			// Attribute names are member/property lookups on the base expression, not local
+			// variable references. Local name obfuscation must not turn `position.x`
+			// into `position.a0`.
+			if (!subscript->is_attribute) {
 				collect_expression_replacements(r_context, subscript->index);
 			}
 		} break;
