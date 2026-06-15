@@ -2,14 +2,25 @@ name: wgodot export templates
 
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag to upload assets to.
+        required: false
+        type: string
+      upload_to_release:
+        description: Upload built archives to the release tag.
+        required: false
+        default: false
+        type: boolean
   release:
     types: [published]
 
 concurrency:
-  group: wgodot-export-templates-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.event_name == 'release' && format('wgodot-export-templates-dispatch-{0}', github.run_id) || 'wgodot-export-templates-build' }}
+  cancel-in-progress: false
 
 permissions:
+  actions: write
   contents: write
 
 env:
@@ -20,8 +31,26 @@ env:
     module_text_server_fb_enabled=yes
 
 jobs:
+  dispatch-release-build:
+    name: Dispatch release build on default branch
+    if: github.event_name == 'release'
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Dispatch release build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          gh workflow run wgodot_export_templates.yml \
+            --ref "$DEFAULT_BRANCH" \
+            -f release_tag="$RELEASE_TAG" \
+            -f upload_to_release=true
+
   linux-editor:
     name: Linux editor
+    if: github.event_name != 'release'
     runs-on: ubuntu-22.04
     timeout-minutes: 180
 
@@ -32,7 +61,7 @@ jobs:
           submodules: recursive
 
       - name: Restore Godot build cache
-        uses: ./.github/actions/godot-cache-restore
+        uses: ./.github/actions/wgodot-cache-restore
         with:
           cache-name: wgodot-linux-editor
         continue-on-error: true
@@ -48,7 +77,7 @@ jobs:
           scons-flags: ${{ env.SCONS_FLAGS }} accesskit=no
 
       - name: Save Godot build cache
-        uses: ./.github/actions/godot-cache-save
+        uses: ./.github/actions/wgodot-cache-save
         with:
           cache-name: wgodot-linux-editor
         continue-on-error: true
@@ -68,14 +97,15 @@ jobs:
           path: editor_build/*
 
       - name: Upload Linux editor to release
-        if: github.event_name == 'release'
+        if: inputs.upload_to_release && inputs.release_tag != ''
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: gh release upload "$RELEASE_TAG" release_assets/wgodot-linux-editor-x86_64.tar.gz --clobber
 
   windows-editor:
     name: Windows editor
+    if: github.event_name != 'release'
     runs-on: windows-latest
     timeout-minutes: 180
 
@@ -86,7 +116,7 @@ jobs:
           submodules: recursive
 
       - name: Restore Godot build cache
-        uses: ./.github/actions/godot-cache-restore
+        uses: ./.github/actions/wgodot-cache-restore
         with:
           cache-name: wgodot-windows-editor
         continue-on-error: true
@@ -148,7 +178,7 @@ jobs:
             angle=${{ steps.angle-sdk.outputs.ANGLE_ENABLED }}
 
       - name: Save Godot build cache
-        uses: ./.github/actions/godot-cache-save
+        uses: ./.github/actions/wgodot-cache-save
         with:
           cache-name: wgodot-windows-editor
         continue-on-error: true
@@ -168,14 +198,15 @@ jobs:
           path: editor_build/*
 
       - name: Upload Windows editor to release
-        if: github.event_name == 'release'
+        if: inputs.upload_to_release && inputs.release_tag != ''
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: gh release upload $env:RELEASE_TAG release_assets/wgodot-windows-editor-x86_64.zip --clobber
 
   android-templates:
     name: Android templates
+    if: github.event_name != 'release'
     runs-on: ubuntu-24.04
     timeout-minutes: 180
 
@@ -192,7 +223,7 @@ jobs:
           java-version: 17
 
       - name: Restore Godot build cache
-        uses: ./.github/actions/godot-cache-restore
+        uses: ./.github/actions/wgodot-cache-restore
         with:
           cache-name: wgodot-android-templates
         continue-on-error: true
@@ -253,7 +284,7 @@ jobs:
           ls -l bin/android_*.apk bin/android_source.zip
 
       - name: Save Godot build cache
-        uses: ./.github/actions/godot-cache-save
+        uses: ./.github/actions/wgodot-cache-save
         with:
           cache-name: wgodot-android-templates
         continue-on-error: true
@@ -273,14 +304,15 @@ jobs:
           path: export_templates/*
 
       - name: Upload Android templates to release
-        if: github.event_name == 'release'
+        if: inputs.upload_to_release && inputs.release_tag != ''
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: gh release upload "$RELEASE_TAG" release_assets/wgodot-android-templates.tar.gz --clobber
 
   linux-templates:
     name: Linux templates
+    if: github.event_name != 'release'
     runs-on: ubuntu-22.04
     timeout-minutes: 180
 
@@ -291,7 +323,7 @@ jobs:
           submodules: recursive
 
       - name: Restore Godot build cache
-        uses: ./.github/actions/godot-cache-restore
+        uses: ./.github/actions/wgodot-cache-restore
         with:
           cache-name: wgodot-linux-templates
         continue-on-error: true
@@ -314,7 +346,7 @@ jobs:
           scons-flags: ${{ env.SCONS_FLAGS }} accesskit=no
 
       - name: Save Godot build cache
-        uses: ./.github/actions/godot-cache-save
+        uses: ./.github/actions/wgodot-cache-save
         with:
           cache-name: wgodot-linux-templates
         continue-on-error: true
@@ -334,14 +366,15 @@ jobs:
           path: export_templates/*
 
       - name: Upload Linux templates to release
-        if: github.event_name == 'release'
+        if: inputs.upload_to_release && inputs.release_tag != ''
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: gh release upload "$RELEASE_TAG" release_assets/wgodot-linux-templates-x86_64.tar.gz --clobber
 
   windows-templates:
     name: Windows templates
+    if: github.event_name != 'release'
     runs-on: windows-latest
     timeout-minutes: 180
 
@@ -352,7 +385,7 @@ jobs:
           submodules: recursive
 
       - name: Restore Godot build cache
-        uses: ./.github/actions/godot-cache-restore
+        uses: ./.github/actions/wgodot-cache-restore
         with:
           cache-name: wgodot-windows-templates
         continue-on-error: true
@@ -424,7 +457,7 @@ jobs:
             angle=${{ steps.angle-sdk.outputs.ANGLE_ENABLED }}
 
       - name: Save Godot build cache
-        uses: ./.github/actions/godot-cache-save
+        uses: ./.github/actions/wgodot-cache-save
         with:
           cache-name: wgodot-windows-templates
         continue-on-error: true
@@ -451,14 +484,15 @@ jobs:
           path: export_templates/*
 
       - name: Upload Windows templates to release
-        if: github.event_name == 'release'
+        if: inputs.upload_to_release && inputs.release_tag != ''
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: gh release upload $env:RELEASE_TAG release_assets/wgodot-windows-templates-x86_64.zip --clobber
 
   web-templates:
     name: Web templates
+    if: github.event_name != 'release'
     runs-on: ubuntu-24.04
     timeout-minutes: 180
 
@@ -475,7 +509,7 @@ jobs:
           no-cache: true
 
       - name: Restore Godot build cache
-        uses: ./.github/actions/godot-cache-restore
+        uses: ./.github/actions/wgodot-cache-restore
         with:
           cache-name: wgodot-web-templates
         continue-on-error: true
@@ -512,7 +546,7 @@ jobs:
           scons-flags: ${{ env.SCONS_FLAGS }} threads=no arch=wasm32 use_closure_compiler=yes
 
       - name: Save Godot build cache
-        uses: ./.github/actions/godot-cache-save
+        uses: ./.github/actions/wgodot-cache-save
         with:
           cache-name: wgodot-web-templates
         continue-on-error: true
@@ -533,8 +567,8 @@ jobs:
           path: export_templates/*
 
       - name: Upload Web templates to release
-        if: github.event_name == 'release'
+        if: inputs.upload_to_release && inputs.release_tag != ''
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: gh release upload "$RELEASE_TAG" release_assets/wgodot-web-templates-wasm32.tar.gz --clobber

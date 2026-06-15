@@ -27,3 +27,11 @@ in case the entire file is for us, add this at the beginning of the file:
 
 5. when we add an entirely new feature, preferably add it to `wgodot_docs/features.md` to file, so we can keep tracking our custom features.
 
+6. DO NOT TOUCH GIT. Git is for humans. You are allowed to do read-only git operations, but DO NOT do things that will modify the repo. e.g. do NOT unstage changes. Changes are staged when they are reviewed, etc.
+
+7. DO NOT CHANGE THE PLAN MID-WAY. When we've talked about a specific plan beforehand and you are editing files, and then you research about something and find out that that thing is not possible, DO NOT CHANGE THE PLANS and make entirely different edits. First STOP and ask the user about whether this plan is ok or not, and explain why the previous agreed-upon plan cannot be done and discuss it properly with the user BEFORE doing any new plans.
+
+
+8. The main goals for GitHub workflows:
+  - make sure the build time is reduced because of caches
+  - don't bomb github's infrastructure with thousands of repeated caches

@@ -1,0 +1,29 @@
+# wgodot-changes::file
+name: Save wgodot build cache
+description: Replace a wgodot SCons cache using an exact key.
+inputs:
+  cache-name:
+    description: The exact cache key.
+    default: ${{ github.job }}
+  scons-cache:
+    description: The SCons cache path.
+    default: ${{ github.workspace }}/.scons_cache/
+
+runs:
+  using: composite
+  steps:
+    - name: Purge files before timestamp
+      shell: sh
+      run: misc/scripts/purge_cache.py "${CACHE_TIMESTAMP:-0}" "${{ inputs.scons-cache }}"
+
+    - name: Delete previous wgodot cache
+      shell: sh
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: gh cache delete "${{ inputs.cache-name }}" --repo "$GITHUB_REPOSITORY" || true
+
+    - name: Save wgodot cache
+      uses: actions/cache/save@v5
+      with:
+        path: ${{ inputs.scons-cache }}
+        key: ${{ inputs.cache-name }}

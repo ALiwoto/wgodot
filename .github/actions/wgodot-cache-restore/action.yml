@@ -1,0 +1,23 @@
+# wgodot-changes::file
+name: Restore wgodot build cache
+description: Restore a mutable-by-delete wgodot SCons cache.
+inputs:
+  cache-name:
+    description: The exact cache key.
+    default: ${{ github.job }}
+  scons-cache:
+    description: The SCons cache path.
+    default: ${{ github.workspace }}/.scons_cache/
+
+runs:
+  using: composite
+  steps:
+    - name: Restore wgodot cache
+      uses: actions/cache/restore@v5
+      with:
+        path: ${{ inputs.scons-cache }}
+        key: ${{ inputs.cache-name }}
+
+    - name: Store unix timestamp
+      shell: sh
+      run: echo "CACHE_TIMESTAMP=$(date +%s)" >> "$GITHUB_ENV"
