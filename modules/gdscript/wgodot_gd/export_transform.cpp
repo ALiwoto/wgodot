@@ -232,6 +232,7 @@ void collect_expression_replacements(RewriteContext &r_context, const GDScriptPa
 		case GDScriptParser::Node::CALL: {
 			const GDScriptParser::CallNode *call = static_cast<const GDScriptParser::CallNode *>(p_expression);
 			collect_expression_replacements(r_context, call->callee, p_no_mangle_scope);
+			add_call_member_name_reference_replacement(r_context, call);
 			for (const GDScriptParser::ExpressionNode *argument : call->arguments) {
 				collect_expression_replacements(r_context, argument, p_no_mangle_scope);
 			}
