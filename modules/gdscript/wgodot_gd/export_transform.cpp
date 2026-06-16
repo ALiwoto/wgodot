@@ -168,6 +168,57 @@ void add_annotation_strip_replacement(RewriteContext &r_context, const GDScriptP
 	r_context.replacements.push_back(replacement);
 }
 
+bool overlaps_existing_replacement(const RewriteContext &p_context, int p_start, int p_end) {
+	for (const Replacement &replacement : p_context.replacements) {
+		if (p_start < replacement.end && p_end > replacement.start) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+void collect_comment_replacements(RewriteContext &r_context, const GDScriptParser &p_parser) {
+	if (!r_context.options.strip_comments) {
+		return;
+	}
+
+#ifdef TOOLS_ENABLED
+	for (const KeyValue<int, GDScriptTokenizer::CommentData> &comment_kv : p_parser.comment_data) {
+		const int line = comment_kv.key;
+		const GDScriptTokenizer::CommentData &comment = comment_kv.value;
+		const int line_start = get_line_start_offset(r_context, line);
+		const int line_end = get_line_end_offset(r_context, line);
+		if (line_start < 0 || line_end < line_start) {
+			continue;
+		}
+
+		Replacement replacement;
+		if (comment.new_line) {
+			replacement.start = line_start;
+			if (line < r_context.line_offsets.size()) {
+				replacement.end = r_context.line_offsets[line];
+			} else {
+				replacement.end = line_end;
+			}
+		} else {
+			const String line_text = r_context.source.substr(line_start, line_end - line_start);
+			const int comment_offset = line_text.find(comment.comment);
+			if (comment_offset < 0) {
+				continue;
+			}
+			replacement.start = line_start + comment_offset;
+			replacement.end = line_end;
+		}
+		if (overlaps_existing_replacement(r_context, replacement.start, replacement.end)) {
+			continue;
+		}
+		replacement.text = "";
+		r_context.replacements.push_back(replacement);
+	}
+#endif
+}
+
 void collect_parameter_replacements(RewriteContext &r_context, const GDScriptParser::ParameterNode *p_parameter, bool p_no_mangle_scope) {
 	if (p_parameter == nullptr) {
 		return;
@@ -349,6 +400,8 @@ void collect_node_replacements(RewriteContext &r_context, const GDScriptParser::
 	switch (p_node->type) {
 		case GDScriptParser::Node::CLASS: {
 			const GDScriptParser::ClassNode *class_node = static_cast<const GDScriptParser::ClassNode *>(p_node);
+			const GDScriptParser::ClassNode *previous_class = r_context.current_class;
+			r_context.current_class = class_node;
 			add_class_declaration_name_replacement(r_context, class_node);
 			collect_extends_replacements(r_context, class_node);
 			bool has_mangled_constants = false;
@@ -398,6 +451,7 @@ void collect_node_replacements(RewriteContext &r_context, const GDScriptParser::
 						break;
 				}
 			}
+			r_context.current_class = previous_class;
 		} break;
 		case GDScriptParser::Node::CONSTANT: {
 			const GDScriptParser::ConstantNode *constant = static_cast<const GDScriptParser::ConstantNode *>(p_node);
@@ -851,7 +905,7 @@ String transform_source(const String &p_source, const String &p_path, const Tran
 		*r_changed = false;
 	}
 
-	if (!p_options.deconst_exports && !p_options.obfuscate_names) {
+	if (!p_options.deconst_exports && !p_options.obfuscate_names && !p_options.strip_comments) {
 		return p_source;
 	}
 
@@ -888,6 +942,7 @@ String transform_source(const String &p_source, const String &p_path, const Tran
 	collect_no_mangle_constants(context, tree, false);
 	collect_member_names(context, tree, false);
 	collect_node_replacements(context, tree, false);
+	collect_comment_replacements(context, *analyzed_source.parser);
 	if (context.replacements.is_empty()) {
 		return p_source;
 	}
