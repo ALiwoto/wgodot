@@ -61,10 +61,46 @@ bool should_obfuscate_local(const GDScriptParser::SuiteNode::Local &p_local) {
 	}
 }
 
+bool is_gdscript_magic_function_name(const StringName &p_name) {
+	static const StringName magic_names[] = {
+		SNAME("_init"),
+		SNAME("_notification"),
+		SNAME("_enter_tree"),
+		SNAME("_ready"),
+		SNAME("_process"),
+		SNAME("_physics_process"),
+		SNAME("_input"),
+		SNAME("_shortcut_input"),
+		SNAME("_unhandled_input"),
+		SNAME("_unhandled_key_input"),
+		SNAME("_exit_tree"),
+		SNAME("_draw"),
+		SNAME("_get"),
+		SNAME("_set"),
+		SNAME("_get_property_list"),
+		SNAME("_validate_property"),
+		SNAME("_property_can_revert"),
+		SNAME("_property_get_revert"),
+		SNAME("_to_string"),
+		SNAME("_iter_init"),
+		SNAME("_iter_next"),
+		SNAME("_iter_get"),
+	};
+
+	for (const StringName &magic_name : magic_names) {
+		if (p_name == magic_name) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
 bool should_obfuscate_function(const GDScriptParser::FunctionNode *p_function, bool p_no_mangle_scope, bool p_obfuscate_scope) {
 	return !p_no_mangle_scope &&
 			p_function != nullptr &&
 			p_function->identifier != nullptr &&
+			!is_gdscript_magic_function_name(p_function->identifier->name) &&
 			(p_obfuscate_scope || p_function->wgodot_private || p_function->wgodot_obfuscate) &&
 			!p_function->wgodot_no_mangle;
 }
