@@ -1,51 +1,39 @@
 # WGodot Features
 
-1. `@override`: allows you to override a function, if gdscript/wgodot/strict_override_checking is true, the engine will force you to use it.
+This file tracks user-facing wgodot features. It intentionally avoids internal export-file and C++ implementation details.
 
-2. `@private`: won't allow the usage of var/func outside of the current class.
+## GDScript Safety
 
-3. `@protected`: won't allow the usage of var/func outside of the current class and its children.
+1. `@override`: marks a method as intentionally overriding a parent method. When `wgodot/gdscript/strict_override_checking` is enabled, overrides must use it.
 
-4. `@readonly`: only allows setting the variable in-place, or if the variable is a class-field, only in class initializer.
+2. `@private`: limits a variable or function to the current class/file.
 
-5. `@static_class`: will mark the class as static, it will prevent usage of non-static or non-const members and initializers.
+3. `@protected`: limits a variable or function to the current class and child classes.
 
-6. Added new option `debug/gdscript/wgodot/disable_embedded_gdscript` (true by default): embedding gdscript source inside of .tres files is considered bad practice and makes code readability extremely hard.
+4. `@readonly`: allows a variable to be assigned only during initialization or in-place mutation.
 
-7. Fixed a bug where gdscript source code were automatically getting embedded into a .tres file.
+5. `@static_class`: marks a class as static-only and rejects instance-style usage.
 
-8. Added Strict Signal / Callable Checking: Added new options `debug/gdscript/wgodot/strict_override_checking` and `debug/gdscript/wgodot/strict_signal_callable_checking` (both default to true); It's a project-level strict validation of obvious signal/callable connections
+6. Strict signal/callable checking: `wgodot/gdscript/strict_signal_callable_checking` catches obvious invalid signal/callable connections.
 
-9. de-const: controlled by `debug/gdscript/wgodot/deconst_exports` (true by default). For example, if you declare:
+7. Embedded GDScript blocking: `wgodot/gdscript/disable_embedded_gdscript` prevents exported resources from carrying embedded script source.
 
-```gd
-const MAX_ENEMY_HEALTH = 100
+## Export Protection
 
-# later on:
+8. De-const: `wgodot/export/deconst_exports` removes exported constant declarations and inlines their values where possible.
 
-self.check_health(MAX_ENEMY_HEALTH)
-```
+9. `@no_mangle`: keeps a declaration from being renamed or stripped by export transforms. On classes/functions/properties, it protects declarations inside that scope too.
 
-in gdscript code, then export it, and decompile the code, you should not see `MAX_ENEMY_HEALTH` and should ONLY see:
+10. `@obfuscate`: explicitly marks a declaration for configured export-time obfuscation without making it private. On a class, eligible members are obfuscated unless they use `@no_mangle`.
 
-```gd
-self.check_health(100)
-```
+11. Name obfuscation: `wgodot/export/obfuscate_names` renames exported GDScript locals, parameters, private members, `@obfuscate` declarations, and obfuscated `class_name` entries.
 
-10. `@no_mangle`: marks a named declaration as something export-time transforms must not rename, remove, or rewrite. On constants, it protects only that constant. On classes, functions, and properties with getter/setter bodies, it protects declarations inside that subtree from name obfuscation and from removing constants declared inside that subtree. Usages inside the subtree still follow the declaration they reference; for example, a use of an outside `@private` field is renamed if that outside field declaration is renamed.
+12. Built-in/native name aliasing: `wgodot/export/obfuscate_builtin_names` aliases used engine/native class names, built-in types, built-in functions, and typed native/built-in methods/properties. Dynamic string reflection such as `get("name")`, `set("name", value)`, and `call("name")` is not rewritten.
 
-11. Name obfuscation: controlled by `debug/gdscript/wgodot/obfuscate_names` (true by default). This is currently the only implemented obfuscation pass. During export, function parameters, local variables, `for` iterators, match-pattern binds, `@private` field/property/method names, explicit `@obfuscate` field/property/method names, and members of `@obfuscate` classes are renamed before text, binary-token, and compressed-binary-token script export. `@obfuscate class_name` declarations also rename the exported global class name and the exported global script class cache entry. Native engine class names, Variant built-in type names, and direct built-in function calls that are used in exported GDScript get one randomized per-export alias, stored in the shared `res://.godot/wgbca.a` alias map. The alias map uses NUL-separated binary records with kind tags, so references such as `Image`, `ImageTexture`, `Callable`, `load(...)`, or `is_instance_valid(...)` can be exported as aliases and resolved by wgodot when scripts load. Generated names reserve existing global script class names, native class names, built-in type names, built-in function names, and autoload names so obfuscated locals/members do not shadow them. Local variables marked `@no_mangle` are not renamed, and `@no_mangle` function/class/property scopes are skipped recursively. Combining `@no_mangle` with `@private` or `@obfuscate` opts that declaration out of export-time name obfuscation.
+13. Obfuscation strategy: `wgodot/export/obfuscation_strategy` exposes `Short`, `Hash`, and `Unicode`. Currently only `Short` is implemented.
 
-12. `@obfuscate`: marks a class, function, or variable/property declaration as eligible for configured export-time obfuscation passes without applying the access restrictions of `@private`. Right now, only name obfuscation is implemented, so the annotation currently affects exported names only; future passes may use it for other obfuscation kinds such as control-flow obfuscation or string encryption. On a class, all eligible members in that class are obfuscated unless their declarations use `@no_mangle`; on a global `class_name`, the exported class name itself is also obfuscated. This is explicit and does not try to rewrite string-reflection calls such as `get("member_name")`, or resource/string references to global class names; use `@no_mangle` if a dynamically accessed member or class must keep its original name.
+14. Export cleanup: exported GDScript strips wgodot annotations, normal comments, doc comments, and empty physical lines. Original project source files are not changed.
 
-13. Export annotation stripping: wgodot strips `@private`, `@no_mangle`, and `@obfuscate` annotations from exported GDScript after they have been used by export-time transforms, so exported code does not keep those reverse-engineering hints.
+## Annotation Documentation
 
-14. Export source cleanup: wgodot strips normal `#` comments, doc `##` comments, and empty physical lines from exported GDScript, including text export mode. Blank lines inside multiline string literals are preserved. Original project source files are not changed.
-
-15. Obfuscation strategy: controlled by `debug/gdscript/wgodot/obfuscation_strategy` (`Short`, `Hash`, `Unicode`). The setting is exposed as an enum, but only `Short` is implemented right now; selecting `Hash` or `Unicode` falls back to `Short` for now. Short-name obfuscation uses a fresh random generator per export, so names are not assigned in declaration order and can differ between exports.
-
-## Annotation documentation
-
-WGodot-specific GDScript annotations are registered in `modules/gdscript/wgodot_annotations.cpp`. Their editor-visible help text is documented in `modules/gdscript/doc_classes/@GDScript_wgodot.xml`, which is merged into the built-in `@GDScript` docs by the wgodot duplicate-doc merge hook in `editor/doc/doc_tools.cpp`.
-
-When adding or changing a wgodot annotation, update both places so code completion, editor help, and the language server show useful explanations instead of only listing the annotation name.
+WGodot annotations are registered in `modules/gdscript/wgodot_annotations.cpp` and documented in `modules/gdscript/doc_classes/@GDScript_wgodot.xml` for editor help, completion, and language-server users.

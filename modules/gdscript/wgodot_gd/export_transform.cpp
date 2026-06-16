@@ -15,11 +15,13 @@
 #include "../gdscript_parser.h"
 #include "../gdscript_utility_functions.h"
 
+#include "core/config/engine.h"
 #include "core/config/project_settings.h"
 #include "core/error/error_macros.h"
 #include "core/io/file_access.h"
 #include "core/object/class_db.h"
 #include "core/string/char_utils.h"
+#include "core/templates/list.h"
 #include "core/variant/array.h"
 #include "core/variant/dictionary.h"
 #include "core/variant/variant.h"
@@ -117,6 +119,87 @@ bool is_supported_builtin_function_alias_target(const StringName &p_name) {
 	return !p_name.is_empty() && (Variant::has_utility_function(p_name) || GDScriptUtilityFunctions::function_exists(p_name));
 }
 
+StringName get_builtin_alias_owner_from_datatype(const GDScriptParser::DataType &p_type) {
+	if (!p_type.is_hard_type() || p_type.is_variant()) {
+		return StringName();
+	}
+
+	if (p_type.kind == GDScriptParser::DataType::BUILTIN && p_type.builtin_type < Variant::VARIANT_MAX) {
+		const StringName type_name = Variant::get_type_name(p_type.builtin_type);
+		return type_name == SNAME("Variant") ? StringName() : type_name;
+	}
+
+	if (!p_type.native_type.is_empty() && ClassDB::class_exists(p_type.native_type) && ClassDB::is_class_exposed(p_type.native_type)) {
+		return p_type.native_type;
+	}
+
+	return StringName();
+}
+
+bool is_supported_builtin_member_alias_target(const StringName &p_owner, const StringName &p_name, bool p_static, bool p_property) {
+	if (p_owner.is_empty() || p_name.is_empty()) {
+		return false;
+	}
+
+	const Variant::Type builtin_type = GDScriptParser::get_builtin_type(p_owner);
+	if (builtin_type < Variant::VARIANT_MAX) {
+		if (p_property) {
+			if (p_static) {
+				return Variant::has_constant(builtin_type, p_name) || Variant::has_enum(builtin_type, p_name) || Variant::get_enum_for_enumeration(builtin_type, p_name) != StringName();
+			}
+
+			Callable::CallError err;
+			Variant dummy;
+			Variant::construct(builtin_type, dummy, nullptr, 0, err);
+			if (err.error != Callable::CallError::CALL_OK) {
+				return false;
+			}
+
+			List<PropertyInfo> properties;
+			dummy.get_property_list(&properties);
+			for (const PropertyInfo &property : properties) {
+				if (property.name == p_name) {
+					return true;
+				}
+			}
+			return false;
+		}
+
+		if (!Variant::has_builtin_method(builtin_type, p_name)) {
+			return false;
+		}
+
+		const MethodInfo method_info = Variant::get_builtin_method_info(builtin_type, p_name);
+		return p_static == ((method_info.flags & METHOD_FLAG_STATIC) != 0);
+	}
+
+	if (!ClassDB::class_exists(p_owner) || !ClassDB::is_class_exposed(p_owner)) {
+		return false;
+	}
+
+	if (p_property) {
+		if (ClassDB::has_property(p_owner, p_name)) {
+			return true;
+		}
+		if (p_static) {
+			if (ClassDB::has_enum(p_owner, p_name)) {
+				return true;
+			}
+			bool valid = false;
+			(void)ClassDB::get_integer_constant(p_owner, p_name, &valid);
+			return valid;
+		}
+		return false;
+	}
+
+	MethodInfo method_info;
+	if (!ClassDB::get_method_info(p_owner, p_name, &method_info)) {
+		return false;
+	}
+
+	return p_static == ((method_info.flags & METHOD_FLAG_STATIC) != 0 || Engine::get_singleton()->has_singleton(p_owner));
+}
+
 void get_or_create_builtin_function_alias(ExportContext *p_context, const StringName &p_name) {
 	if (p_context == nullptr || !is_supported_builtin_function_alias_target(p_name)) {
 		return;
@@ -126,7 +209,7 @@ void get_or_create_builtin_function_alias(ExportContext *p_context, const String
 }
 
 void add_builtin_function_alias_call_replacement(RewriteContext &r_context, const GDScriptParser::CallNode *p_call) {
-	if (!r_context.options.obfuscate_names ||
+	if (!r_context.options.obfuscate_builtin_names ||
 			r_context.export_context == nullptr ||
 			p_call == nullptr ||
 			p_call->is_super ||
@@ -149,8 +232,68 @@ void add_builtin_function_alias_call_replacement(RewriteContext &r_context, cons
 	add_replacement(r_context, callee, String(*alias));
 }
 
+void get_or_create_builtin_member_alias(ExportContext *p_context, const StringName &p_owner, const StringName &p_name, bool p_static, bool p_property) {
+	if (p_context == nullptr || !is_supported_builtin_member_alias_target(p_owner, p_name, p_static, p_property)) {
+		return;
+	}
+
+	(void)p_context->get_or_create_builtin_member_alias(p_owner, p_name, p_static, p_property);
+}
+
+void add_builtin_method_alias_call_replacement(RewriteContext &r_context, const GDScriptParser::CallNode *p_call) {
+	if (!r_context.options.obfuscate_builtin_names ||
+			r_context.export_context == nullptr ||
+			p_call == nullptr ||
+			p_call->is_super ||
+			p_call->function_name.is_empty() ||
+			p_call->function_name == SNAME("new") ||
+			p_call->callee == nullptr ||
+			p_call->callee->type != GDScriptParser::Node::SUBSCRIPT) {
+		return;
+	}
+
+	const GDScriptParser::SubscriptNode *subscript = static_cast<const GDScriptParser::SubscriptNode *>(p_call->callee);
+	if (!subscript->is_attribute || subscript->base == nullptr || subscript->attribute == nullptr) {
+		return;
+	}
+
+	const GDScriptParser::DataType base_type = subscript->base->get_datatype();
+	const StringName owner = get_builtin_alias_owner_from_datatype(base_type);
+	if (owner.is_empty()) {
+		return;
+	}
+
+	const bool is_static = base_type.is_meta_type;
+	const StringName *alias = r_context.export_context->get_builtin_member_alias(owner, p_call->function_name, is_static, false);
+	if (alias == nullptr) {
+		return;
+	}
+
+	add_replacement(r_context, subscript->attribute, String(*alias));
+}
+
+void add_builtin_property_alias_reference_replacement(RewriteContext &r_context, const GDScriptParser::ExpressionNode *p_base, const GDScriptParser::IdentifierNode *p_identifier) {
+	if (!r_context.options.obfuscate_builtin_names || r_context.export_context == nullptr || p_base == nullptr || p_identifier == nullptr || p_identifier->name.is_empty()) {
+		return;
+	}
+
+	const GDScriptParser::DataType base_type = p_base->get_datatype();
+	const StringName owner = get_builtin_alias_owner_from_datatype(base_type);
+	if (owner.is_empty()) {
+		return;
+	}
+
+	const bool is_static = base_type.is_meta_type;
+	const StringName *alias = r_context.export_context->get_builtin_member_alias(owner, p_identifier->name, is_static, true);
+	if (alias == nullptr) {
+		return;
+	}
+
+	add_replacement(r_context, p_identifier, String(*alias));
+}
+
 void add_builtin_class_alias_name_replacement(RewriteContext &r_context, const GDScriptParser::IdentifierNode *p_identifier) {
-	if (!r_context.options.obfuscate_names || r_context.export_context == nullptr || p_identifier == nullptr || !is_supported_builtin_class_alias_target(p_identifier->name)) {
+	if (!r_context.options.obfuscate_builtin_names || r_context.export_context == nullptr || p_identifier == nullptr || !is_supported_builtin_class_alias_target(p_identifier->name)) {
 		return;
 	}
 
@@ -500,6 +643,7 @@ void collect_expression_replacements(RewriteContext &r_context, const GDScriptPa
 			if (!subscript->is_attribute) {
 				collect_expression_replacements(r_context, subscript->index, p_no_mangle_scope);
 			} else {
+				add_builtin_property_alias_reference_replacement(r_context, subscript->base, subscript->attribute);
 				add_attribute_member_name_reference_replacement(r_context, subscript->base, subscript->attribute);
 			}
 		} break;
@@ -525,6 +669,7 @@ void collect_expression_replacements(RewriteContext &r_context, const GDScriptPa
 		case GDScriptParser::Node::CALL: {
 			const GDScriptParser::CallNode *call = static_cast<const GDScriptParser::CallNode *>(p_expression);
 			add_builtin_function_alias_call_replacement(r_context, call);
+			add_builtin_method_alias_call_replacement(r_context, call);
 			collect_expression_replacements(r_context, call->callee, p_no_mangle_scope);
 			add_call_member_name_reference_replacement(r_context, call);
 			for (const GDScriptParser::ExpressionNode *argument : call->arguments) {
@@ -1036,6 +1181,13 @@ void collect_builtin_class_aliases_from_expression(ExportContext *p_context, con
 			break;
 		case GDScriptParser::Node::SUBSCRIPT: {
 			const GDScriptParser::SubscriptNode *subscript = static_cast<const GDScriptParser::SubscriptNode *>(p_expression);
+			if (subscript->is_attribute && subscript->base != nullptr && subscript->attribute != nullptr) {
+				const GDScriptParser::DataType base_type = subscript->base->get_datatype();
+				const StringName owner = get_builtin_alias_owner_from_datatype(base_type);
+				if (!owner.is_empty()) {
+					get_or_create_builtin_member_alias(p_context, owner, subscript->attribute->name, base_type.is_meta_type, true);
+				}
+			}
 			collect_builtin_class_aliases_from_expression(p_context, subscript->base);
 			if (!subscript->is_attribute) {
 				collect_builtin_class_aliases_from_expression(p_context, subscript->index);
@@ -1066,6 +1218,15 @@ void collect_builtin_class_aliases_from_expression(ExportContext *p_context, con
 				const GDScriptParser::IdentifierNode *callee = static_cast<const GDScriptParser::IdentifierNode *>(call->callee);
 				if (callee->source == GDScriptParser::IdentifierNode::UNDEFINED_SOURCE) {
 					get_or_create_builtin_function_alias(p_context, call->function_name);
+				}
+			} else if (!call->is_super && call->function_name != SNAME("new") && call->callee != nullptr && call->callee->type == GDScriptParser::Node::SUBSCRIPT) {
+				const GDScriptParser::SubscriptNode *subscript = static_cast<const GDScriptParser::SubscriptNode *>(call->callee);
+				if (subscript->is_attribute && subscript->base != nullptr && subscript->attribute != nullptr) {
+					const GDScriptParser::DataType base_type = subscript->base->get_datatype();
+					const StringName owner = get_builtin_alias_owner_from_datatype(base_type);
+					if (!owner.is_empty()) {
+						get_or_create_builtin_member_alias(p_context, owner, call->function_name, base_type.is_meta_type, false);
+					}
 				}
 			}
 			collect_builtin_class_aliases_from_expression(p_context, call->callee);
@@ -1274,10 +1435,11 @@ namespace WGodotGDScriptExportTransform {
 
 TransformOptions setup_params() {
 	TransformOptions options;
-	options.deconst_exports = GLOBAL_GET_CACHED(bool, "debug/gdscript/wgodot/deconst_exports");
-	options.obfuscate_names = GLOBAL_GET_CACHED(bool, "debug/gdscript/wgodot/obfuscate_names");
+	options.deconst_exports = GLOBAL_GET_CACHED(bool, "wgodot/export/deconst_exports");
+	options.obfuscate_names = GLOBAL_GET_CACHED(bool, "wgodot/export/obfuscate_names");
+	options.obfuscate_builtin_names = GLOBAL_GET_CACHED(bool, "wgodot/export/obfuscate_builtin_names");
 
-	const int obfuscation_strategy = GLOBAL_GET_CACHED(int, "debug/gdscript/wgodot/obfuscation_strategy");
+	const int obfuscation_strategy = GLOBAL_GET_CACHED(int, "wgodot/export/obfuscation_strategy");
 	if (obfuscation_strategy >= OBFUSCATION_STRATEGY_SHORT && obfuscation_strategy <= OBFUSCATION_STRATEGY_UNICODE) {
 		options.obfuscation_strategy = static_cast<ObfuscationStrategy>(obfuscation_strategy);
 	}
@@ -1292,7 +1454,7 @@ void prescan_project_scripts(ExportContext *p_context, const HashSet<String> &p_
 
 	const TransformOptions options = setup_params();
 	p_context->set_options(options);
-	if (!options.obfuscate_names) {
+	if (!options.obfuscate_names && !options.obfuscate_builtin_names) {
 		return;
 	}
 
@@ -1320,21 +1482,29 @@ void prescan_project_scripts(ExportContext *p_context, const HashSet<String> &p_
 			continue;
 		}
 
-		collect_global_class_rename_request(p_context, analyzed_source.parser->get_tree(), path, global_class_rename_requests);
-		collect_builtin_class_aliases_from_node(p_context, analyzed_source.parser->get_tree());
-	}
-
-	for (const GlobalClassRenameRequest &request : global_class_rename_requests) {
-		(void)p_context->get_or_create_global_class_rename(request.name, request.path);
-	}
-
-	for (const ScriptSource &script : scripts) {
-		AnalyzedSource analyzed_source;
-		if (!analyzed_source.load(script.source, script.path)) {
-			continue;
+		if (options.obfuscate_names) {
+			collect_global_class_rename_request(p_context, analyzed_source.parser->get_tree(), path, global_class_rename_requests);
 		}
+		if (options.obfuscate_builtin_names) {
+			collect_builtin_class_aliases_from_node(p_context, analyzed_source.parser->get_tree());
+		}
+	}
 
-		p_context->index_script(analyzed_source.parser->get_tree(), script.path);
+	if (options.obfuscate_names) {
+		for (const GlobalClassRenameRequest &request : global_class_rename_requests) {
+			(void)p_context->get_or_create_global_class_rename(request.name, request.path);
+		}
+	}
+
+	if (options.obfuscate_names) {
+		for (const ScriptSource &script : scripts) {
+			AnalyzedSource analyzed_source;
+			if (!analyzed_source.load(script.source, script.path)) {
+				continue;
+			}
+
+			p_context->index_script(analyzed_source.parser->get_tree(), script.path);
+		}
 	}
 }
 
@@ -1388,7 +1558,7 @@ String transform_source(const String &p_source, const String &p_path, const Tran
 		*r_changed = false;
 	}
 
-	if (!p_options.deconst_exports && !p_options.obfuscate_names && !p_options.strip_comments && !p_options.strip_empty_lines) {
+	if (!p_options.deconst_exports && !p_options.obfuscate_names && !p_options.obfuscate_builtin_names && !p_options.strip_comments && !p_options.strip_empty_lines) {
 		return p_source;
 	}
 
@@ -1399,12 +1569,16 @@ String transform_source(const String &p_source, const String &p_path, const Tran
 
 	ExportContext local_context;
 	ExportContext *export_context = p_context;
-	if (export_context == nullptr && p_options.obfuscate_names) {
+	const bool using_local_context = export_context == nullptr && (p_options.obfuscate_names || p_options.obfuscate_builtin_names);
+	if (using_local_context) {
 		local_context.reset();
 		export_context = &local_context;
 	}
 	if (export_context != nullptr) {
 		export_context->set_options(p_options);
+	}
+	if (using_local_context && p_options.obfuscate_builtin_names) {
+		collect_builtin_class_aliases_from_node(export_context, analyzed_source.parser->get_tree());
 	}
 
 	const GDScriptParser::ClassNode *tree = analyzed_source.parser->get_tree();

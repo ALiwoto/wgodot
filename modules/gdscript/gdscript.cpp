@@ -940,7 +940,7 @@ Error GDScript::reload(bool p_keep_state) {
 
 // wgodot-changes::begin
 #ifndef TOOLS_ENABLED
-	if (GLOBAL_GET_CACHED(bool, "debug/gdscript/wgodot/deconst_exports")) {
+	if (GLOBAL_GET_CACHED(bool, "wgodot/export/deconst_exports")) {
 		_wgodot_strip_export_constants();
 	}
 #endif // !TOOLS_ENABLED
@@ -2991,20 +2991,21 @@ GDScriptLanguage::GDScriptLanguage() {
 	track_call_stack = GLOBAL_DEF_RST("debug/settings/gdscript/always_track_call_stacks", false);
 	track_locals = GLOBAL_DEF_RST("debug/settings/gdscript/always_track_local_variables", false);
 
+	// wgodot-changes::begin
+	GLOBAL_DEF("wgodot/gdscript/disable_embedded_gdscript", true);
+	GLOBAL_DEF("wgodot/gdscript/strict_override_checking", true);
+	GLOBAL_DEF("wgodot/gdscript/strict_signal_callable_checking", true);
+	GLOBAL_DEF("wgodot/export/deconst_exports", true);
+	GLOBAL_DEF("wgodot/export/obfuscate_names", true);
+	GLOBAL_DEF("wgodot/export/obfuscate_builtin_names", true);
+	GLOBAL_DEF(PropertyInfo(Variant::INT, "wgodot/export/obfuscation_strategy", PROPERTY_HINT_ENUM, "Short,Hash,Unicode"), WGodotGDScriptExportTransform::OBFUSCATION_STRATEGY_SHORT);
+	// wgodot-changes::end
+
 #ifdef DEBUG_ENABLED
 	track_call_stack = true;
 	track_locals = track_locals || EngineDebugger::is_active();
 
 	GLOBAL_DEF("debug/gdscript/warnings/enable", true);
-
-	// wgodot-changes::begin
-	GLOBAL_DEF("debug/gdscript/wgodot/disable_embedded_gdscript", true);
-	GLOBAL_DEF("debug/gdscript/wgodot/strict_override_checking", true);
-	GLOBAL_DEF("debug/gdscript/wgodot/strict_signal_callable_checking", true);
-	GLOBAL_DEF("debug/gdscript/wgodot/deconst_exports", true);
-	GLOBAL_DEF("debug/gdscript/wgodot/obfuscate_names", true);
-	GLOBAL_DEF(PropertyInfo(Variant::INT, "debug/gdscript/wgodot/obfuscation_strategy", PROPERTY_HINT_ENUM, "Short,Hash,Unicode"), WGodotGDScriptExportTransform::OBFUSCATION_STRATEGY_SHORT);
-	// wgodot-changes::end
 
 	GLOBAL_DEF(PropertyInfo(Variant::DICTIONARY,
 					   "debug/gdscript/warnings/directory_rules",

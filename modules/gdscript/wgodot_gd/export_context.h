@@ -25,6 +25,10 @@ class ExportContext {
 	HashMap<String, StringName> global_class_renames_by_path;
 	HashMap<StringName, StringName> builtin_class_aliases;
 	HashMap<StringName, StringName> builtin_function_aliases;
+	HashMap<StringName, StringName> builtin_instance_method_aliases;
+	HashMap<StringName, StringName> builtin_static_method_aliases;
+	HashMap<StringName, StringName> builtin_instance_property_aliases;
+	HashMap<StringName, StringName> builtin_static_property_aliases;
 	HashSet<StringName> reserved_member_names;
 	HashSet<StringName> reserved_global_class_names;
 	RandomPCG obfuscation_random;
@@ -60,6 +64,12 @@ public:
 	StringName get_or_create_builtin_function_alias(const StringName &p_name);
 	const StringName *get_builtin_function_alias(const StringName &p_name) const;
 	const HashMap<StringName, StringName> &get_builtin_function_aliases() const;
+	StringName get_or_create_builtin_member_alias(const StringName &p_owner, const StringName &p_name, bool p_static, bool p_property);
+	const StringName *get_builtin_member_alias(const StringName &p_owner, const StringName &p_name, bool p_static, bool p_property) const;
+	const HashMap<StringName, StringName> &get_builtin_instance_method_aliases() const;
+	const HashMap<StringName, StringName> &get_builtin_static_method_aliases() const;
+	const HashMap<StringName, StringName> &get_builtin_instance_property_aliases() const;
+	const HashMap<StringName, StringName> &get_builtin_static_property_aliases() const;
 };
 
 } // namespace WGodotGDScriptExportTransform

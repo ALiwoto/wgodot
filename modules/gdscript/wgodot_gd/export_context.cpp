@@ -305,6 +305,10 @@ void ExportContext::reset() {
 	global_class_renames_by_path.clear();
 	builtin_class_aliases.clear();
 	builtin_function_aliases.clear();
+	builtin_instance_method_aliases.clear();
+	builtin_static_method_aliases.clear();
+	builtin_instance_property_aliases.clear();
+	builtin_static_property_aliases.clear();
 	reserved_member_names.clear();
 	reserved_global_class_names.clear();
 	reserve_registered_global_class_names();
@@ -524,6 +528,7 @@ StringName ExportContext::get_or_create_builtin_class_alias(const StringName &p_
 	const String alias = WGodotGDScriptExportTransform::make_obfuscated_name(options.obfuscation_strategy, obfuscation_random, reserved_global_class_names, "built-in class alias");
 	const StringName alias_name(alias);
 	builtin_class_aliases[p_name] = alias_name;
+	reserved_global_class_names.insert(alias_name);
 	reserved_member_names.insert(alias_name);
 	return alias_name;
 }
@@ -552,6 +557,7 @@ StringName ExportContext::get_or_create_builtin_function_alias(const StringName 
 	const String alias = WGodotGDScriptExportTransform::make_obfuscated_name(options.obfuscation_strategy, obfuscation_random, reserved_global_class_names, "built-in function alias");
 	const StringName alias_name(alias);
 	builtin_function_aliases[p_name] = alias_name;
+	reserved_global_class_names.insert(alias_name);
 	reserved_member_names.insert(alias_name);
 	return alias_name;
 }
@@ -566,6 +572,51 @@ const StringName *ExportContext::get_builtin_function_alias(const StringName &p_
 
 const HashMap<StringName, StringName> &ExportContext::get_builtin_function_aliases() const {
 	return builtin_function_aliases;
+}
+
+StringName ExportContext::get_or_create_builtin_member_alias(const StringName &p_owner, const StringName &p_name, bool p_static, bool p_property) {
+	if (p_owner.is_empty() || p_name.is_empty()) {
+		return StringName();
+	}
+
+	const StringName key(String(p_owner) + "::" + String(p_name));
+	HashMap<StringName, StringName> &aliases = p_property ? (p_static ? builtin_static_property_aliases : builtin_instance_property_aliases) : (p_static ? builtin_static_method_aliases : builtin_instance_method_aliases);
+	if (const StringName *existing = aliases.getptr(key)) {
+		return *existing;
+	}
+
+	const String alias = WGodotGDScriptExportTransform::make_obfuscated_name(options.obfuscation_strategy, obfuscation_random, reserved_global_class_names, "built-in member alias");
+	const StringName alias_name(alias);
+	aliases[key] = alias_name;
+	reserved_global_class_names.insert(alias_name);
+	reserved_member_names.insert(alias_name);
+	return alias_name;
+}
+
+const StringName *ExportContext::get_builtin_member_alias(const StringName &p_owner, const StringName &p_name, bool p_static, bool p_property) const {
+	if (p_owner.is_empty() || p_name.is_empty()) {
+		return nullptr;
+	}
+
+	const StringName key(String(p_owner) + "::" + String(p_name));
+	const HashMap<StringName, StringName> &aliases = p_property ? (p_static ? builtin_static_property_aliases : builtin_instance_property_aliases) : (p_static ? builtin_static_method_aliases : builtin_instance_method_aliases);
+	return aliases.getptr(key);
+}
+
+const HashMap<StringName, StringName> &ExportContext::get_builtin_instance_method_aliases() const {
+	return builtin_instance_method_aliases;
+}
+
+const HashMap<StringName, StringName> &ExportContext::get_builtin_static_method_aliases() const {
+	return builtin_static_method_aliases;
+}
+
+const HashMap<StringName, StringName> &ExportContext::get_builtin_instance_property_aliases() const {
+	return builtin_instance_property_aliases;
+}
+
+const HashMap<StringName, StringName> &ExportContext::get_builtin_static_property_aliases() const {
+	return builtin_static_property_aliases;
 }
 
 } // namespace WGodotGDScriptExportTransform

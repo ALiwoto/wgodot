@@ -36,6 +36,7 @@
 #include "gdscript_cache.h"
 #include "gdscript_utility_functions.h"
 // wgodot-changes::begin
+#include "wgodot_gd/builtin_alias_resolver.h"
 #include "wgodot_gd/builtin_class_aliases.h"
 #include "wgodot_stdlib.h"
 // wgodot-changes::end
@@ -812,18 +813,21 @@ GDScriptCodeGenerator::Address GDScriptCompiler::_parse_expression(CodeGen &code
 							
 							// May be static built-in method call.
 							if (!call->is_super && wgodot_base_identifier != nullptr && GDScriptParser::get_builtin_type(wgodot_base_name) < Variant::VARIANT_MAX) {
-								gen->write_call_builtin_type_static(result, GDScriptParser::get_builtin_type(wgodot_base_name), subscript->attribute->name, arguments);
+								const StringName wgodot_method_name = WGodotGDScriptBuiltinClassAliases::resolve_member_alias(wgodot_base_name, subscript->attribute->name, true, false);
+								gen->write_call_builtin_type_static(result, GDScriptParser::get_builtin_type(wgodot_base_name), !wgodot_method_name.is_empty() ? wgodot_method_name : subscript->attribute->name, arguments);
 							} else if (!call->is_super && subscript->base->type == GDScriptParser::Node::IDENTIFIER && call->function_name != SNAME("new") &&
 									static_cast<GDScriptParser::IdentifierNode *>(subscript->base)->source == GDScriptParser::IdentifierNode::NATIVE_CLASS && !Engine::get_singleton()->has_singleton(wgodot_base_name)) {
 								// It's a static native method call.
 								StringName class_name = wgodot_base_name;
-								MethodBind *method = ClassDB::get_method(class_name, subscript->attribute->name);
+								const StringName wgodot_method_name = WGodotGDScriptBuiltinClassAliases::resolve_member_alias(class_name, subscript->attribute->name, true, false);
+								const StringName method_name = !wgodot_method_name.is_empty() ? wgodot_method_name : subscript->attribute->name;
+								MethodBind *method = ClassDB::get_method(class_name, method_name);
 								if (_can_use_validate_call(method, arguments)) {
 									// Exact arguments, use validated call.
 									gen->write_call_native_static_validated(result, method, arguments);
 								} else {
 									// Not exact arguments, use regular static call
-									gen->write_call_native_static(result, class_name, subscript->attribute->name, arguments);
+									gen->write_call_native_static(result, class_name, method_name, arguments);
 								}
 							// wgodot-changes::end
 							} else {
@@ -841,8 +845,11 @@ GDScriptCodeGenerator::Address GDScriptCompiler::_parse_expression(CodeGen &code
 									} else {
 										class_name = base.type.native_type == StringName() ? base.type.script_type->get_instance_base_type() : base.type.native_type;
 									}
-									if (GDScriptAnalyzer::class_exists(class_name) && ClassDB::has_method(class_name, call->function_name)) {
-										MethodBind *method = ClassDB::get_method(class_name, call->function_name);
+									// wgodot-changes::begin
+									const StringName method_name = WGodotGDScriptBuiltinClassAliases::resolve_member_alias(class_name, call->function_name, false, false);
+									const StringName resolved_function_name = !method_name.is_empty() ? method_name : call->function_name;
+									if (GDScriptAnalyzer::class_exists(class_name) && ClassDB::has_method(class_name, resolved_function_name)) {
+										MethodBind *method = ClassDB::get_method(class_name, resolved_function_name);
 										if (_can_use_validate_call(method, arguments)) {
 											// Exact arguments, use validated call.
 											gen->write_call_method_bind_validated(result, base, method, arguments);
@@ -851,16 +858,17 @@ GDScriptCodeGenerator::Address GDScriptCompiler::_parse_expression(CodeGen &code
 											gen->write_call_method_bind(result, base, method, arguments);
 										}
 									} else {
-										gen->write_call(result, base, call->function_name, arguments);
+										gen->write_call(result, base, resolved_function_name, arguments);
 									}
 								} else if (base.type.kind == GDScriptDataType::BUILTIN) {
-									gen->write_call_builtin_type(result, base, base.type.builtin_type, call->function_name, arguments);
+									gen->write_call_builtin_type(result, base, base.type.builtin_type, WGodotGDScriptBuiltinAliasResolver::resolve_member_alias_for_codegen(base.type, call->function_name, false, false), arguments);
 								} else {
 									gen->write_call(result, base, call->function_name, arguments);
 								}
 								if (base.mode == GDScriptCodeGenerator::Address::TEMPORARY) {
 									gen->pop_temporary();
 								}
+								// wgodot-changes::end
 							}
 						} else {
 							_set_error("Cannot call something that isn't a function.", call->callee);
@@ -973,6 +981,9 @@ GDScriptCodeGenerator::Address GDScriptCompiler::_parse_expression(CodeGen &code
 			}
 
 			if (named) {
+				// wgodot-changes::begin
+				name = WGodotGDScriptBuiltinAliasResolver::resolve_member_alias_for_codegen(base.type, name, false, true);
+				// wgodot-changes::end
 				gen->write_get_named(result, name, base);
 			} else {
 				gen->write_get(result, index, base);
@@ -1247,6 +1258,9 @@ GDScriptCodeGenerator::Address GDScriptCompiler::_parse_expression(CodeGen &code
 
 					if (subscript_elem->is_attribute) {
 						name = subscript_elem->attribute->name;
+						// wgodot-changes::begin
+						name = WGodotGDScriptBuiltinAliasResolver::resolve_member_alias_for_codegen(prev_base.type, name, false, true);
+						// wgodot-changes::end
 						gen->write_get_named(value, name, prev_base);
 					} else {
 						key = _parse_expression(codegen, r_error, subscript_elem->index);
@@ -1271,6 +1285,9 @@ GDScriptCodeGenerator::Address GDScriptCompiler::_parse_expression(CodeGen &code
 				StringName name;
 				if (subscript->is_attribute) {
 					name = subscript->attribute->name;
+					// wgodot-changes::begin
+					name = WGodotGDScriptBuiltinAliasResolver::resolve_member_alias_for_codegen(prev_base.type, name, false, true);
+					// wgodot-changes::end
 				} else {
 					key = _parse_expression(codegen, r_error, subscript->index);
 					if (r_error) {
@@ -1323,7 +1340,9 @@ GDScriptCodeGenerator::Address GDScriptCompiler::_parse_expression(CodeGen &code
 						if (!info.is_named) {
 							gen->write_set(info.base, info.key, assigned);
 						} else {
-							gen->write_set_named(info.base, info.name, assigned);
+							// wgodot-changes::begin
+							gen->write_set_named(info.base, WGodotGDScriptBuiltinAliasResolver::resolve_member_alias_for_codegen(info.base.type, info.name, false, true), assigned);
+							// wgodot-changes::end
 						}
 						if (!known_type) {
 							gen->write_end_jump_if_shared();

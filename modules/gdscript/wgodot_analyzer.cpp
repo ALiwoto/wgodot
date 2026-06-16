@@ -174,7 +174,7 @@ void GDScriptAnalyzer::wgodot_validate_override_annotation(GDScriptParser::Funct
 }
 
 bool GDScriptAnalyzer::wgodot_strict_override_checking_enabled() const {
-	const char *setting = "debug/gdscript/wgodot/strict_override_checking";
+	const char *setting = "wgodot/gdscript/strict_override_checking";
 	if (!ProjectSettings::get_singleton()->has_setting(setting)) {
 		return true;
 	}
@@ -302,7 +302,7 @@ bool GDScriptAnalyzer::wgodot_try_get_callable_info(const GDScriptParser::Expres
 }
 
 bool GDScriptAnalyzer::wgodot_strict_signal_callable_checking_enabled() const {
-	const char *setting = "debug/gdscript/wgodot/strict_signal_callable_checking";
+	const char *setting = "wgodot/gdscript/strict_signal_callable_checking";
 	if (!ProjectSettings::get_singleton()->has_setting(setting)) {
 		return true;
 	}

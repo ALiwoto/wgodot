@@ -111,7 +111,7 @@ protected:
 	virtual void _export_paths_ready(const HashSet<String> &p_paths) override {
 		transform_context.reset();
 		WGodotGDScriptExportTransform::prescan_project_scripts(&transform_context, p_paths);
-		const Vector<uint8_t> builtin_class_aliases = WGodotGDScriptBuiltinClassAliases::serialize_alias_map(transform_context.get_builtin_class_aliases(), transform_context.get_builtin_function_aliases());
+		const Vector<uint8_t> builtin_class_aliases = WGodotGDScriptBuiltinClassAliases::serialize_alias_map(transform_context);
 		if (!builtin_class_aliases.is_empty()) {
 			add_file(WGodotGDScriptBuiltinClassAliases::get_alias_map_path(), builtin_class_aliases, false);
 		}

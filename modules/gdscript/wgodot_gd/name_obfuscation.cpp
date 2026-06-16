@@ -287,7 +287,7 @@ void add_class_declaration_name_replacement(RewriteContext &r_context, const GDS
 }
 
 void add_builtin_class_alias_reference_replacement(RewriteContext &r_context, const GDScriptParser::IdentifierNode *p_identifier) {
-	if (!r_context.options.obfuscate_names || r_context.export_context == nullptr || p_identifier == nullptr || p_identifier->name.is_empty()) {
+	if (!r_context.options.obfuscate_builtin_names || r_context.export_context == nullptr || p_identifier == nullptr || p_identifier->name.is_empty()) {
 		return;
 	}
 

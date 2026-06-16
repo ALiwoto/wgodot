@@ -12,7 +12,7 @@
 #include "core/config/project_settings.h"
 
 bool ResourceFormatSaverTextInstance::wgodot_embedded_gdscript_save_guard_enabled() const {
-	const char *setting = "debug/gdscript/wgodot/disable_embedded_gdscript";
+	const char *setting = "wgodot/gdscript/disable_embedded_gdscript";
 	if (!ProjectSettings::get_singleton()->has_setting(setting)) {
 		return true;
 	}

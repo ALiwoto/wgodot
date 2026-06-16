@@ -23,7 +23,7 @@
 			<return type="void" />
 			<description>
 				Marks the following instance method as intentionally overriding a method inherited from a base class.
-				When [code]debug/gdscript/wgodot/strict_override_checking[/code] is enabled, overriding an inherited method requires [annotation @override]. Marking a method that does not override any inherited method is an error.
+				When [code]wgodot/gdscript/strict_override_checking[/code] is enabled, overriding an inherited method requires [annotation @override]. Marking a method that does not override any inherited method is an error.
 				[codeblock]
 				@override
 				func _ready() -> void:
@@ -36,7 +36,7 @@
 			<description>
 				Marks the following class, function, or variable/property declaration as eligible for configured export-time obfuscation passes without changing its access rules.
 				Right now, name obfuscation is the only implemented obfuscation pass, so this annotation currently affects exported names only. Future obfuscation passes may also use it for other transformations such as control-flow obfuscation or string encryption.
-				When [code]debug/gdscript/wgodot/obfuscate_names[/code] is enabled, exported GDScript rewrites this declaration and analyzed usages to the same obfuscated name. On a class, all eligible members in that class are obfuscated unless their declarations use [annotation @no_mangle]. On a global [code]class_name[/code], the exported global class name and exported global script class cache entry are also rewritten.
+				When [code]wgodot/export/obfuscate_names[/code] is enabled, exported GDScript rewrites this declaration and analyzed usages to the same obfuscated name. On a class, all eligible members in that class are obfuscated unless their declarations use [annotation @no_mangle]. On a global [code]class_name[/code], the exported global class name and exported global script class cache entry are also rewritten.
 				This is intentionally explicit and does not rewrite string-reflection calls such as [code]get("member_name")[/code], or resource/string references to global class names; use [annotation @no_mangle] when a dynamically accessed member or class must keep its original name.
 				This annotation can be combined with [annotation @no_mangle]; in that case, [annotation @no_mangle] wins and the declaration keeps its original name.
 				[codeblock]
