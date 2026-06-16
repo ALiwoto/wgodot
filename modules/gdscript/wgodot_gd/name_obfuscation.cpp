@@ -9,6 +9,7 @@
 #include "obfuscation_names.h"
 
 #include "core/error/error_macros.h"
+#include "core/variant/variant.h"
 
 namespace {
 
@@ -283,6 +284,34 @@ void add_class_declaration_name_replacement(RewriteContext &r_context, const GDS
 	}
 
 	add_replacement(r_context, p_class->identifier, String(*obfuscated_name));
+}
+
+void add_builtin_class_alias_reference_replacement(RewriteContext &r_context, const GDScriptParser::IdentifierNode *p_identifier) {
+	if (!r_context.options.obfuscate_names || r_context.export_context == nullptr || p_identifier == nullptr || p_identifier->name.is_empty()) {
+		return;
+	}
+
+	StringName target_name;
+	const GDScriptParser::DataType datatype = p_identifier->get_datatype();
+	if (p_identifier->source == GDScriptParser::IdentifierNode::NATIVE_CLASS) {
+		target_name = datatype.native_type;
+		if (target_name.is_empty()) {
+			target_name = p_identifier->name;
+		}
+	} else if (p_identifier->source == GDScriptParser::IdentifierNode::UNDEFINED_SOURCE && datatype.is_meta_type) {
+		if (datatype.kind == GDScriptParser::DataType::BUILTIN) {
+			target_name = Variant::get_type_name(datatype.builtin_type);
+		} else if (datatype.kind == GDScriptParser::DataType::NATIVE) {
+			target_name = datatype.native_type;
+		}
+	}
+
+	const StringName *alias = r_context.export_context->get_builtin_class_alias(target_name);
+	if (alias == nullptr) {
+		return;
+	}
+
+	add_replacement(r_context, p_identifier, String(*alias));
 }
 
 void add_global_class_name_reference_replacement(RewriteContext &r_context, const GDScriptParser::IdentifierNode *p_identifier) {

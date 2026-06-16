@@ -23,11 +23,13 @@ class ExportContext {
 	HashMap<String, String> member_renames;
 	HashMap<StringName, StringName> global_class_renames;
 	HashMap<String, StringName> global_class_renames_by_path;
+	HashMap<StringName, StringName> builtin_class_aliases;
 	HashSet<StringName> reserved_member_names;
 	HashSet<StringName> reserved_global_class_names;
 	RandomPCG obfuscation_random;
 
 	void reserve_registered_global_class_names();
+	void reserve_builtin_class_names();
 
 public:
 	void reset();
@@ -50,6 +52,9 @@ public:
 	StringName get_or_create_global_class_rename(const StringName &p_name, const String &p_path);
 	const StringName *get_global_class_rename(const StringName &p_name) const;
 	const StringName *get_global_class_rename_by_path(const String &p_path) const;
+	StringName get_or_create_builtin_class_alias(const StringName &p_name);
+	const StringName *get_builtin_class_alias(const StringName &p_name) const;
+	const HashMap<StringName, StringName> &get_builtin_class_aliases() const;
 };
 
 } // namespace WGodotGDScriptExportTransform

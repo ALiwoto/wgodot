@@ -34,6 +34,7 @@
 #include "gdscript_utility_callable.h"
 #include "gdscript_utility_functions.h"
 // wgodot-changes::begin
+#include "wgodot_gd/builtin_class_aliases.h"
 #include "wgodot_stdlib.h"
 // wgodot-changes::end
 
@@ -56,6 +57,11 @@
 #define ENUM_SEPARATOR "."
 
 // wgodot-changes::begin
+static StringName wgodot_resolve_builtin_class_alias(const StringName &p_name) {
+	const StringName resolved = WGodotGDScriptBuiltinClassAliases::resolve_alias(p_name);
+	return !resolved.is_empty() ? resolved : p_name;
+}
+
 static StringName wgodot_get_interface_type_name(const GDScriptParser::ClassNode *p_interface) {
 	if (p_interface == nullptr) {
 		return StringName();
@@ -510,7 +516,10 @@ Error GDScriptAnalyzer::resolve_class_inheritance(GDScriptParser::ClassNode *p_c
 				return ERR_PARSE_ERROR;
 			}
 			GDScriptParser::IdentifierNode *id = p_class->extends[extends_index++];
-			const StringName &name = id->name;
+			// wgodot-changes::begin
+			StringName name = id->name;
+			name = wgodot_resolve_builtin_class_alias(name);
+			// wgodot-changes::end
 			base.type_source = GDScriptParser::DataType::ANNOTATED_EXPLICIT;
 
 			if (ScriptServer::is_global_class(name)) {
@@ -770,6 +779,9 @@ GDScriptParser::DataType GDScriptAnalyzer::resolve_datatype(GDScriptParser::Type
 	}
 
 	if (!type_found) {
+		// wgodot-changes::begin
+		first = wgodot_resolve_builtin_class_alias(first);
+		// wgodot-changes::end
 		if (first == SNAME("Variant")) {
 			if (p_type->type_chain.size() == 2) {
 				// May be nested enum.
@@ -4681,6 +4693,12 @@ void GDScriptAnalyzer::reduce_identifier(GDScriptParser::IdentifierNode *p_ident
 	}
 
 	StringName name = p_identifier->name;
+	// wgodot-changes::begin
+	const StringName wgodot_builtin_alias_target = WGodotGDScriptBuiltinClassAliases::resolve_alias(name);
+	if (!wgodot_builtin_alias_target.is_empty()) {
+		name = wgodot_builtin_alias_target;
+	}
+	// wgodot-changes::end
 	p_identifier->source = GDScriptParser::IdentifierNode::UNDEFINED_SOURCE;
 
 	// Not a local or a member, so check globals.

@@ -7,8 +7,11 @@
 
 #include "obfuscation_names.h"
 
+#include "core/config/project_settings.h"
+#include "core/object/class_db.h"
 #include "core/object/script_language.h"
 #include "core/templates/local_vector.h"
+#include "core/variant/variant.h"
 
 namespace {
 
@@ -297,9 +300,11 @@ void ExportContext::reset() {
 	member_renames.clear();
 	global_class_renames.clear();
 	global_class_renames_by_path.clear();
+	builtin_class_aliases.clear();
 	reserved_member_names.clear();
 	reserved_global_class_names.clear();
 	reserve_registered_global_class_names();
+	reserve_builtin_class_names();
 	obfuscation_random.randomize();
 }
 
@@ -343,6 +348,30 @@ void ExportContext::reserve_registered_global_class_names() {
 	ScriptServer::get_global_class_list(global_classes);
 	for (const StringName &global_class : global_classes) {
 		reserve_global_class_name(global_class);
+	}
+}
+
+void ExportContext::reserve_builtin_class_names() {
+	for (int i = 0; i < Variant::VARIANT_MAX; i++) {
+		const StringName builtin_name = Variant::get_type_name(Variant::Type(i));
+		if (!builtin_name.is_empty()) {
+			reserve_global_class_name(builtin_name);
+		}
+	}
+
+	LocalVector<StringName> native_classes;
+	ClassDB::get_class_list(native_classes);
+	for (const StringName &native_class : native_classes) {
+		if (ClassDB::is_class_exposed(native_class)) {
+			reserve_global_class_name(native_class);
+		}
+	}
+
+	if (ProjectSettings::get_singleton() != nullptr) {
+		const HashMap<StringName, ProjectSettings::AutoloadInfo> &autoloads = ProjectSettings::get_singleton()->get_autoload_list();
+		for (const KeyValue<StringName, ProjectSettings::AutoloadInfo> &autoload : autoloads) {
+			reserve_global_class_name(autoload.key);
+		}
 	}
 }
 
@@ -466,6 +495,34 @@ const StringName *ExportContext::get_global_class_rename_by_path(const String &p
 	}
 
 	return global_class_renames_by_path.getptr(p_path);
+}
+
+StringName ExportContext::get_or_create_builtin_class_alias(const StringName &p_name) {
+	if (p_name.is_empty()) {
+		return StringName();
+	}
+
+	if (const StringName *existing = builtin_class_aliases.getptr(p_name)) {
+		return *existing;
+	}
+
+	const String alias = WGodotGDScriptExportTransform::make_obfuscated_name(options.obfuscation_strategy, obfuscation_random, reserved_global_class_names, "built-in class alias");
+	const StringName alias_name(alias);
+	builtin_class_aliases[p_name] = alias_name;
+	reserved_member_names.insert(alias_name);
+	return alias_name;
+}
+
+const StringName *ExportContext::get_builtin_class_alias(const StringName &p_name) const {
+	if (p_name.is_empty()) {
+		return nullptr;
+	}
+
+	return builtin_class_aliases.getptr(p_name);
+}
+
+const HashMap<StringName, StringName> &ExportContext::get_builtin_class_aliases() const {
+	return builtin_class_aliases;
 }
 
 } // namespace WGodotGDScriptExportTransform

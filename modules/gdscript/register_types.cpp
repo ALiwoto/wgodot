@@ -37,6 +37,7 @@
 #include "gdscript_tokenizer_buffer.h"
 #include "gdscript_utility_functions.h"
 // wgodot-changes::begin
+#include "wgodot_gd/builtin_class_aliases.h"
 #include "wgodot_gd/export_context.h"
 #include "wgodot_gd/export_transform.h"
 // wgodot-changes::end
@@ -110,6 +111,10 @@ protected:
 	virtual void _export_paths_ready(const HashSet<String> &p_paths) override {
 		transform_context.reset();
 		WGodotGDScriptExportTransform::prescan_project_scripts(&transform_context, p_paths);
+		const Vector<uint8_t> builtin_class_aliases = WGodotGDScriptBuiltinClassAliases::serialize_alias_map(transform_context.get_builtin_class_aliases());
+		if (!builtin_class_aliases.is_empty()) {
+			add_file(WGodotGDScriptBuiltinClassAliases::get_alias_map_path(), builtin_class_aliases, false);
+		}
 	}
 
 	virtual void _export_global_class_list(Array &r_global_class_list) override {
@@ -173,6 +178,10 @@ static void _editor_init() {
 
 void initialize_gdscript_module(ModuleInitializationLevel p_level) {
 	if (p_level == MODULE_INITIALIZATION_LEVEL_SERVERS) {
+		// wgodot-changes::begin
+		WGodotGDScriptBuiltinClassAliases::clear_runtime_cache();
+		// wgodot-changes::end
+
 		GDREGISTER_CLASS(GDScript);
 		GDREGISTER_INTERNAL_CLASS(GDScriptFunctionState);
 

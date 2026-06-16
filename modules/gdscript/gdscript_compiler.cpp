@@ -36,6 +36,7 @@
 #include "gdscript_cache.h"
 #include "gdscript_utility_functions.h"
 // wgodot-changes::begin
+#include "wgodot_gd/builtin_class_aliases.h"
 #include "wgodot_stdlib.h"
 // wgodot-changes::end
 
@@ -525,21 +526,28 @@ GDScriptCodeGenerator::Address GDScriptCompiler::_parse_expression(CodeGen &code
 				case GDScriptParser::IdentifierNode::NATIVE_CLASS:
 				case GDScriptParser::IdentifierNode::UNDEFINED_SOURCE: {
 					// Try globals.
-					if (GDScriptLanguage::get_singleton()->get_global_map().has(identifier)) {
+					// wgodot-changes::begin
+					StringName wgodot_resolved_identifier = WGodotGDScriptBuiltinClassAliases::resolve_alias(identifier);
+					if (wgodot_resolved_identifier.is_empty()) {
+						wgodot_resolved_identifier = identifier;
+					}
+
+					if (GDScriptLanguage::get_singleton()->get_global_map().has(wgodot_resolved_identifier)) {
 						// If it's an autoload singleton, we postpone to load it at runtime.
 						// This is so one autoload doesn't try to load another before it's compiled.
 						HashMap<StringName, ProjectSettings::AutoloadInfo> autoloads(ProjectSettings::get_singleton()->get_autoload_list());
-						if (autoloads.has(identifier) && autoloads[identifier].is_singleton) {
+						if (autoloads.has(wgodot_resolved_identifier) && autoloads[wgodot_resolved_identifier].is_singleton) {
 							GDScriptCodeGenerator::Address global = codegen.add_temporary(_gdtype_from_datatype(in->get_datatype(), codegen.script));
-							int idx = GDScriptLanguage::get_singleton()->get_global_map()[identifier];
+							int idx = GDScriptLanguage::get_singleton()->get_global_map()[wgodot_resolved_identifier];
 							gen->write_store_global(global, idx);
 							return global;
 						} else {
-							int idx = GDScriptLanguage::get_singleton()->get_global_map()[identifier];
+							int idx = GDScriptLanguage::get_singleton()->get_global_map()[wgodot_resolved_identifier];
 							Variant global = GDScriptLanguage::get_singleton()->get_global_array()[idx];
 							return codegen.add_constant(global);
 						}
 					}
+					// wgodot-changes::end
 
 					// Try global classes.
 					if (ScriptServer::is_global_class(identifier)) {
@@ -779,13 +787,23 @@ GDScriptCodeGenerator::Address GDScriptCompiler::_parse_expression(CodeGen &code
 						const GDScriptParser::SubscriptNode *subscript = static_cast<const GDScriptParser::SubscriptNode *>(call->callee);
 
 						if (subscript->is_attribute) {
+							// wgodot-changes::begin
+							const GDScriptParser::IdentifierNode *wgodot_base_identifier = subscript->base->type == GDScriptParser::Node::IDENTIFIER ? static_cast<GDScriptParser::IdentifierNode *>(subscript->base) : nullptr;
+							StringName wgodot_base_name = wgodot_base_identifier != nullptr ? wgodot_base_identifier->name : StringName();
+							if (!wgodot_base_name.is_empty()) {
+								const StringName wgodot_alias_target = WGodotGDScriptBuiltinClassAliases::resolve_alias(wgodot_base_name);
+								if (!wgodot_alias_target.is_empty()) {
+									wgodot_base_name = wgodot_alias_target;
+								}
+							}
+							
 							// May be static built-in method call.
-							if (!call->is_super && subscript->base->type == GDScriptParser::Node::IDENTIFIER && GDScriptParser::get_builtin_type(static_cast<GDScriptParser::IdentifierNode *>(subscript->base)->name) < Variant::VARIANT_MAX) {
-								gen->write_call_builtin_type_static(result, GDScriptParser::get_builtin_type(static_cast<GDScriptParser::IdentifierNode *>(subscript->base)->name), subscript->attribute->name, arguments);
+							if (!call->is_super && wgodot_base_identifier != nullptr && GDScriptParser::get_builtin_type(wgodot_base_name) < Variant::VARIANT_MAX) {
+								gen->write_call_builtin_type_static(result, GDScriptParser::get_builtin_type(wgodot_base_name), subscript->attribute->name, arguments);
 							} else if (!call->is_super && subscript->base->type == GDScriptParser::Node::IDENTIFIER && call->function_name != SNAME("new") &&
-									static_cast<GDScriptParser::IdentifierNode *>(subscript->base)->source == GDScriptParser::IdentifierNode::NATIVE_CLASS && !Engine::get_singleton()->has_singleton(static_cast<GDScriptParser::IdentifierNode *>(subscript->base)->name)) {
+									static_cast<GDScriptParser::IdentifierNode *>(subscript->base)->source == GDScriptParser::IdentifierNode::NATIVE_CLASS && !Engine::get_singleton()->has_singleton(wgodot_base_name)) {
 								// It's a static native method call.
-								StringName class_name = static_cast<GDScriptParser::IdentifierNode *>(subscript->base)->name;
+								StringName class_name = wgodot_base_name;
 								MethodBind *method = ClassDB::get_method(class_name, subscript->attribute->name);
 								if (_can_use_validate_call(method, arguments)) {
 									// Exact arguments, use validated call.
@@ -794,6 +812,7 @@ GDScriptCodeGenerator::Address GDScriptCompiler::_parse_expression(CodeGen &code
 									// Not exact arguments, use regular static call
 									gen->write_call_native_static(result, class_name, subscript->attribute->name, arguments);
 								}
+							// wgodot-changes::end
 							} else {
 								GDScriptCodeGenerator::Address base = _parse_expression(codegen, r_error, subscript->base);
 								if (r_error) {
