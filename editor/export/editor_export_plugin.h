@@ -114,6 +114,7 @@ protected:
 	virtual void _export_begin(const HashSet<String> &p_features, bool p_debug, const String &p_path, int p_flags);
 	// wgodot-changes::begin
 	virtual void _export_paths_ready(const HashSet<String> &p_paths);
+	virtual void _export_global_class_list(Array &r_global_class_list);
 	// wgodot-changes::end
 	virtual void _export_end();
 	virtual void _end_generate_apple_embedded_project(const String &p_path, bool p_will_build_archive);

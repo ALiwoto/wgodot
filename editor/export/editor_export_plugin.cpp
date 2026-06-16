@@ -332,6 +332,9 @@ void EditorExportPlugin::_export_begin(const HashSet<String> &p_features, bool p
 // wgodot-changes::begin
 void EditorExportPlugin::_export_paths_ready(const HashSet<String> &p_paths) {
 }
+
+void EditorExportPlugin::_export_global_class_list(Array &r_global_class_list) {
+}
 // wgodot-changes::end
 
 void EditorExportPlugin::_export_end() {}

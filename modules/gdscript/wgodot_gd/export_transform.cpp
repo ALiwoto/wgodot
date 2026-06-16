@@ -17,6 +17,8 @@
 #include "core/config/project_settings.h"
 #include "core/error/error_macros.h"
 #include "core/io/file_access.h"
+#include "core/variant/array.h"
+#include "core/variant/dictionary.h"
 
 namespace {
 
@@ -77,6 +79,11 @@ struct ScriptSource {
 	String source;
 };
 
+struct GlobalClassRenameRequest {
+	StringName name;
+	String path;
+};
+
 void collect_no_mangle_constants(RewriteContext &r_context, const GDScriptParser::Node *p_node, bool p_no_mangle_scope);
 void collect_member_names(RewriteContext &r_context, const GDScriptParser::Node *p_node, bool p_no_mangle_scope);
 void collect_expression_replacements(RewriteContext &r_context, const GDScriptParser::ExpressionNode *p_expression, bool p_no_mangle_scope);
@@ -87,8 +94,22 @@ void collect_type_replacements(RewriteContext &r_context, const GDScriptParser::
 		return;
 	}
 
+	if (!p_type->type_chain.is_empty()) {
+		add_global_class_name_reference_replacement(r_context, p_type->type_chain[0]);
+	}
+
 	for (const GDScriptParser::TypeNode *container_type : p_type->container_types) {
 		collect_type_replacements(r_context, container_type);
+	}
+}
+
+void collect_extends_replacements(RewriteContext &r_context, const GDScriptParser::ClassNode *p_class) {
+	if (p_class == nullptr) {
+		return;
+	}
+
+	for (const GDScriptParser::IdentifierNode *identifier : p_class->extends) {
+		add_global_class_name_reference_replacement(r_context, identifier);
 	}
 }
 
@@ -192,6 +213,7 @@ void collect_expression_replacements(RewriteContext &r_context, const GDScriptPa
 			if (is_declared_constant_identifier(r_context, identifier)) {
 				add_constant_reference_replacement(r_context, identifier, identifier->constant_source);
 			} else {
+				add_global_class_name_reference_replacement(r_context, identifier);
 				add_member_name_reference_replacement(r_context, identifier);
 				if (!p_no_mangle_scope) {
 					add_local_name_reference_replacement(r_context, identifier);
@@ -327,6 +349,8 @@ void collect_node_replacements(RewriteContext &r_context, const GDScriptParser::
 	switch (p_node->type) {
 		case GDScriptParser::Node::CLASS: {
 			const GDScriptParser::ClassNode *class_node = static_cast<const GDScriptParser::ClassNode *>(p_node);
+			add_class_declaration_name_replacement(r_context, class_node);
+			collect_extends_replacements(r_context, class_node);
 			bool has_mangled_constants = false;
 			bool has_remaining_members = false;
 			for (const GDScriptParser::ClassNode::Member &member : class_node->members) {
@@ -429,10 +453,10 @@ void collect_node_replacements(RewriteContext &r_context, const GDScriptParser::
 			const GDScriptParser::VariableNode *variable = static_cast<const GDScriptParser::VariableNode *>(p_node);
 			collect_type_replacements(r_context, variable->datatype_specifier);
 			collect_expression_replacements(r_context, variable->initializer, no_mangle_scope);
-			if (variable->setter != nullptr) {
+			if (variable->property == GDScriptParser::VariableNode::PROP_INLINE && variable->setter != nullptr) {
 				collect_node_replacements(r_context, variable->setter, no_mangle_scope);
 			}
-			if (variable->getter != nullptr) {
+			if (variable->property == GDScriptParser::VariableNode::PROP_INLINE && variable->getter != nullptr) {
 				collect_node_replacements(r_context, variable->getter, no_mangle_scope);
 			}
 		} break;
@@ -612,8 +636,10 @@ void collect_no_mangle_constants(RewriteContext &r_context, const GDScriptParser
 		case GDScriptParser::Node::VARIABLE: {
 			const GDScriptParser::VariableNode *variable = static_cast<const GDScriptParser::VariableNode *>(p_node);
 			collect_no_mangle_constants_in_expression(r_context, variable->initializer, no_mangle_scope);
-			collect_no_mangle_constants(r_context, variable->setter, no_mangle_scope);
-			collect_no_mangle_constants(r_context, variable->getter, no_mangle_scope);
+			if (variable->property == GDScriptParser::VariableNode::PROP_INLINE) {
+				collect_no_mangle_constants(r_context, variable->setter, no_mangle_scope);
+				collect_no_mangle_constants(r_context, variable->getter, no_mangle_scope);
+			}
 		} break;
 		default:
 			if (p_node->is_expression()) {
@@ -683,6 +709,29 @@ void reserve_script_global_class_name_from_source(ExportContext *p_context, cons
 	p_context->reserve_script_global_class_name(parser.get_tree());
 }
 
+void collect_global_class_rename_request(ExportContext *p_context, const GDScriptParser::ClassNode *p_class, const String &p_path, Vector<GlobalClassRenameRequest> &r_requests) {
+	if (p_context == nullptr || p_class == nullptr) {
+		return;
+	}
+
+	p_context->reserve_script_global_class_name(p_class);
+	p_context->reserve_script_declaration_names_for_global_classes(p_class);
+
+	if (p_class->outer != nullptr ||
+			p_class->identifier == nullptr ||
+			p_class->identifier->name.is_empty() ||
+			!p_class->wgodot_obfuscate ||
+			p_class->wgodot_no_mangle ||
+			p_class->fqcn.begins_with("res://")) {
+		return;
+	}
+
+	GlobalClassRenameRequest request;
+	request.name = p_class->identifier->name;
+	request.path = p_path;
+	r_requests.push_back(request);
+}
+
 } // namespace
 
 namespace WGodotGDScriptExportTransform {
@@ -712,6 +761,7 @@ void prescan_project_scripts(ExportContext *p_context, const HashSet<String> &p_
 	}
 
 	Vector<ScriptSource> scripts;
+	Vector<GlobalClassRenameRequest> global_class_rename_requests;
 	for (const String &path : p_paths) {
 		if (path.get_extension() != "gd") {
 			continue;
@@ -727,7 +777,18 @@ void prescan_project_scripts(ExportContext *p_context, const HashSet<String> &p_
 		script.path = path;
 		script.source = source;
 		scripts.push_back(script);
-		reserve_script_global_class_name_from_source(p_context, source, path);
+
+		AnalyzedSource analyzed_source;
+		if (!analyzed_source.load(source, path)) {
+			reserve_script_global_class_name_from_source(p_context, source, path);
+			continue;
+		}
+
+		collect_global_class_rename_request(p_context, analyzed_source.parser->get_tree(), path, global_class_rename_requests);
+	}
+
+	for (const GlobalClassRenameRequest &request : global_class_rename_requests) {
+		(void)p_context->get_or_create_global_class_rename(request.name, request.path);
 	}
 
 	for (const ScriptSource &script : scripts) {
@@ -737,6 +798,39 @@ void prescan_project_scripts(ExportContext *p_context, const HashSet<String> &p_
 		}
 
 		p_context->index_script(analyzed_source.parser->get_tree(), script.path);
+	}
+}
+
+void transform_global_class_list(ExportContext *p_context, Array *r_global_class_list) {
+	if (p_context == nullptr || r_global_class_list == nullptr) {
+		return;
+	}
+
+	for (int i = 0; i < r_global_class_list->size(); i++) {
+		Dictionary class_dict = (*r_global_class_list)[i];
+
+		if (class_dict.has("class")) {
+			const StringName class_name = class_dict["class"];
+			if (const StringName *obfuscated_name = p_context->get_global_class_rename(class_name)) {
+				class_dict["class"] = *obfuscated_name;
+			}
+		}
+
+		if (class_dict.has("base")) {
+			const StringName base_name = class_dict["base"];
+			if (const StringName *obfuscated_name = p_context->get_global_class_rename(base_name)) {
+				class_dict["base"] = *obfuscated_name;
+			}
+		}
+
+		if (class_dict.has("path")) {
+			const String path = class_dict["path"];
+			if (const StringName *obfuscated_name = p_context->get_global_class_rename_by_path(path)) {
+				class_dict["class"] = *obfuscated_name;
+			}
+		}
+
+		(*r_global_class_list)[i] = class_dict;
 	}
 }
 
@@ -786,6 +880,8 @@ String transform_source(const String &p_source, const String &p_path, const Tran
 	context.obfuscation_random.randomize();
 	if (context.export_context != nullptr) {
 		context.export_context->reserve_script_global_class_name(tree);
+		context.export_context->reserve_script_declaration_names_for_global_classes(tree);
+		context.export_context->index_global_class_rename(tree, p_path);
 		context.export_context->seed_reserved_obfuscated_names(context.reserved_obfuscated_names);
 	}
 	build_line_offsets(context);

@@ -34,10 +34,15 @@
 		<annotation name="@obfuscate">
 			<return type="void" />
 			<description>
-				Marks the following function or variable/property declaration for export-time name obfuscation without changing its access rules.
-				When [code]debug/gdscript/wgodot/obfuscate_names[/code] is enabled, exported GDScript rewrites this declaration and analyzed member usages to the same obfuscated name. This is intentionally explicit and does not rewrite string-reflection calls such as [code]get("member_name")[/code]; use [annotation @no_mangle] when a dynamically accessed member must keep its original name.
+				Marks the following class, function, or variable/property declaration as eligible for configured export-time obfuscation passes without changing its access rules.
+				Right now, name obfuscation is the only implemented obfuscation pass, so this annotation currently affects exported names only. Future obfuscation passes may also use it for other transformations such as control-flow obfuscation or string encryption.
+				When [code]debug/gdscript/wgodot/obfuscate_names[/code] is enabled, exported GDScript rewrites this declaration and analyzed usages to the same obfuscated name. On a class, all eligible members in that class are obfuscated unless their declarations use [annotation @no_mangle]. On a global [code]class_name[/code], the exported global class name and exported global script class cache entry are also rewritten.
+				This is intentionally explicit and does not rewrite string-reflection calls such as [code]get("member_name")[/code], or resource/string references to global class names; use [annotation @no_mangle] when a dynamically accessed member or class must keep its original name.
 				This annotation can be combined with [annotation @no_mangle]; in that case, [annotation @no_mangle] wins and the declaration keeps its original name.
 				[codeblock]
+				@obfuscate
+				class_name PlayerAccount
+
 				@obfuscate
 				var public_cache: Dictionary
 

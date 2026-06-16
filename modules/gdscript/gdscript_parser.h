@@ -764,6 +764,7 @@ public:
 		bool wgodot_protected = false;
 		bool wgodot_static_class = false;
 		bool wgodot_no_mangle = false;
+		bool wgodot_obfuscate = false;
 		bool wgodot_is_interface = false;
 		bool wgodot_interface_global_name = false;
 		StringName wgodot_interface_name;

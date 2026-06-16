@@ -1807,7 +1807,9 @@ Error EditorExportPlatform::export_project_files(const Ref<EditorExportPreset> &
 		}
 	}
 
-	const FilteredCache filtered_cache = _get_filtered_cache(paths);
+	// wgodot-changes::begin
+	const FilteredCache filtered_cache = _get_filtered_cache(paths, export_plugins);
+	// wgodot-changes::end
 
 	Vector<String> forced_export = get_forced_export_files(p_preset);
 	for (const String &file : forced_export) {
@@ -1875,7 +1877,9 @@ Error EditorExportPlatform::export_project_files(const Ref<EditorExportPreset> &
 
 // Used by the main export function to filter excluded global classes, extensions
 // and UIDs based on excluded resources configured in the export preset.
-EditorExportPlatform::FilteredCache EditorExportPlatform::_get_filtered_cache(const HashSet<String> &p_paths) {
+// wgodot-changes::begin
+EditorExportPlatform::FilteredCache EditorExportPlatform::_get_filtered_cache(const HashSet<String> &p_paths, const Vector<Ref<EditorExportPlugin>> &p_export_plugins) {
+// wgodot-changes::end
 	FilteredCache result;
 
 	HashSet<String> extension_list_lines;
@@ -1919,6 +1923,14 @@ EditorExportPlatform::FilteredCache EditorExportPlatform::_get_filtered_cache(co
 			uid_entries.push_back(Pair<ResourceUID::ID, String>(uid, path));
 		}
 	}
+
+	// wgodot-changes::begin
+	// Give export plugins a chance to rewrite the filtered global class cache
+	// before it is encoded and saved as the forced `.godot` cache file.
+	for (int i = 0; i < p_export_plugins.size(); i++) {
+		p_export_plugins[i]->_export_global_class_list(global_class_list);
+	}
+	// wgodot-changes::end
 
 	// Encode extensions.
 	for (const String &line : extension_lines) {

@@ -16,7 +16,7 @@ void GDScriptParser::register_wgodot_annotations() {
 	register_annotation(MethodInfo("@readonly"), AnnotationInfo::VARIABLE | AnnotationInfo::STATEMENT, &GDScriptParser::wgodot_readonly_annotation);
 	register_annotation(MethodInfo("@static_class"), AnnotationInfo::CLASS, &GDScriptParser::wgodot_static_class_annotation);
 	register_annotation(MethodInfo("@no_mangle"), AnnotationInfo::SCRIPT | AnnotationInfo::CLASS_LEVEL | AnnotationInfo::STATEMENT | AnnotationInfo::ENUM, &GDScriptParser::wgodot_no_mangle_annotation);
-	register_annotation(MethodInfo("@obfuscate"), AnnotationInfo::FUNCTION | AnnotationInfo::VARIABLE, &GDScriptParser::wgodot_obfuscate_annotation);
+	register_annotation(MethodInfo("@obfuscate"), AnnotationInfo::SCRIPT | AnnotationInfo::CLASS | AnnotationInfo::FUNCTION | AnnotationInfo::VARIABLE, &GDScriptParser::wgodot_obfuscate_annotation);
 	register_annotation(MethodInfo("@partial", PropertyInfo(Variant::STRING, "path")), AnnotationInfo::SCRIPT | AnnotationInfo::CLASS, &GDScriptParser::wgodot_noop_annotation, Vector<Variant>(), true);
 }
 
@@ -318,11 +318,20 @@ bool GDScriptParser::wgodot_obfuscate_annotation(AnnotationNode *p_annotation, N
 	(void)p_class;
 
 	if (p_target == nullptr) {
-		push_error(R"("@obfuscate" annotation can only be applied to functions and variables.)", p_annotation);
+		push_error(R"("@obfuscate" annotation can only be applied to classes, functions, and variables.)", p_annotation);
 		return false;
 	}
 
 	switch (p_target->type) {
+		case Node::CLASS: {
+			ClassNode *class_node = static_cast<ClassNode *>(p_target);
+			if (class_node->wgodot_obfuscate) {
+				push_error(R"("@obfuscate" annotation can only be used once per class.)", p_annotation);
+				return false;
+			}
+			class_node->wgodot_obfuscate = true;
+			return true;
+		}
 		case Node::FUNCTION: {
 			FunctionNode *function = static_cast<FunctionNode *>(p_target);
 			if (function->wgodot_obfuscate) {
@@ -342,7 +351,7 @@ bool GDScriptParser::wgodot_obfuscate_annotation(AnnotationNode *p_annotation, N
 			return true;
 		}
 		default:
-			push_error(R"("@obfuscate" annotation can only be applied to functions and variables.)", p_annotation);
+			push_error(R"("@obfuscate" annotation can only be applied to classes, functions, and variables.)", p_annotation);
 			return false;
 	}
 }

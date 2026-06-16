@@ -111,6 +111,10 @@ protected:
 		transform_context.reset();
 		WGodotGDScriptExportTransform::prescan_project_scripts(&transform_context, p_paths);
 	}
+
+	virtual void _export_global_class_list(Array &r_global_class_list) override {
+		WGodotGDScriptExportTransform::transform_global_class_list(&transform_context, &r_global_class_list);
+	}
 	// wgodot-changes::end
 
 	virtual void _export_file(const String &p_path, const String &p_type, const HashSet<String> &p_features) override {

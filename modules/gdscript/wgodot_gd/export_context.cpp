@@ -28,6 +28,211 @@ String get_class_primary_key(const GDScriptParser::ClassNode *p_class, const Str
 	return String();
 }
 
+void reserve_function_declaration_names_for_global_classes(WGodotGDScriptExportTransform::ExportContext &r_context, const GDScriptParser::FunctionNode *p_function);
+void reserve_node_declaration_names_for_global_classes(WGodotGDScriptExportTransform::ExportContext &r_context, const GDScriptParser::Node *p_node);
+void reserve_expression_declaration_names_for_global_classes(WGodotGDScriptExportTransform::ExportContext &r_context, const GDScriptParser::ExpressionNode *p_expression);
+
+void reserve_type_declaration_names_for_global_classes(WGodotGDScriptExportTransform::ExportContext &r_context, const GDScriptParser::TypeNode *p_type) {
+	if (p_type == nullptr) {
+		return;
+	}
+
+	for (const GDScriptParser::TypeNode *container_type : p_type->container_types) {
+		reserve_type_declaration_names_for_global_classes(r_context, container_type);
+	}
+}
+
+void reserve_parameter_declaration_names_for_global_classes(WGodotGDScriptExportTransform::ExportContext &r_context, const GDScriptParser::ParameterNode *p_parameter) {
+	if (p_parameter == nullptr) {
+		return;
+	}
+
+	if (p_parameter->identifier != nullptr) {
+		r_context.reserve_global_class_name(p_parameter->identifier->name);
+	}
+	reserve_type_declaration_names_for_global_classes(r_context, p_parameter->datatype_specifier);
+	reserve_expression_declaration_names_for_global_classes(r_context, p_parameter->initializer);
+}
+
+void reserve_suite_declaration_names_for_global_classes(WGodotGDScriptExportTransform::ExportContext &r_context, const GDScriptParser::SuiteNode *p_suite) {
+	if (p_suite == nullptr) {
+		return;
+	}
+
+	for (const GDScriptParser::SuiteNode::Local &local : p_suite->locals) {
+		r_context.reserve_global_class_name(local.name);
+	}
+
+	for (const GDScriptParser::Node *statement : p_suite->statements) {
+		reserve_node_declaration_names_for_global_classes(r_context, statement);
+	}
+}
+
+void reserve_function_declaration_names_for_global_classes(WGodotGDScriptExportTransform::ExportContext &r_context, const GDScriptParser::FunctionNode *p_function) {
+	if (p_function == nullptr) {
+		return;
+	}
+
+	if (p_function->identifier != nullptr) {
+		r_context.reserve_global_class_name(p_function->identifier->name);
+	}
+	for (const GDScriptParser::ParameterNode *parameter : p_function->parameters) {
+		reserve_parameter_declaration_names_for_global_classes(r_context, parameter);
+	}
+	reserve_parameter_declaration_names_for_global_classes(r_context, p_function->rest_parameter);
+	reserve_type_declaration_names_for_global_classes(r_context, p_function->return_type);
+	reserve_suite_declaration_names_for_global_classes(r_context, p_function->body);
+}
+
+void reserve_expression_declaration_names_for_global_classes(WGodotGDScriptExportTransform::ExportContext &r_context, const GDScriptParser::ExpressionNode *p_expression) {
+	if (p_expression == nullptr) {
+		return;
+	}
+
+	switch (p_expression->type) {
+		case GDScriptParser::Node::ARRAY: {
+			const GDScriptParser::ArrayNode *array = static_cast<const GDScriptParser::ArrayNode *>(p_expression);
+			for (const GDScriptParser::ExpressionNode *element : array->elements) {
+				reserve_expression_declaration_names_for_global_classes(r_context, element);
+			}
+		} break;
+		case GDScriptParser::Node::ASSIGNMENT: {
+			const GDScriptParser::AssignmentNode *assignment = static_cast<const GDScriptParser::AssignmentNode *>(p_expression);
+			reserve_expression_declaration_names_for_global_classes(r_context, assignment->assignee);
+			reserve_expression_declaration_names_for_global_classes(r_context, assignment->assigned_value);
+		} break;
+		case GDScriptParser::Node::AWAIT:
+			reserve_expression_declaration_names_for_global_classes(r_context, static_cast<const GDScriptParser::AwaitNode *>(p_expression)->to_await);
+			break;
+		case GDScriptParser::Node::BINARY_OPERATOR: {
+			const GDScriptParser::BinaryOpNode *binary = static_cast<const GDScriptParser::BinaryOpNode *>(p_expression);
+			reserve_expression_declaration_names_for_global_classes(r_context, binary->left_operand);
+			reserve_expression_declaration_names_for_global_classes(r_context, binary->right_operand);
+		} break;
+		case GDScriptParser::Node::CALL: {
+			const GDScriptParser::CallNode *call = static_cast<const GDScriptParser::CallNode *>(p_expression);
+			reserve_expression_declaration_names_for_global_classes(r_context, call->callee);
+			for (const GDScriptParser::ExpressionNode *argument : call->arguments) {
+				reserve_expression_declaration_names_for_global_classes(r_context, argument);
+			}
+		} break;
+		case GDScriptParser::Node::CAST: {
+			const GDScriptParser::CastNode *cast = static_cast<const GDScriptParser::CastNode *>(p_expression);
+			reserve_expression_declaration_names_for_global_classes(r_context, cast->operand);
+			reserve_type_declaration_names_for_global_classes(r_context, cast->cast_type);
+		} break;
+		case GDScriptParser::Node::DICTIONARY: {
+			const GDScriptParser::DictionaryNode *dictionary = static_cast<const GDScriptParser::DictionaryNode *>(p_expression);
+			for (const GDScriptParser::DictionaryNode::Pair &pair : dictionary->elements) {
+				reserve_expression_declaration_names_for_global_classes(r_context, pair.key);
+				reserve_expression_declaration_names_for_global_classes(r_context, pair.value);
+			}
+		} break;
+		case GDScriptParser::Node::LAMBDA:
+			reserve_function_declaration_names_for_global_classes(r_context, static_cast<const GDScriptParser::LambdaNode *>(p_expression)->function);
+			break;
+		case GDScriptParser::Node::PRELOAD:
+			reserve_expression_declaration_names_for_global_classes(r_context, static_cast<const GDScriptParser::PreloadNode *>(p_expression)->path);
+			break;
+		case GDScriptParser::Node::SUBSCRIPT: {
+			const GDScriptParser::SubscriptNode *subscript = static_cast<const GDScriptParser::SubscriptNode *>(p_expression);
+			reserve_expression_declaration_names_for_global_classes(r_context, subscript->base);
+			if (!subscript->is_attribute) {
+				reserve_expression_declaration_names_for_global_classes(r_context, subscript->index);
+			}
+		} break;
+		case GDScriptParser::Node::TERNARY_OPERATOR: {
+			const GDScriptParser::TernaryOpNode *ternary = static_cast<const GDScriptParser::TernaryOpNode *>(p_expression);
+			reserve_expression_declaration_names_for_global_classes(r_context, ternary->condition);
+			reserve_expression_declaration_names_for_global_classes(r_context, ternary->true_expr);
+			reserve_expression_declaration_names_for_global_classes(r_context, ternary->false_expr);
+		} break;
+		case GDScriptParser::Node::TYPE_TEST: {
+			const GDScriptParser::TypeTestNode *type_test = static_cast<const GDScriptParser::TypeTestNode *>(p_expression);
+			reserve_expression_declaration_names_for_global_classes(r_context, type_test->operand);
+			reserve_type_declaration_names_for_global_classes(r_context, type_test->test_type);
+		} break;
+		case GDScriptParser::Node::UNARY_OPERATOR:
+			reserve_expression_declaration_names_for_global_classes(r_context, static_cast<const GDScriptParser::UnaryOpNode *>(p_expression)->operand);
+			break;
+		default:
+			break;
+	}
+}
+
+void reserve_class_declaration_names_for_global_classes(WGodotGDScriptExportTransform::ExportContext &r_context, const GDScriptParser::ClassNode *p_class) {
+	if (p_class == nullptr) {
+		return;
+	}
+
+	if (p_class->identifier != nullptr) {
+		r_context.reserve_global_class_name(p_class->identifier->name);
+	}
+
+	for (const GDScriptParser::ClassNode::Member &member : p_class->members) {
+		const String member_name = member.get_name();
+		if (!member_name.is_empty()) {
+			r_context.reserve_global_class_name(StringName(member_name));
+		}
+		reserve_node_declaration_names_for_global_classes(r_context, member.get_source_node());
+	}
+}
+
+void reserve_node_declaration_names_for_global_classes(WGodotGDScriptExportTransform::ExportContext &r_context, const GDScriptParser::Node *p_node) {
+	if (p_node == nullptr) {
+		return;
+	}
+
+	switch (p_node->type) {
+		case GDScriptParser::Node::CLASS:
+			reserve_class_declaration_names_for_global_classes(r_context, static_cast<const GDScriptParser::ClassNode *>(p_node));
+			break;
+		case GDScriptParser::Node::CONSTANT: {
+			const GDScriptParser::ConstantNode *constant = static_cast<const GDScriptParser::ConstantNode *>(p_node);
+			if (constant->identifier != nullptr) {
+				r_context.reserve_global_class_name(constant->identifier->name);
+			}
+			reserve_type_declaration_names_for_global_classes(r_context, constant->datatype_specifier);
+			reserve_expression_declaration_names_for_global_classes(r_context, constant->initializer);
+		} break;
+		case GDScriptParser::Node::FUNCTION:
+			reserve_function_declaration_names_for_global_classes(r_context, static_cast<const GDScriptParser::FunctionNode *>(p_node));
+			break;
+		case GDScriptParser::Node::VARIABLE: {
+			const GDScriptParser::VariableNode *variable = static_cast<const GDScriptParser::VariableNode *>(p_node);
+			if (variable->identifier != nullptr) {
+				r_context.reserve_global_class_name(variable->identifier->name);
+			}
+			reserve_type_declaration_names_for_global_classes(r_context, variable->datatype_specifier);
+			reserve_expression_declaration_names_for_global_classes(r_context, variable->initializer);
+			if (variable->property == GDScriptParser::VariableNode::PROP_INLINE) {
+				reserve_function_declaration_names_for_global_classes(r_context, variable->setter);
+				reserve_function_declaration_names_for_global_classes(r_context, variable->getter);
+			}
+		} break;
+		case GDScriptParser::Node::SIGNAL: {
+			const GDScriptParser::SignalNode *signal = static_cast<const GDScriptParser::SignalNode *>(p_node);
+			if (signal->identifier != nullptr) {
+				r_context.reserve_global_class_name(signal->identifier->name);
+			}
+			for (const GDScriptParser::ParameterNode *parameter : signal->parameters) {
+				reserve_parameter_declaration_names_for_global_classes(r_context, parameter);
+			}
+		} break;
+		case GDScriptParser::Node::SUITE:
+			reserve_suite_declaration_names_for_global_classes(r_context, static_cast<const GDScriptParser::SuiteNode *>(p_node));
+			break;
+		case GDScriptParser::Node::LAMBDA:
+			reserve_function_declaration_names_for_global_classes(r_context, static_cast<const GDScriptParser::LambdaNode *>(p_node)->function);
+			break;
+		default:
+			if (p_node->is_expression()) {
+				reserve_expression_declaration_names_for_global_classes(r_context, static_cast<const GDScriptParser::ExpressionNode *>(p_node));
+			}
+			break;
+	}
+}
+
 void index_class(WGodotGDScriptExportTransform::ExportContext &r_context, const GDScriptParser::ClassNode *p_class, const String &p_script_path, bool p_no_mangle_scope) {
 	if (p_class == nullptr) {
 		return;
@@ -36,6 +241,7 @@ void index_class(WGodotGDScriptExportTransform::ExportContext &r_context, const 
 	r_context.reserve_script_global_class_name(p_class);
 
 	const bool no_mangle_scope = p_no_mangle_scope || p_class->wgodot_no_mangle;
+	const bool obfuscate_scope = p_class->wgodot_obfuscate;
 	for (const GDScriptParser::ClassNode::Member &member : p_class->members) {
 		const String member_name = member.get_name();
 		if (!member_name.is_empty()) {
@@ -57,13 +263,13 @@ void index_class(WGodotGDScriptExportTransform::ExportContext &r_context, const 
 		if (member.type == GDScriptParser::ClassNode::Member::FUNCTION &&
 				member.function != nullptr &&
 				member.function->identifier != nullptr &&
-				member.function->wgodot_obfuscate &&
+				(obfuscate_scope || member.function->wgodot_obfuscate) &&
 				!member.function->wgodot_no_mangle) {
 			member_name = member.function->identifier->name;
 		} else if (member.type == GDScriptParser::ClassNode::Member::VARIABLE &&
 				member.variable != nullptr &&
 				member.variable->identifier != nullptr &&
-				member.variable->wgodot_obfuscate &&
+				(obfuscate_scope || member.variable->wgodot_obfuscate) &&
 				!member.variable->wgodot_no_mangle) {
 			member_name = member.variable->identifier->name;
 		} else {
@@ -89,6 +295,8 @@ namespace WGodotGDScriptExportTransform {
 
 void ExportContext::reset() {
 	member_renames.clear();
+	global_class_renames.clear();
+	global_class_renames_by_path.clear();
 	reserved_member_names.clear();
 	reserved_global_class_names.clear();
 	reserve_registered_global_class_names();
@@ -124,6 +332,10 @@ void ExportContext::reserve_script_global_class_name(const GDScriptParser::Class
 	}
 
 	reserve_global_class_name(p_class->identifier->name);
+}
+
+void ExportContext::reserve_script_declaration_names_for_global_classes(const GDScriptParser::ClassNode *p_class) {
+	reserve_class_declaration_names_for_global_classes(*this, p_class);
 }
 
 void ExportContext::reserve_registered_global_class_names() {
@@ -172,6 +384,20 @@ void ExportContext::index_script(const GDScriptParser::ClassNode *p_class, const
 	index_class(*this, p_class, p_script_path, false);
 }
 
+void ExportContext::index_global_class_rename(const GDScriptParser::ClassNode *p_class, const String &p_script_path) {
+	if (p_class == nullptr ||
+			p_class->outer != nullptr ||
+			p_class->identifier == nullptr ||
+			p_class->identifier->name.is_empty() ||
+			!p_class->wgodot_obfuscate ||
+			p_class->wgodot_no_mangle ||
+			p_class->fqcn.begins_with("res://")) {
+		return;
+	}
+
+	(void)get_or_create_global_class_rename(p_class->identifier->name, p_script_path);
+}
+
 String ExportContext::get_or_create_member_rename(const String &p_key) {
 	if (p_key.is_empty()) {
 		return String();
@@ -202,6 +428,44 @@ const String *ExportContext::get_member_rename(const String &p_key) const {
 	}
 
 	return member_renames.getptr(p_key);
+}
+
+StringName ExportContext::get_or_create_global_class_rename(const StringName &p_name, const String &p_path) {
+	if (p_name.is_empty()) {
+		return StringName();
+	}
+
+	if (const StringName *existing = global_class_renames.getptr(p_name)) {
+		if (!p_path.is_empty()) {
+			global_class_renames_by_path[p_path] = *existing;
+		}
+		return *existing;
+	}
+
+	const String obfuscated_name = WGodotGDScriptExportTransform::make_obfuscated_name(options.obfuscation_strategy, obfuscation_random, reserved_global_class_names, "global class name");
+	const StringName obfuscated_string_name(obfuscated_name);
+	global_class_renames[p_name] = obfuscated_string_name;
+	if (!p_path.is_empty()) {
+		global_class_renames_by_path[p_path] = obfuscated_string_name;
+	}
+	reserved_member_names.insert(obfuscated_string_name);
+	return obfuscated_string_name;
+}
+
+const StringName *ExportContext::get_global_class_rename(const StringName &p_name) const {
+	if (p_name.is_empty()) {
+		return nullptr;
+	}
+
+	return global_class_renames.getptr(p_name);
+}
+
+const StringName *ExportContext::get_global_class_rename_by_path(const String &p_path) const {
+	if (p_path.is_empty()) {
+		return nullptr;
+	}
+
+	return global_class_renames_by_path.getptr(p_path);
 }
 
 } // namespace WGodotGDScriptExportTransform

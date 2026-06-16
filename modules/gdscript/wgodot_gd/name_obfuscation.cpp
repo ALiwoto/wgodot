@@ -60,19 +60,19 @@ bool should_obfuscate_local(const GDScriptParser::SuiteNode::Local &p_local) {
 	}
 }
 
-bool should_obfuscate_function(const GDScriptParser::FunctionNode *p_function, bool p_no_mangle_scope) {
+bool should_obfuscate_function(const GDScriptParser::FunctionNode *p_function, bool p_no_mangle_scope, bool p_obfuscate_scope) {
 	return !p_no_mangle_scope &&
 			p_function != nullptr &&
 			p_function->identifier != nullptr &&
-			(p_function->wgodot_private || p_function->wgodot_obfuscate) &&
+			(p_obfuscate_scope || p_function->wgodot_private || p_function->wgodot_obfuscate) &&
 			!p_function->wgodot_no_mangle;
 }
 
-bool should_obfuscate_variable(const GDScriptParser::VariableNode *p_variable, bool p_no_mangle_scope) {
+bool should_obfuscate_variable(const GDScriptParser::VariableNode *p_variable, bool p_no_mangle_scope, bool p_obfuscate_scope) {
 	return !p_no_mangle_scope &&
 			p_variable != nullptr &&
 			p_variable->identifier != nullptr &&
-			(p_variable->wgodot_private || p_variable->wgodot_obfuscate) &&
+			(p_obfuscate_scope || p_variable->wgodot_private || p_variable->wgodot_obfuscate) &&
 			!p_variable->wgodot_no_mangle;
 }
 
@@ -128,25 +128,6 @@ void reserve_datatype_class_member_names(WGodotGDScriptExportTransform::RewriteC
 	}
 }
 
-bool source_allows_context_member_obfuscation(const GDScriptParser::IdentifierNode *p_identifier) {
-	if (p_identifier == nullptr) {
-		return false;
-	}
-
-	if (p_identifier->source == GDScriptParser::IdentifierNode::MEMBER_FUNCTION && p_identifier->function_source != nullptr) {
-		return p_identifier->function_source->wgodot_obfuscate && !p_identifier->function_source->wgodot_no_mangle;
-	}
-
-	if ((p_identifier->source == GDScriptParser::IdentifierNode::MEMBER_VARIABLE ||
-				p_identifier->source == GDScriptParser::IdentifierNode::STATIC_VARIABLE ||
-				p_identifier->source == GDScriptParser::IdentifierNode::INHERITED_VARIABLE) &&
-			p_identifier->variable_source != nullptr) {
-		return p_identifier->variable_source->wgodot_obfuscate && !p_identifier->variable_source->wgodot_no_mangle;
-	}
-
-	return false;
-}
-
 bool datatype_function_allows_context_member_obfuscation(const GDScriptParser::DataType &p_datatype, const StringName &p_function_name) {
 	if (p_datatype.class_type == nullptr || p_function_name.is_empty()) {
 		return false;
@@ -165,7 +146,34 @@ bool datatype_function_allows_context_member_obfuscation(const GDScriptParser::D
 			return false;
 		}
 
-		return member.function->wgodot_obfuscate && !member.function->wgodot_no_mangle;
+		return (script_class->wgodot_obfuscate || member.function->wgodot_obfuscate) && !member.function->wgodot_no_mangle;
+	}
+
+	return false;
+}
+
+bool datatype_attribute_allows_context_member_obfuscation(const GDScriptParser::DataType &p_datatype, const StringName &p_member_name) {
+	if (p_datatype.class_type == nullptr || p_member_name.is_empty()) {
+		return false;
+	}
+
+	for (const GDScriptParser::ClassNode *script_class = p_datatype.class_type; script_class != nullptr; script_class = script_class->base_type.class_type) {
+		if (script_class->wgodot_no_mangle) {
+			return false;
+		}
+		if (!script_class->has_member(p_member_name)) {
+			continue;
+		}
+
+		const GDScriptParser::ClassNode::Member member = script_class->get_member(p_member_name);
+		if (member.type == GDScriptParser::ClassNode::Member::VARIABLE && member.variable != nullptr) {
+			return (script_class->wgodot_obfuscate || member.variable->wgodot_obfuscate) && !member.variable->wgodot_no_mangle;
+		}
+		if (member.type == GDScriptParser::ClassNode::Member::FUNCTION && member.function != nullptr) {
+			return (script_class->wgodot_obfuscate || member.function->wgodot_obfuscate) && !member.function->wgodot_no_mangle;
+		}
+
+		return false;
 	}
 
 	return false;
@@ -199,6 +207,7 @@ void collect_member_name_obfuscation(RewriteContext &r_context, const GDScriptPa
 	}
 
 	const bool no_mangle_scope = p_no_mangle_scope || p_class->wgodot_no_mangle;
+	const bool obfuscate_scope = p_class->wgodot_obfuscate;
 	for (const GDScriptParser::ClassNode::Member &member : p_class->members) {
 		if (!String(member.get_name()).is_empty()) {
 			r_context.reserved_obfuscated_names.insert(StringName(member.get_name()));
@@ -218,12 +227,12 @@ void collect_member_name_obfuscation(RewriteContext &r_context, const GDScriptPa
 				collect_member_name_obfuscation(r_context, member.m_class, no_mangle_scope);
 				break;
 			case GDScriptParser::ClassNode::Member::FUNCTION: {
-				if (!should_obfuscate_function(member.function, no_mangle_scope) || r_context.obfuscated_function_names.has(member.function)) {
+				if (!should_obfuscate_function(member.function, no_mangle_scope, obfuscate_scope) || r_context.obfuscated_function_names.has(member.function)) {
 					break;
 				}
 
 				String obfuscated_name;
-				if (member.function->wgodot_obfuscate) {
+				if (member.function->wgodot_obfuscate || obfuscate_scope) {
 					Vector<String> keys;
 					ExportContext::make_member_keys(p_class, r_context.script_path, member.function->identifier->name, keys);
 					obfuscated_name = get_or_create_context_member_name(r_context, keys);
@@ -235,12 +244,12 @@ void collect_member_name_obfuscation(RewriteContext &r_context, const GDScriptPa
 				add_replacement(r_context, member.function->identifier, obfuscated_name);
 			} break;
 			case GDScriptParser::ClassNode::Member::VARIABLE: {
-				if (!should_obfuscate_variable(member.variable, no_mangle_scope) || r_context.obfuscated_variable_names.has(member.variable)) {
+				if (!should_obfuscate_variable(member.variable, no_mangle_scope, obfuscate_scope) || r_context.obfuscated_variable_names.has(member.variable)) {
 					break;
 				}
 
 				String obfuscated_name;
-				if (member.variable->wgodot_obfuscate) {
+				if (member.variable->wgodot_obfuscate || obfuscate_scope) {
 					Vector<String> keys;
 					ExportContext::make_member_keys(p_class, r_context.script_path, member.variable->identifier->name, keys);
 					obfuscated_name = get_or_create_context_member_name(r_context, keys);
@@ -255,6 +264,42 @@ void collect_member_name_obfuscation(RewriteContext &r_context, const GDScriptPa
 				break;
 		}
 	}
+}
+
+void add_class_declaration_name_replacement(RewriteContext &r_context, const GDScriptParser::ClassNode *p_class) {
+	if (!r_context.options.obfuscate_names ||
+			r_context.export_context == nullptr ||
+			p_class == nullptr ||
+			p_class->outer != nullptr ||
+			p_class->identifier == nullptr ||
+			p_class->identifier->name.is_empty() ||
+			p_class->wgodot_no_mangle) {
+		return;
+	}
+
+	const StringName *obfuscated_name = r_context.export_context->get_global_class_rename(p_class->identifier->name);
+	if (obfuscated_name == nullptr) {
+		return;
+	}
+
+	add_replacement(r_context, p_class->identifier, String(*obfuscated_name));
+}
+
+void add_global_class_name_reference_replacement(RewriteContext &r_context, const GDScriptParser::IdentifierNode *p_identifier) {
+	if (!r_context.options.obfuscate_names || r_context.export_context == nullptr || p_identifier == nullptr || p_identifier->name.is_empty()) {
+		return;
+	}
+
+	if (p_identifier->source != GDScriptParser::IdentifierNode::UNDEFINED_SOURCE) {
+		return;
+	}
+
+	const StringName *obfuscated_name = r_context.export_context->get_global_class_rename(p_identifier->name);
+	if (obfuscated_name == nullptr) {
+		return;
+	}
+
+	add_replacement(r_context, p_identifier, String(*obfuscated_name));
 }
 
 void add_member_name_reference_replacement(RewriteContext &r_context, const GDScriptParser::IdentifierNode *p_identifier) {
@@ -284,12 +329,12 @@ void add_attribute_member_name_reference_replacement(RewriteContext &r_context, 
 	if (!r_context.options.obfuscate_names || r_context.export_context == nullptr || p_base == nullptr || p_identifier == nullptr) {
 		return;
 	}
-	if (!source_allows_context_member_obfuscation(p_identifier)) {
-		return;
-	}
 
 	const GDScriptParser::DataType base_type = p_base->get_datatype();
 	if (is_no_mangle_datatype_class(base_type)) {
+		return;
+	}
+	if (!datatype_attribute_allows_context_member_obfuscation(base_type, p_identifier->name)) {
 		return;
 	}
 	reserve_datatype_class_member_names(r_context, base_type);

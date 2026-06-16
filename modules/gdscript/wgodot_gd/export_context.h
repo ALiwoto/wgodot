@@ -21,6 +21,8 @@ namespace WGodotGDScriptExportTransform {
 class ExportContext {
 	TransformOptions options;
 	HashMap<String, String> member_renames;
+	HashMap<StringName, StringName> global_class_renames;
+	HashMap<String, StringName> global_class_renames_by_path;
 	HashSet<StringName> reserved_member_names;
 	HashSet<StringName> reserved_global_class_names;
 	RandomPCG obfuscation_random;
@@ -33,6 +35,7 @@ public:
 	void reserve_member_name(const StringName &p_name);
 	void reserve_global_class_name(const StringName &p_name);
 	void reserve_script_global_class_name(const GDScriptParser::ClassNode *p_class);
+	void reserve_script_declaration_names_for_global_classes(const GDScriptParser::ClassNode *p_class);
 	void seed_reserved_obfuscated_names(HashSet<StringName> &r_reserved_names) const;
 	String make_obfuscated_name(HashSet<StringName> &r_reserved_names, const String &p_warning_context);
 
@@ -40,9 +43,13 @@ public:
 	static void make_member_keys(const GDScriptParser::ClassNode *p_class, const String &p_script_path, const StringName &p_member_name, Vector<String> &r_keys);
 
 	void index_script(const GDScriptParser::ClassNode *p_class, const String &p_script_path);
+	void index_global_class_rename(const GDScriptParser::ClassNode *p_class, const String &p_script_path);
 	String get_or_create_member_rename(const String &p_key);
 	void bind_member_rename(const String &p_key, const String &p_obfuscated_name);
 	const String *get_member_rename(const String &p_key) const;
+	StringName get_or_create_global_class_rename(const StringName &p_name, const String &p_path);
+	const StringName *get_global_class_rename(const StringName &p_name) const;
+	const StringName *get_global_class_rename_by_path(const String &p_path) const;
 };
 
 } // namespace WGodotGDScriptExportTransform
