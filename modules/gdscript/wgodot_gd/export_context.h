@@ -22,12 +22,18 @@ class ExportContext {
 	TransformOptions options;
 	HashMap<String, String> member_renames;
 	HashSet<StringName> reserved_member_names;
+	HashSet<StringName> reserved_global_class_names;
 	RandomPCG obfuscation_random;
+
+	void reserve_registered_global_class_names();
 
 public:
 	void reset();
 	void set_options(const TransformOptions &p_options);
 	void reserve_member_name(const StringName &p_name);
+	void reserve_global_class_name(const StringName &p_name);
+	void reserve_script_global_class_name(const GDScriptParser::ClassNode *p_class);
+	void seed_reserved_obfuscated_names(HashSet<StringName> &r_reserved_names) const;
 	String make_obfuscated_name(HashSet<StringName> &r_reserved_names, const String &p_warning_context);
 
 	static String make_member_key(const String &p_class_key, const StringName &p_member_name);

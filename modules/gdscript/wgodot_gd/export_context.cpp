@@ -7,6 +7,9 @@
 
 #include "obfuscation_names.h"
 
+#include "core/object/script_language.h"
+#include "core/templates/local_vector.h"
+
 namespace {
 
 String get_class_primary_key(const GDScriptParser::ClassNode *p_class, const String &p_script_path) {
@@ -29,6 +32,8 @@ void index_class(WGodotGDScriptExportTransform::ExportContext &r_context, const 
 	if (p_class == nullptr) {
 		return;
 	}
+
+	r_context.reserve_script_global_class_name(p_class);
 
 	const bool no_mangle_scope = p_no_mangle_scope || p_class->wgodot_no_mangle;
 	for (const GDScriptParser::ClassNode::Member &member : p_class->members) {
@@ -85,6 +90,8 @@ namespace WGodotGDScriptExportTransform {
 void ExportContext::reset() {
 	member_renames.clear();
 	reserved_member_names.clear();
+	reserved_global_class_names.clear();
+	reserve_registered_global_class_names();
 	obfuscation_random.randomize();
 }
 
@@ -98,7 +105,43 @@ void ExportContext::reserve_member_name(const StringName &p_name) {
 	}
 }
 
+void ExportContext::reserve_global_class_name(const StringName &p_name) {
+	if (p_name.is_empty()) {
+		return;
+	}
+
+	reserved_global_class_names.insert(p_name);
+	reserved_member_names.insert(p_name);
+}
+
+void ExportContext::reserve_script_global_class_name(const GDScriptParser::ClassNode *p_class) {
+	if (p_class == nullptr ||
+			p_class->outer != nullptr ||
+			p_class->identifier == nullptr ||
+			p_class->identifier->name.is_empty() ||
+			p_class->fqcn.begins_with("res://")) {
+		return;
+	}
+
+	reserve_global_class_name(p_class->identifier->name);
+}
+
+void ExportContext::reserve_registered_global_class_names() {
+	LocalVector<StringName> global_classes;
+	ScriptServer::get_global_class_list(global_classes);
+	for (const StringName &global_class : global_classes) {
+		reserve_global_class_name(global_class);
+	}
+}
+
+void ExportContext::seed_reserved_obfuscated_names(HashSet<StringName> &r_reserved_names) const {
+	for (const StringName &global_class : reserved_global_class_names) {
+		r_reserved_names.insert(global_class);
+	}
+}
+
 String ExportContext::make_obfuscated_name(HashSet<StringName> &r_reserved_names, const String &p_warning_context) {
+	seed_reserved_obfuscated_names(r_reserved_names);
 	return WGodotGDScriptExportTransform::make_obfuscated_name(options.obfuscation_strategy, obfuscation_random, r_reserved_names, p_warning_context);
 }
 

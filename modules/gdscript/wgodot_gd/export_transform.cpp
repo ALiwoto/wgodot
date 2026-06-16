@@ -72,6 +72,11 @@ private:
 	}
 };
 
+struct ScriptSource {
+	String path;
+	String source;
+};
+
 void collect_no_mangle_constants(RewriteContext &r_context, const GDScriptParser::Node *p_node, bool p_no_mangle_scope);
 void collect_member_names(RewriteContext &r_context, const GDScriptParser::Node *p_node, bool p_no_mangle_scope);
 void collect_expression_replacements(RewriteContext &r_context, const GDScriptParser::ExpressionNode *p_expression, bool p_no_mangle_scope);
@@ -665,6 +670,19 @@ bool parse_only(const String &p_source, const String &p_path, String *r_error_de
 	return true;
 }
 
+void reserve_script_global_class_name_from_source(ExportContext *p_context, const String &p_source, const String &p_path) {
+	if (p_context == nullptr) {
+		return;
+	}
+
+	GDScriptParser parser;
+	if (parser.parse(p_source, p_path, false, false) != OK) {
+		return;
+	}
+
+	p_context->reserve_script_global_class_name(parser.get_tree());
+}
+
 } // namespace
 
 namespace WGodotGDScriptExportTransform {
@@ -693,6 +711,7 @@ void prescan_project_scripts(ExportContext *p_context, const HashSet<String> &p_
 		return;
 	}
 
+	Vector<ScriptSource> scripts;
 	for (const String &path : p_paths) {
 		if (path.get_extension() != "gd") {
 			continue;
@@ -704,12 +723,20 @@ void prescan_project_scripts(ExportContext *p_context, const HashSet<String> &p_
 		}
 
 		const String source = String::utf8(reinterpret_cast<const char *>(file.ptr()), file.size());
+		ScriptSource script;
+		script.path = path;
+		script.source = source;
+		scripts.push_back(script);
+		reserve_script_global_class_name_from_source(p_context, source, path);
+	}
+
+	for (const ScriptSource &script : scripts) {
 		AnalyzedSource analyzed_source;
-		if (!analyzed_source.load(source, path)) {
+		if (!analyzed_source.load(script.source, script.path)) {
 			continue;
 		}
 
-		p_context->index_script(analyzed_source.parser->get_tree(), path);
+		p_context->index_script(analyzed_source.parser->get_tree(), script.path);
 	}
 }
 
@@ -739,17 +766,29 @@ String transform_source(const String &p_source, const String &p_path, const Tran
 		return p_source;
 	}
 
+	ExportContext local_context;
+	ExportContext *export_context = p_context;
+	if (export_context == nullptr && p_options.obfuscate_names) {
+		local_context.reset();
+		export_context = &local_context;
+	}
+	if (export_context != nullptr) {
+		export_context->set_options(p_options);
+	}
+
+	const GDScriptParser::ClassNode *tree = analyzed_source.parser->get_tree();
+
 	RewriteContext context;
 	context.source = p_source;
 	context.script_path = p_path;
 	context.options = p_options;
-	context.export_context = p_context;
+	context.export_context = export_context;
 	context.obfuscation_random.randomize();
 	if (context.export_context != nullptr) {
-		context.export_context->set_options(p_options);
+		context.export_context->reserve_script_global_class_name(tree);
+		context.export_context->seed_reserved_obfuscated_names(context.reserved_obfuscated_names);
 	}
 	build_line_offsets(context);
-	const GDScriptParser::ClassNode *tree = analyzed_source.parser->get_tree();
 	collect_no_mangle_constants(context, tree, false);
 	collect_member_names(context, tree, false);
 	collect_node_replacements(context, tree, false);
