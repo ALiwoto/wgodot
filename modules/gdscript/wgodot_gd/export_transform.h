@@ -24,6 +24,7 @@ struct TransformOptions {
 	bool deconst_exports = true;
 	bool obfuscate_names = false;
 	bool strip_comments = true;
+	bool strip_empty_lines = true;
 	ObfuscationStrategy obfuscation_strategy = OBFUSCATION_STRATEGY_SHORT;
 };
 

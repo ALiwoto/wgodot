@@ -17,6 +17,7 @@
 #include "core/config/project_settings.h"
 #include "core/error/error_macros.h"
 #include "core/io/file_access.h"
+#include "core/string/char_utils.h"
 #include "core/variant/array.h"
 #include "core/variant/dictionary.h"
 
@@ -178,6 +179,99 @@ bool overlaps_existing_replacement(const RewriteContext &p_context, int p_start,
 	return false;
 }
 
+bool is_export_whitespace(char32_t p_char) {
+	return p_char == ' ' || p_char == '\t' || p_char == '\r';
+}
+
+bool is_whitespace_only_line(const String &p_source, int p_start, int p_end) {
+	for (int i = p_start; i < p_end; i++) {
+		if (!is_export_whitespace(p_source[i])) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+bool can_be_raw_string_prefix(const String &p_source, int p_quote_index) {
+	if (p_quote_index <= 0 || p_source[p_quote_index - 1] != 'r') {
+		return false;
+	}
+
+	if (p_quote_index <= 1) {
+		return true;
+	}
+
+	const char32_t previous = p_source[p_quote_index - 2];
+	return !is_unicode_identifier_continue(previous);
+}
+
+void collect_string_literal_lines(const String &p_source, HashSet<int> &r_string_lines) {
+	bool in_string = false;
+	bool is_raw = false;
+	bool is_multiline = false;
+	char32_t quote_char = 0;
+	int line = 1;
+
+	for (int i = 0; i < p_source.length(); i++) {
+		const char32_t ch = p_source[i];
+		if (in_string) {
+			r_string_lines.insert(line);
+
+			if (ch == '\\') {
+				if (is_raw) {
+					if (i + 1 < p_source.length() && (p_source[i + 1] == quote_char || p_source[i + 1] == '\\')) {
+						i++;
+					}
+				} else if (i + 1 < p_source.length()) {
+					i++;
+					if (p_source[i] == '\n') {
+						line++;
+					}
+				}
+				continue;
+			}
+
+			if (ch == quote_char) {
+				if (is_multiline) {
+					if (i + 2 < p_source.length() && p_source[i + 1] == quote_char && p_source[i + 2] == quote_char) {
+						i += 2;
+						in_string = false;
+					}
+				} else {
+					in_string = false;
+				}
+			} else if (ch == '\n') {
+				line++;
+			}
+			continue;
+		}
+
+		if (ch == '#') {
+			while (i + 1 < p_source.length() && p_source[i + 1] != '\n') {
+				i++;
+			}
+			continue;
+		}
+
+		if (ch == '"' || ch == '\'') {
+			in_string = true;
+			is_raw = can_be_raw_string_prefix(p_source, i);
+			is_multiline = i + 2 < p_source.length() && p_source[i + 1] == ch && p_source[i + 2] == ch;
+			quote_char = ch;
+			r_string_lines.insert(line);
+			if (is_multiline) {
+				i += 2;
+			}
+			continue;
+		}
+
+		if (ch == '\n') {
+			line++;
+		}
+	}
+}
+
 void collect_comment_replacements(RewriteContext &r_context, const GDScriptParser &p_parser) {
 	if (!r_context.options.strip_comments) {
 		return;
@@ -217,6 +311,43 @@ void collect_comment_replacements(RewriteContext &r_context, const GDScriptParse
 		r_context.replacements.push_back(replacement);
 	}
 #endif
+}
+
+void collect_empty_line_replacements(RewriteContext &r_context) {
+	if (!r_context.options.strip_empty_lines) {
+		return;
+	}
+
+	HashSet<int> string_lines;
+	collect_string_literal_lines(r_context.source, string_lines);
+
+	for (int line = 1; line <= r_context.line_offsets.size(); line++) {
+		if (string_lines.has(line)) {
+			continue;
+		}
+
+		const int line_start = get_line_start_offset(r_context, line);
+		const int line_end = get_line_end_offset(r_context, line);
+		if (line_start < 0 || line_end < line_start || !is_whitespace_only_line(r_context.source, line_start, line_end)) {
+			continue;
+		}
+
+		Replacement replacement;
+		replacement.start = line_start;
+		if (line < r_context.line_offsets.size()) {
+			replacement.end = r_context.line_offsets[line];
+		} else {
+			replacement.end = line_end;
+		}
+		if (replacement.end <= replacement.start) {
+			continue;
+		}
+		if (overlaps_existing_replacement(r_context, replacement.start, replacement.end)) {
+			continue;
+		}
+		replacement.text = "";
+		r_context.replacements.push_back(replacement);
+	}
 }
 
 void collect_parameter_replacements(RewriteContext &r_context, const GDScriptParser::ParameterNode *p_parameter, bool p_no_mangle_scope) {
@@ -905,7 +1036,7 @@ String transform_source(const String &p_source, const String &p_path, const Tran
 		*r_changed = false;
 	}
 
-	if (!p_options.deconst_exports && !p_options.obfuscate_names && !p_options.strip_comments) {
+	if (!p_options.deconst_exports && !p_options.obfuscate_names && !p_options.strip_comments && !p_options.strip_empty_lines) {
 		return p_source;
 	}
 
@@ -943,6 +1074,7 @@ String transform_source(const String &p_source, const String &p_path, const Tran
 	collect_member_names(context, tree, false);
 	collect_node_replacements(context, tree, false);
 	collect_comment_replacements(context, *analyzed_source.parser);
+	collect_empty_line_replacements(context);
 	if (context.replacements.is_empty()) {
 		return p_source;
 	}

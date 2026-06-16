@@ -40,7 +40,7 @@ self.check_health(100)
 
 13. Export annotation stripping: wgodot strips `@private`, `@no_mangle`, and `@obfuscate` annotations from exported GDScript after they have been used by export-time transforms, so exported code does not keep those reverse-engineering hints.
 
-14. Export comment stripping: wgodot strips normal `#` comments and doc `##` comments from exported GDScript, including text export mode. Original project source files are not changed.
+14. Export source cleanup: wgodot strips normal `#` comments, doc `##` comments, and empty physical lines from exported GDScript, including text export mode. Blank lines inside multiline string literals are preserved. Original project source files are not changed.
 
 15. Obfuscation strategy: controlled by `debug/gdscript/wgodot/obfuscation_strategy` (`Short`, `Hash`, `Unicode`). The setting is exposed as an enum, but only `Short` is implemented right now; selecting `Hash` or `Unicode` falls back to `Short` for now. Short-name obfuscation uses a fresh random generator per export, so names are not assigned in declaration order and can differ between exports.
 
