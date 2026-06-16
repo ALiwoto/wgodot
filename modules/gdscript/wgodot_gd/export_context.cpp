@@ -7,9 +7,12 @@
 
 #include "obfuscation_names.h"
 
+#include "../gdscript_utility_functions.h"
+
 #include "core/config/project_settings.h"
 #include "core/object/class_db.h"
 #include "core/object/script_language.h"
+#include "core/templates/list.h"
 #include "core/templates/local_vector.h"
 #include "core/variant/variant.h"
 
@@ -301,10 +304,12 @@ void ExportContext::reset() {
 	global_class_renames.clear();
 	global_class_renames_by_path.clear();
 	builtin_class_aliases.clear();
+	builtin_function_aliases.clear();
 	reserved_member_names.clear();
 	reserved_global_class_names.clear();
 	reserve_registered_global_class_names();
 	reserve_builtin_class_names();
+	reserve_builtin_function_names();
 	obfuscation_random.randomize();
 }
 
@@ -372,6 +377,16 @@ void ExportContext::reserve_builtin_class_names() {
 		for (const KeyValue<StringName, ProjectSettings::AutoloadInfo> &autoload : autoloads) {
 			reserve_global_class_name(autoload.key);
 		}
+	}
+}
+
+void ExportContext::reserve_builtin_function_names() {
+	List<StringName> utility_functions;
+	Variant::get_utility_function_list(&utility_functions);
+	GDScriptUtilityFunctions::get_function_list(&utility_functions);
+
+	for (const StringName &function_name : utility_functions) {
+		reserve_global_class_name(function_name);
 	}
 }
 
@@ -523,6 +538,34 @@ const StringName *ExportContext::get_builtin_class_alias(const StringName &p_nam
 
 const HashMap<StringName, StringName> &ExportContext::get_builtin_class_aliases() const {
 	return builtin_class_aliases;
+}
+
+StringName ExportContext::get_or_create_builtin_function_alias(const StringName &p_name) {
+	if (p_name.is_empty()) {
+		return StringName();
+	}
+
+	if (const StringName *existing = builtin_function_aliases.getptr(p_name)) {
+		return *existing;
+	}
+
+	const String alias = WGodotGDScriptExportTransform::make_obfuscated_name(options.obfuscation_strategy, obfuscation_random, reserved_global_class_names, "built-in function alias");
+	const StringName alias_name(alias);
+	builtin_function_aliases[p_name] = alias_name;
+	reserved_member_names.insert(alias_name);
+	return alias_name;
+}
+
+const StringName *ExportContext::get_builtin_function_alias(const StringName &p_name) const {
+	if (p_name.is_empty()) {
+		return nullptr;
+	}
+
+	return builtin_function_aliases.getptr(p_name);
+}
+
+const HashMap<StringName, StringName> &ExportContext::get_builtin_function_aliases() const {
+	return builtin_function_aliases;
 }
 
 } // namespace WGodotGDScriptExportTransform

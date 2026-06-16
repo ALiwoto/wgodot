@@ -3381,6 +3381,19 @@ void GDScriptAnalyzer::reduce_call(GDScriptParser::CallNode *p_call, bool p_is_a
 	if (!p_call->is_super && callee_type == GDScriptParser::Node::IDENTIFIER) {
 		// Call to name directly.
 		StringName function_name = p_call->function_name;
+		// wgodot-changes::begin
+		const StringName wgodot_function_alias_target = WGodotGDScriptBuiltinClassAliases::resolve_function_alias(function_name);
+		if (!wgodot_function_alias_target.is_empty()) {
+			function_name = wgodot_function_alias_target;
+			p_call->function_name = function_name;
+		} else {
+			const StringName wgodot_class_alias_target = WGodotGDScriptBuiltinClassAliases::resolve_alias(function_name);
+			if (!wgodot_class_alias_target.is_empty()) {
+				function_name = wgodot_class_alias_target;
+				p_call->function_name = function_name;
+			}
+		}
+		// wgodot-changes::end
 
 		if (function_name == SNAME("Object")) {
 			push_error(R"*(Invalid constructor "Object()", use "Object.new()" instead.)*", p_call);
@@ -4797,6 +4810,12 @@ void GDScriptAnalyzer::reduce_identifier(GDScriptParser::IdentifierNode *p_ident
 		return;
 	}
 
+	// wgodot-changes::begin
+	const StringName wgodot_function_alias_target = WGodotGDScriptBuiltinClassAliases::resolve_function_alias(name);
+	if (!wgodot_function_alias_target.is_empty()) {
+		name = wgodot_function_alias_target;
+	}
+	// wgodot-changes::end
 	if (Variant::has_utility_function(name) || GDScriptUtilityFunctions::function_exists(name)) {
 		p_identifier->is_constant = true;
 		p_identifier->reduced_value = Callable(memnew(GDScriptUtilityCallable(name)));

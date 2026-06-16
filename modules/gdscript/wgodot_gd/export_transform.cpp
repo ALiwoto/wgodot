@@ -13,6 +13,7 @@
 #include "../gdscript_analyzer.h"
 #include "../gdscript_cache.h"
 #include "../gdscript_parser.h"
+#include "../gdscript_utility_functions.h"
 
 #include "core/config/project_settings.h"
 #include "core/error/error_macros.h"
@@ -112,6 +113,42 @@ void get_or_create_builtin_class_alias(ExportContext *p_context, const StringNam
 	(void)p_context->get_or_create_builtin_class_alias(p_name);
 }
 
+bool is_supported_builtin_function_alias_target(const StringName &p_name) {
+	return !p_name.is_empty() && (Variant::has_utility_function(p_name) || GDScriptUtilityFunctions::function_exists(p_name));
+}
+
+void get_or_create_builtin_function_alias(ExportContext *p_context, const StringName &p_name) {
+	if (p_context == nullptr || !is_supported_builtin_function_alias_target(p_name)) {
+		return;
+	}
+
+	(void)p_context->get_or_create_builtin_function_alias(p_name);
+}
+
+void add_builtin_function_alias_call_replacement(RewriteContext &r_context, const GDScriptParser::CallNode *p_call) {
+	if (!r_context.options.obfuscate_names ||
+			r_context.export_context == nullptr ||
+			p_call == nullptr ||
+			p_call->is_super ||
+			p_call->function_name.is_empty() ||
+			p_call->callee == nullptr ||
+			p_call->callee->type != GDScriptParser::Node::IDENTIFIER) {
+		return;
+	}
+
+	const GDScriptParser::IdentifierNode *callee = static_cast<const GDScriptParser::IdentifierNode *>(p_call->callee);
+	if (callee->source != GDScriptParser::IdentifierNode::UNDEFINED_SOURCE) {
+		return;
+	}
+
+	const StringName *alias = r_context.export_context->get_builtin_function_alias(p_call->function_name);
+	if (alias == nullptr) {
+		return;
+	}
+
+	add_replacement(r_context, callee, String(*alias));
+}
+
 void add_builtin_class_alias_name_replacement(RewriteContext &r_context, const GDScriptParser::IdentifierNode *p_identifier) {
 	if (!r_context.options.obfuscate_names || r_context.export_context == nullptr || p_identifier == nullptr || !is_supported_builtin_class_alias_target(p_identifier->name)) {
 		return;
@@ -172,6 +209,7 @@ bool should_strip_export_annotation(const GDScriptParser::AnnotationNode *p_anno
 		SNAME("@private"),
 		SNAME("@no_mangle"),
 		SNAME("@obfuscate"),
+		SNAME("@static_class"),
 	};
 
 	for (const StringName &annotation_name : stripped_annotations) {
@@ -486,6 +524,7 @@ void collect_expression_replacements(RewriteContext &r_context, const GDScriptPa
 		} break;
 		case GDScriptParser::Node::CALL: {
 			const GDScriptParser::CallNode *call = static_cast<const GDScriptParser::CallNode *>(p_expression);
+			add_builtin_function_alias_call_replacement(r_context, call);
 			collect_expression_replacements(r_context, call->callee, p_no_mangle_scope);
 			add_call_member_name_reference_replacement(r_context, call);
 			for (const GDScriptParser::ExpressionNode *argument : call->arguments) {
@@ -1023,6 +1062,12 @@ void collect_builtin_class_aliases_from_expression(ExportContext *p_context, con
 		} break;
 		case GDScriptParser::Node::CALL: {
 			const GDScriptParser::CallNode *call = static_cast<const GDScriptParser::CallNode *>(p_expression);
+			if (!call->is_super && call->callee != nullptr && call->callee->type == GDScriptParser::Node::IDENTIFIER) {
+				const GDScriptParser::IdentifierNode *callee = static_cast<const GDScriptParser::IdentifierNode *>(call->callee);
+				if (callee->source == GDScriptParser::IdentifierNode::UNDEFINED_SOURCE) {
+					get_or_create_builtin_function_alias(p_context, call->function_name);
+				}
+			}
 			collect_builtin_class_aliases_from_expression(p_context, call->callee);
 			for (const GDScriptParser::ExpressionNode *argument : call->arguments) {
 				collect_builtin_class_aliases_from_expression(p_context, argument);

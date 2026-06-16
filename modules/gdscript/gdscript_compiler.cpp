@@ -737,14 +737,27 @@ GDScriptCodeGenerator::Address GDScriptCompiler::_parse_expression(CodeGen &code
 				arguments.push_back(arg);
 			}
 
-			if (!call->is_super && call->callee->type == GDScriptParser::Node::IDENTIFIER && GDScriptParser::get_builtin_type(call->function_name) < Variant::VARIANT_MAX) {
-				gen->write_construct(result, GDScriptParser::get_builtin_type(call->function_name), arguments);
-			} else if (!call->is_super && call->callee->type == GDScriptParser::Node::IDENTIFIER && Variant::has_utility_function(call->function_name)) {
+			// wgodot-changes::begin
+			StringName wgodot_call_function_name = call->function_name;
+			const StringName wgodot_function_alias_target = WGodotGDScriptBuiltinClassAliases::resolve_function_alias(wgodot_call_function_name);
+			if (!wgodot_function_alias_target.is_empty()) {
+				wgodot_call_function_name = wgodot_function_alias_target;
+			} else {
+				const StringName wgodot_class_alias_target = WGodotGDScriptBuiltinClassAliases::resolve_alias(wgodot_call_function_name);
+				if (!wgodot_class_alias_target.is_empty()) {
+					wgodot_call_function_name = wgodot_class_alias_target;
+				}
+			}
+			
+			if (!call->is_super && call->callee->type == GDScriptParser::Node::IDENTIFIER && GDScriptParser::get_builtin_type(wgodot_call_function_name) < Variant::VARIANT_MAX) {
+				gen->write_construct(result, GDScriptParser::get_builtin_type(wgodot_call_function_name), arguments);
+			} else if (!call->is_super && call->callee->type == GDScriptParser::Node::IDENTIFIER && Variant::has_utility_function(wgodot_call_function_name)) {
 				// Variant utility function.
-				gen->write_call_utility(result, call->function_name, arguments);
-			} else if (!call->is_super && call->callee->type == GDScriptParser::Node::IDENTIFIER && GDScriptUtilityFunctions::function_exists(call->function_name)) {
+				gen->write_call_utility(result, wgodot_call_function_name, arguments);
+			} else if (!call->is_super && call->callee->type == GDScriptParser::Node::IDENTIFIER && GDScriptUtilityFunctions::function_exists(wgodot_call_function_name)) {
 				// GDScript utility function.
-				gen->write_call_gdscript_utility(result, call->function_name, arguments);
+				gen->write_call_gdscript_utility(result, wgodot_call_function_name, arguments);
+			// wgodot-changes::end
 			} else {
 				// Regular function.
 				const GDScriptParser::ExpressionNode *callee = call->callee;
