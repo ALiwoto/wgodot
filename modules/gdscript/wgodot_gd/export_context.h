@@ -9,6 +9,7 @@
 
 #include "../gdscript_parser.h"
 
+#include "core/math/random_pcg.h"
 #include "core/string/string_name.h"
 #include "core/string/ustring.h"
 #include "core/templates/hash_map.h"
@@ -21,12 +22,13 @@ class ExportContext {
 	TransformOptions options;
 	HashMap<String, String> member_renames;
 	HashSet<StringName> reserved_member_names;
-	int obfuscated_member_counter = 0;
+	RandomPCG obfuscation_random;
 
 public:
 	void reset();
 	void set_options(const TransformOptions &p_options);
 	void reserve_member_name(const StringName &p_name);
+	String make_obfuscated_name(HashSet<StringName> &r_reserved_names, const String &p_warning_context);
 
 	static String make_member_key(const String &p_class_key, const StringName &p_member_name);
 	static void make_member_keys(const GDScriptParser::ClassNode *p_class, const String &p_script_path, const StringName &p_member_name, Vector<String> &r_keys);

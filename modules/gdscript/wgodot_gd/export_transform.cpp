@@ -744,6 +744,7 @@ String transform_source(const String &p_source, const String &p_path, const Tran
 	context.script_path = p_path;
 	context.options = p_options;
 	context.export_context = p_context;
+	context.obfuscation_random.randomize();
 	if (context.export_context != nullptr) {
 		context.export_context->set_options(p_options);
 	}

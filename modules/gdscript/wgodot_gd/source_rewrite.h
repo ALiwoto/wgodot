@@ -10,6 +10,7 @@
 
 #include "../gdscript_parser.h"
 
+#include "core/math/random_pcg.h"
 #include "core/string/string_name.h"
 #include "core/string/ustring.h"
 #include "core/templates/hash_map.h"
@@ -36,7 +37,7 @@ struct RewriteContext {
 	HashMap<const GDScriptParser::Node *, String> obfuscated_local_names;
 	HashMap<const GDScriptParser::FunctionNode *, String> obfuscated_function_names;
 	HashMap<const GDScriptParser::VariableNode *, String> obfuscated_variable_names;
-	int obfuscated_local_counter = 0;
+	RandomPCG obfuscation_random;
 };
 
 void build_line_offsets(RewriteContext &r_context);

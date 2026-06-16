@@ -85,7 +85,7 @@ namespace WGodotGDScriptExportTransform {
 void ExportContext::reset() {
 	member_renames.clear();
 	reserved_member_names.clear();
-	obfuscated_member_counter = 0;
+	obfuscation_random.randomize();
 }
 
 void ExportContext::set_options(const TransformOptions &p_options) {
@@ -96,6 +96,10 @@ void ExportContext::reserve_member_name(const StringName &p_name) {
 	if (!p_name.is_empty()) {
 		reserved_member_names.insert(p_name);
 	}
+}
+
+String ExportContext::make_obfuscated_name(HashSet<StringName> &r_reserved_names, const String &p_warning_context) {
+	return WGodotGDScriptExportTransform::make_obfuscated_name(options.obfuscation_strategy, obfuscation_random, r_reserved_names, p_warning_context);
 }
 
 String ExportContext::make_member_key(const String &p_class_key, const StringName &p_member_name) {
@@ -135,7 +139,7 @@ String ExportContext::get_or_create_member_rename(const String &p_key) {
 		return *existing;
 	}
 
-	const String obfuscated_name = make_obfuscated_name(options.obfuscation_strategy, obfuscated_member_counter, reserved_member_names, "member name");
+	const String obfuscated_name = make_obfuscated_name(reserved_member_names, "member name");
 	member_renames[p_key] = obfuscated_name;
 	return obfuscated_name;
 }

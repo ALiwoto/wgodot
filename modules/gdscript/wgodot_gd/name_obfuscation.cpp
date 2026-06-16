@@ -13,7 +13,10 @@
 namespace {
 
 String make_obfuscated_local_name(WGodotGDScriptExportTransform::RewriteContext &r_context) {
-	return WGodotGDScriptExportTransform::make_obfuscated_name(r_context.options.obfuscation_strategy, r_context.obfuscated_local_counter, r_context.reserved_obfuscated_names, "local variable");
+	if (r_context.export_context != nullptr) {
+		return r_context.export_context->make_obfuscated_name(r_context.reserved_obfuscated_names, "local variable");
+	}
+	return WGodotGDScriptExportTransform::make_obfuscated_name(r_context.options.obfuscation_strategy, r_context.obfuscation_random, r_context.reserved_obfuscated_names, "local variable");
 }
 
 const GDScriptParser::Node *get_local_declaration_node(const GDScriptParser::SuiteNode::Local &p_local) {
