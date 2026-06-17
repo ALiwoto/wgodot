@@ -40,6 +40,7 @@ class ExportContext {
 public:
 	void reset();
 	void set_options(const TransformOptions &p_options);
+	const TransformOptions &get_options() const;
 	void reserve_member_name(const StringName &p_name);
 	void reserve_global_class_name(const StringName &p_name);
 	void reserve_script_global_class_name(const GDScriptParser::ClassNode *p_class);

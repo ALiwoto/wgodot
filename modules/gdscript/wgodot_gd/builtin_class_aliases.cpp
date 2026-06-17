@@ -6,6 +6,7 @@
 #include "builtin_class_aliases.h"
 
 #include "export_context.h"
+#include "obfuscation_names.h"
 
 #include "../gdscript_utility_functions.h"
 #include "../gdscript_parser.h"
@@ -158,7 +159,7 @@ void append_alias_record(Vector<uint8_t> &r_output, AliasRecordKind p_kind, cons
 
 	r_output.push_back(static_cast<uint8_t>(p_kind));
 	r_output.push_back(0);
-	const Vector<uint8_t> alias = String(p_alias).to_utf8_buffer();
+	const Vector<uint8_t> alias = WGodotGDScriptExportTransform::unwrap_binary_identifier_escape(String(p_alias)).to_utf8_buffer();
 	for (uint8_t byte : alias) {
 		if (byte != 0) {
 			r_output.push_back(byte);

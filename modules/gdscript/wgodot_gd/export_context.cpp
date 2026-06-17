@@ -321,6 +321,10 @@ void ExportContext::set_options(const TransformOptions &p_options) {
 	options = p_options;
 }
 
+const TransformOptions &ExportContext::get_options() const {
+	return options;
+}
+
 void ExportContext::reserve_member_name(const StringName &p_name) {
 	if (!p_name.is_empty()) {
 		reserved_member_names.insert(p_name);
@@ -402,7 +406,7 @@ void ExportContext::seed_reserved_obfuscated_names(HashSet<StringName> &r_reserv
 
 String ExportContext::make_obfuscated_name(HashSet<StringName> &r_reserved_names, const String &p_warning_context) {
 	seed_reserved_obfuscated_names(r_reserved_names);
-	return WGodotGDScriptExportTransform::make_obfuscated_name(options.obfuscation_strategy, obfuscation_random, r_reserved_names, p_warning_context);
+	return WGodotGDScriptExportTransform::make_obfuscated_name(options.obfuscation_strategy, obfuscation_random, r_reserved_names, p_warning_context, options.binary_tokens_export);
 }
 
 String ExportContext::make_member_key(const String &p_class_key, const StringName &p_member_name) {
@@ -490,7 +494,7 @@ StringName ExportContext::get_or_create_global_class_rename(const StringName &p_
 		return *existing;
 	}
 
-	const String obfuscated_name = WGodotGDScriptExportTransform::make_obfuscated_name(options.obfuscation_strategy, obfuscation_random, reserved_global_class_names, "global class name");
+	const String obfuscated_name = WGodotGDScriptExportTransform::make_obfuscated_name(options.obfuscation_strategy, obfuscation_random, reserved_global_class_names, "global class name", options.binary_tokens_export);
 	const StringName obfuscated_string_name(obfuscated_name);
 	global_class_renames[p_name] = obfuscated_string_name;
 	if (!p_path.is_empty()) {
@@ -525,7 +529,7 @@ StringName ExportContext::get_or_create_builtin_class_alias(const StringName &p_
 		return *existing;
 	}
 
-	const String alias = WGodotGDScriptExportTransform::make_obfuscated_name(options.obfuscation_strategy, obfuscation_random, reserved_global_class_names, "built-in class alias");
+	const String alias = WGodotGDScriptExportTransform::make_obfuscated_name(options.obfuscation_strategy, obfuscation_random, reserved_global_class_names, "built-in class alias", options.binary_tokens_export);
 	const StringName alias_name(alias);
 	builtin_class_aliases[p_name] = alias_name;
 	reserved_global_class_names.insert(alias_name);
@@ -554,7 +558,7 @@ StringName ExportContext::get_or_create_builtin_function_alias(const StringName 
 		return *existing;
 	}
 
-	const String alias = WGodotGDScriptExportTransform::make_obfuscated_name(options.obfuscation_strategy, obfuscation_random, reserved_global_class_names, "built-in function alias");
+	const String alias = WGodotGDScriptExportTransform::make_obfuscated_name(options.obfuscation_strategy, obfuscation_random, reserved_global_class_names, "built-in function alias", options.binary_tokens_export);
 	const StringName alias_name(alias);
 	builtin_function_aliases[p_name] = alias_name;
 	reserved_global_class_names.insert(alias_name);
@@ -585,7 +589,7 @@ StringName ExportContext::get_or_create_builtin_member_alias(const StringName &p
 		return *existing;
 	}
 
-	const String alias = WGodotGDScriptExportTransform::make_obfuscated_name(options.obfuscation_strategy, obfuscation_random, reserved_global_class_names, "built-in member alias");
+	const String alias = WGodotGDScriptExportTransform::make_obfuscated_name(options.obfuscation_strategy, obfuscation_random, reserved_global_class_names, "built-in member alias", options.binary_tokens_export);
 	const StringName alias_name(alias);
 	aliases[key] = alias_name;
 	reserved_global_class_names.insert(alias_name);

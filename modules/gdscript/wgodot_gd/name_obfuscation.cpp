@@ -17,7 +17,7 @@ String make_obfuscated_local_name(WGodotGDScriptExportTransform::RewriteContext 
 	if (r_context.export_context != nullptr) {
 		return r_context.export_context->make_obfuscated_name(r_context.reserved_obfuscated_names, "local variable");
 	}
-	return WGodotGDScriptExportTransform::make_obfuscated_name(r_context.options.obfuscation_strategy, r_context.obfuscation_random, r_context.reserved_obfuscated_names, "local variable");
+	return WGodotGDScriptExportTransform::make_obfuscated_name(r_context.options.obfuscation_strategy, r_context.obfuscation_random, r_context.reserved_obfuscated_names, "local variable", r_context.options.binary_tokens_export);
 }
 
 const GDScriptParser::Node *get_local_declaration_node(const GDScriptParser::SuiteNode::Local &p_local) {

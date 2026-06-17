@@ -105,11 +105,15 @@ protected:
 		if (preset.is_valid()) {
 			script_mode = preset->get_script_export_mode();
 		}
+		// wgodot-changes::begin
+		WGodotGDScriptExportTransform::TransformOptions options = WGodotGDScriptExportTransform::setup_params();
+		options.binary_tokens_export = script_mode != EditorExportPreset::MODE_SCRIPT_TEXT;
+		transform_context.set_options(options);
+		// wgodot-changes::end
 	}
 
 	// wgodot-changes::begin
 	virtual void _export_paths_ready(const HashSet<String> &p_paths) override {
-		transform_context.reset();
 		WGodotGDScriptExportTransform::prescan_project_scripts(&transform_context, p_paths);
 		const Vector<uint8_t> builtin_class_aliases = WGodotGDScriptBuiltinClassAliases::serialize_alias_map(transform_context);
 		if (!builtin_class_aliases.is_empty()) {
@@ -142,6 +146,10 @@ protected:
 		bool source_changed = false;
 		source = WGodotGDScriptExportTransform::transform_source(source, p_path, &transform_context, &source_changed);
 		if (script_mode == EditorExportPreset::MODE_SCRIPT_TEXT) {
+			// Text replacement adds a file at the original `.gd` path with remap=false,
+			// so skip() is needed to stop the normal exporter from also writing the
+			// original source. Binary export below adds `.gdc` with remap=true, which
+			// already suppresses the original `.gd` and records the `.gd -> .gdc` remap.
 			if (source_changed) {
 				add_file(p_path, source.to_utf8_buffer(), false);
 				skip();

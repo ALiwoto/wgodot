@@ -9,6 +9,7 @@
 #include "deenum_transform.h"
 #include "export_context.h"
 #include "name_obfuscation.h"
+#include "obfuscation_names.h"
 #include "source_rewrite.h"
 
 #include "../gdscript_analyzer.h"
@@ -1501,8 +1502,7 @@ void prescan_project_scripts(ExportContext *p_context, const HashSet<String> &p_
 		return;
 	}
 
-	const TransformOptions options = setup_params();
-	p_context->set_options(options);
+	const TransformOptions &options = p_context->get_options();
 	if (!options.obfuscate_names && !options.obfuscate_builtin_names) {
 		return;
 	}
@@ -1568,21 +1568,21 @@ void transform_global_class_list(ExportContext *p_context, Array *r_global_class
 		if (class_dict.has("class")) {
 			const StringName class_name = class_dict["class"];
 			if (const StringName *obfuscated_name = p_context->get_global_class_rename(class_name)) {
-				class_dict["class"] = *obfuscated_name;
+				class_dict["class"] = StringName(unwrap_binary_identifier_escape(String(*obfuscated_name)));
 			}
 		}
 
 		if (class_dict.has("base")) {
 			const StringName base_name = class_dict["base"];
 			if (const StringName *obfuscated_name = p_context->get_global_class_rename(base_name)) {
-				class_dict["base"] = *obfuscated_name;
+				class_dict["base"] = StringName(unwrap_binary_identifier_escape(String(*obfuscated_name)));
 			}
 		}
 
 		if (class_dict.has("path")) {
 			const String path = class_dict["path"];
 			if (const StringName *obfuscated_name = p_context->get_global_class_rename_by_path(path)) {
-				class_dict["class"] = *obfuscated_name;
+				class_dict["class"] = StringName(unwrap_binary_identifier_escape(String(*obfuscated_name)));
 			}
 		}
 
@@ -1595,7 +1595,8 @@ String transform_source(const String &p_source, const String &p_path, bool *r_ch
 }
 
 String transform_source(const String &p_source, const String &p_path, ExportContext *p_context, bool *r_changed) {
-	return transform_source(p_source, p_path, setup_params(), p_context, r_changed);
+	const TransformOptions options = p_context != nullptr ? p_context->get_options() : setup_params();
+	return transform_source(p_source, p_path, options, p_context, r_changed);
 }
 
 String transform_source(const String &p_source, const String &p_path, const TransformOptions &p_options, bool *r_changed) {

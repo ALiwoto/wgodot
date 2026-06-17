@@ -297,6 +297,9 @@ class GDScriptTokenizerText : public GDScriptTokenizer {
 	void newline(bool p_make_token);
 	Token number();
 	Token potential_identifier();
+	// wgodot-changes::begin
+	Token wgodot_escaped_identifier();
+	// wgodot-changes::end
 	Token string();
 	Token annotation();
 

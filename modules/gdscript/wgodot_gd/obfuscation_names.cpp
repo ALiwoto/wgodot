@@ -35,23 +35,76 @@ String make_random_short_obfuscated_name(RandomPCG &r_random) {
 	return name;
 }
 
-String make_obfuscated_name(ObfuscationStrategy p_strategy, RandomPCG &r_random, HashSet<StringName> &r_reserved_names, const String &p_warning_context) {
+bool is_ascii_identifier_start(char32_t p_char) {
+	return p_char == '_' || (p_char >= 'a' && p_char <= 'z') || (p_char >= 'A' && p_char <= 'Z');
+}
+
+bool is_ascii_identifier_char(char32_t p_char) {
+	return is_ascii_identifier_start(p_char) || (p_char >= '0' && p_char <= '9');
+}
+
+bool is_ascii_text_identifier(const String &p_name) {
+	if (p_name.is_empty() || !is_ascii_identifier_start(p_name[0])) {
+		return false;
+	}
+
+	for (int i = 1; i < p_name.length(); i++) {
+		if (!is_ascii_identifier_char(p_name[i])) {
+			return false;
+		}
+	}
+	return true;
+}
+
+String make_random_binary_obfuscated_name(RandomPCG &r_random) {
+	static constexpr char chars[] = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ _-$#@!%&'\"";
+	constexpr int char_options = sizeof(chars) - 1;
+
+	while (true) {
+		const int char_count = 1 + r_random.rand(3);
+
+		String name;
+		for (int i = 0; i < char_count; i++) {
+			name += String::chr(chars[r_random.rand(char_options)]);
+		}
+		if (!is_ascii_text_identifier(name)) {
+			return name;
+		}
+	}
+}
+
+String wrap_binary_identifier_escape(const String &p_name) {
+	return "${{" + p_name + "}}";
+}
+
+String unwrap_binary_identifier_escape(const String &p_name) {
+	if (p_name.begins_with("${{") && p_name.ends_with("}}") && p_name.length() >= 5) {
+		return p_name.substr(3, p_name.length() - 5);
+	}
+
+	return p_name;
+}
+
+String make_obfuscated_name(ObfuscationStrategy p_strategy, RandomPCG &r_random, HashSet<StringName> &r_reserved_names, const String &p_warning_context, bool p_binary_tokens_export) {
 	if (p_strategy != OBFUSCATION_STRATEGY_SHORT) {
 		WARN_PRINT_ONCE(String("WGodot ") + p_warning_context + " obfuscation currently only supports the 'short' strategy. Falling back to 'short'.");
 	}
 
 	int fallback_counter = 0;
 	while (true) {
-		String candidate = make_random_short_obfuscated_name(r_random);
+		String candidate = p_binary_tokens_export ? make_random_binary_obfuscated_name(r_random) : make_random_short_obfuscated_name(r_random);
 		if (fallback_counter > 10000) {
 			candidate = make_short_obfuscated_name(fallback_counter++);
 		} else {
 			fallback_counter++;
 		}
+		const String source_candidate = p_binary_tokens_export ? wrap_binary_identifier_escape(candidate) : candidate;
 		const StringName candidate_name(candidate);
-		if (!r_reserved_names.has(candidate_name)) {
+		const StringName source_candidate_name(source_candidate);
+		if (!r_reserved_names.has(candidate_name) && !r_reserved_names.has(source_candidate_name)) {
 			r_reserved_names.insert(candidate_name);
-			return candidate;
+			r_reserved_names.insert(source_candidate_name);
+			return source_candidate;
 		}
 	}
 }

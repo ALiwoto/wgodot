@@ -26,6 +26,7 @@ struct TransformOptions {
 	bool obfuscate_builtin_names = true;
 	bool strip_comments = true;
 	bool strip_empty_lines = true;
+	bool binary_tokens_export = false;
 	ObfuscationStrategy obfuscation_strategy = OBFUSCATION_STRATEGY_SHORT;
 };
 
