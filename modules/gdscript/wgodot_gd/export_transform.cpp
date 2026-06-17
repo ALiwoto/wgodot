@@ -6,6 +6,7 @@
 #include "export_transform.h"
 
 #include "deconst_transform.h"
+#include "deenum_transform.h"
 #include "export_context.h"
 #include "name_obfuscation.h"
 #include "source_rewrite.h"
@@ -318,6 +319,10 @@ void collect_type_replacements(RewriteContext &r_context, const GDScriptParser::
 		return;
 	}
 
+	if (add_enum_type_replacement(r_context, p_type)) {
+		return;
+	}
+
 	add_builtin_class_alias_type_replacement(r_context, p_type);
 	if (!p_type->type_chain.is_empty()) {
 		add_global_class_name_reference_replacement(r_context, p_type->type_chain[0]);
@@ -576,6 +581,19 @@ void collect_empty_line_replacements(RewriteContext &r_context) {
 	}
 }
 
+bool is_removed_export_member(const RewriteContext &p_context, const GDScriptParser::ClassNode::Member &p_member) {
+	switch (p_member.type) {
+		case GDScriptParser::ClassNode::Member::CONSTANT:
+			return should_deconst_constant(p_context, p_member.constant);
+		case GDScriptParser::ClassNode::Member::ENUM:
+			return should_deenum_enum(p_context, p_member.m_enum);
+		case GDScriptParser::ClassNode::Member::ENUM_VALUE:
+			return should_deenum_enum(p_context, p_member.enum_value.parent_enum);
+		default:
+			return false;
+	}
+}
+
 void collect_parameter_replacements(RewriteContext &r_context, const GDScriptParser::ParameterNode *p_parameter, bool p_no_mangle_scope) {
 	if (p_parameter == nullptr) {
 		return;
@@ -618,6 +636,9 @@ void collect_expression_replacements(RewriteContext &r_context, const GDScriptPa
 	switch (p_expression->type) {
 		case GDScriptParser::Node::IDENTIFIER: {
 			const GDScriptParser::IdentifierNode *identifier = static_cast<const GDScriptParser::IdentifierNode *>(p_expression);
+			if (add_enum_identifier_reference_replacement(r_context, identifier)) {
+				break;
+			}
 			if (is_declared_constant_identifier(r_context, identifier)) {
 				add_constant_reference_replacement(r_context, identifier, identifier->constant_source);
 			} else {
@@ -631,6 +652,9 @@ void collect_expression_replacements(RewriteContext &r_context, const GDScriptPa
 		} break;
 		case GDScriptParser::Node::SUBSCRIPT: {
 			const GDScriptParser::SubscriptNode *subscript = static_cast<const GDScriptParser::SubscriptNode *>(p_expression);
+			if (add_enum_attribute_reference_replacement(r_context, subscript)) {
+				break;
+			}
 			if (subscript->is_attribute && is_declared_constant_identifier(r_context, subscript->attribute)) {
 				add_constant_reference_replacement(r_context, subscript, subscript->attribute->constant_source);
 				break;
@@ -742,6 +766,18 @@ void collect_constant_contents_replacements(RewriteContext &r_context, const GDS
 	collect_expression_replacements(r_context, p_constant->initializer, p_no_mangle_scope);
 }
 
+void collect_enum_contents_replacements(RewriteContext &r_context, const GDScriptParser::EnumNode *p_enum, bool p_no_mangle_scope) {
+	if (p_enum == nullptr || r_context.visited_enum_declarations.has(p_enum)) {
+		return;
+	}
+
+	r_context.visited_enum_declarations.insert(p_enum);
+	collect_annotation_replacements(r_context, p_enum, p_no_mangle_scope);
+	for (const GDScriptParser::EnumNode::Value &value : p_enum->values) {
+		collect_expression_replacements(r_context, value.custom_value, p_no_mangle_scope);
+	}
+}
+
 void collect_node_replacements(RewriteContext &r_context, const GDScriptParser::Node *p_node, bool p_no_mangle_scope) {
 	if (p_node == nullptr) {
 		return;
@@ -765,17 +801,17 @@ void collect_node_replacements(RewriteContext &r_context, const GDScriptParser::
 			r_context.current_class = class_node;
 			add_class_declaration_name_replacement(r_context, class_node);
 			collect_extends_replacements(r_context, class_node);
-			bool has_mangled_constants = false;
+			bool has_removed_members = false;
 			bool has_remaining_members = false;
 			for (const GDScriptParser::ClassNode::Member &member : class_node->members) {
-				if (member.type == GDScriptParser::ClassNode::Member::CONSTANT && should_deconst_constant(r_context, member.constant)) {
-					has_mangled_constants = true;
+				if (is_removed_export_member(r_context, member)) {
+					has_removed_members = true;
 				} else {
 					has_remaining_members = true;
 				}
 			}
 
-			bool leave_pass_for_first_constant = class_node->outer != nullptr && has_mangled_constants && !has_remaining_members;
+			bool leave_pass_for_first_removed_member = class_node->outer != nullptr && has_removed_members && !has_remaining_members;
 			for (const GDScriptParser::ClassNode::Member &member : class_node->members) {
 				switch (member.type) {
 					case GDScriptParser::ClassNode::Member::CLASS:
@@ -783,8 +819,8 @@ void collect_node_replacements(RewriteContext &r_context, const GDScriptParser::
 						break;
 					case GDScriptParser::ClassNode::Member::CONSTANT:
 						if (should_deconst_constant(r_context, member.constant)) {
-							add_constant_declaration_replacement(r_context, member.constant, leave_pass_for_first_constant);
-							leave_pass_for_first_constant = false;
+							add_constant_declaration_replacement(r_context, member.constant, leave_pass_for_first_removed_member);
+							leave_pass_for_first_removed_member = false;
 						} else {
 							collect_annotation_replacements(r_context, member.constant, no_mangle_scope);
 							collect_constant_contents_replacements(r_context, member.constant, no_mangle_scope);
@@ -804,8 +840,21 @@ void collect_node_replacements(RewriteContext &r_context, const GDScriptParser::
 						collect_node_replacements(r_context, member.signal, no_mangle_scope);
 						break;
 					case GDScriptParser::ClassNode::Member::ENUM:
-						for (const GDScriptParser::EnumNode::Value &value : member.m_enum->values) {
-							collect_expression_replacements(r_context, value.custom_value, no_mangle_scope);
+						if (should_deenum_enum(r_context, member.m_enum)) {
+							if (add_enum_declaration_replacement(r_context, member.m_enum, leave_pass_for_first_removed_member)) {
+								leave_pass_for_first_removed_member = false;
+							}
+						} else {
+							collect_enum_contents_replacements(r_context, member.m_enum, no_mangle_scope);
+						}
+						break;
+					case GDScriptParser::ClassNode::Member::ENUM_VALUE:
+						if (should_deenum_enum(r_context, member.enum_value.parent_enum)) {
+							if (add_enum_declaration_replacement(r_context, member.enum_value.parent_enum, leave_pass_for_first_removed_member)) {
+								leave_pass_for_first_removed_member = false;
+							}
+						} else {
+							collect_enum_contents_replacements(r_context, member.enum_value.parent_enum, no_mangle_scope);
 						}
 						break;
 					default:

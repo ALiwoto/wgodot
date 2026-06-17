@@ -20,7 +20,7 @@ This file tracks user-facing wgodot features. It intentionally avoids internal e
 
 ## Export Protection
 
-8. De-const: `wgodot/export/deconst_exports` removes exported constant declarations and inlines their values where possible.
+8. De-const/de-enum: `wgodot/export/deconst_exports` removes exported constant and enum declarations, inlines their values where possible, and converts stripped enum type hints to `int`.
 
 9. `@no_mangle`: keeps a declaration from being renamed or stripped by export transforms. On classes/functions/properties, it protects declarations inside that scope too.
 
