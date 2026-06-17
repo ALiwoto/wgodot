@@ -98,7 +98,22 @@ bool add_enum_type_replacement(RewriteContext &r_context, const GDScriptParser::
 		return false;
 	}
 
-	add_replacement(r_context, p_type, "int");
+	if (p_type->type_chain.is_empty() || p_type->type_chain[0] == nullptr) {
+		return false;
+	}
+
+	const GDScriptParser::IdentifierNode *first_type_identifier = p_type->type_chain[0];
+	const int start = get_offset(r_context, first_type_identifier->start_line, first_type_identifier->start_column);
+	const int end = get_offset(r_context, p_type->end_line, p_type->end_column);
+	if (start < 0 || end < start) {
+		return false;
+	}
+
+	Replacement replacement;
+	replacement.start = start;
+	replacement.end = end;
+	replacement.text = "int";
+	r_context.replacements.push_back(replacement);
 	return true;
 }
 
