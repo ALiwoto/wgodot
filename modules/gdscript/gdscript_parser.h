@@ -765,6 +765,7 @@ public:
 		bool wgodot_static_class = false;
 		bool wgodot_no_mangle = false;
 		bool wgodot_obfuscate = false;
+		bool wgodot_obfuscate_path = false;
 		bool wgodot_is_interface = false;
 		bool wgodot_interface_global_name = false;
 		StringName wgodot_interface_name;
@@ -1635,6 +1636,7 @@ private:
 	bool wgodot_static_class_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	bool wgodot_no_mangle_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	bool wgodot_obfuscate_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
+	bool wgodot_obfuscate_path_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	// wgodot-changes::end
 	// Statements.
 	Node *parse_statement();

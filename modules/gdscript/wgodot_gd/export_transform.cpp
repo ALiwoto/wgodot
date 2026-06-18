@@ -15,6 +15,7 @@
 #include "../gdscript_analyzer.h"
 #include "../gdscript_cache.h"
 #include "../gdscript_parser.h"
+#include "../gdscript_tokenizer.h"
 #include "../gdscript_utility_functions.h"
 
 #include "core/config/engine.h"
@@ -27,6 +28,7 @@
 #include "core/variant/array.h"
 #include "core/variant/dictionary.h"
 #include "core/variant/variant.h"
+#include "core/variant/variant_parser.h"
 
 namespace {
 
@@ -96,6 +98,7 @@ void collect_no_mangle_constants(RewriteContext &r_context, const GDScriptParser
 void collect_member_names(RewriteContext &r_context, const GDScriptParser::Node *p_node, bool p_no_mangle_scope);
 void collect_expression_replacements(RewriteContext &r_context, const GDScriptParser::ExpressionNode *p_expression, bool p_no_mangle_scope);
 void collect_node_replacements(RewriteContext &r_context, const GDScriptParser::Node *p_node, bool p_no_mangle_scope);
+bool overlaps_existing_replacement(const RewriteContext &p_context, int p_start, int p_end);
 
 bool is_supported_builtin_class_alias_target(const StringName &p_name) {
 	if (p_name.is_empty()) {
@@ -307,6 +310,29 @@ void add_builtin_class_alias_name_replacement(RewriteContext &r_context, const G
 	add_replacement(r_context, p_identifier, String(*alias));
 }
 
+void add_obfuscated_script_path_literal_replacement(RewriteContext &r_context, const GDScriptParser::LiteralNode *p_literal) {
+	if (!r_context.options.obfuscate_file_paths || r_context.export_context == nullptr || p_literal == nullptr || p_literal->value.get_type() != Variant::STRING) {
+		return;
+	}
+
+	const String path = p_literal->value;
+	if (!path.begins_with("res://")) {
+		return;
+	}
+
+	const String obfuscated_path = r_context.export_context->get_exported_script_path(path);
+	if (obfuscated_path.is_empty()) {
+		return;
+	}
+
+	String text;
+	if (VariantWriter::write_to_string(obfuscated_path, text) != OK || text.is_empty()) {
+		return;
+	}
+
+	add_replacement(r_context, p_literal, text);
+}
+
 void add_builtin_class_alias_type_replacement(RewriteContext &r_context, const GDScriptParser::TypeNode *p_type) {
 	if (p_type == nullptr || p_type->type_chain.is_empty()) {
 		return;
@@ -334,10 +360,63 @@ void collect_type_replacements(RewriteContext &r_context, const GDScriptParser::
 	}
 }
 
+void add_extends_path_replacement(RewriteContext &r_context, const GDScriptParser::ClassNode *p_class) {
+	if (!r_context.options.obfuscate_file_paths || r_context.export_context == nullptr || p_class == nullptr || p_class->extends_path.is_empty()) {
+		return;
+	}
+
+	const String obfuscated_path = r_context.export_context->get_exported_script_path(p_class->extends_path);
+	if (obfuscated_path.is_empty()) {
+		return;
+	}
+
+	String text;
+	if (VariantWriter::write_to_string(obfuscated_path, text) != OK || text.is_empty()) {
+		return;
+	}
+
+	GDScriptTokenizerText tokenizer;
+	tokenizer.set_source_code(r_context.source);
+
+	bool expect_extends_path = false;
+	GDScriptTokenizer::Token token = tokenizer.scan();
+	while (token.type != GDScriptTokenizer::Token::TK_EOF) {
+		const bool in_class_range = token.start_line >= p_class->start_line && token.end_line <= p_class->end_line;
+		if (!in_class_range) {
+			token = tokenizer.scan();
+			continue;
+		}
+
+		if (expect_extends_path) {
+			if (token.type == GDScriptTokenizer::Token::LITERAL && token.literal.get_type() == Variant::STRING && String(token.literal) == p_class->extends_path) {
+				const int start = get_offset(r_context, token.start_line, token.start_column);
+				const int end = get_offset(r_context, token.end_line, token.end_column);
+				if (start >= 0 && end >= start && !overlaps_existing_replacement(r_context, start, end)) {
+					Replacement replacement;
+					replacement.start = start;
+					replacement.end = end;
+					replacement.text = text;
+					r_context.replacements.push_back(replacement);
+				}
+				return;
+			}
+			expect_extends_path = false;
+		}
+
+		if (token.type == GDScriptTokenizer::Token::EXTENDS) {
+			expect_extends_path = true;
+		}
+
+		token = tokenizer.scan();
+	}
+}
+
 void collect_extends_replacements(RewriteContext &r_context, const GDScriptParser::ClassNode *p_class) {
 	if (p_class == nullptr) {
 		return;
 	}
+
+	add_extends_path_replacement(r_context, p_class);
 
 	for (const GDScriptParser::IdentifierNode *identifier : p_class->extends) {
 		add_builtin_class_alias_name_replacement(r_context, identifier);
@@ -358,6 +437,7 @@ bool should_strip_export_annotation(const GDScriptParser::AnnotationNode *p_anno
 		SNAME("@private"),
 		SNAME("@no_mangle"),
 		SNAME("@obfuscate"),
+		SNAME("@obfuscate_path"),
 		SNAME("@static_class"),
 	};
 
@@ -635,6 +715,9 @@ void collect_expression_replacements(RewriteContext &r_context, const GDScriptPa
 	}
 
 	switch (p_expression->type) {
+		case GDScriptParser::Node::LITERAL:
+			add_obfuscated_script_path_literal_replacement(r_context, static_cast<const GDScriptParser::LiteralNode *>(p_expression));
+			break;
 		case GDScriptParser::Node::IDENTIFIER: {
 			const GDScriptParser::IdentifierNode *identifier = static_cast<const GDScriptParser::IdentifierNode *>(p_expression);
 			if (add_enum_identifier_reference_replacement(r_context, identifier)) {
@@ -1482,6 +1565,24 @@ void collect_builtin_class_aliases_from_node(ExportContext *p_context, const GDS
 	}
 }
 
+bool has_obfuscate_path_annotation(const GDScriptParser::ClassNode *p_class) {
+	if (p_class == nullptr) {
+		return false;
+	}
+
+	if (p_class->wgodot_obfuscate_path) {
+		return true;
+	}
+
+	for (const GDScriptParser::ClassNode::Member &member : p_class->members) {
+		if (member.type == GDScriptParser::ClassNode::Member::CLASS && has_obfuscate_path_annotation(member.m_class)) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
 void reserve_script_global_class_name_from_source(ExportContext *p_context, const String &p_source, const String &p_path) {
 	if (p_context == nullptr) {
 		return;
@@ -1522,15 +1623,33 @@ void collect_global_class_rename_request(ExportContext *p_context, const GDScrip
 
 namespace WGodotGDScriptExportTransform {
 
+void register_project_settings() {
+	GLOBAL_DEF("wgodot/gdscript/disable_embedded_gdscript", true);
+	GLOBAL_DEF("wgodot/gdscript/strict_override_checking", true);
+	GLOBAL_DEF("wgodot/gdscript/strict_signal_callable_checking", true);
+	GLOBAL_DEF("wgodot/export/deconst_exports", true);
+	GLOBAL_DEF("wgodot/export/obfuscate_names", true);
+	GLOBAL_DEF("wgodot/export/obfuscate_builtin_names", true);
+	GLOBAL_DEF(PropertyInfo(Variant::INT, "wgodot/export/obfuscation_strategy", PROPERTY_HINT_ENUM, "Short,Hash,Unicode"), OBFUSCATION_STRATEGY_SHORT);
+	GLOBAL_DEF("wgodot/export/obfuscate_file_paths", true);
+	GLOBAL_DEF(PropertyInfo(Variant::INT, "wgodot/export/obfuscate_file_paths_strategy", PROPERTY_HINT_ENUM, "Short,Hash,Unicode"), OBFUSCATION_STRATEGY_SHORT);
+}
+
 TransformOptions setup_params() {
 	TransformOptions options;
 	options.deconst_exports = GLOBAL_GET_CACHED(bool, "wgodot/export/deconst_exports");
 	options.obfuscate_names = GLOBAL_GET_CACHED(bool, "wgodot/export/obfuscate_names");
 	options.obfuscate_builtin_names = GLOBAL_GET_CACHED(bool, "wgodot/export/obfuscate_builtin_names");
+	options.obfuscate_file_paths = GLOBAL_GET_CACHED(bool, "wgodot/export/obfuscate_file_paths");
 
 	const int obfuscation_strategy = GLOBAL_GET_CACHED(int, "wgodot/export/obfuscation_strategy");
 	if (obfuscation_strategy >= OBFUSCATION_STRATEGY_SHORT && obfuscation_strategy <= OBFUSCATION_STRATEGY_UNICODE) {
 		options.obfuscation_strategy = static_cast<ObfuscationStrategy>(obfuscation_strategy);
+	}
+
+	const int file_path_obfuscation_strategy = GLOBAL_GET_CACHED(int, "wgodot/export/obfuscate_file_paths_strategy");
+	if (file_path_obfuscation_strategy >= OBFUSCATION_STRATEGY_SHORT && file_path_obfuscation_strategy <= OBFUSCATION_STRATEGY_UNICODE) {
+		options.file_path_obfuscation_strategy = static_cast<ObfuscationStrategy>(file_path_obfuscation_strategy);
 	}
 
 	return options;
@@ -1542,13 +1661,15 @@ void prescan_project_scripts(ExportContext *p_context, const HashSet<String> &p_
 	}
 
 	const TransformOptions &options = p_context->get_options();
-	if (!options.obfuscate_names && !options.obfuscate_builtin_names) {
+	if (!options.obfuscate_names && !options.obfuscate_builtin_names && !options.obfuscate_file_paths) {
 		return;
 	}
 
 	Vector<ScriptSource> scripts;
 	Vector<GlobalClassRenameRequest> global_class_rename_requests;
 	for (const String &path : p_paths) {
+		p_context->reserve_script_path(path);
+
 		if (path.get_extension() != "gd") {
 			continue;
 		}
@@ -1575,6 +1696,9 @@ void prescan_project_scripts(ExportContext *p_context, const HashSet<String> &p_
 		}
 		if (options.obfuscate_builtin_names) {
 			collect_builtin_class_aliases_from_node(p_context, analyzed_source.parser->get_tree());
+		}
+		if (options.obfuscate_file_paths && has_obfuscate_path_annotation(analyzed_source.parser->get_tree())) {
+			(void)p_context->get_or_create_script_path_rename(path);
 		}
 	}
 
@@ -1623,6 +1747,10 @@ void transform_global_class_list(ExportContext *p_context, Array *r_global_class
 			if (const StringName *obfuscated_name = p_context->get_global_class_rename_by_path(path)) {
 				class_dict["class"] = StringName(unwrap_binary_identifier_escape(String(*obfuscated_name)));
 			}
+			const String obfuscated_path = p_context->get_exported_script_path(path);
+			if (!obfuscated_path.is_empty()) {
+				class_dict["path"] = obfuscated_path;
+			}
 		}
 
 		(*r_global_class_list)[i] = class_dict;
@@ -1647,7 +1775,7 @@ String transform_source(const String &p_source, const String &p_path, const Tran
 		*r_changed = false;
 	}
 
-	if (!p_options.deconst_exports && !p_options.obfuscate_names && !p_options.obfuscate_builtin_names && !p_options.strip_comments && !p_options.strip_empty_lines) {
+	if (!p_options.deconst_exports && !p_options.obfuscate_names && !p_options.obfuscate_builtin_names && !p_options.obfuscate_file_paths && !p_options.strip_comments && !p_options.strip_empty_lines) {
 		return p_source;
 	}
 
@@ -1658,7 +1786,7 @@ String transform_source(const String &p_source, const String &p_path, const Tran
 
 	ExportContext local_context;
 	ExportContext *export_context = p_context;
-	const bool using_local_context = export_context == nullptr && (p_options.obfuscate_names || p_options.obfuscate_builtin_names);
+	const bool using_local_context = export_context == nullptr && (p_options.obfuscate_names || p_options.obfuscate_builtin_names || p_options.obfuscate_file_paths);
 	if (using_local_context) {
 		local_context.reset();
 		export_context = &local_context;

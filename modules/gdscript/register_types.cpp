@@ -145,13 +145,15 @@ protected:
 		// wgodot-changes::begin
 		bool source_changed = false;
 		source = WGodotGDScriptExportTransform::transform_source(source, p_path, &transform_context, &source_changed);
+		const String obfuscated_script_path = transform_context.get_exported_script_path(p_path);
+		const bool script_path_changed = !obfuscated_script_path.is_empty();
 		if (script_mode == EditorExportPreset::MODE_SCRIPT_TEXT) {
-			// Text replacement adds a file at the original `.gd` path with remap=false,
-			// so skip() is needed to stop the normal exporter from also writing the
-			// original source. Binary export below adds `.gdc` with remap=true, which
-			// already suppresses the original `.gd` and records the `.gd -> .gdc` remap.
-			if (source_changed) {
-				add_file(p_path, source.to_utf8_buffer(), false);
+			// Text replacement adds a `.gd` file directly, so skip() is needed to stop
+			// the normal exporter from also writing the original source. Binary export
+			// below normally adds `.gdc` with remap=true; path-obfuscated scripts are
+			// renamed directly with remap=false and also need skip().
+			if (source_changed || script_path_changed) {
+				add_file(script_path_changed ? obfuscated_script_path : p_path, source.to_utf8_buffer(), false);
 				skip();
 			}
 			return;
@@ -163,7 +165,12 @@ protected:
 			return;
 		}
 
-		add_file(p_path.get_basename() + ".gdc", file, true);
+		if (script_path_changed) {
+			add_file(obfuscated_script_path, file, false);
+			skip();
+		} else {
+			add_file(p_path.get_basename() + ".gdc", file, true);
+		}
 	}
 
 public:

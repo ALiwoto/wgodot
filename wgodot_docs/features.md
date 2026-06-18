@@ -32,7 +32,9 @@ This file tracks user-facing wgodot features. It intentionally avoids internal e
 
 13. Obfuscation strategy: `wgodot/export/obfuscation_strategy` exposes `Short`, `Hash`, and `Unicode`. Currently only `Short` is implemented.
 
-14. Export cleanup: exported GDScript strips wgodot annotations, normal comments, doc comments, and empty physical lines. Original project source files are not changed.
+14. Script path obfuscation: `@obfuscate_path` with `wgodot/export/obfuscate_file_paths` renames marked exported scripts using `wgodot/export/obfuscate_file_paths_strategy` (`Short`, `Hash`, or `Unicode`), rewrites exact `res://...` string literals that refer to those scripts, and updates exported global class paths without adding runtime remap files.
+
+15. Export cleanup: exported GDScript strips wgodot annotations, normal comments, doc comments, and empty physical lines. Original project source files are not changed.
 
 ## Annotation Documentation
 

@@ -2992,13 +2992,7 @@ GDScriptLanguage::GDScriptLanguage() {
 	track_locals = GLOBAL_DEF_RST("debug/settings/gdscript/always_track_local_variables", false);
 
 	// wgodot-changes::begin
-	GLOBAL_DEF("wgodot/gdscript/disable_embedded_gdscript", true);
-	GLOBAL_DEF("wgodot/gdscript/strict_override_checking", true);
-	GLOBAL_DEF("wgodot/gdscript/strict_signal_callable_checking", true);
-	GLOBAL_DEF("wgodot/export/deconst_exports", true);
-	GLOBAL_DEF("wgodot/export/obfuscate_names", true);
-	GLOBAL_DEF("wgodot/export/obfuscate_builtin_names", true);
-	GLOBAL_DEF(PropertyInfo(Variant::INT, "wgodot/export/obfuscation_strategy", PROPERTY_HINT_ENUM, "Short,Hash,Unicode"), WGodotGDScriptExportTransform::OBFUSCATION_STRATEGY_SHORT);
+	WGodotGDScriptExportTransform::register_project_settings();
 	// wgodot-changes::end
 
 #ifdef DEBUG_ENABLED

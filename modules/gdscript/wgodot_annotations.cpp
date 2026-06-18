@@ -17,6 +17,7 @@ void GDScriptParser::register_wgodot_annotations() {
 	register_annotation(MethodInfo("@static_class"), AnnotationInfo::CLASS, &GDScriptParser::wgodot_static_class_annotation);
 	register_annotation(MethodInfo("@no_mangle"), AnnotationInfo::SCRIPT | AnnotationInfo::CLASS_LEVEL | AnnotationInfo::STATEMENT | AnnotationInfo::ENUM, &GDScriptParser::wgodot_no_mangle_annotation);
 	register_annotation(MethodInfo("@obfuscate"), AnnotationInfo::SCRIPT | AnnotationInfo::CLASS | AnnotationInfo::FUNCTION | AnnotationInfo::VARIABLE, &GDScriptParser::wgodot_obfuscate_annotation);
+	register_annotation(MethodInfo("@obfuscate_path"), AnnotationInfo::SCRIPT | AnnotationInfo::CLASS, &GDScriptParser::wgodot_obfuscate_path_annotation);
 	register_annotation(MethodInfo("@partial", PropertyInfo(Variant::STRING, "path")), AnnotationInfo::SCRIPT | AnnotationInfo::CLASS, &GDScriptParser::wgodot_noop_annotation, Vector<Variant>(), true);
 }
 
@@ -354,4 +355,22 @@ bool GDScriptParser::wgodot_obfuscate_annotation(AnnotationNode *p_annotation, N
 			push_error(R"("@obfuscate" annotation can only be applied to classes, functions, and variables.)", p_annotation);
 			return false;
 	}
+}
+
+bool GDScriptParser::wgodot_obfuscate_path_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class) {
+	(void)p_class;
+
+	if (p_target == nullptr || p_target->type != Node::CLASS) {
+		push_error(R"("@obfuscate_path" annotation can only be applied to a script or class.)", p_annotation);
+		return false;
+	}
+
+	ClassNode *class_node = static_cast<ClassNode *>(p_target);
+	if (class_node->wgodot_obfuscate_path) {
+		push_error(R"("@obfuscate_path" annotation can only be used once per class.)", p_annotation);
+		return false;
+	}
+
+	class_node->wgodot_obfuscate_path = true;
+	return true;
 }

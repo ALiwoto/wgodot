@@ -52,6 +52,19 @@
 				[/codeblock]
 			</description>
 		</annotation>
+		<annotation name="@obfuscate_path">
+			<return type="void" />
+			<description>
+				Marks the following script class for export-time file path obfuscation when [code]wgodot/export/obfuscate_file_paths[/code] is enabled.
+				The exported script file is renamed to a generated path, and string literals that exactly match the original [code]res://...gd[/code] script path are rewritten to the exported path. This is an explicit opt-in transform and does not rewrite dynamically assembled paths.
+				The generated path uses [code]wgodot/export/obfuscate_file_paths_strategy[/code].
+				Binary-token exports write the script at the generated [code].gdc[/code] path without adding a runtime remap file.
+				[codeblock]
+				@obfuscate_path
+				class_name HiddenLoader
+				[/codeblock]
+			</description>
+		</annotation>
 		<annotation name="@partial" qualifiers="vararg">
 			<return type="void" />
 			<param index="0" name="path" type="String" />

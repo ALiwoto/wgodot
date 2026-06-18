@@ -12,6 +12,7 @@
 #include "core/config/project_settings.h"
 #include "core/object/class_db.h"
 #include "core/object/script_language.h"
+#include "core/string/ustring.h"
 #include "core/templates/list.h"
 #include "core/templates/local_vector.h"
 #include "core/variant/variant.h"
@@ -32,6 +33,81 @@ String get_class_primary_key(const GDScriptParser::ClassNode *p_class, const Str
 		return String(p_class->identifier->name);
 	}
 	return String();
+}
+
+String make_random_path_segment(RandomPCG &r_random) {
+	static const char *letters = "abcdefghijklmnopqrstuvwxyz";
+	return String::chr(letters[r_random.rand(26)]);
+}
+
+String make_short_obfuscated_script_path(RandomPCG &r_random) {
+	const int segment_count = 3 + r_random.rand(6);
+	String path = "res://";
+	for (int i = 0; i < segment_count; i++) {
+		if (i > 0) {
+			path += "/";
+		}
+		path += make_random_path_segment(r_random);
+	}
+	return path + ".gd";
+}
+
+String make_hash_obfuscated_script_path(const String &p_source_path, RandomPCG &r_random) {
+	const String seed = p_source_path + "::" + String::num_uint64(r_random.rand()) + "::" + String::num_uint64(r_random.rand());
+	return "res://a/f/" + seed.sha256_text() + ".gd";
+}
+
+String make_random_unicode_path_segment(RandomPCG &r_random) {
+	static const char32_t codepoints[] = {
+		0x3042, // Hiragana letter A.
+		0x3044, // Hiragana letter I.
+		0x30A2, // Katakana letter A.
+		0x30AB, // Katakana letter Ka.
+		0x4E00, // CJK ideograph.
+		0x4E2D, // CJK ideograph.
+		0x03BB, // Greek small letter lambda.
+		0x03A9, // Greek capital letter omega.
+		0x0416, // Cyrillic capital letter Zhe.
+		0x05D0, // Hebrew letter Alef.
+		0x0627, // Arabic letter Alef.
+		0x2605, // Black star.
+		0x2665, // Black heart suit.
+		0x1F600, // Emoji code point.
+		0x1F47E, // Emoji code point.
+	};
+	const int codepoint_count = sizeof(codepoints) / sizeof(codepoints[0]);
+	const int length = 1 + r_random.rand(3);
+
+	String segment;
+	for (int i = 0; i < length; i++) {
+		segment += String::chr(codepoints[r_random.rand(codepoint_count)]);
+	}
+	return segment;
+}
+
+String make_unicode_obfuscated_script_path(RandomPCG &r_random) {
+	const int segment_count = 2 + r_random.rand(4);
+	String path = "res://";
+	for (int i = 0; i < segment_count; i++) {
+		if (i > 0) {
+			path += "/";
+		}
+		path += make_random_unicode_path_segment(r_random);
+	}
+	return path + ".gd";
+}
+
+String make_obfuscated_script_path(WGodotGDScriptExportTransform::ObfuscationStrategy p_strategy, const String &p_source_path, RandomPCG &r_random) {
+	switch (p_strategy) {
+		case WGodotGDScriptExportTransform::OBFUSCATION_STRATEGY_SHORT:
+			return make_short_obfuscated_script_path(r_random);
+		case WGodotGDScriptExportTransform::OBFUSCATION_STRATEGY_HASH:
+			return make_hash_obfuscated_script_path(p_source_path, r_random);
+		case WGodotGDScriptExportTransform::OBFUSCATION_STRATEGY_UNICODE:
+			return make_unicode_obfuscated_script_path(r_random);
+	}
+
+	return make_short_obfuscated_script_path(r_random);
 }
 
 void reserve_function_declaration_names_for_global_classes(WGodotGDScriptExportTransform::ExportContext &r_context, const GDScriptParser::FunctionNode *p_function);
@@ -309,8 +385,10 @@ void ExportContext::reset() {
 	builtin_static_method_aliases.clear();
 	builtin_instance_property_aliases.clear();
 	builtin_static_property_aliases.clear();
+	script_path_renames.clear();
 	reserved_member_names.clear();
 	reserved_global_class_names.clear();
+	reserved_script_paths.clear();
 	reserve_registered_global_class_names();
 	reserve_builtin_class_names();
 	reserve_builtin_function_names();
@@ -338,6 +416,15 @@ void ExportContext::reserve_global_class_name(const StringName &p_name) {
 
 	reserved_global_class_names.insert(p_name);
 	reserved_member_names.insert(p_name);
+}
+
+void ExportContext::reserve_script_path(const String &p_path) {
+	if (!p_path.is_empty()) {
+		reserved_script_paths.insert(p_path);
+		if (p_path.get_extension() == "gd") {
+			reserved_script_paths.insert(p_path.get_basename() + ".gdc");
+		}
+	}
 }
 
 void ExportContext::reserve_script_global_class_name(const GDScriptParser::ClassNode *p_class) {
@@ -518,6 +605,48 @@ const StringName *ExportContext::get_global_class_rename_by_path(const String &p
 	}
 
 	return global_class_renames_by_path.getptr(p_path);
+}
+
+String ExportContext::get_or_create_script_path_rename(const String &p_path) {
+	if (p_path.is_empty()) {
+		return String();
+	}
+
+	if (const String *existing = script_path_renames.getptr(p_path)) {
+		return *existing;
+	}
+
+	for (int attempt = 0; attempt < 10000; attempt++) {
+		const String obfuscated_path = make_obfuscated_script_path(options.file_path_obfuscation_strategy, p_path, obfuscation_random);
+		if (!reserved_script_paths.has(obfuscated_path) && !reserved_script_paths.has(obfuscated_path.get_basename() + ".gdc")) {
+			script_path_renames[p_path] = obfuscated_path;
+			reserve_script_path(obfuscated_path);
+			return obfuscated_path;
+		}
+	}
+
+	WARN_PRINT("WGodot failed to generate a unique obfuscated script path for '" + p_path + "'. Keeping the original path.");
+	return String();
+}
+
+const String *ExportContext::get_script_path_rename(const String &p_path) const {
+	if (p_path.is_empty()) {
+		return nullptr;
+	}
+
+	return script_path_renames.getptr(p_path);
+}
+
+String ExportContext::get_exported_script_path(const String &p_path) const {
+	const String *renamed_path = get_script_path_rename(p_path);
+	if (renamed_path == nullptr) {
+		return String();
+	}
+
+	if (options.binary_tokens_export && renamed_path->get_extension() == "gd") {
+		return renamed_path->get_basename() + ".gdc";
+	}
+	return *renamed_path;
 }
 
 StringName ExportContext::get_or_create_builtin_class_alias(const StringName &p_name) {
