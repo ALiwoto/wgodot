@@ -990,6 +990,9 @@ GDScriptParser::DataType GDScriptAnalyzer::resolve_datatype(GDScriptParser::Type
 	if (wgodot_validate_static_class_type_hint(p_type, result)) {
 		return bad_type;
 	}
+	if (!wgodot_validate_strict_datatype(result, p_type, "type hint")) {
+		return bad_type;
+	}
 	// wgodot-changes::end
 
 	p_type->set_datatype(result);
@@ -1822,6 +1825,10 @@ void GDScriptAnalyzer::resolve_function_signature(GDScriptParser::FunctionNode *
 
 	for (int i = 0; i < p_function->parameters.size(); i++) {
 		resolve_parameter(p_function->parameters[i]);
+		// wgodot-changes::begin
+		const String parameter_name = p_function->parameters[i]->identifier != nullptr ? String(p_function->parameters[i]->identifier->name) : String("<anonymous>");
+		wgodot_validate_strict_datatype(p_function->parameters[i]->get_datatype(), p_function->parameters[i], vformat(R"(parameter "%s")", parameter_name));
+		// wgodot-changes::end
 		method_info.arguments.push_back(p_function->parameters[i]->get_datatype().to_property_info(p_function->parameters[i]->identifier->name));
 #ifdef DEBUG_ENABLED
 		if (p_function->parameters[i]->usages == 0 && !String(p_function->parameters[i]->identifier->name).begins_with("_") && !p_function->is_abstract) {
@@ -1862,6 +1869,10 @@ void GDScriptAnalyzer::resolve_function_signature(GDScriptParser::FunctionNode *
 			parser->push_warning(p_function->rest_parameter, GDScriptWarning::UNTYPED_DECLARATION, "Parameter", p_function->rest_parameter->identifier->name);
 #endif
 		}
+		// wgodot-changes::begin
+		const String rest_parameter_name = p_function->rest_parameter->identifier != nullptr ? String(p_function->rest_parameter->identifier->name) : String("<anonymous>");
+		wgodot_validate_strict_datatype(p_function->rest_parameter->get_datatype(), p_function->rest_parameter, vformat(R"(rest parameter "%s")", rest_parameter_name));
+		// wgodot-changes::end
 #ifdef DEBUG_ENABLED
 		if (p_function->rest_parameter->usages == 0 && !String(p_function->rest_parameter->identifier->name).begins_with("_") && !p_function->is_abstract) {
 			parser->push_warning(p_function->rest_parameter->identifier, GDScriptWarning::UNUSED_PARAMETER, function_visible_name, p_function->rest_parameter->identifier->name);
@@ -2041,6 +2052,15 @@ void GDScriptAnalyzer::resolve_function_signature(GDScriptParser::FunctionNode *
 		parser->push_warning(p_function, GDScriptWarning::UNTYPED_DECLARATION, "Function", function_visible_name);
 	}
 #endif // DEBUG_ENABLED
+
+	// wgodot-changes::begin
+	if (function_name != GDScriptLanguage::get_singleton()->strings._init &&
+			function_name != GDScriptLanguage::get_singleton()->strings._static_init) {
+		const String return_context = function_name == StringName() ? String("function return type") : vformat(R"*(return type of function "%s()")*", function_name);
+		const GDScriptParser::Node *return_source = p_function->return_type != nullptr ? static_cast<const GDScriptParser::Node *>(p_function->return_type) : static_cast<const GDScriptParser::Node *>(p_function);
+		wgodot_validate_strict_datatype(p_function->get_datatype(), return_source, return_context);
+	}
+	// wgodot-changes::end
 
 	method_info.default_arguments.append_array(p_function->default_arg_values);
 	method_info.return_val = p_function->get_datatype().to_property_info("");
@@ -2277,6 +2297,12 @@ void GDScriptAnalyzer::resolve_assignable(GDScriptParser::AssignableNode *p_assi
 	type.is_constant = is_constant;
 	type.is_read_only = false;
 	p_assignable->set_datatype(type);
+	// wgodot-changes::begin
+	if (p_assignable->type != GDScriptParser::Node::PARAMETER) {
+		const String declaration_name = p_assignable->identifier != nullptr ? String(p_assignable->identifier->name) : String("<anonymous>");
+		wgodot_validate_strict_datatype(type, p_assignable, vformat(R"(%s "%s")", p_kind, declaration_name));
+	}
+	// wgodot-changes::end
 }
 
 void GDScriptAnalyzer::resolve_variable(GDScriptParser::VariableNode *p_variable, bool p_is_local) {
@@ -2438,6 +2464,9 @@ void GDScriptAnalyzer::resolve_for(GDScriptParser::ForNode *p_for) {
 			}
 #endif // DEBUG_ENABLED
 		}
+		// wgodot-changes::begin
+		wgodot_validate_strict_datatype(p_for->variable->get_datatype(), p_for->variable, vformat(R"("for" iterator variable "%s")", p_for->variable->name));
+		// wgodot-changes::end
 	}
 
 	resolve_suite(p_for->loop);
@@ -2548,6 +2577,9 @@ void GDScriptAnalyzer::resolve_match_pattern(GDScriptParser::PatternNode *p_matc
 				result.kind = GDScriptParser::DataType::VARIANT;
 			}
 			p_match_pattern->bind->set_datatype(result);
+			// wgodot-changes::begin
+			wgodot_validate_strict_datatype(result, p_match_pattern->bind, vformat(R"(pattern bind "%s")", p_match_pattern->bind->name));
+			// wgodot-changes::end
 #ifdef DEBUG_ENABLED
 			is_shadowing(p_match_pattern->bind, "pattern bind", true);
 			if (p_match_pattern->bind->usages == 0 && !String(p_match_pattern->bind->name).begins_with("_")) {
@@ -3867,6 +3899,9 @@ void GDScriptAnalyzer::reduce_call(GDScriptParser::CallNode *p_call, bool p_is_a
 			push_error(vformat(R"*(Function "%s()" not found in base %s.)*", p_call->function_name, base_type.to_string()), p_call->is_super ? p_call : p_call->callee);
 			wgodot_value_container_function_missing = true;
 		}
+		if (!wgodot_value_container_function_missing && !found) {
+			wgodot_validate_strict_dynamic_call(base_type, p_call, is_self);
+		}
 		// wgodot-changes::end
 		if (!wgodot_value_container_function_missing && !found && (is_self || (base_type.is_hard_type() && base_type.kind == GDScriptParser::DataType::BUILTIN))) {
 			String base_name = is_self && !p_call->is_super ? "self" : base_type.to_string();
@@ -5015,6 +5050,9 @@ void GDScriptAnalyzer::reduce_subscript(GDScriptParser::SubscriptNode *p_subscri
 					mark_node_unsafe(p_subscript);
 				}
 			} else {
+				// wgodot-changes::begin
+				wgodot_validate_strict_dynamic_property_access(base_type, p_subscript);
+				// wgodot-changes::end
 				mark_node_unsafe(p_subscript);
 			}
 		} else {
@@ -5046,6 +5084,11 @@ void GDScriptAnalyzer::reduce_subscript(GDScriptParser::SubscriptNode *p_subscri
 				}
 #endif // DEBUG_ENABLED
 				result_type.kind = GDScriptParser::DataType::VARIANT;
+				// wgodot-changes::begin
+				if (valid) {
+					wgodot_validate_strict_dynamic_property_access(base_type, p_subscript);
+				}
+				// wgodot-changes::end
 				mark_node_unsafe(p_subscript);
 			}
 		}
@@ -5084,6 +5127,9 @@ void GDScriptAnalyzer::reduce_subscript(GDScriptParser::SubscriptNode *p_subscri
 
 			if (base_type.is_variant()) {
 				result_type.kind = GDScriptParser::DataType::VARIANT;
+				// wgodot-changes::begin
+				wgodot_validate_strict_dynamic_index_access(base_type, p_subscript);
+				// wgodot-changes::end
 				mark_node_unsafe(p_subscript);
 			} else {
 				if (base_type.kind == GDScriptParser::DataType::BUILTIN && !index_type.is_variant()) {
@@ -5297,6 +5343,15 @@ void GDScriptAnalyzer::reduce_subscript(GDScriptParser::SubscriptNode *p_subscri
 			}
 		}
 	}
+
+	// wgodot-changes::begin
+	if (!p_subscript->is_attribute && wgodot_datatype_contains_variant(result_type)) {
+		const GDScriptParser::DataType base_type = p_subscript->base->get_datatype();
+		if (!base_type.is_variant()) {
+			wgodot_validate_strict_dynamic_index_access(base_type, p_subscript);
+		}
+	}
+	// wgodot-changes::end
 
 	p_subscript->set_datatype(result_type);
 

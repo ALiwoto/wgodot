@@ -106,6 +106,12 @@ class GDScriptAnalyzer {
 	bool wgodot_class_inherits_from(const GDScriptParser::ClassNode *p_class, const GDScriptParser::ClassNode *p_base_class) const;
 	void wgodot_validate_override_annotation(GDScriptParser::FunctionNode *p_function, bool p_overrides_parent);
 	bool wgodot_strict_override_checking_enabled() const;
+	bool wgodot_strict_type_checking_enabled() const;
+	bool wgodot_datatype_contains_variant(const GDScriptParser::DataType &p_datatype) const;
+	bool wgodot_validate_strict_datatype(const GDScriptParser::DataType &p_datatype, const GDScriptParser::Node *p_source, const String &p_context);
+	void wgodot_validate_strict_dynamic_call(const GDScriptParser::DataType &p_base_type, const GDScriptParser::CallNode *p_call, bool p_is_self);
+	void wgodot_validate_strict_dynamic_property_access(const GDScriptParser::DataType &p_base_type, const GDScriptParser::SubscriptNode *p_subscript);
+	void wgodot_validate_strict_dynamic_index_access(const GDScriptParser::DataType &p_base_type, const GDScriptParser::SubscriptNode *p_subscript);
 	void wgodot_validate_signal_callable_connection(GDScriptParser::CallNode *p_call);
 	bool wgodot_try_get_connect_signal_info(const GDScriptParser::CallNode *p_call, MethodInfo &r_signal_info) const;
 	bool wgodot_try_get_callable_info(const GDScriptParser::ExpressionNode *p_expression, MethodInfo &r_callable_info) const;

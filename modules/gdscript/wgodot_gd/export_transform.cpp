@@ -1626,6 +1626,7 @@ namespace WGodotGDScriptExportTransform {
 void register_project_settings() {
 	GLOBAL_DEF("wgodot/gdscript/disable_embedded_gdscript", true);
 	GLOBAL_DEF("wgodot/gdscript/strict_override_checking", true);
+	GLOBAL_DEF("wgodot/gdscript/strict_type_checking", true);
 	GLOBAL_DEF("wgodot/gdscript/strict_signal_callable_checking", true);
 	GLOBAL_DEF("wgodot/export/deconst_exports", true);
 	GLOBAL_DEF("wgodot/export/obfuscate_names", true);

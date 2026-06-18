@@ -182,6 +182,85 @@ bool GDScriptAnalyzer::wgodot_strict_override_checking_enabled() const {
 	return GLOBAL_GET_CACHED(bool, setting);
 }
 
+bool GDScriptAnalyzer::wgodot_strict_type_checking_enabled() const {
+	const char *setting = "wgodot/gdscript/strict_type_checking";
+	if (!ProjectSettings::get_singleton()->has_setting(setting)) {
+		return true;
+	}
+
+	return GLOBAL_GET_CACHED(bool, setting);
+}
+
+bool GDScriptAnalyzer::wgodot_datatype_contains_variant(const GDScriptParser::DataType &p_datatype) const {
+	if (!p_datatype.is_set() || p_datatype.has_no_type() || p_datatype.is_resolving()) {
+		return true;
+	}
+
+	if (p_datatype.kind == GDScriptParser::DataType::VARIANT || p_datatype.kind == GDScriptParser::DataType::UNRESOLVED) {
+		return true;
+	}
+
+	if (p_datatype.kind == GDScriptParser::DataType::BUILTIN) {
+		if (p_datatype.builtin_type == Variant::ARRAY && !p_datatype.has_container_element_type(0)) {
+			return true;
+		}
+		if (p_datatype.builtin_type == Variant::DICTIONARY && (!p_datatype.has_container_element_type(0) || !p_datatype.has_container_element_type(1))) {
+			return true;
+		}
+	}
+
+	for (int i = 0; i < p_datatype.get_container_element_type_count(); i++) {
+		if (wgodot_datatype_contains_variant(p_datatype.get_container_element_type(i))) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool GDScriptAnalyzer::wgodot_validate_strict_datatype(const GDScriptParser::DataType &p_datatype, const GDScriptParser::Node *p_source, const String &p_context) {
+	if (!wgodot_strict_type_checking_enabled() || !wgodot_datatype_contains_variant(p_datatype)) {
+		return true;
+	}
+
+	push_error(vformat("Strict type checking requires %s to have a fully known non-Variant type.", p_context), p_source);
+	return false;
+}
+
+void GDScriptAnalyzer::wgodot_validate_strict_dynamic_call(const GDScriptParser::DataType &p_base_type, const GDScriptParser::CallNode *p_call, bool p_is_self) {
+	ERR_FAIL_NULL(p_call);
+
+	if (!wgodot_strict_type_checking_enabled()) {
+		return;
+	}
+
+	if (p_call->is_super || p_is_self || (p_base_type.is_hard_type() && p_base_type.kind == GDScriptParser::DataType::BUILTIN) || p_base_type.is_meta_type) {
+		return;
+	}
+
+	push_error(vformat(R"*(Strict type checking does not allow dynamic call "%s()" on base "%s"; the method must exist on a fully known type.)*", p_call->function_name, p_base_type.to_string()), p_call->callee);
+}
+
+void GDScriptAnalyzer::wgodot_validate_strict_dynamic_property_access(const GDScriptParser::DataType &p_base_type, const GDScriptParser::SubscriptNode *p_subscript) {
+	ERR_FAIL_NULL(p_subscript);
+
+	if (!wgodot_strict_type_checking_enabled() || p_subscript->attribute == nullptr) {
+		return;
+	}
+
+	push_error(vformat(R"*(Strict type checking does not allow dynamic property "%s" on base "%s"; the property must exist on a fully known type.)*", p_subscript->attribute->name, p_base_type.to_string()), p_subscript->attribute);
+}
+
+void GDScriptAnalyzer::wgodot_validate_strict_dynamic_index_access(const GDScriptParser::DataType &p_base_type, const GDScriptParser::SubscriptNode *p_subscript) {
+	ERR_FAIL_NULL(p_subscript);
+
+	if (!wgodot_strict_type_checking_enabled()) {
+		return;
+	}
+
+	push_error(vformat(R"*(Strict type checking does not allow dynamic index access on base "%s"; the result type must be fully known and non-Variant.)*", p_base_type.to_string()), p_subscript);
+}
+
 void GDScriptAnalyzer::wgodot_validate_signal_callable_connection(GDScriptParser::CallNode *p_call) {
 	ERR_FAIL_NULL(p_call);
 
