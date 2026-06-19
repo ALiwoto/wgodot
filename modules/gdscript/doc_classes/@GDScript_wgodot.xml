@@ -6,8 +6,8 @@
 			<return type="void" />
 			<description>
 				Marks the following named declaration as excluded from export-time mangling or rewriting done by wgodot.
-				For constants, this prevents de-const export processing from inlining the constant value and removing the constant metadata. The constant remains visible in exported scripts and in [method Script.get_script_constant_map].
-				For classes, functions, and properties with getter/setter bodies, this acts recursively for declarations inside that subtree: wgodot skips name obfuscation and does not remove constants declared inside the subtree. Usages inside the subtree still follow the declaration they reference; for example, a use of an outside private field is renamed if that outside field declaration is renamed.
+				For constants and enums, only [annotation @no_mangle] on the constant or enum declaration itself prevents de-const/de-enum export processing from inlining values and removing metadata. Class/function/property [annotation @no_mangle] does not protect constant or enum usages inside that scope from being inlined.
+				For classes, functions, and properties with getter/setter bodies, this acts recursively for name obfuscation of declarations inside that subtree. Usages inside the subtree still follow the declaration they reference; for example, a use of an outside private field is renamed if that outside field declaration is renamed.
 				This annotation can be used on classes, constants, functions, enums, signals, and variables. It is also accepted on local constants and variables inside functions.
 				[codeblock]
 				@no_mangle

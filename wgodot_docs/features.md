@@ -24,7 +24,7 @@ This file tracks user-facing wgodot features. It intentionally avoids internal e
 
 9. De-const/de-enum: `wgodot/export/deconst_exports` removes exported constant and enum declarations, inlines their values where possible, and converts stripped enum type hints to `int`.
 
-10. `@no_mangle`: keeps a declaration from being renamed or stripped by export transforms. On classes/functions/properties, it protects declarations inside that scope too.
+10. `@no_mangle`: keeps the annotated declaration from being renamed or stripped by export transforms. For de-const/de-enum, only `@no_mangle` on the constant or enum declaration itself prevents stripping; containing class/function/property `@no_mangle` does not stop usages from being inlined.
 
 11. `@obfuscate`: explicitly marks a declaration for configured export-time obfuscation without making it private. On a class, eligible members are obfuscated unless they use `@no_mangle`.
 
