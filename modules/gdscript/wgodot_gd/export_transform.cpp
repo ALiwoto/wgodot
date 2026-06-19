@@ -738,6 +738,13 @@ void collect_expression_replacements(RewriteContext &r_context, const GDScriptPa
 			if (add_enum_attribute_reference_replacement(r_context, subscript)) {
 				break;
 			}
+			bool replaced_whole_constant_index = false;
+			if (add_constant_indexed_reference_replacement(r_context, subscript, replaced_whole_constant_index)) {
+				if (!replaced_whole_constant_index) {
+					collect_expression_replacements(r_context, subscript->index, p_no_mangle_scope);
+				}
+				break;
+			}
 			if (subscript->is_attribute && is_declared_constant_identifier(r_context, subscript->attribute)) {
 				add_constant_reference_replacement(r_context, subscript, subscript->attribute->constant_source);
 				break;

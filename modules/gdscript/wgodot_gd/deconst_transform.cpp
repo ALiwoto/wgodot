@@ -6,6 +6,8 @@
 #include "deconst_transform.h"
 
 #include "core/error/error_macros.h"
+#include "core/variant/array.h"
+#include "core/variant/dictionary.h"
 #include "core/variant/variant_parser.h"
 
 namespace {
@@ -17,6 +19,142 @@ String variant_to_source(const Variant &p_value) {
 	}
 
 	return text;
+}
+
+bool is_array_source_type(Variant::Type p_type) {
+	switch (p_type) {
+		case Variant::ARRAY:
+		case Variant::PACKED_BYTE_ARRAY:
+		case Variant::PACKED_INT32_ARRAY:
+		case Variant::PACKED_INT64_ARRAY:
+		case Variant::PACKED_FLOAT32_ARRAY:
+		case Variant::PACKED_FLOAT64_ARRAY:
+		case Variant::PACKED_STRING_ARRAY:
+		case Variant::PACKED_VECTOR2_ARRAY:
+		case Variant::PACKED_VECTOR3_ARRAY:
+		case Variant::PACKED_COLOR_ARRAY:
+		case Variant::PACKED_VECTOR4_ARRAY:
+			return true;
+		default:
+			return false;
+	}
+}
+
+bool variant_to_untyped_container_source(const Variant &p_value, String &r_text);
+
+bool array_to_untyped_source(const Variant &p_value, String &r_text) {
+	if (p_value.get_type() != Variant::ARRAY) {
+		return false;
+	}
+
+	const Array array = p_value;
+	String text = "[";
+	for (int i = 0; i < array.size(); i++) {
+		String element_text;
+		if (!variant_to_untyped_container_source(array[i], element_text)) {
+			return false;
+		}
+
+		if (i > 0) {
+			text += ", ";
+		}
+		text += element_text;
+	}
+	text += "]";
+	r_text = text;
+	return true;
+}
+
+bool indexed_array_to_untyped_source(const Variant &p_value, String &r_text) {
+	if (!is_array_source_type(p_value.get_type()) || p_value.get_type() == Variant::ARRAY) {
+		return false;
+	}
+
+	String text = "[";
+	const uint64_t size = p_value.get_indexed_size();
+	for (uint64_t i = 0; i < size; i++) {
+		bool valid = false;
+		bool oob = false;
+		const Variant element = p_value.get_indexed(i, valid, oob);
+		if (!valid || oob) {
+			return false;
+		}
+
+		String element_text;
+		if (!variant_to_untyped_container_source(element, element_text)) {
+			return false;
+		}
+
+		if (i > 0) {
+			text += ", ";
+		}
+		text += element_text;
+	}
+	text += "]";
+	r_text = text;
+	return true;
+}
+
+bool dictionary_to_untyped_source(const Variant &p_value, String &r_text) {
+	if (p_value.get_type() != Variant::DICTIONARY) {
+		return false;
+	}
+
+	const Dictionary dictionary = p_value;
+	String text = "{";
+	bool first = true;
+	for (const KeyValue<Variant, Variant> &entry : dictionary) {
+		String key_text;
+		String value_text;
+		if (!variant_to_untyped_container_source(entry.key, key_text) ||
+				!variant_to_untyped_container_source(entry.value, value_text)) {
+			return false;
+		}
+
+		if (!first) {
+			text += ", ";
+		}
+		first = false;
+		text += key_text + ": " + value_text;
+	}
+	text += "}";
+	r_text = text;
+	return true;
+}
+
+bool variant_to_untyped_container_source(const Variant &p_value, String &r_text) {
+	if (p_value.get_type() == Variant::ARRAY) {
+		return array_to_untyped_source(p_value, r_text);
+	}
+
+	if (is_array_source_type(p_value.get_type())) {
+		return indexed_array_to_untyped_source(p_value, r_text);
+	}
+
+	if (p_value.get_type() == Variant::DICTIONARY) {
+		return dictionary_to_untyped_source(p_value, r_text);
+	}
+
+	r_text = variant_to_source(p_value);
+	return !r_text.is_empty();
+}
+
+bool constant_to_indexable_source(const GDScriptParser::ConstantNode *p_constant, String &r_text) {
+	ERR_FAIL_NULL_V(p_constant, false);
+	ERR_FAIL_NULL_V(p_constant->initializer, false);
+
+	const Variant value = p_constant->initializer->reduced_value;
+	if (!is_array_source_type(value.get_type()) && value.get_type() != Variant::DICTIONARY) {
+		return false;
+	}
+
+	String text;
+	if (!variant_to_untyped_container_source(value, text) || text.is_empty()) {
+		return false;
+	}
+
+	r_text = "(" + text + ")";
+	return true;
 }
 
 bool should_mangle_constant(const GDScriptParser::ConstantNode *p_constant) {
@@ -44,6 +182,26 @@ bool is_declared_constant_identifier(const RewriteContext &p_context, const GDSc
 	return should_deconst_constant(p_context, p_identifier->constant_source);
 }
 
+const GDScriptParser::ConstantNode *get_declared_constant_reference(const RewriteContext &p_context, const GDScriptParser::ExpressionNode *p_expression) {
+	if (p_expression == nullptr) {
+		return nullptr;
+	}
+
+	if (p_expression->type == GDScriptParser::Node::IDENTIFIER) {
+		const GDScriptParser::IdentifierNode *identifier = static_cast<const GDScriptParser::IdentifierNode *>(p_expression);
+		return is_declared_constant_identifier(p_context, identifier) ? identifier->constant_source : nullptr;
+	}
+
+	if (p_expression->type == GDScriptParser::Node::SUBSCRIPT) {
+		const GDScriptParser::SubscriptNode *subscript = static_cast<const GDScriptParser::SubscriptNode *>(p_expression);
+		if (subscript->is_attribute && is_declared_constant_identifier(p_context, subscript->attribute)) {
+			return subscript->attribute->constant_source;
+		}
+	}
+
+	return nullptr;
+}
+
 void add_constant_reference_replacement(RewriteContext &r_context, const GDScriptParser::Node *p_node, const GDScriptParser::ConstantNode *p_constant) {
 	ERR_FAIL_NULL(p_constant);
 	ERR_FAIL_NULL(p_constant->initializer);
@@ -54,6 +212,39 @@ void add_constant_reference_replacement(RewriteContext &r_context, const GDScrip
 	}
 
 	add_replacement(r_context, p_node, text);
+}
+
+bool add_constant_indexed_reference_replacement(RewriteContext &r_context, const GDScriptParser::SubscriptNode *p_subscript, bool &r_replaced_whole_expression) {
+	ERR_FAIL_NULL_V(p_subscript, false);
+
+	r_replaced_whole_expression = false;
+	if (p_subscript->is_attribute || p_subscript->base == nullptr || p_subscript->index == nullptr) {
+		return false;
+	}
+
+	const GDScriptParser::ConstantNode *constant = get_declared_constant_reference(r_context, p_subscript->base);
+	if (constant == nullptr) {
+		return false;
+	}
+
+	if (p_subscript->is_constant) {
+		String value_text;
+		if (!variant_to_untyped_container_source(p_subscript->reduced_value, value_text) || value_text.is_empty()) {
+			return false;
+		}
+
+		add_replacement(r_context, p_subscript, value_text);
+		r_replaced_whole_expression = true;
+		return true;
+	}
+
+	String base_text;
+	if (!constant_to_indexable_source(constant, base_text)) {
+		return false;
+	}
+
+	add_replacement(r_context, p_subscript->base, base_text);
+	return true;
 }
 
 void add_constant_declaration_replacement(RewriteContext &r_context, const GDScriptParser::ConstantNode *p_constant, bool p_leave_pass) {
