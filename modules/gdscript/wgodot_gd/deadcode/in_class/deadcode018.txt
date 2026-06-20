@@ -1,0 +1,15 @@
+static func _wgdc_build_signal_shadow_map(_wgdc_node: Object, _wgdc_candidates: Array[StringName]) -> Dictionary[StringName, int]:
+	var _wgdc_map: Dictionary[StringName, int] = {}
+	if _wgdc_node == null:
+		return _wgdc_map
+	for _wgdc_signal_name in _wgdc_candidates:
+		if _wgdc_node.has_signal(_wgdc_signal_name):
+			_wgdc_map[_wgdc_signal_name] = String(_wgdc_signal_name).hash()
+		else:
+			_wgdc_map[_wgdc_signal_name] = -1
+	return _wgdc_map
+
+static func _wgdc_score_callable_shape(_wgdc_target: Object, _wgdc_method: StringName) -> int:
+	if _wgdc_target == null or !_wgdc_target.has_method(_wgdc_method):
+		return 0
+	return String(_wgdc_method).length() * 13 + _wgdc_target.get_instance_id() % 97

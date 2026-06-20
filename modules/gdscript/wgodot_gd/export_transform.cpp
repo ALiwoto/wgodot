@@ -5,6 +5,7 @@
 
 #include "export_transform.h"
 
+#include "deadcode_injection.h"
 #include "deconst_transform.h"
 #include "deenum_transform.h"
 #include "export_context.h"
@@ -1590,6 +1591,9 @@ void register_project_settings() {
 	GLOBAL_DEF("wgodot/export/obfuscate_file_paths", true);
 	GLOBAL_DEF(PropertyInfo(Variant::INT, "wgodot/export/obfuscate_file_paths_strategy", PROPERTY_HINT_ENUM, "Short,Hash,Unicode"), OBFUSCATION_STRATEGY_SHORT);
 	GLOBAL_DEF("wgodot/export/obfuscate_strings", true);
+	GLOBAL_DEF("wgodot/export/dead_code_injection_enabled", true);
+	GLOBAL_DEF(PropertyInfo(Variant::INT, "wgodot/export/min_in_class_dead_code_injection", PROPERTY_HINT_RANGE, "0,20,1,or_greater"), 10);
+	GLOBAL_DEF(PropertyInfo(Variant::INT, "wgodot/export/max_in_class_dead_code_injection", PROPERTY_HINT_RANGE, "0,20,1,or_greater"), 20);
 }
 
 TransformOptions setup_params() {
@@ -1599,6 +1603,9 @@ TransformOptions setup_params() {
 	options.obfuscate_builtin_names = GLOBAL_GET_CACHED(bool, "wgodot/export/obfuscate_builtin_names");
 	options.obfuscate_file_paths = GLOBAL_GET_CACHED(bool, "wgodot/export/obfuscate_file_paths");
 	options.obfuscate_strings = GLOBAL_GET_CACHED(bool, "wgodot/export/obfuscate_strings");
+	options.dead_code_injection_enabled = GLOBAL_GET_CACHED(bool, "wgodot/export/dead_code_injection_enabled");
+	options.min_in_class_dead_code_injection = GLOBAL_GET_CACHED(int, "wgodot/export/min_in_class_dead_code_injection");
+	options.max_in_class_dead_code_injection = GLOBAL_GET_CACHED(int, "wgodot/export/max_in_class_dead_code_injection");
 
 	const int obfuscation_strategy = GLOBAL_GET_CACHED(int, "wgodot/export/obfuscation_strategy");
 	if (obfuscation_strategy >= OBFUSCATION_STRATEGY_SHORT && obfuscation_strategy <= OBFUSCATION_STRATEGY_UNICODE) {
@@ -1619,7 +1626,7 @@ void prescan_project_scripts(ExportContext *p_context, const HashSet<String> &p_
 	}
 
 	const TransformOptions &options = p_context->get_options();
-	if (!options.obfuscate_names && !options.obfuscate_builtin_names && !options.obfuscate_file_paths && !options.obfuscate_strings) {
+	if (!options.obfuscate_names && !options.obfuscate_builtin_names && !options.obfuscate_file_paths && !options.obfuscate_strings && !options.dead_code_injection_enabled) {
 		return;
 	}
 
@@ -1637,7 +1644,8 @@ void prescan_project_scripts(ExportContext *p_context, const HashSet<String> &p_
 			continue;
 		}
 
-		const String source = String::utf8(reinterpret_cast<const char *>(file.ptr()), file.size());
+		const String raw_source = String::utf8(reinterpret_cast<const char *>(file.ptr()), file.size());
+		const String source = WGodotGDScriptDeadCodeInjection::inject_in_class_dead_code(raw_source, path, options);
 		ScriptSource script;
 		script.path = path;
 		script.source = source;
@@ -1678,8 +1686,10 @@ void prescan_project_scripts(ExportContext *p_context, const HashSet<String> &p_
 	}
 
 	if (options.obfuscate_strings) {
+		TransformOptions injected_source_options = options;
+		injected_source_options.dead_code_injection_enabled = false;
 		for (const ScriptSource &script : scripts) {
-			(void)transform_source(script.source, script.path, options, p_context, nullptr);
+			(void)transform_source(script.source, script.path, injected_source_options, p_context, nullptr);
 		}
 	}
 }
@@ -1739,12 +1749,15 @@ String transform_source(const String &p_source, const String &p_path, const Tran
 		*r_changed = false;
 	}
 
-	if (!p_options.deconst_exports && !p_options.obfuscate_names && !p_options.obfuscate_builtin_names && !p_options.obfuscate_file_paths && !p_options.obfuscate_strings && !p_options.strip_comments && !p_options.strip_empty_lines) {
+	if (!p_options.deconst_exports && !p_options.obfuscate_names && !p_options.obfuscate_builtin_names && !p_options.obfuscate_file_paths && !p_options.obfuscate_strings && !p_options.dead_code_injection_enabled && !p_options.strip_comments && !p_options.strip_empty_lines) {
 		return p_source;
 	}
 
+	bool dead_code_changed = false;
+	const String source = WGodotGDScriptDeadCodeInjection::inject_in_class_dead_code(p_source, p_path, p_options, &dead_code_changed);
+
 	AnalyzedSource analyzed_source;
-	if (!analyzed_source.load(p_source, p_path)) {
+	if (!analyzed_source.load(source, p_path)) {
 		return p_source;
 	}
 
@@ -1765,7 +1778,7 @@ String transform_source(const String &p_source, const String &p_path, const Tran
 	const GDScriptParser::ClassNode *tree = analyzed_source.parser->get_tree();
 
 	RewriteContext context;
-	context.source = p_source;
+	context.source = source;
 	context.script_path = p_path;
 	context.options = p_options;
 	context.export_context = export_context;
@@ -1782,7 +1795,10 @@ String transform_source(const String &p_source, const String &p_path, const Tran
 	collect_comment_replacements(context, *analyzed_source.parser);
 	collect_empty_line_replacements(context);
 	if (context.replacements.is_empty()) {
-		return p_source;
+		if (dead_code_changed && r_changed != nullptr) {
+			*r_changed = true;
+		}
+		return source;
 	}
 
 	const String transformed = apply_replacements(context);

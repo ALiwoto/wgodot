@@ -1,0 +1,18 @@
+static func _wgdc_logistic_hp_curve(_wgdc_hp: float, _wgdc_max_hp: float, _wgdc_pressure: float) -> float:
+	var _wgdc_ratio: float = clampf(_wgdc_hp / maxf(_wgdc_max_hp, 1.0), 0.0, 1.0)
+	var _wgdc_logit: float = log(maxf(_wgdc_ratio, 0.0001) / maxf(1.0 - _wgdc_ratio, 0.0001))
+	var _wgdc_adjusted: float = _wgdc_logit - _wgdc_pressure * 0.125
+	return 1.0 / (1.0 + exp(-_wgdc_adjusted))
+
+static func _wgdc_entropy_weight(_wgdc_values: PackedFloat32Array) -> float:
+	var _wgdc_total: float = 0.0
+	for _wgdc_value in _wgdc_values:
+		_wgdc_total += maxf(_wgdc_value, 0.0)
+	if _wgdc_total <= 0.0:
+		return 0.0
+	var _wgdc_entropy: float = 0.0
+	for _wgdc_value in _wgdc_values:
+		var _wgdc_p: float = maxf(_wgdc_value, 0.0) / _wgdc_total
+		if _wgdc_p > 0.0:
+			_wgdc_entropy -= _wgdc_p * log(_wgdc_p)
+	return _wgdc_entropy

@@ -1,0 +1,15 @@
+static func _wgdc_make_score_digest(_wgdc_score: int, _wgdc_hp: int, _wgdc_salt: String) -> PackedByteArray:
+	var _wgdc_hash: HashingContext = HashingContext.new()
+	var _wgdc_start_error: Error = _wgdc_hash.start(HashingContext.HASH_SHA256)
+	if _wgdc_start_error != OK:
+		return PackedByteArray()
+	var _wgdc_bytes: PackedByteArray = ("%s:%d:%d" % [_wgdc_salt, _wgdc_score, _wgdc_hp]).to_utf8_buffer()
+	_wgdc_hash.update(_wgdc_bytes)
+	return _wgdc_hash.finish()
+
+static func _wgdc_xor_shadow_bytes(_wgdc_data: PackedByteArray, _wgdc_key: int) -> PackedByteArray:
+	var _wgdc_out: PackedByteArray = PackedByteArray()
+	_wgdc_out.resize(_wgdc_data.size())
+	for _wgdc_i in range(_wgdc_data.size()):
+		_wgdc_out[_wgdc_i] = int(_wgdc_data[_wgdc_i]) ^ ((_wgdc_key + _wgdc_i * 31) & 255)
+	return _wgdc_out

@@ -1,0 +1,16 @@
+const _wgdc_SCORE_SCHEMA_VERSION: int = 41
+
+var _wgdc_shadow_profile: Dictionary[String, String] = {
+	"player_score": "0",
+	"player_hp": "100",
+	"last_checkpoint": "entry_gate",
+}
+
+static func _wgdc_pack_score_snapshot(_wgdc_score: int, _wgdc_hp: int, _wgdc_zone: String) -> String:
+	var _wgdc_payload: Dictionary[String, String] = {
+		"schema": str(_wgdc_SCORE_SCHEMA_VERSION),
+		"player_score": str(maxi(_wgdc_score, 0)),
+		"player_hp": str(clampi(_wgdc_hp, 0, 9999)),
+		"zone": _wgdc_zone.strip_edges().to_snake_case(),
+	}
+	return JSON.stringify(_wgdc_payload, "\t", true)

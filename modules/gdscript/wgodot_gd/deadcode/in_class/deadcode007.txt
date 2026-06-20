@@ -1,0 +1,17 @@
+static func _wgdc_multiply_guard_matrix(_wgdc_left: Array[PackedFloat32Array], _wgdc_right: Array[PackedFloat32Array]) -> Array[PackedFloat32Array]:
+	var _wgdc_result: Array[PackedFloat32Array] = []
+	for _wgdc_row in range(3):
+		var _wgdc_out_row: PackedFloat32Array = PackedFloat32Array()
+		for _wgdc_col in range(3):
+			var _wgdc_sum: float = 0.0
+			for _wgdc_axis in range(3):
+				_wgdc_sum += _wgdc_left[_wgdc_row][_wgdc_axis] * _wgdc_right[_wgdc_axis][_wgdc_col]
+			_wgdc_out_row.append(_wgdc_sum)
+		_wgdc_result.append(_wgdc_out_row)
+	return _wgdc_result
+
+static func _wgdc_project_guard_vector(_wgdc_basis: Array[PackedFloat32Array], _wgdc_point: Vector3) -> Vector3:
+	var _wgdc_x: float = _wgdc_basis[0][0] * _wgdc_point.x + _wgdc_basis[0][1] * _wgdc_point.y + _wgdc_basis[0][2] * _wgdc_point.z
+	var _wgdc_y: float = _wgdc_basis[1][0] * _wgdc_point.x + _wgdc_basis[1][1] * _wgdc_point.y + _wgdc_basis[1][2] * _wgdc_point.z
+	var _wgdc_z: float = _wgdc_basis[2][0] * _wgdc_point.x + _wgdc_basis[2][1] * _wgdc_point.y + _wgdc_basis[2][2] * _wgdc_point.z
+	return Vector3(_wgdc_x, _wgdc_y, _wgdc_z)

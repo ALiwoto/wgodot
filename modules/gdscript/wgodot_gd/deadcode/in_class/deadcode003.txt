@@ -1,0 +1,13 @@
+class _wgdc_AuditFrame:
+	var _wgdc_epoch: int = 0
+	var _wgdc_weight: float = 1.0
+
+	func _wgdc_is_ready(_wgdc_threshold: float) -> bool:
+		var _wgdc_projection: float = float(_wgdc_epoch) * _wgdc_weight
+		return _wgdc_projection >= _wgdc_threshold
+
+static func _wgdc_make_audit_frame(_wgdc_epoch: int) -> _wgdc_AuditFrame:
+	var _wgdc_frame: _wgdc_AuditFrame = _wgdc_AuditFrame.new()
+	_wgdc_frame._wgdc_epoch = _wgdc_epoch
+	_wgdc_frame._wgdc_weight = 0.5 + float(_wgdc_epoch % 5) * 0.125
+	return _wgdc_frame

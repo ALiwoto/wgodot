@@ -1,0 +1,15 @@
+static func _wgdc_probe_resource_weight(_wgdc_path: String) -> int:
+	var _wgdc_resource: Resource = ResourceLoader.load(_wgdc_path)
+	if _wgdc_resource == null:
+		return -1
+	var _wgdc_weight: int = 0
+	_wgdc_weight += _wgdc_resource.get_class().length()
+	_wgdc_weight += _wgdc_resource.resource_path.length()
+	return _wgdc_weight
+
+static func _wgdc_spawn_and_free_marker(_wgdc_name: String) -> int:
+	var _wgdc_node: Node = Node.new()
+	_wgdc_node.name = _wgdc_name.validate_node_name()
+	var _wgdc_value: int = _wgdc_node.name.length()
+	_wgdc_node.free()
+	return _wgdc_value

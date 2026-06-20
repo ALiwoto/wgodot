@@ -1,0 +1,18 @@
+enum _wgdc_SaveSlotState {
+	EMPTY,
+	DIRTY,
+	SEALED,
+	REMOTE,
+}
+
+static func _wgdc_rank_save_slot(_wgdc_state: int, _wgdc_score: int, _wgdc_hp: int) -> int:
+	match _wgdc_state:
+		_wgdc_SaveSlotState.EMPTY:
+			return -1
+		_wgdc_SaveSlotState.DIRTY:
+			return _wgdc_score / 2 + _wgdc_hp
+		_wgdc_SaveSlotState.SEALED:
+			return _wgdc_score + _wgdc_hp * 3
+		_wgdc_SaveSlotState.REMOTE:
+			return _wgdc_score + 999
+	return 0

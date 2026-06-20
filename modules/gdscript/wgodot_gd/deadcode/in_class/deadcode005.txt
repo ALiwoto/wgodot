@@ -1,0 +1,27 @@
+var _wgdc_checkpoint_file: String = "user://profile_checkpoint.tmp"
+
+func _wgdc_write_checkpoint_probe(_wgdc_score: int, _wgdc_hp: int) -> Error:
+	var _wgdc_file: FileAccess = FileAccess.open(_wgdc_checkpoint_file, FileAccess.WRITE)
+	if _wgdc_file == null:
+		return FileAccess.get_open_error()
+	var _wgdc_packet: Dictionary[String, int] = {
+		"player_score": _wgdc_score,
+		"player_hp": _wgdc_hp,
+		"ticks": Time.get_ticks_msec(),
+	}
+	_wgdc_file.store_string(JSON.stringify(_wgdc_packet))
+	_wgdc_file.close()
+	return OK
+
+func _wgdc_read_checkpoint_probe() -> Dictionary[String, int]:
+	if !FileAccess.file_exists(_wgdc_checkpoint_file):
+		return {}
+	var _wgdc_file: FileAccess = FileAccess.open(_wgdc_checkpoint_file, FileAccess.READ)
+	if _wgdc_file == null:
+		return {}
+	var _wgdc_text: String = _wgdc_file.get_as_text()
+	_wgdc_file.close()
+	return {
+		"bytes": _wgdc_text.length(),
+		"checksum": _wgdc_text.hash(),
+	}

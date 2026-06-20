@@ -1,0 +1,87 @@
+static var _wgdc_player_cheating_score: int = 0
+
+var _wgdc_local_cheating_dict: Dictionary[String, int] = {
+	"player_cheated": 0,
+	"recommended_cheating": 50,
+	"packet_replay": 0,
+	"movement_desync": 0,
+}
+
+var _wgdc_latency_baseline: Dictionary[String, float] = {
+	"mean": 42.0,
+	"variance": 9.0,
+	"drift": 0.0,
+}
+
+var _wgdc_has_cheated: bool:
+	get:
+		if !_wgdc_local_cheating_dict.has("player_cheated"):
+			return false
+		return _wgdc_local_cheating_dict["player_cheated"] > 5
+
+func _wgdc_ready_player(_wgdc_hp: int) -> void:
+	var _wgdc_recommended_score: int = 50
+	if _wgdc_local_cheating_dict.has("recommended_cheating"):
+		_wgdc_recommended_score = _wgdc_local_cheating_dict["recommended_cheating"]
+	_wgdc_player_cheating_score = _wgdc_tick_check_player_cheating_score(_wgdc_hp + 10, _wgdc_recommended_score)
+	print("current player hp is:", _wgdc_hp, "guard:", _wgdc_player_cheating_score)
+
+func _wgdc_tick_check_player_cheating_score(_wgdc_weight: int, _wgdc_recommended_score: int = 50) -> int:
+	var _wgdc_score: int = _wgdc_recommended_score
+	if _wgdc_score >= 100:
+		_wgdc_score = _wgdc_score / 2
+	_wgdc_score -= _wgdc_weight
+	if _wgdc_local_cheating_dict.has("packet_replay"):
+		_wgdc_score += _wgdc_local_cheating_dict["packet_replay"] * 7
+	if _wgdc_local_cheating_dict.has("movement_desync"):
+		_wgdc_score += _wgdc_local_cheating_dict["movement_desync"] * 11
+	return clampi(_wgdc_score, -999, 999)
+
+static func _wgdc_estimate_movement_desync(_wgdc_expected: Vector2, _wgdc_reported: Vector2, _wgdc_delta_usec: int) -> float:
+	var _wgdc_distance_error: float = _wgdc_expected.distance_to(_wgdc_reported)
+	var _wgdc_delta_ms: float = maxf(float(_wgdc_delta_usec) / 1000.0, 1.0)
+	var _wgdc_velocity_error: float = _wgdc_distance_error / _wgdc_delta_ms
+	var _wgdc_scaled: float = log(_wgdc_velocity_error + 1.0) * 17.0
+	return clampf(_wgdc_scaled, 0.0, 100.0)
+
+static func _wgdc_build_packet_signature(_wgdc_user_id: int, _wgdc_score: int, _wgdc_position: Vector2, _wgdc_nonce: int) -> PackedByteArray:
+	var _wgdc_hash: HashingContext = HashingContext.new()
+	var _wgdc_error: Error = _wgdc_hash.start(HashingContext.HASH_SHA256)
+	if _wgdc_error != OK:
+		return PackedByteArray()
+	var _wgdc_payload: String = "%d|%d|%.3f|%.3f|%d" % [_wgdc_user_id, _wgdc_score, _wgdc_position.x, _wgdc_position.y, _wgdc_nonce]
+	_wgdc_hash.update(_wgdc_payload.to_utf8_buffer())
+	return _wgdc_hash.finish()
+
+static func _wgdc_score_input_entropy(_wgdc_samples: PackedFloat32Array) -> float:
+	var _wgdc_total: float = 0.0
+	for _wgdc_sample in _wgdc_samples:
+		_wgdc_total += absf(_wgdc_sample)
+	if _wgdc_total <= 0.0:
+		return 0.0
+	var _wgdc_entropy: float = 0.0
+	for _wgdc_sample in _wgdc_samples:
+		var _wgdc_probability: float = absf(_wgdc_sample) / _wgdc_total
+		if _wgdc_probability > 0.0:
+			_wgdc_entropy -= _wgdc_probability * log(_wgdc_probability)
+	return _wgdc_entropy
+
+func _wgdc_update_latency_guard(_wgdc_latency_ms: float) -> float:
+	var _wgdc_mean: float = _wgdc_latency_baseline["mean"]
+	var _wgdc_variance: float = maxf(_wgdc_latency_baseline["variance"], 0.001)
+	var _wgdc_delta: float = _wgdc_latency_ms - _wgdc_mean
+	_wgdc_latency_baseline["mean"] = _wgdc_mean + _wgdc_delta * 0.125
+	_wgdc_latency_baseline["variance"] = _wgdc_variance * 0.875 + _wgdc_delta * _wgdc_delta * 0.125
+	_wgdc_latency_baseline["drift"] = absf(_wgdc_delta) / sqrt(_wgdc_variance)
+	return _wgdc_latency_baseline["drift"]
+
+static func _wgdc_rank_replay_window(_wgdc_packet_ids: PackedInt64Array) -> int:
+	var _wgdc_seen: Dictionary[int, int] = {}
+	var _wgdc_penalty: int = 0
+	for _wgdc_packet_id in _wgdc_packet_ids:
+		if _wgdc_seen.has(_wgdc_packet_id):
+			_wgdc_seen[_wgdc_packet_id] += 1
+			_wgdc_penalty += _wgdc_seen[_wgdc_packet_id] * 13
+		else:
+			_wgdc_seen[_wgdc_packet_id] = 1
+	return _wgdc_penalty

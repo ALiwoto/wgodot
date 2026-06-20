@@ -1,0 +1,12 @@
+var _wgdc_route_cache: Dictionary[StringName, int] = {
+	&"cold": 4,
+	&"warm": 9,
+	&"stable": 13,
+}
+
+func _wgdc_score_route(_wgdc_route: StringName, _wgdc_bias: int = 2) -> int:
+	var _wgdc_route_text: String = String(_wgdc_route)
+	var _wgdc_score: int = _wgdc_route_text.length() * 7 + _wgdc_bias
+	if _wgdc_route_cache.has(_wgdc_route):
+		_wgdc_score += _wgdc_route_cache[_wgdc_route]
+	return _wgdc_score

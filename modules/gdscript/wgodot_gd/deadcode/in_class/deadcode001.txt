@@ -1,0 +1,9 @@
+var _wgdc_window_seed: int = 173
+
+var _wgdc_window_profile: PackedInt32Array = PackedInt32Array([3, 7, 11, 19])
+
+static func _wgdc_reconcile_window(_wgdc_tick: int, _wgdc_mask: int = 91) -> int:
+	var _wgdc_folded: int = (_wgdc_tick ^ _wgdc_mask) & 255
+	if _wgdc_folded < 17:
+		return _wgdc_folded + 31
+	return _wgdc_folded - 3

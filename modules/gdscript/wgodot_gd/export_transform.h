@@ -26,9 +26,12 @@ struct TransformOptions {
 	bool obfuscate_builtin_names = true;
 	bool obfuscate_file_paths = false;
 	bool obfuscate_strings = false;
+	bool dead_code_injection_enabled = false;
 	bool strip_comments = true;
 	bool strip_empty_lines = true;
 	bool binary_tokens_export = false;
+	int min_in_class_dead_code_injection = 0;
+	int max_in_class_dead_code_injection = 0;
 	ObfuscationStrategy obfuscation_strategy = OBFUSCATION_STRATEGY_SHORT;
 	ObfuscationStrategy file_path_obfuscation_strategy = OBFUSCATION_STRATEGY_SHORT;
 };

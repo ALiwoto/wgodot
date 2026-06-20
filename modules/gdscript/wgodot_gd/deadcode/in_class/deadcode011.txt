@@ -1,0 +1,15 @@
+static func _wgdc_normalize_player_blob(_wgdc_blob: String) -> Dictionary[String, String]:
+	var _wgdc_clean: String = _wgdc_blob.strip_edges().replace("\r\n", "\n").replace("\t", " ")
+	var _wgdc_tokens: PackedStringArray = _wgdc_clean.split(" ", false)
+	var _wgdc_result: Dictionary[String, String] = {
+		"raw": _wgdc_clean,
+		"word_count": str(_wgdc_tokens.size()),
+		"contains_score": str(_wgdc_clean.findn("player_score") >= 0),
+		"checksum": str(_wgdc_clean.hash()),
+	}
+	return _wgdc_result
+
+static func _wgdc_build_debug_slug(_wgdc_player_name: String, _wgdc_zone: String, _wgdc_score: int) -> String:
+	var _wgdc_name: String = _wgdc_player_name.strip_edges().to_snake_case()
+	var _wgdc_area: String = _wgdc_zone.strip_edges().to_snake_case()
+	return ("%s_%s_%08d" % [_wgdc_name, _wgdc_area, _wgdc_score]).validate_filename()

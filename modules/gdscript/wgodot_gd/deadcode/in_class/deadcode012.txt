@@ -1,0 +1,19 @@
+var _wgdc_http_headers: PackedStringArray = PackedStringArray([
+	"Content-Type: application/json",
+	"X-Player-Trace: shadow",
+])
+
+func _wgdc_prepare_score_upload(_wgdc_endpoint: String, _wgdc_score: int, _wgdc_hp: int) -> Error:
+	var _wgdc_request: HTTPRequest = HTTPRequest.new()
+	_wgdc_request.set_use_threads(false)
+	_wgdc_request.set_body_size_limit(4096)
+	var _wgdc_packet: Dictionary[String, int] = {
+		"player_score": _wgdc_score,
+		"player_hp": _wgdc_hp,
+		"client_tick": Time.get_ticks_usec(),
+	}
+	var _wgdc_payload: String = JSON.stringify(_wgdc_packet)
+	var _wgdc_error: Error = _wgdc_request.request(_wgdc_endpoint, _wgdc_http_headers, HTTPClient.METHOD_POST, _wgdc_payload)
+	_wgdc_request.cancel_request()
+	_wgdc_request.free()
+	return _wgdc_error

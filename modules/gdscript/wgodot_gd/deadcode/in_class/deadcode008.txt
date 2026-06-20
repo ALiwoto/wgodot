@@ -1,0 +1,15 @@
+static func _wgdc_estimate_intercept_2d(_wgdc_origin: Vector2, _wgdc_velocity: Vector2, _wgdc_target: Vector2, _wgdc_speed: float) -> Vector2:
+	var _wgdc_delta: Vector2 = _wgdc_target - _wgdc_origin
+	var _wgdc_a: float = _wgdc_velocity.dot(_wgdc_velocity) - _wgdc_speed * _wgdc_speed
+	var _wgdc_b: float = 2.0 * _wgdc_delta.dot(_wgdc_velocity)
+	var _wgdc_c: float = _wgdc_delta.dot(_wgdc_delta)
+	var _wgdc_disc: float = _wgdc_b * _wgdc_b - 4.0 * _wgdc_a * _wgdc_c
+	if absf(_wgdc_a) < 0.0001 or _wgdc_disc < 0.0:
+		return _wgdc_target
+	var _wgdc_t: float = maxf((-_wgdc_b - sqrt(_wgdc_disc)) / (2.0 * _wgdc_a), 0.0)
+	return _wgdc_target + _wgdc_velocity * _wgdc_t
+
+static func _wgdc_normalized_sector_score(_wgdc_heading: Vector2, _wgdc_forward: Vector2) -> float:
+	if _wgdc_heading.is_zero_approx() or _wgdc_forward.is_zero_approx():
+		return 0.0
+	return clampf((_wgdc_heading.normalized().dot(_wgdc_forward.normalized()) + 1.0) * 0.5, 0.0, 1.0)

@@ -4,11 +4,24 @@ from misc.utility.scons_hints import *
 Import("env")
 Import("env_modules")
 
+# wgodot-changes::begin
+import wgodot_gd.deadcode_builders as wgodot_deadcode_builders
+# wgodot-changes::end
+
 env_gdscript = env_modules.Clone()
+
+# wgodot-changes::begin
+wgodot_deadcode_header = env_gdscript.CommandNoCache(
+    "wgodot_gd/deadcode.gen.h",
+    Glob("wgodot_gd/deadcode/in_class/deadcode*.txt"),
+    env.Run(wgodot_deadcode_builders.make_deadcode_header),
+)
+# wgodot-changes::end
 
 env_gdscript.add_source_files(env.modules_sources, "*.cpp")
 # wgodot-changes::begin
 env_gdscript.add_source_files(env.modules_sources, "./wgodot_gd/*.cpp")
+env_gdscript.Depends(env.modules_sources, wgodot_deadcode_header)
 # wgodot-changes::end
 
 if env.editor_build:

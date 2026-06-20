@@ -1,0 +1,16 @@
+static func _wgdc_fold_rect_visibility(_wgdc_camera: Rect2, _wgdc_targets: Array[Vector2]) -> Dictionary[String, float]:
+	var _wgdc_visible: int = 0
+	var _wgdc_bounds: Rect2 = Rect2()
+	for _wgdc_point in _wgdc_targets:
+		if _wgdc_camera.has_point(_wgdc_point):
+			_wgdc_visible += 1
+		if _wgdc_bounds.size == Vector2.ZERO:
+			_wgdc_bounds = Rect2(_wgdc_point, Vector2.ONE)
+		else:
+			_wgdc_bounds = _wgdc_bounds.expand(_wgdc_point)
+	return {
+		"visible": float(_wgdc_visible),
+		"center_x": _wgdc_bounds.get_center().x,
+		"center_y": _wgdc_bounds.get_center().y,
+		"area": _wgdc_bounds.size.x * _wgdc_bounds.size.y,
+	}

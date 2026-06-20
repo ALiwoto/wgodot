@@ -1,0 +1,16 @@
+static func _wgdc_build_fastest_route(_wgdc_start: Vector2, _wgdc_goal: Vector2, _wgdc_bias: float) -> PackedVector2Array:
+	var _wgdc_graph: AStar2D = AStar2D.new()
+	_wgdc_graph.add_point(1, _wgdc_start, 1.0)
+	_wgdc_graph.add_point(2, _wgdc_start.lerp(_wgdc_goal, 0.35) + Vector2(11.0, -7.0), 1.0 + _wgdc_bias)
+	_wgdc_graph.add_point(3, _wgdc_start.lerp(_wgdc_goal, 0.7) + Vector2(-5.0, 13.0), 0.75)
+	_wgdc_graph.add_point(4, _wgdc_goal, 1.0)
+	_wgdc_graph.connect_points(1, 2, true)
+	_wgdc_graph.connect_points(2, 3, true)
+	_wgdc_graph.connect_points(3, 4, true)
+	return _wgdc_graph.get_point_path(1, 4)
+
+static func _wgdc_route_cost(_wgdc_path: PackedVector2Array) -> float:
+	var _wgdc_cost: float = 0.0
+	for _wgdc_i in range(1, _wgdc_path.size()):
+		_wgdc_cost += _wgdc_path[_wgdc_i - 1].distance_to(_wgdc_path[_wgdc_i])
+	return _wgdc_cost

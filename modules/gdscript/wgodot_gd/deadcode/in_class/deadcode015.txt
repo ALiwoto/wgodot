@@ -1,0 +1,18 @@
+class _wgdc_RingAccumulator:
+	var _wgdc_cursor: int = 0
+	var _wgdc_values: PackedInt32Array = PackedInt32Array([0, 0, 0, 0, 0, 0, 0, 0])
+
+	func _wgdc_push(_wgdc_value: int) -> int:
+		_wgdc_values[_wgdc_cursor % _wgdc_values.size()] = _wgdc_value
+		_wgdc_cursor += 1
+		var _wgdc_total: int = 0
+		for _wgdc_item in _wgdc_values:
+			_wgdc_total += _wgdc_item
+		return _wgdc_total
+
+static func _wgdc_accumulate_score_window(_wgdc_values: PackedInt32Array) -> int:
+	var _wgdc_ring: _wgdc_RingAccumulator = _wgdc_RingAccumulator.new()
+	var _wgdc_total: int = 0
+	for _wgdc_value in _wgdc_values:
+		_wgdc_total = _wgdc_ring._wgdc_push(_wgdc_value)
+	return _wgdc_total
