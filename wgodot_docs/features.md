@@ -36,7 +36,9 @@ This file tracks user-facing wgodot features. It intentionally avoids internal e
 
 15. Script path obfuscation: `@obfuscate_path` with `wgodot/export/obfuscate_file_paths` renames marked exported scripts using `wgodot/export/obfuscate_file_paths_strategy` (`Short`, `Hash`, or `Unicode`), rewrites exact `res://...` string literals that refer to those scripts, and updates exported global class paths without adding runtime remap files.
 
-16. Export cleanup: exported GDScript strips wgodot annotations, normal comments, doc comments, and empty physical lines. Original project source files are not changed.
+16. String obfuscation: `wgodot/export/obfuscate_strings` replaces exported hardcoded `String`, `StringName`, and `NodePath` literals with resource-backed marker literals, folds constant string concatenations into one marker, and decodes the original values while parsing exported scripts. Dynamic reflection strings are decoded to their original text; declarations referenced through strings still need `@no_mangle` if name obfuscation would otherwise rename them.
+
+17. Export cleanup: exported GDScript strips wgodot annotations, normal comments, doc comments, and empty physical lines. Original project source files are not changed.
 
 ## Annotation Documentation
 

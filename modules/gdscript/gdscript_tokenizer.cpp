@@ -923,6 +923,70 @@ GDScriptTokenizer::Token GDScriptTokenizerText::string() {
 	char32_t prev = 0;
 	int prev_pos = 0;
 
+	// wgodot-changes::begin
+	if (!is_raw && _peek() == '\\' && _peek(1) == '0') {
+		result += '\\';
+		result += '0';
+		_advance();
+		_advance();
+
+		for (;;) {
+			if (_is_at_end()) {
+				return make_error("Unterminated obfuscated string marker.");
+			}
+
+			char32_t ch = _peek();
+			if (ch == '\\' && _peek(1) == '0') {
+				result += '\\';
+				result += '0';
+				_advance();
+				_advance();
+
+				if (is_multiline) {
+					if (_peek() == quote_char && _peek(1) == quote_char && _peek(2) == quote_char) {
+						_advance();
+						_advance();
+						_advance();
+						break;
+					}
+				} else if (_peek() == quote_char) {
+					_advance();
+					break;
+				}
+				continue;
+			}
+
+			if (!is_multiline && (ch == '\n' || ch == '\r')) {
+				return make_error("Unterminated obfuscated string marker.");
+			}
+			if (ch == quote_char) {
+				return make_error("Unterminated obfuscated string marker.");
+			}
+
+			result += ch;
+			_advance();
+			if (ch == '\n') {
+				newline(false);
+			}
+		}
+
+		Variant string;
+		switch (type) {
+			case STRING_NAME:
+				string = StringName(result);
+				break;
+			case STRING_NODEPATH:
+				string = NodePath(result);
+				break;
+			case STRING_REGULAR:
+				string = result;
+				break;
+		}
+
+		return make_literal(string);
+	}
+	// wgodot-changes::end
+
 	for (;;) {
 		// Consume actual string.
 		if (_is_at_end()) {

@@ -15,6 +15,7 @@
 #include "core/templates/hash_map.h"
 #include "core/templates/hash_set.h"
 #include "core/templates/vector.h"
+#include "core/typedefs.h"
 
 namespace WGodotGDScriptExportTransform {
 
@@ -30,9 +31,12 @@ class ExportContext {
 	HashMap<StringName, StringName> builtin_instance_property_aliases;
 	HashMap<StringName, StringName> builtin_static_property_aliases;
 	HashMap<String, String> script_path_renames;
+	HashMap<uint64_t, String> string_resources;
+	HashMap<String, String> obfuscated_string_literals;
 	HashSet<StringName> reserved_member_names;
 	HashSet<StringName> reserved_global_class_names;
 	HashSet<String> reserved_script_paths;
+	HashSet<uint64_t> reserved_string_resource_ids;
 	RandomPCG obfuscation_random;
 
 	void reserve_registered_global_class_names();
@@ -65,6 +69,10 @@ public:
 	String get_or_create_script_path_rename(const String &p_path);
 	const String *get_script_path_rename(const String &p_path) const;
 	String get_exported_script_path(const String &p_path) const;
+	uint32_t get_random_uint(uint32_t p_bounds);
+	uint64_t create_string_resource(const String &p_value);
+	const HashMap<uint64_t, String> &get_string_resources() const;
+	String get_or_create_obfuscated_string_literal(Variant::Type p_type, const String &p_value);
 	StringName get_or_create_builtin_class_alias(const StringName &p_name);
 	const StringName *get_builtin_class_alias(const StringName &p_name) const;
 	const HashMap<StringName, StringName> &get_builtin_class_aliases() const;

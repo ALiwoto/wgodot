@@ -40,6 +40,7 @@
 #include "wgodot_gd/builtin_class_aliases.h"
 #include "wgodot_gd/export_context.h"
 #include "wgodot_gd/export_transform.h"
+#include "wgodot_gd/string_obfuscation.h"
 // wgodot-changes::end
 
 #ifdef TOOLS_ENABLED
@@ -119,6 +120,10 @@ protected:
 		if (!builtin_class_aliases.is_empty()) {
 			add_file(WGodotGDScriptBuiltinClassAliases::get_alias_map_path(), builtin_class_aliases, false);
 		}
+		const Vector<uint8_t> string_map = WGodotGDScriptStringObfuscation::serialize_string_map(transform_context);
+		if (!string_map.is_empty()) {
+			add_file(WGodotGDScriptStringObfuscation::get_string_map_path(), string_map, false);
+		}
 	}
 
 	virtual void _export_global_class_list(Array &r_global_class_list) override {
@@ -195,6 +200,7 @@ void initialize_gdscript_module(ModuleInitializationLevel p_level) {
 	if (p_level == MODULE_INITIALIZATION_LEVEL_SERVERS) {
 		// wgodot-changes::begin
 		WGodotGDScriptBuiltinClassAliases::clear_runtime_cache();
+		WGodotGDScriptStringObfuscation::clear_runtime_cache();
 		// wgodot-changes::end
 
 		GDREGISTER_CLASS(GDScript);

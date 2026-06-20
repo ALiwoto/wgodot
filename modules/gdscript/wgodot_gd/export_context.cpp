@@ -6,6 +6,7 @@
 #include "export_context.h"
 
 #include "obfuscation_names.h"
+#include "string_obfuscation.h"
 
 #include "../gdscript_utility_functions.h"
 
@@ -386,9 +387,12 @@ void ExportContext::reset() {
 	builtin_instance_property_aliases.clear();
 	builtin_static_property_aliases.clear();
 	script_path_renames.clear();
+	string_resources.clear();
+	obfuscated_string_literals.clear();
 	reserved_member_names.clear();
 	reserved_global_class_names.clear();
 	reserved_script_paths.clear();
+	reserved_string_resource_ids.clear();
 	reserve_registered_global_class_names();
 	reserve_builtin_class_names();
 	reserve_builtin_function_names();
@@ -647,6 +651,46 @@ String ExportContext::get_exported_script_path(const String &p_path) const {
 		return renamed_path->get_basename() + ".gdc";
 	}
 	return *renamed_path;
+}
+
+uint32_t ExportContext::get_random_uint(uint32_t p_bounds) {
+	return obfuscation_random.rand(p_bounds);
+}
+
+uint64_t ExportContext::create_string_resource(const String &p_value) {
+	for (int attempt = 0; attempt < 10000; attempt++) {
+		const uint64_t id = (static_cast<uint64_t>(obfuscation_random.rand()) << 32) | obfuscation_random.rand();
+		if (id != 0 && !reserved_string_resource_ids.has(id)) {
+			reserved_string_resource_ids.insert(id);
+			string_resources[id] = p_value;
+			return id;
+		}
+	}
+
+	uint64_t fallback_id = static_cast<uint64_t>(string_resources.size()) + 1;
+	while (reserved_string_resource_ids.has(fallback_id)) {
+		fallback_id++;
+	}
+	reserved_string_resource_ids.insert(fallback_id);
+	string_resources[fallback_id] = p_value;
+	return fallback_id;
+}
+
+const HashMap<uint64_t, String> &ExportContext::get_string_resources() const {
+	return string_resources;
+}
+
+String ExportContext::get_or_create_obfuscated_string_literal(Variant::Type p_type, const String &p_value) {
+	const String key = String::num_int64(p_type) + ":" + p_value;
+	if (const String *existing = obfuscated_string_literals.getptr(key)) {
+		return *existing;
+	}
+
+	const String literal = WGodotGDScriptStringObfuscation::make_uncached_obfuscated_string_literal_source(*this, p_type, p_value);
+	if (!literal.is_empty()) {
+		obfuscated_string_literals[key] = literal;
+	}
+	return literal;
 }
 
 StringName ExportContext::get_or_create_builtin_class_alias(const StringName &p_name) {

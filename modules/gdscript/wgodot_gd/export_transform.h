@@ -25,6 +25,7 @@ struct TransformOptions {
 	bool obfuscate_names = false;
 	bool obfuscate_builtin_names = true;
 	bool obfuscate_file_paths = false;
+	bool obfuscate_strings = false;
 	bool strip_comments = true;
 	bool strip_empty_lines = true;
 	bool binary_tokens_export = false;

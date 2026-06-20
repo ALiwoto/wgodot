@@ -33,6 +33,10 @@
 #include "gdscript.h"
 #include "gdscript_tokenizer_buffer.h"
 
+// wgodot-changes::begin
+#include "wgodot_gd/string_obfuscation.h"
+// wgodot-changes::end
+
 #include "core/config/project_settings.h"
 #include "core/io/resource_loader.h"
 #include "core/math/math_defs.h"
@@ -1119,10 +1123,13 @@ void GDScriptParser::parse_extends() {
 	int chain_index = 0;
 
 	if (match(GDScriptTokenizer::Token::LITERAL)) {
-		if (previous.literal.get_type() != Variant::STRING) {
-			push_error(vformat(R"(Only strings or identifiers can be used after "extends", found "%s" instead.)", Variant::get_type_name(previous.literal.get_type())));
+		// wgodot-changes::begin
+		const Variant extends_literal = WGodotGDScriptStringObfuscation::decode_obfuscated_literal(previous.literal);
+		if (extends_literal.get_type() != Variant::STRING) {
+			push_error(vformat(R"(Only strings or identifiers can be used after "extends", found "%s" instead.)", Variant::get_type_name(extends_literal.get_type())));
 		}
-		current_class->extends_path = previous.literal;
+		current_class->extends_path = extends_literal;
+		// wgodot-changes::end
 
 		if (!match(GDScriptTokenizer::Token::PERIOD)) {
 			return;
@@ -2999,7 +3006,9 @@ GDScriptParser::ExpressionNode *GDScriptParser::parse_literal(ExpressionNode *p_
 	}
 
 	LiteralNode *literal = alloc_node<LiteralNode>();
-	literal->value = previous.literal;
+	// wgodot-changes::begin
+	literal->value = WGodotGDScriptStringObfuscation::decode_obfuscated_literal(previous.literal);
+	// wgodot-changes::end
 	reset_extents(literal, p_previous_operand);
 	update_extents(literal);
 	make_completion_context(COMPLETION_NONE, literal, -1);
