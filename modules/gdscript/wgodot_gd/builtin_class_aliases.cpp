@@ -7,6 +7,7 @@
 
 #include "export_context.h"
 #include "obfuscation_names.h"
+#include "resource_map_codec.h"
 
 #include "../gdscript_utility_functions.h"
 #include "../gdscript_parser.h"
@@ -196,7 +197,12 @@ void load_aliases() {
 		return;
 	}
 
-	const Vector<uint8_t> data = FileAccess::get_file_as_bytes(ALIAS_MAP_PATH);
+	const Vector<uint8_t> encoded_data = FileAccess::get_file_as_bytes(ALIAS_MAP_PATH);
+	if (encoded_data.is_empty()) {
+		return;
+	}
+
+	const Vector<uint8_t> data = WGodotGDScriptResourceMapCodec::decode_resource_map(ALIAS_MAP_PATH, encoded_data);
 	if (data.is_empty()) {
 		return;
 	}
@@ -264,7 +270,7 @@ Vector<uint8_t> serialize_alias_map(const WGodotGDScriptExportTransform::ExportC
 		append_alias_record(output, AliasRecordKind::STATIC_PROPERTY, property_alias.key, property_alias.value);
 	}
 
-	return output;
+	return WGodotGDScriptResourceMapCodec::encode_resource_map(ALIAS_MAP_PATH, output);
 }
 
 StringName resolve_alias(const StringName &p_name) {

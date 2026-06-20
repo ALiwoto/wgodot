@@ -6,6 +6,7 @@
 #include "string_obfuscation.h"
 
 #include "export_context.h"
+#include "resource_map_codec.h"
 
 #include "core/error/error_macros.h"
 #include "core/io/file_access.h"
@@ -193,7 +194,16 @@ void ensure_string_resources_loaded() {
 		return;
 	}
 
-	const Vector<uint8_t> data = FileAccess::get_file_as_bytes(STRING_MAP_PATH);
+	const Vector<uint8_t> encoded_data = FileAccess::get_file_as_bytes(STRING_MAP_PATH);
+	if (encoded_data.is_empty()) {
+		return;
+	}
+
+	const Vector<uint8_t> data = WGodotGDScriptResourceMapCodec::decode_resource_map(STRING_MAP_PATH, encoded_data);
+	if (data.is_empty()) {
+		return;
+	}
+
 	int offset = 0;
 	while (offset + 12 <= data.size()) {
 		const uint64_t id = decode_uint64(&data[offset]);
@@ -262,7 +272,7 @@ Vector<uint8_t> serialize_string_map(const WGodotGDScriptExportTransform::Export
 			output.write[offset + i] = value[i];
 		}
 	}
-	return output;
+	return WGodotGDScriptResourceMapCodec::encode_resource_map(STRING_MAP_PATH, output);
 }
 
 void clear_runtime_cache() {
