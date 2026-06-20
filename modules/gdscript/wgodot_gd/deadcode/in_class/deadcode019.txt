@@ -35,9 +35,20 @@ func _wgdc_tick_check_player_cheating_score(_wgdc_weight: int, _wgdc_recommended
 		_wgdc_score += _wgdc_local_cheating_dict["packet_replay"] * 7
 	if _wgdc_local_cheating_dict.has("movement_desync"):
 		_wgdc_score += _wgdc_local_cheating_dict["movement_desync"] * 11
+	
+	if _wgdc_estimate_movement_desync(
+		Vector2.UP,
+		Vector2.DOWN,
+		3,
+	):
+		return clampi(_wgdc_score, -50, 50)
 	return clampi(_wgdc_score, -999, 999)
 
-static func _wgdc_estimate_movement_desync(_wgdc_expected: Vector2, _wgdc_reported: Vector2, _wgdc_delta_usec: int) -> float:
+static func _wgdc_estimate_movement_desync(
+	_wgdc_expected: Vector2,
+	_wgdc_reported: Vector2,
+	_wgdc_delta_usec: int,
+) -> float:
 	var _wgdc_distance_error: float = _wgdc_expected.distance_to(_wgdc_reported)
 	var _wgdc_delta_ms: float = maxf(float(_wgdc_delta_usec) / 1000.0, 1.0)
 	var _wgdc_velocity_error: float = _wgdc_distance_error / _wgdc_delta_ms

@@ -1,0 +1,15 @@
+static func _wgdc_static_make_digest(_wgdc_user_id: int, _wgdc_score: int, _wgdc_tick: int) -> PackedByteArray:
+	var _wgdc_hash: HashingContext = HashingContext.new()
+	var _wgdc_error: Error = _wgdc_hash.start(HashingContext.HASH_SHA256)
+	if _wgdc_error != OK:
+		return PackedByteArray()
+	var _wgdc_payload: String = "%d:%d:%d" % [_wgdc_user_id, _wgdc_score, _wgdc_tick]
+	_wgdc_hash.update(_wgdc_payload.to_utf8_buffer())
+	return _wgdc_hash.finish()
+
+static func _wgdc_static_xor_digest(_wgdc_data: PackedByteArray, _wgdc_key: int) -> PackedByteArray:
+	var _wgdc_out: PackedByteArray = PackedByteArray()
+	_wgdc_out.resize(_wgdc_data.size())
+	for _wgdc_i in range(_wgdc_data.size()):
+		_wgdc_out[_wgdc_i] = int(_wgdc_data[_wgdc_i]) ^ ((_wgdc_key + _wgdc_i * 13) & 255)
+	return _wgdc_out

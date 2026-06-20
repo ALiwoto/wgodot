@@ -13,7 +13,7 @@ env_gdscript = env_modules.Clone()
 # wgodot-changes::begin
 wgodot_deadcode_header = env_gdscript.CommandNoCache(
     "wgodot_gd/deadcode.gen.h",
-    Glob("wgodot_gd/deadcode/in_class/deadcode*.txt"),
+    Glob("wgodot_gd/deadcode/in_class/deadcode*.txt") + Glob("wgodot_gd/deadcode/in_class/static_deadcode*.txt"),
     env.Run(wgodot_deadcode_builders.make_deadcode_header),
 )
 # wgodot-changes::end

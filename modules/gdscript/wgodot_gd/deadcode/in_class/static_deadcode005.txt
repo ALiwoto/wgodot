@@ -1,0 +1,10 @@
+static func _wgdc_static_project_2d(_wgdc_origin: Vector2, _wgdc_velocity: Vector2, _wgdc_delta: float) -> Vector2:
+	var _wgdc_drag: float = clampf(_wgdc_velocity.length() * 0.0025, 0.0, 0.35)
+	var _wgdc_adjusted_velocity: Vector2 = _wgdc_velocity * (1.0 - _wgdc_drag)
+	return _wgdc_origin + _wgdc_adjusted_velocity * maxf(_wgdc_delta, 0.0)
+
+static func _wgdc_static_angle_bucket(_wgdc_forward: Vector2, _wgdc_target: Vector2) -> int:
+	if _wgdc_forward.is_zero_approx() or _wgdc_target.is_zero_approx():
+		return 0
+	var _wgdc_dot: float = _wgdc_forward.normalized().dot(_wgdc_target.normalized())
+	return int(clampf((_wgdc_dot + 1.0) * 8.0, 0.0, 15.0))

@@ -36,17 +36,19 @@ namespace {
 
 using namespace WGodotGDScriptExportTransform;
 
+String get_parser_errors_with_source_text(const GDScriptParser &p_parser, const String &p_source);
+
 struct AnalyzedSource {
 	GDScriptParser local_parser;
 	Ref<GDScriptParserRef> cached_parser_ref;
 	GDScriptParser *parser = nullptr;
 
-	bool load(const String &p_source, const String &p_path) {
+	bool load(const String &p_source, const String &p_path, String *r_error_details = nullptr) {
 		if (load_from_cache(p_source, p_path)) {
 			return true;
 		}
 
-		return load_local(p_source, p_path);
+		return load_local(p_source, p_path, r_error_details);
 	}
 
 private:
@@ -71,13 +73,19 @@ private:
 		return parser != nullptr;
 	}
 
-	bool load_local(const String &p_source, const String &p_path) {
+	bool load_local(const String &p_source, const String &p_path, String *r_error_details) {
 		if (local_parser.parse(p_source, p_path, false) != OK) {
+			if (r_error_details != nullptr) {
+				*r_error_details = get_parser_errors_with_source_text(local_parser, p_source);
+			}
 			return false;
 		}
 
 		GDScriptAnalyzer analyzer(&local_parser);
 		if (analyzer.analyze() != OK) {
+			if (r_error_details != nullptr) {
+				*r_error_details = get_parser_errors_with_source_text(local_parser, p_source);
+			}
 			return false;
 		}
 
@@ -1652,7 +1660,9 @@ void prescan_project_scripts(ExportContext *p_context, const HashSet<String> &p_
 		scripts.push_back(script);
 
 		AnalyzedSource analyzed_source;
-		if (!analyzed_source.load(source, path)) {
+		String analysis_error;
+		if (!analyzed_source.load(source, path, &analysis_error)) {
+			WARN_PRINT("Failed to analyze wgodot-transformed GDScript during export prescan for '" + path + "'. Some export transforms may be incomplete for this script.\n" + analysis_error);
 			reserve_script_global_class_name_from_source(p_context, source, path);
 			continue;
 		}
@@ -1677,7 +1687,9 @@ void prescan_project_scripts(ExportContext *p_context, const HashSet<String> &p_
 	if (options.obfuscate_names) {
 		for (const ScriptSource &script : scripts) {
 			AnalyzedSource analyzed_source;
-			if (!analyzed_source.load(script.source, script.path)) {
+			String analysis_error;
+			if (!analyzed_source.load(script.source, script.path, &analysis_error)) {
+				WARN_PRINT("Failed to analyze wgodot-transformed GDScript while indexing export names for '" + script.path + "'. Some name obfuscation may be incomplete for this script.\n" + analysis_error);
 				continue;
 			}
 
@@ -1757,7 +1769,9 @@ String transform_source(const String &p_source, const String &p_path, const Tran
 	const String source = WGodotGDScriptDeadCodeInjection::inject_in_class_dead_code(p_source, p_path, p_options, &dead_code_changed);
 
 	AnalyzedSource analyzed_source;
-	if (!analyzed_source.load(source, p_path)) {
+	String analysis_error;
+	if (!analyzed_source.load(source, p_path, &analysis_error)) {
+		WARN_PRINT("Failed to analyze wgodot-transformed GDScript export for '" + p_path + "'. Exporting original script source.\n" + analysis_error);
 		return p_source;
 	}
 

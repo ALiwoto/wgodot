@@ -1,0 +1,31 @@
+const _wgdc_velocity_factor_x: float = 8.0
+const _wgdc_velocity_factor_y: float = 0.0
+const _wgdc_velocity_factor_z: float = 15.0
+
+static var _wgdc_use_velocity_factor: bool = true
+
+static func _wgdc_static_project_2d(_wgdc_origin: Vector2, _wgdc_velocity: Vector2, _wgdc_delta: float) -> Vector2:
+	var _wgdc_drag: float = clampf(_wgdc_velocity.length() * 0.0025, 0.0, 0.35)
+	var _wgdc_adjusted_velocity: Vector2 = _wgdc_velocity * (1.0 - _wgdc_drag)
+	return _wgdc_origin + _wgdc_adjusted_velocity * maxf(_wgdc_delta, 0.0)
+
+static func _wgdc_static_angle_bucket(_wgdc_forward: Vector2, _wgdc_target: Vector2) -> int:
+	if _wgdc_forward.is_zero_approx() or _wgdc_target.is_zero_approx():
+		return 0
+	var _wgdc_dot: float = _wgdc_forward.normalized().dot(_wgdc_target.normalized())
+	return int(
+		clampf((_wgdc_dot + 1.0) * _wgdc_velocity_factor_x, _wgdc_velocity_factor_y, _wgdc_velocity_factor_z)
+	)
+
+static var _wgdc_is_velocity_approx_zero: bool:
+	get:
+		return _wgdc_get_velocity_factors().is_zero_approx()
+
+static func _wgdc_get_velocity_factors() -> Vector3:
+	if _wgdc_use_velocity_factor:
+		return Vector3(
+			_wgdc_velocity_factor_x,
+			_wgdc_velocity_factor_y,
+			_wgdc_velocity_factor_z,
+		)
+	return Vector3.ZERO

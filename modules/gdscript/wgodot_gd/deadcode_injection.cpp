@@ -25,6 +25,11 @@ struct InsertionSort {
 	}
 };
 
+struct DeadCodeTemplatePool {
+	const WGodotGDScriptDeadCodeTemplates::DeadCodeTemplate *templates = nullptr;
+	int count = 0;
+};
+
 void build_line_offsets(const String &p_source, Vector<int> &r_line_offsets) {
 	r_line_offsets.clear();
 	r_line_offsets.push_back(0);
@@ -67,6 +72,41 @@ String get_line_indent(const String &p_source, const Vector<int> &p_line_offsets
 	return p_source.substr(line_start, index - line_start);
 }
 
+bool has_annotation(const GDScriptParser::Node *p_node, const StringName &p_annotation_name) {
+	if (p_node == nullptr) {
+		return false;
+	}
+
+	for (const GDScriptParser::AnnotationNode *annotation : p_node->annotations) {
+		if (annotation != nullptr && annotation->name == p_annotation_name) {
+			return true;
+		}
+	}
+	return false;
+}
+
+bool is_no_mangle_class(const GDScriptParser::ClassNode *p_class) {
+	return p_class != nullptr && (p_class->wgodot_no_mangle || has_annotation(p_class, SNAME("@no_mangle")));
+}
+
+bool is_static_class(const GDScriptParser::ClassNode *p_class) {
+	return p_class != nullptr && (p_class->wgodot_static_class || has_annotation(p_class, SNAME("@static_class")));
+}
+
+int get_annotated_start_line(const GDScriptParser::Node *p_node) {
+	if (p_node == nullptr) {
+		return -1;
+	}
+
+	int start_line = p_node->start_line;
+	for (const GDScriptParser::AnnotationNode *annotation : p_node->annotations) {
+		if (annotation != nullptr && annotation->start_line > 0) {
+			start_line = start_line > 0 ? MIN(start_line, annotation->start_line) : annotation->start_line;
+		}
+	}
+	return start_line;
+}
+
 String indent_snippet(const String &p_snippet, const String &p_indent) {
 	const Vector<String> lines = p_snippet.replace("\r\n", "\n").replace("\r", "\n").split("\n", true);
 	String text;
@@ -102,13 +142,26 @@ String make_dead_code_identifier_id(RandomPCG &r_random, uint64_t &r_unique_id) 
 	return String::num_uint64(identifier_id);
 }
 
-String make_dead_code_block(RandomPCG &r_random, const String &p_indent, uint64_t &r_unique_id) {
-	if (WGodotGDScriptDeadCodeTemplates::IN_CLASS_DEAD_CODE_TEMPLATE_COUNT <= 0) {
+DeadCodeTemplatePool get_template_pool(bool p_static_class) {
+	DeadCodeTemplatePool pool;
+	if (p_static_class) {
+		pool.templates = WGodotGDScriptDeadCodeTemplates::STATIC_IN_CLASS_DEAD_CODE_TEMPLATES;
+		pool.count = WGodotGDScriptDeadCodeTemplates::STATIC_IN_CLASS_DEAD_CODE_TEMPLATE_COUNT;
+		return pool;
+	}
+
+	pool.templates = WGodotGDScriptDeadCodeTemplates::IN_CLASS_DEAD_CODE_TEMPLATES;
+	pool.count = WGodotGDScriptDeadCodeTemplates::IN_CLASS_DEAD_CODE_TEMPLATE_COUNT;
+	return pool;
+}
+
+String make_dead_code_block(RandomPCG &r_random, const String &p_indent, uint64_t &r_unique_id, const DeadCodeTemplatePool &p_template_pool) {
+	if (p_template_pool.count <= 0 || p_template_pool.templates == nullptr) {
 		return String();
 	}
 
-	const uint32_t template_index = r_random.rand(WGodotGDScriptDeadCodeTemplates::IN_CLASS_DEAD_CODE_TEMPLATE_COUNT);
-	String snippet = WGodotGDScriptDeadCodeTemplates::IN_CLASS_DEAD_CODE_TEMPLATES[template_index].source;
+	const uint32_t template_index = r_random.rand(p_template_pool.count);
+	String snippet = p_template_pool.templates[template_index].source;
 	snippet = snippet.strip_edges();
 	if (snippet.is_empty()) {
 		return String();
@@ -118,39 +171,84 @@ String make_dead_code_block(RandomPCG &r_random, const String &p_indent, uint64_
 	return "\n" + indent_snippet(snippet, p_indent) + "\n";
 }
 
+void add_dead_code_insertion(int p_offset, const String &p_indent, RandomPCG &r_random, uint64_t &r_unique_id, int p_min, int p_max, const DeadCodeTemplatePool &p_template_pool, LocalVector<DeadCodeInsertion> &r_insertions) {
+	if (p_offset < 0) {
+		return;
+	}
+
+	const int injection_count = get_random_injection_count(r_random, p_min, p_max);
+	String block;
+	for (int i = 0; i < injection_count; i++) {
+		block += make_dead_code_block(r_random, p_indent, r_unique_id, p_template_pool);
+	}
+	if (block.is_empty()) {
+		return;
+	}
+
+	DeadCodeInsertion insertion;
+	insertion.offset = p_offset;
+	insertion.text = block;
+	r_insertions.push_back(insertion);
+}
+
+String get_empty_class_body_indent(const String &p_source, const Vector<int> &p_line_offsets, const GDScriptParser::ClassNode *p_class) {
+	if (p_class == nullptr || p_class->outer == nullptr) {
+		return String();
+	}
+
+	return get_line_indent(p_source, p_line_offsets, p_class->start_line) + "\t";
+}
+
+int get_empty_class_insertion_offset(const String &p_source, const Vector<int> &p_line_offsets, const GDScriptParser::ClassNode *p_class) {
+	if (p_class == nullptr) {
+		return -1;
+	}
+
+	if (p_class->outer != nullptr && p_class->end_line <= p_class->start_line) {
+		return -1;
+	}
+
+	const int offset = get_line_start_offset(p_line_offsets, p_class->end_line + 1);
+	return offset >= 0 ? offset : p_source.length();
+}
+
 void collect_class_insertions(const String &p_source, const Vector<int> &p_line_offsets, const GDScriptParser::ClassNode *p_class, bool p_no_mangle_scope, RandomPCG &r_random, uint64_t &r_unique_id, int p_min, int p_max, LocalVector<DeadCodeInsertion> &r_insertions) {
 	if (p_class == nullptr) {
 		return;
 	}
 
-	const bool no_mangle_scope = p_no_mangle_scope || p_class->wgodot_no_mangle;
-	if (!no_mangle_scope && p_class->members.size() > 1) {
-		for (int i = 0; i + 1 < p_class->members.size(); i++) {
-			const GDScriptParser::Node *current_member = p_class->members[i].get_source_node();
-			const GDScriptParser::Node *next_member = p_class->members[i + 1].get_source_node();
-			if (current_member == nullptr || next_member == nullptr) {
-				continue;
+	const bool no_mangle_scope = p_no_mangle_scope || is_no_mangle_class(p_class);
+	if (!no_mangle_scope) {
+		const DeadCodeTemplatePool template_pool = get_template_pool(is_static_class(p_class));
+		if (p_class->members.is_empty()) {
+			const int offset = get_empty_class_insertion_offset(p_source, p_line_offsets, p_class);
+			const String indent = get_empty_class_body_indent(p_source, p_line_offsets, p_class);
+			add_dead_code_insertion(offset, indent, r_random, r_unique_id, p_min, p_max, template_pool, r_insertions);
+		} else {
+			const GDScriptParser::Node *first_member = p_class->members[0].get_source_node();
+			if (first_member != nullptr) {
+				const int first_member_start_line = get_annotated_start_line(first_member);
+				const int offset = get_line_start_offset(p_line_offsets, first_member_start_line);
+				const String indent = get_line_indent(p_source, p_line_offsets, first_member_start_line);
+				add_dead_code_insertion(offset, indent, r_random, r_unique_id, p_min, p_max, template_pool, r_insertions);
 			}
 
-			const int offset = get_line_start_offset(p_line_offsets, current_member->end_line + 1);
-			if (offset < 0) {
-				continue;
-			}
+			for (int i = 0; i + 1 < p_class->members.size(); i++) {
+				const GDScriptParser::Node *current_member = p_class->members[i].get_source_node();
+				const GDScriptParser::Node *next_member = p_class->members[i + 1].get_source_node();
+				if (current_member == nullptr || next_member == nullptr) {
+					continue;
+				}
 
-			const String indent = get_line_indent(p_source, p_line_offsets, next_member->start_line);
-			const int injection_count = get_random_injection_count(r_random, p_min, p_max);
-			String block;
-			for (int j = 0; j < injection_count; j++) {
-				block += make_dead_code_block(r_random, indent, r_unique_id);
-			}
-			if (block.is_empty()) {
-				continue;
-			}
+				const int offset = get_line_start_offset(p_line_offsets, current_member->end_line + 1);
+				if (offset < 0) {
+					continue;
+				}
 
-			DeadCodeInsertion insertion;
-			insertion.offset = offset;
-			insertion.text = block;
-			r_insertions.push_back(insertion);
+				const int next_member_start_line = get_annotated_start_line(next_member);
+				const String indent = get_line_indent(p_source, p_line_offsets, next_member_start_line);
+				add_dead_code_insertion(offset, indent, r_random, r_unique_id, p_min, p_max, template_pool, r_insertions);
+			}
 		}
 	}
 
@@ -171,8 +269,9 @@ String inject_in_class_dead_code(const String &p_source, const String &p_path, c
 	}
 
 	if (!p_options.dead_code_injection_enabled ||
-			p_options.max_in_class_dead_code_injection <= 0 ||
-			WGodotGDScriptDeadCodeTemplates::IN_CLASS_DEAD_CODE_TEMPLATE_COUNT <= 0) {
+			MAX(p_options.min_in_class_dead_code_injection, p_options.max_in_class_dead_code_injection) <= 0 ||
+			(WGodotGDScriptDeadCodeTemplates::IN_CLASS_DEAD_CODE_TEMPLATE_COUNT <= 0 &&
+					WGodotGDScriptDeadCodeTemplates::STATIC_IN_CLASS_DEAD_CODE_TEMPLATE_COUNT <= 0)) {
 		return p_source;
 	}
 

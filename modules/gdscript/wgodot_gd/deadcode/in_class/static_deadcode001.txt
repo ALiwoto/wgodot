@@ -1,0 +1,15 @@
+const _wgdc_STATIC_SCORE_SALT: int = 9173
+
+static func _wgdc_static_fold_score(_wgdc_score: int, _wgdc_hp: int, _wgdc_nonce: int) -> int:
+	var _wgdc_folded: int = (_wgdc_score * 31) ^ (_wgdc_hp * 17) ^ _wgdc_nonce ^ _wgdc_STATIC_SCORE_SALT
+	_wgdc_folded = (_wgdc_folded << 3) ^ (_wgdc_folded >> 2)
+	return _wgdc_folded & 2147483647
+
+static func _wgdc_static_score_bucket(_wgdc_score: int) -> int:
+	if _wgdc_score < 0:
+		return 0
+	if _wgdc_score < 1000:
+		return 1
+	if _wgdc_score < 10000:
+		return 2
+	return 3

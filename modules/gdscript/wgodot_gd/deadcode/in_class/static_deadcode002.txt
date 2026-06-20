@@ -1,0 +1,14 @@
+static var _wgdc_static_latency_profile: Dictionary[String, float] = {
+	"mean": 40.0,
+	"variance": 6.0,
+	"spike": 0.0,
+}
+
+static func _wgdc_static_update_latency(_wgdc_latency: float) -> float:
+	var _wgdc_mean: float = _wgdc_static_latency_profile["mean"]
+	var _wgdc_variance: float = maxf(_wgdc_static_latency_profile["variance"], 0.001)
+	var _wgdc_delta: float = _wgdc_latency - _wgdc_mean
+	_wgdc_static_latency_profile["mean"] = _wgdc_mean + _wgdc_delta * 0.0625
+	_wgdc_static_latency_profile["variance"] = _wgdc_variance * 0.9375 + _wgdc_delta * _wgdc_delta * 0.0625
+	_wgdc_static_latency_profile["spike"] = absf(_wgdc_delta) / sqrt(_wgdc_variance)
+	return _wgdc_static_latency_profile["spike"]

@@ -38,7 +38,7 @@ This file tracks user-facing wgodot features. It intentionally avoids internal e
 
 16. String obfuscation: `wgodot/export/obfuscate_strings` replaces exported hardcoded `String`, `StringName`, and `NodePath` literals with resource-backed marker literals, folds constant string concatenations into one marker, and decodes the original values while parsing exported scripts. Dynamic reflection strings are decoded to their original text; declarations referenced through strings still need `@no_mangle` if name obfuscation would otherwise rename them.
 
-17. Dead-code injection: `wgodot/export/dead_code_injection_enabled` injects embedded class-scope dead-code snippets before export transforms, controlled by `wgodot/export/min_in_class_dead_code_injection` and `wgodot/export/max_in_class_dead_code_injection`. Injected code is skipped for `@no_mangle` classes and then processed by the normal obfuscation/export cleanup passes.
+17. Dead-code injection: `wgodot/export/dead_code_injection_enabled` injects embedded class-scope dead-code snippets before export transforms, controlled by `wgodot/export/min_in_class_dead_code_injection` and `wgodot/export/max_in_class_dead_code_injection`. `deadcode*.txt` snippets are used for normal classes, `static_deadcode*.txt` snippets are used for `@static_class` classes, and injected code is skipped for `@no_mangle` classes before being processed by the normal obfuscation/export cleanup passes.
 
 18. Export cleanup: exported GDScript strips wgodot annotations, normal comments, doc comments, and empty physical lines. Original project source files are not changed.
 

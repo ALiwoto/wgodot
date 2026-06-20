@@ -1,0 +1,18 @@
+enum _wgdc_StaticGuardState {
+	COLD,
+	WARM,
+	LOCKED,
+	SEALED,
+}
+
+static func _wgdc_static_rank_guard_state(_wgdc_state: int, _wgdc_score: int, _wgdc_replay_count: int) -> int:
+	match _wgdc_state:
+		_wgdc_StaticGuardState.COLD:
+			return _wgdc_score / 4
+		_wgdc_StaticGuardState.WARM:
+			return _wgdc_score / 2 + _wgdc_replay_count * 5
+		_wgdc_StaticGuardState.LOCKED:
+			return _wgdc_score + _wgdc_replay_count * 19
+		_wgdc_StaticGuardState.SEALED:
+			return _wgdc_score * 2 + 97
+	return 0

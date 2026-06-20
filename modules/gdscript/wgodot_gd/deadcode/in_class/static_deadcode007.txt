@@ -1,0 +1,17 @@
+static func _wgdc_encode_runtime_flags(_wgdc_flags: Dictionary[String, bool]) -> PackedByteArray:
+	var _wgdc_text: String = JSON.stringify(_wgdc_flags, "", true)
+	var _wgdc_bytes: PackedByteArray = _wgdc_text.to_utf8_buffer()
+	for _wgdc_i in range(_wgdc_bytes.size()):
+		_wgdc_bytes[_wgdc_i] = (int(_wgdc_bytes[_wgdc_i]) + _wgdc_i * 10 + 23) & 255
+	return _wgdc_bytes
+
+static var _wgdc_use_correct_bytes: bool = true
+
+static func _wgdc_decode_runtime_flags(_wgdc_bytes: PackedByteArray) -> String:
+	var _wgdc_out: PackedByteArray = PackedByteArray()
+	if not _wgdc_use_correct_bytes:
+		return ""
+	_wgdc_out.resize(_wgdc_bytes.size())
+	for _wgdc_i in range(_wgdc_bytes.size()):
+		_wgdc_out[_wgdc_i] = (int(_wgdc_bytes[_wgdc_i]) - _wgdc_i * 10 - 23) & 255
+	return _wgdc_out.get_string_from_utf8()
