@@ -37,6 +37,7 @@ struct RewriteContext {
 	HashSet<const GDScriptParser::EnumNode *> visited_enum_declarations;
 	HashSet<const GDScriptParser::EnumNode *> removed_enum_declarations;
 	HashMap<const GDScriptParser::Node *, String> obfuscated_local_names;
+	HashMap<const GDScriptParser::ClassNode *, String> obfuscated_class_names;
 	HashMap<const GDScriptParser::FunctionNode *, String> obfuscated_function_names;
 	HashMap<const GDScriptParser::VariableNode *, String> obfuscated_variable_names;
 	RandomPCG obfuscation_random;

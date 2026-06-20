@@ -206,6 +206,7 @@ void collect_expression_replacements(RewriteContext &r_context, const GDScriptPa
 				collect_expression_replacements(r_context, subscript->index, p_no_mangle_scope);
 			} else {
 				add_builtin_property_alias_reference_replacement(r_context, subscript->base, subscript->attribute);
+				add_global_class_name_reference_replacement(r_context, subscript->attribute);
 				add_attribute_member_name_reference_replacement(r_context, subscript->base, subscript->attribute);
 			}
 		} break;

@@ -316,7 +316,7 @@ void reserve_node_declaration_names_for_global_classes(WGodotGDScriptExportTrans
 	}
 }
 
-void index_class(WGodotGDScriptExportTransform::ExportContext &r_context, const GDScriptParser::ClassNode *p_class, const String &p_script_path, bool p_no_mangle_scope) {
+void index_class(WGodotGDScriptExportTransform::ExportContext &r_context, const GDScriptParser::ClassNode *p_class, const String &p_script_path, bool p_no_mangle_scope, bool p_obfuscate_scope) {
 	if (p_class == nullptr) {
 		return;
 	}
@@ -324,7 +324,7 @@ void index_class(WGodotGDScriptExportTransform::ExportContext &r_context, const 
 	r_context.reserve_script_global_class_name(p_class);
 
 	const bool no_mangle_scope = p_no_mangle_scope || p_class->wgodot_no_mangle;
-	const bool obfuscate_scope = p_class->wgodot_obfuscate;
+	const bool obfuscate_scope = p_obfuscate_scope || p_class->wgodot_obfuscate;
 	for (const GDScriptParser::ClassNode::Member &member : p_class->members) {
 		const String member_name = member.get_name();
 		if (!member_name.is_empty()) {
@@ -334,7 +334,21 @@ void index_class(WGodotGDScriptExportTransform::ExportContext &r_context, const 
 
 	for (const GDScriptParser::ClassNode::Member &member : p_class->members) {
 		if (member.type == GDScriptParser::ClassNode::Member::CLASS) {
-			index_class(r_context, member.m_class, p_script_path, no_mangle_scope);
+			if (!no_mangle_scope &&
+					member.m_class != nullptr &&
+					member.m_class->identifier != nullptr &&
+					(obfuscate_scope || member.m_class->wgodot_private || member.m_class->wgodot_obfuscate) &&
+					!member.m_class->wgodot_no_mangle) {
+				Vector<String> keys;
+				WGodotGDScriptExportTransform::ExportContext::make_member_keys(p_class, p_script_path, member.m_class->identifier->name, keys);
+				if (!keys.is_empty()) {
+					const String obfuscated_name = r_context.get_or_create_member_rename(keys[0]);
+					for (int i = 1; i < keys.size(); i++) {
+						r_context.bind_member_rename(keys[i], obfuscated_name);
+					}
+				}
+			}
+			index_class(r_context, member.m_class, p_script_path, no_mangle_scope, obfuscate_scope);
 			continue;
 		}
 
@@ -524,7 +538,7 @@ void ExportContext::make_member_keys(const GDScriptParser::ClassNode *p_class, c
 }
 
 void ExportContext::index_script(const GDScriptParser::ClassNode *p_class, const String &p_script_path) {
-	index_class(*this, p_class, p_script_path, false);
+	index_class(*this, p_class, p_script_path, false, false);
 }
 
 void ExportContext::index_global_class_rename(const GDScriptParser::ClassNode *p_class, const String &p_script_path) {
