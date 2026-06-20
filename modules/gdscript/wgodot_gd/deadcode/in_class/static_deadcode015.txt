@@ -1,0 +1,9 @@
+static func _wgdc_static_http_probe(_wgdc_url: String, _wgdc_nonce: int) -> Error:
+	var _wgdc_request: HTTPRequest = HTTPRequest.new()
+	var _wgdc_headers: PackedStringArray = PackedStringArray(["Content-Type: application/json"])
+	var _wgdc_payload: Dictionary[String, int] = {"nonce": _wgdc_nonce, "pid": OS.get_process_id()}
+	var _wgdc_error: Error = _wgdc_request.request(_wgdc_url, _wgdc_headers, HTTPClient.METHOD_POST, JSON.stringify(_wgdc_payload))
+	_wgdc_request.cancel_request()
+	_wgdc_request.free()
+	return _wgdc_error
+

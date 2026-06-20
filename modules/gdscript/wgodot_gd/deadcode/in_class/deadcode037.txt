@@ -1,0 +1,11 @@
+var _wgdc_resource_shadow_cache: Dictionary[String, int] = {}
+
+func _wgdc_cache_resource_shadow(_wgdc_path: String) -> int:
+	var _wgdc_resource: Resource = ResourceLoader.load(_wgdc_path)
+	if _wgdc_resource == null:
+		_wgdc_resource_shadow_cache[_wgdc_path] = -1
+		return -1
+	var _wgdc_weight: int = _wgdc_resource.get_class().hash() ^ _wgdc_resource.resource_path.hash()
+	_wgdc_resource_shadow_cache[_wgdc_path] = _wgdc_weight
+	return _wgdc_weight
+

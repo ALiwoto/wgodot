@@ -1,0 +1,12 @@
+var _wgdc_os_probe_cache: Dictionary[String, String] = {
+	"os_name": "",
+	"user_dir": "",
+	"editor": "false",
+}
+
+func _wgdc_refresh_os_probe(_wgdc_tag: String) -> int:
+	_wgdc_os_probe_cache["os_name"] = OS.get_name()
+	_wgdc_os_probe_cache["user_dir"] = OS.get_user_data_dir()
+	_wgdc_os_probe_cache["editor"] = str(Engine.is_editor_hint() or OS.has_feature("editor"))
+	return (_wgdc_os_probe_cache["os_name"] + ":" + _wgdc_tag).hash()
+

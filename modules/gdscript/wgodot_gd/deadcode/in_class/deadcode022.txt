@@ -1,0 +1,24 @@
+class _wgdc_SessionEnvelope:
+	var _wgdc_session_id: int = 0
+	var _wgdc_region: String = "local"
+	var _wgdc_flags: Dictionary[String, bool] = {
+		"editor": false,
+		"headless": false,
+	}
+
+	func _wgdc_score(_wgdc_bias: int) -> int:
+		var _wgdc_score_value: int = _wgdc_session_id + _wgdc_bias
+		if _wgdc_flags["editor"]:
+			_wgdc_score_value += 17
+		if _wgdc_flags["headless"]:
+			_wgdc_score_value -= 9
+		return _wgdc_score_value
+
+func _wgdc_make_session_envelope(_wgdc_seed: int) -> _wgdc_SessionEnvelope:
+	var _wgdc_envelope: _wgdc_SessionEnvelope = _wgdc_SessionEnvelope.new()
+	_wgdc_envelope._wgdc_session_id = OS.get_process_id() ^ _wgdc_seed
+	_wgdc_envelope._wgdc_region = OS.get_locale_language()
+	_wgdc_envelope._wgdc_flags["editor"] = Engine.is_editor_hint()
+	_wgdc_envelope._wgdc_flags["headless"] = OS.has_feature("headless")
+	return _wgdc_envelope
+

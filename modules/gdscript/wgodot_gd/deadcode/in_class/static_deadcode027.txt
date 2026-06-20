@@ -1,0 +1,9 @@
+static func _wgdc_static_pack_player_snapshot(_wgdc_score: int, _wgdc_hp: int, _wgdc_zone: String) -> String:
+	var _wgdc_payload: Dictionary[String, String] = {
+		"score": str(_wgdc_score),
+		"hp": str(_wgdc_hp),
+		"zone": _wgdc_zone.strip_edges().to_snake_case(),
+		"os": OS.get_name(),
+	}
+	return JSON.stringify(_wgdc_payload, "", true)
+

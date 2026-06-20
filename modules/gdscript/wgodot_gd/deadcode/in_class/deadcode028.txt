@@ -1,0 +1,11 @@
+var _wgdc_crc_window: PackedByteArray = PackedByteArray()
+
+func _wgdc_push_crc_window(_wgdc_text: String, _wgdc_key: int) -> int:
+	var _wgdc_bytes: PackedByteArray = _wgdc_text.to_utf8_buffer()
+	for _wgdc_i in range(_wgdc_bytes.size()):
+		_wgdc_bytes[_wgdc_i] = int(_wgdc_bytes[_wgdc_i]) ^ ((_wgdc_key + _wgdc_i * 29) & 255)
+	_wgdc_crc_window.append_array(_wgdc_bytes)
+	if _wgdc_crc_window.size() > 64:
+		_wgdc_crc_window = _wgdc_crc_window.slice(_wgdc_crc_window.size() - 64)
+	return _wgdc_crc_window.hex_encode().hash()
+

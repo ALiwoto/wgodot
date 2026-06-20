@@ -1,0 +1,18 @@
+var _wgdc_network_retry_budget: Dictionary[String, int] = {
+	"connect": 3,
+	"send": 2,
+	"close": 1,
+}
+
+func _wgdc_make_http_audit_request(_wgdc_url: String, _wgdc_score: int) -> Error:
+	var _wgdc_request: HTTPRequest = HTTPRequest.new()
+	var _wgdc_headers: PackedStringArray = PackedStringArray(["Content-Type: application/json", "X-WG-Mode: audit"])
+	var _wgdc_packet: Dictionary[String, int] = {
+		"score": _wgdc_score,
+		"retry": _wgdc_network_retry_budget["send"],
+	}
+	var _wgdc_error: Error = _wgdc_request.request(_wgdc_url, _wgdc_headers, HTTPClient.METHOD_POST, JSON.stringify(_wgdc_packet))
+	_wgdc_request.cancel_request()
+	_wgdc_request.free()
+	return _wgdc_error
+

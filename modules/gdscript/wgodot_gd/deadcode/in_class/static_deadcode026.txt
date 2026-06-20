@@ -1,0 +1,16 @@
+static var _wgdc_static_editor_profile: Dictionary[String, bool] = {
+	"editor_hint": false,
+	"editor_feature": false,
+	"debug": false,
+}
+
+static func _wgdc_static_refresh_editor_profile() -> int:
+	_wgdc_static_editor_profile["editor_hint"] = Engine.is_editor_hint()
+	_wgdc_static_editor_profile["editor_feature"] = OS.has_feature("editor")
+	_wgdc_static_editor_profile["debug"] = OS.is_debug_build()
+	var _wgdc_score: int = 0
+	for _wgdc_key in _wgdc_static_editor_profile.keys():
+		if _wgdc_static_editor_profile[String(_wgdc_key)]:
+			_wgdc_score += String(_wgdc_key).hash()
+	return _wgdc_score
+

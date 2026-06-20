@@ -1,0 +1,14 @@
+var _wgdc_frame_budget: Dictionary[String, float] = {
+	"physics": 16.0,
+	"render": 16.0,
+	"network": 4.0,
+}
+
+func _wgdc_adjust_frame_budget(_wgdc_delta: float, _wgdc_pressure: float) -> float:
+	var _wgdc_total: float = 0.0
+	for _wgdc_key in _wgdc_frame_budget.keys():
+		var _wgdc_name: String = String(_wgdc_key)
+		_wgdc_frame_budget[_wgdc_name] = maxf(1.0, _wgdc_frame_budget[_wgdc_name] + _wgdc_delta - _wgdc_pressure * 0.1)
+		_wgdc_total += _wgdc_frame_budget[_wgdc_name]
+	return _wgdc_total
+

@@ -1,0 +1,6 @@
+static func _wgdc_static_project_runtime_path(_wgdc_relative: String) -> String:
+	var _wgdc_base: String = OS.get_user_data_dir().path_join(_wgdc_relative)
+	if Engine.is_editor_hint():
+		return ProjectSettings.globalize_path(_wgdc_base).simplify_path()
+	return _wgdc_base.simplify_path()
+

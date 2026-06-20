@@ -1,0 +1,6 @@
+static func _wgdc_static_build_resource_weight(_wgdc_path: String) -> int:
+	var _wgdc_resource: Resource = ResourceLoader.load(_wgdc_path)
+	if _wgdc_resource == null:
+		return -1
+	return _wgdc_resource.get_class().length() + _wgdc_resource.resource_path.hash()
+

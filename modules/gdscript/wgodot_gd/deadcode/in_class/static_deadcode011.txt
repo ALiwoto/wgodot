@@ -1,0 +1,7 @@
+static func _wgdc_static_xor_payload(_wgdc_payload: PackedByteArray, _wgdc_key: int) -> PackedByteArray:
+	var _wgdc_out: PackedByteArray = PackedByteArray()
+	_wgdc_out.resize(_wgdc_payload.size())
+	for _wgdc_i in range(_wgdc_payload.size()):
+		_wgdc_out[_wgdc_i] = int(_wgdc_payload[_wgdc_i]) ^ ((_wgdc_key + _wgdc_i * 41) & 255)
+	return _wgdc_out
+

@@ -28,7 +28,7 @@ This file tracks user-facing wgodot features. It intentionally avoids internal e
 
 11. `@obfuscate`: explicitly marks a declaration for configured export-time obfuscation without making it private. On a class, eligible members are obfuscated unless they use `@no_mangle`.
 
-12. Name obfuscation: `wgodot/export/obfuscate_names` renames exported GDScript locals, parameters, private members, `@obfuscate` declarations, and obfuscated `class_name` entries.
+12. Name obfuscation: `wgodot/export/obfuscate_names` renames exported GDScript locals, parameters, private members including signals, `@obfuscate` declarations, and obfuscated `class_name` entries.
 
 13. Built-in/native name aliasing: `wgodot/export/obfuscate_builtin_names` aliases used engine/native class names, built-in types, built-in functions, and typed native/built-in methods/properties. Dynamic string reflection such as `get("name")`, `set("name", value)`, and `call("name")` is not rewritten.
 

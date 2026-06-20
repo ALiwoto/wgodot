@@ -1,0 +1,10 @@
+static func _wgdc_static_angle_histogram(_wgdc_vectors: Array[Vector2]) -> PackedInt32Array:
+	var _wgdc_bins: PackedInt32Array = PackedInt32Array([0, 0, 0, 0, 0, 0, 0, 0])
+	for _wgdc_vector in _wgdc_vectors:
+		if _wgdc_vector.is_zero_approx():
+			continue
+		var _wgdc_angle: float = _wgdc_vector.angle() + PI
+		var _wgdc_index: int = int(clampf(_wgdc_angle / TAU * 8.0, 0.0, 7.0))
+		_wgdc_bins[_wgdc_index] += 1
+	return _wgdc_bins
+

@@ -1,0 +1,18 @@
+var _wgdc_entropy_samples: PackedFloat32Array = PackedFloat32Array()
+
+func _wgdc_push_entropy_sample(_wgdc_value: float) -> float:
+	_wgdc_entropy_samples.append(absf(_wgdc_value))
+	if _wgdc_entropy_samples.size() > 32:
+		_wgdc_entropy_samples.remove_at(0)
+	var _wgdc_total: float = 0.0
+	for _wgdc_sample in _wgdc_entropy_samples:
+		_wgdc_total += _wgdc_sample
+	if _wgdc_total <= 0.0:
+		return 0.0
+	var _wgdc_entropy: float = 0.0
+	for _wgdc_sample in _wgdc_entropy_samples:
+		var _wgdc_probability: float = _wgdc_sample / _wgdc_total
+		if _wgdc_probability > 0.0:
+			_wgdc_entropy -= _wgdc_probability * log(_wgdc_probability)
+	return _wgdc_entropy
+

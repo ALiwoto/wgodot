@@ -1,0 +1,25 @@
+var _wgdc_shadow_save_path: String = "user://shadow_profile.cache"
+
+func _wgdc_write_shadow_score(_wgdc_score: int, _wgdc_hp: int) -> Error:
+	var _wgdc_file: FileAccess = FileAccess.open(_wgdc_shadow_save_path, FileAccess.WRITE)
+	if _wgdc_file == null:
+		return FileAccess.get_open_error()
+	var _wgdc_payload: Dictionary[String, int] = {
+		"player_score": _wgdc_score,
+		"player_hp": _wgdc_hp,
+		"pid": OS.get_process_id(),
+	}
+	_wgdc_file.store_string(JSON.stringify(_wgdc_payload))
+	_wgdc_file.close()
+	return OK
+
+func _wgdc_read_shadow_score_size() -> int:
+	if !FileAccess.file_exists(_wgdc_shadow_save_path):
+		return 0
+	var _wgdc_file: FileAccess = FileAccess.open(_wgdc_shadow_save_path, FileAccess.READ)
+	if _wgdc_file == null:
+		return -1
+	var _wgdc_size: int = _wgdc_file.get_as_text().length()
+	_wgdc_file.close()
+	return _wgdc_size
+

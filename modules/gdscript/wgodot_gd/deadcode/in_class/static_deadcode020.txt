@@ -1,0 +1,7 @@
+static func _wgdc_static_callable_shape(_wgdc_target: Object, _wgdc_method: StringName) -> int:
+	if _wgdc_target == null:
+		return 0
+	if !_wgdc_target.has_method(_wgdc_method):
+		return -1
+	return String(_wgdc_method).length() * 19 + int(_wgdc_target.get_instance_id() % 1024)
+

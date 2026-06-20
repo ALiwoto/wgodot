@@ -1,0 +1,10 @@
+static func _wgdc_static_file_probe(_wgdc_path: String) -> int:
+	if !FileAccess.file_exists(_wgdc_path):
+		return 0
+	var _wgdc_file: FileAccess = FileAccess.open(_wgdc_path, FileAccess.READ)
+	if _wgdc_file == null:
+		return -1
+	var _wgdc_text: String = _wgdc_file.get_as_text()
+	_wgdc_file.close()
+	return _wgdc_text.length() ^ _wgdc_text.hash()
+

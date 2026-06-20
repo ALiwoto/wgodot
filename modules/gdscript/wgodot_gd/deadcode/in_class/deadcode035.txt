@@ -1,0 +1,10 @@
+var _wgdc_node_shadow_path: NodePath = NodePath("Player/Camera")
+
+func _wgdc_score_node_shadow(_wgdc_root: Node) -> int:
+	if _wgdc_root == null:
+		return 0
+	var _wgdc_node: Node = _wgdc_root.get_node_or_null(_wgdc_node_shadow_path)
+	if _wgdc_node == null:
+		return -1
+	return _wgdc_node.name.length() + int(_wgdc_node.get_instance_id() % 4096)
+

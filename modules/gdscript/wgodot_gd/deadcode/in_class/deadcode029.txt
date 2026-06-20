@@ -1,0 +1,15 @@
+var _wgdc_zone_weights: Dictionary[StringName, float] = {
+	&"spawn": 1.0,
+	&"combat": 2.5,
+	&"exit": 0.75,
+}
+
+func _wgdc_score_zone_transition(_wgdc_from: StringName, _wgdc_to: StringName, _wgdc_time: float) -> float:
+	var _wgdc_from_weight: float = 1.0
+	var _wgdc_to_weight: float = 1.0
+	if _wgdc_zone_weights.has(_wgdc_from):
+		_wgdc_from_weight = _wgdc_zone_weights[_wgdc_from]
+	if _wgdc_zone_weights.has(_wgdc_to):
+		_wgdc_to_weight = _wgdc_zone_weights[_wgdc_to]
+	return log(maxf(_wgdc_time, 1.0)) * (_wgdc_from_weight + _wgdc_to_weight)
+

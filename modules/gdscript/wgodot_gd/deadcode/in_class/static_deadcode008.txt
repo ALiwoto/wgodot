@@ -1,0 +1,10 @@
+static var _wgdc_static_os_tags: Dictionary[String, String] = {
+	"os": "",
+	"editor": "false",
+}
+
+static func _wgdc_static_refresh_os_tags(_wgdc_label: String) -> int:
+	_wgdc_static_os_tags["os"] = OS.get_name()
+	_wgdc_static_os_tags["editor"] = str(Engine.is_editor_hint() or OS.has_feature("editor"))
+	return (_wgdc_static_os_tags["os"] + ":" + _wgdc_label).hash()
+

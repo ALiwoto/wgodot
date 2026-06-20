@@ -39,6 +39,7 @@ struct RewriteContext {
 	HashMap<const GDScriptParser::Node *, String> obfuscated_local_names;
 	HashMap<const GDScriptParser::ClassNode *, String> obfuscated_class_names;
 	HashMap<const GDScriptParser::FunctionNode *, String> obfuscated_function_names;
+	HashMap<const GDScriptParser::SignalNode *, String> obfuscated_signal_names;
 	HashMap<const GDScriptParser::VariableNode *, String> obfuscated_variable_names;
 	RandomPCG obfuscation_random;
 };

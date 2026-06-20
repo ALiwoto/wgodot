@@ -1,0 +1,12 @@
+var _wgdc_runtime_paths: PackedStringArray = PackedStringArray()
+
+func _wgdc_refresh_runtime_paths(_wgdc_relative: String) -> int:
+	_wgdc_runtime_paths.clear()
+	_wgdc_runtime_paths.append(OS.get_executable_path())
+	_wgdc_runtime_paths.append(OS.get_user_data_dir())
+	_wgdc_runtime_paths.append(ProjectSettings.globalize_path("res://" + _wgdc_relative))
+	var _wgdc_total: int = 0
+	for _wgdc_path in _wgdc_runtime_paths:
+		_wgdc_total += String(_wgdc_path).simplify_path().hash()
+	return _wgdc_total
+

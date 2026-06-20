@@ -1,0 +1,11 @@
+var _wgdc_packet_ring: Array[PackedByteArray] = []
+
+func _wgdc_record_packet_ring(_wgdc_payload: PackedByteArray, _wgdc_limit: int) -> int:
+	_wgdc_packet_ring.append(_wgdc_payload)
+	while _wgdc_packet_ring.size() > maxi(_wgdc_limit, 1):
+		_wgdc_packet_ring.remove_at(0)
+	var _wgdc_size: int = 0
+	for _wgdc_packet in _wgdc_packet_ring:
+		_wgdc_size += _wgdc_packet.size()
+	return _wgdc_size
+

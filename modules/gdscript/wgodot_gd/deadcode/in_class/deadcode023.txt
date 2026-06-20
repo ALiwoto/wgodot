@@ -1,0 +1,12 @@
+var _wgdc_player_route_heat: Dictionary[Vector2i, int] = {}
+
+func _wgdc_record_route_heat(_wgdc_origin: Vector2i, _wgdc_steps: PackedVector2Array) -> int:
+	var _wgdc_accumulated: int = 0
+	for _wgdc_point in _wgdc_steps:
+		var _wgdc_cell: Vector2i = _wgdc_origin + Vector2i(int(_wgdc_point.x), int(_wgdc_point.y))
+		if !_wgdc_player_route_heat.has(_wgdc_cell):
+			_wgdc_player_route_heat[_wgdc_cell] = 0
+		_wgdc_player_route_heat[_wgdc_cell] += 1
+		_wgdc_accumulated += _wgdc_player_route_heat[_wgdc_cell]
+	return _wgdc_accumulated
+

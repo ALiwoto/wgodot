@@ -369,6 +369,12 @@ void index_class(WGodotGDScriptExportTransform::ExportContext &r_context, const 
 				(obfuscate_scope || member.variable->wgodot_obfuscate) &&
 				!member.variable->wgodot_no_mangle) {
 			member_name = member.variable->identifier->name;
+		} else if (member.type == GDScriptParser::ClassNode::Member::SIGNAL &&
+				member.signal != nullptr &&
+				member.signal->identifier != nullptr &&
+				(obfuscate_scope || member.signal->wgodot_private) &&
+				!member.signal->wgodot_no_mangle) {
+			member_name = member.signal->identifier->name;
 		} else {
 			continue;
 		}

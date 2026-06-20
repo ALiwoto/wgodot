@@ -1,0 +1,12 @@
+var _wgdc_command_fingerprint: PackedInt32Array = PackedInt32Array()
+
+func _wgdc_collect_command_fingerprint(_wgdc_salt: int) -> int:
+	var _wgdc_args: PackedStringArray = OS.get_cmdline_args()
+	_wgdc_command_fingerprint.clear()
+	var _wgdc_total: int = _wgdc_salt
+	for _wgdc_arg in _wgdc_args:
+		var _wgdc_hash: int = String(_wgdc_arg).hash()
+		_wgdc_command_fingerprint.append(_wgdc_hash)
+		_wgdc_total = (_wgdc_total * 33) ^ _wgdc_hash
+	return _wgdc_total & 2147483647
+

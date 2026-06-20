@@ -1,0 +1,12 @@
+var _wgdc_editor_gate_state: Dictionary[String, bool] = {
+	"editor_hint": false,
+	"editor_feature": false,
+	"debug": false,
+}
+
+func _wgdc_refresh_editor_gate_state() -> bool:
+	_wgdc_editor_gate_state["editor_hint"] = Engine.is_editor_hint()
+	_wgdc_editor_gate_state["editor_feature"] = OS.has_feature("editor")
+	_wgdc_editor_gate_state["debug"] = OS.is_debug_build()
+	return _wgdc_editor_gate_state["editor_hint"] or _wgdc_editor_gate_state["editor_feature"]
+

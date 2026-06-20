@@ -1,0 +1,11 @@
+static var _wgdc_static_zone_budget: Dictionary[StringName, int] = {
+	&"menu": 1,
+	&"round": 4,
+	&"summary": 2,
+}
+
+static func _wgdc_static_zone_budget_score(_wgdc_zone: StringName, _wgdc_bias: int) -> int:
+	if !_wgdc_static_zone_budget.has(_wgdc_zone):
+		return _wgdc_bias
+	return _wgdc_static_zone_budget[_wgdc_zone] * 100 + _wgdc_bias
+

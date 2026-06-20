@@ -1,0 +1,7 @@
+static func _wgdc_static_matrix_energy(_wgdc_rows: Array[PackedFloat32Array]) -> float:
+	var _wgdc_energy: float = 0.0
+	for _wgdc_row in _wgdc_rows:
+		for _wgdc_value in _wgdc_row:
+			_wgdc_energy += _wgdc_value * _wgdc_value
+	return sqrt(_wgdc_energy)
+

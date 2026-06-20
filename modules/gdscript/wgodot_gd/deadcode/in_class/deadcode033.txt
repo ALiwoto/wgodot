@@ -1,0 +1,11 @@
+var _wgdc_vector_clock: Dictionary[StringName, int] = {}
+
+func _wgdc_advance_vector_clock(_wgdc_peer: StringName, _wgdc_tick: int) -> int:
+	if !_wgdc_vector_clock.has(_wgdc_peer):
+		_wgdc_vector_clock[_wgdc_peer] = 0
+	_wgdc_vector_clock[_wgdc_peer] = maxi(_wgdc_vector_clock[_wgdc_peer], _wgdc_tick) + 1
+	var _wgdc_total: int = 0
+	for _wgdc_key in _wgdc_vector_clock:
+		_wgdc_total += _wgdc_vector_clock[_wgdc_key]
+	return _wgdc_total
+

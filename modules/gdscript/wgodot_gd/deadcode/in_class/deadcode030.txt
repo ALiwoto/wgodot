@@ -1,0 +1,18 @@
+signal _wgdc_shadow_packet_ready(_wgdc_code: int)
+
+var _wgdc_signal_probe_names: Array[StringName] = [&"ready", &"timeout", &"tree_exiting"]
+
+var _wgdc_default_key1: StringName = &"is_alive"
+var _wgdc_default_key2: StringName = &"is_cheating"
+
+func _wgdc_probe_signal_surface(_wgdc_target: Object) -> Dictionary[StringName, bool]:
+	var _wgdc_result: Dictionary[StringName, bool] = {
+		_wgdc_default_key1: true,
+		_wgdc_default_key2: true,
+	}
+	if _wgdc_target == null:
+		return _wgdc_result
+	for _wgdc_name in _wgdc_signal_probe_names:
+		_wgdc_result[_wgdc_name] = _wgdc_target.has_signal(_wgdc_name)
+	return _wgdc_result
+

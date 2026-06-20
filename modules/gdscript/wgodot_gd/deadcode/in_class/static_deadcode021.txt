@@ -1,0 +1,8 @@
+static func _wgdc_static_signal_surface(_wgdc_target: Object, _wgdc_names: Array[StringName]) -> Dictionary[StringName, bool]:
+	var _wgdc_result: Dictionary[StringName, bool] = {}
+	if _wgdc_target == null:
+		return _wgdc_result
+	for _wgdc_name in _wgdc_names:
+		_wgdc_result[_wgdc_name] = _wgdc_target.has_signal(_wgdc_name)
+	return _wgdc_result
+

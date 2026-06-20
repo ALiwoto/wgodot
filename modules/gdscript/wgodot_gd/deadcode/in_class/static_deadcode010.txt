@@ -1,0 +1,5 @@
+static func _wgdc_static_editor_gate(_wgdc_expected_debug: bool) -> bool:
+	var _wgdc_editor: bool = Engine.is_editor_hint() or OS.has_feature("editor")
+	var _wgdc_debug: bool = OS.is_debug_build()
+	return _wgdc_editor != (_wgdc_debug == _wgdc_expected_debug)
+

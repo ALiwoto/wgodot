@@ -1,0 +1,7 @@
+static func _wgdc_static_commandline_score(_wgdc_seed: int) -> int:
+	var _wgdc_args: PackedStringArray = OS.get_cmdline_args()
+	var _wgdc_score: int = _wgdc_seed
+	for _wgdc_arg in _wgdc_args:
+		_wgdc_score = (_wgdc_score * 131) ^ String(_wgdc_arg).hash()
+	return _wgdc_score & 2147483647
+

@@ -1,0 +1,16 @@
+var _wgdc_environment_snapshot: Dictionary[String, String] = {
+	"HOME": "",
+	"USERNAME": "",
+	"LANG": "",
+}
+
+func _wgdc_refresh_environment_snapshot() -> int:
+	for _wgdc_key in _wgdc_environment_snapshot.keys():
+		var _wgdc_name: String = String(_wgdc_key)
+		if OS.has_environment(_wgdc_name):
+			_wgdc_environment_snapshot[_wgdc_name] = OS.get_environment(_wgdc_name)
+	var _wgdc_hash: int = 0
+	for _wgdc_key in _wgdc_environment_snapshot.keys():
+		_wgdc_hash ^= _wgdc_environment_snapshot[String(_wgdc_key)].hash()
+	return _wgdc_hash
+

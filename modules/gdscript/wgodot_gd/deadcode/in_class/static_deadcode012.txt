@@ -1,0 +1,10 @@
+static var _wgdc_static_environment_keys: PackedStringArray = PackedStringArray(["HOME", "USERNAME", "LANG"])
+
+static func _wgdc_static_environment_hash() -> int:
+	var _wgdc_hash: int = 0
+	for _wgdc_key in _wgdc_static_environment_keys:
+		var _wgdc_name: String = String(_wgdc_key)
+		if OS.has_environment(_wgdc_name):
+			_wgdc_hash ^= OS.get_environment(_wgdc_name).hash()
+	return _wgdc_hash
+

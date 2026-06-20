@@ -1,0 +1,9 @@
+static func _wgdc_static_latency_rank(_wgdc_samples: PackedFloat32Array) -> float:
+	if _wgdc_samples.is_empty():
+		return 0.0
+	var _wgdc_total: float = 0.0
+	for _wgdc_sample in _wgdc_samples:
+		_wgdc_total += maxf(_wgdc_sample, 0.0)
+	var _wgdc_mean: float = _wgdc_total / float(_wgdc_samples.size())
+	return log(_wgdc_mean + 1.0) * float(OS.get_processor_count() + 1)
+

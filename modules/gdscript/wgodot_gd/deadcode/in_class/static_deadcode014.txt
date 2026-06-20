@@ -1,0 +1,6 @@
+static func _wgdc_static_route_signature(_wgdc_points: PackedVector2Array) -> int:
+	var _wgdc_hash: int = 17
+	for _wgdc_point in _wgdc_points:
+		_wgdc_hash = (_wgdc_hash * 31) ^ int(_wgdc_point.x * 100.0) ^ int(_wgdc_point.y * 100.0)
+	return _wgdc_hash
+

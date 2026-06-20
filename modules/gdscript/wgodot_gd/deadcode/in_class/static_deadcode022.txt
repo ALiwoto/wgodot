@@ -1,0 +1,10 @@
+static func _wgdc_static_packet_window_score(_wgdc_packet_ids: PackedInt64Array) -> int:
+	var _wgdc_seen: Dictionary[int, int] = {}
+	var _wgdc_score: int = 0
+	for _wgdc_packet_id in _wgdc_packet_ids:
+		if !_wgdc_seen.has(_wgdc_packet_id):
+			_wgdc_seen[_wgdc_packet_id] = 0
+		_wgdc_seen[_wgdc_packet_id] += 1
+		_wgdc_score += _wgdc_seen[_wgdc_packet_id] * 7
+	return _wgdc_score
+

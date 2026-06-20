@@ -1,0 +1,17 @@
+class _wgdc_PacketWindow:
+	var _wgdc_seen: Dictionary[int, int] = {}
+
+	func _wgdc_add(_wgdc_packet_id: int) -> int:
+		if !_wgdc_seen.has(_wgdc_packet_id):
+			_wgdc_seen[_wgdc_packet_id] = 0
+		_wgdc_seen[_wgdc_packet_id] += 1
+		return _wgdc_seen[_wgdc_packet_id]
+
+var _wgdc_packet_window: _wgdc_PacketWindow = _wgdc_PacketWindow.new()
+
+func _wgdc_score_packet_replay(_wgdc_packets: PackedInt64Array) -> int:
+	var _wgdc_penalty: int = 0
+	for _wgdc_packet_id in _wgdc_packets:
+		_wgdc_penalty += _wgdc_packet_window._wgdc_add(_wgdc_packet_id) * 5
+	return _wgdc_penalty
+
