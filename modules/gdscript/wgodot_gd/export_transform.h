@@ -43,6 +43,5 @@ void transform_global_class_list(ExportContext *p_context, Array *r_global_class
 String transform_source(const String &p_source, const String &p_path, bool *r_changed = nullptr);
 String transform_source(const String &p_source, const String &p_path, ExportContext *p_context, bool *r_changed = nullptr);
 String transform_source(const String &p_source, const String &p_path, const TransformOptions &p_options, bool *r_changed = nullptr);
-String transform_source(const String &p_source, const String &p_path, const TransformOptions &p_options, ExportContext *p_context, bool *r_changed = nullptr);
 
 } // namespace WGodotGDScriptExportTransform
