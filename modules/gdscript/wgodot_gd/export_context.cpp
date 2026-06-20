@@ -392,7 +392,7 @@ void ExportContext::reset() {
 	reserved_member_names.clear();
 	reserved_global_class_names.clear();
 	reserved_script_paths.clear();
-	reserved_string_resource_ids.clear();
+	next_string_resource_id = 1;
 	reserve_registered_global_class_names();
 	reserve_builtin_class_names();
 	reserve_builtin_function_names();
@@ -658,22 +658,9 @@ uint32_t ExportContext::get_random_uint(uint32_t p_bounds) {
 }
 
 uint64_t ExportContext::create_string_resource(const String &p_value) {
-	for (int attempt = 0; attempt < 10000; attempt++) {
-		const uint64_t id = (static_cast<uint64_t>(obfuscation_random.rand()) << 32) | obfuscation_random.rand();
-		if (id != 0 && !reserved_string_resource_ids.has(id)) {
-			reserved_string_resource_ids.insert(id);
-			string_resources[id] = p_value;
-			return id;
-		}
-	}
-
-	uint64_t fallback_id = static_cast<uint64_t>(string_resources.size()) + 1;
-	while (reserved_string_resource_ids.has(fallback_id)) {
-		fallback_id++;
-	}
-	reserved_string_resource_ids.insert(fallback_id);
-	string_resources[fallback_id] = p_value;
-	return fallback_id;
+	const uint64_t id = next_string_resource_id++;
+	string_resources[id] = p_value;
+	return id;
 }
 
 const HashMap<uint64_t, String> &ExportContext::get_string_resources() const {

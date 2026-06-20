@@ -36,7 +36,7 @@ class ExportContext {
 	HashSet<StringName> reserved_member_names;
 	HashSet<StringName> reserved_global_class_names;
 	HashSet<String> reserved_script_paths;
-	HashSet<uint64_t> reserved_string_resource_ids;
+	uint64_t next_string_resource_id = 1;
 	RandomPCG obfuscation_random;
 
 	void reserve_registered_global_class_names();
