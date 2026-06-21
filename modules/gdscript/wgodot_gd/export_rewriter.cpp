@@ -326,10 +326,15 @@ void collect_node_replacements(RewriteContext &r_context, const GDScriptParser::
 	}
 
 	bool no_mangle_scope = p_no_mangle_scope;
+	const bool previous_no_string_mangle_scope = r_context.no_string_mangle_scope;
 	if (p_node->type == GDScriptParser::Node::CLASS) {
-		no_mangle_scope = no_mangle_scope || static_cast<const GDScriptParser::ClassNode *>(p_node)->wgodot_no_mangle;
+		const GDScriptParser::ClassNode *class_node = static_cast<const GDScriptParser::ClassNode *>(p_node);
+		no_mangle_scope = no_mangle_scope || class_node->wgodot_no_mangle;
+		r_context.no_string_mangle_scope = r_context.no_string_mangle_scope || class_node->wgodot_no_string_mangle;
 	} else if (p_node->type == GDScriptParser::Node::FUNCTION) {
-		no_mangle_scope = no_mangle_scope || static_cast<const GDScriptParser::FunctionNode *>(p_node)->wgodot_no_mangle;
+		const GDScriptParser::FunctionNode *function_node = static_cast<const GDScriptParser::FunctionNode *>(p_node);
+		no_mangle_scope = no_mangle_scope || function_node->wgodot_no_mangle;
+		r_context.no_string_mangle_scope = r_context.no_string_mangle_scope || function_node->wgodot_no_string_mangle;
 	} else if (p_node->type == GDScriptParser::Node::VARIABLE) {
 		no_mangle_scope = no_mangle_scope || is_no_mangle_property_scope(static_cast<const GDScriptParser::VariableNode *>(p_node));
 	}
@@ -512,6 +517,8 @@ void collect_node_replacements(RewriteContext &r_context, const GDScriptParser::
 			}
 			break;
 	}
+
+	r_context.no_string_mangle_scope = previous_no_string_mangle_scope;
 }
 
 void collect_member_names(RewriteContext &r_context, const GDScriptParser::Node *p_node, bool p_no_mangle_scope) {
@@ -547,7 +554,8 @@ void collect_string_obfuscation_resources(const String &p_source, const String &
 
 	TransformOptions options = p_context->get_options();
 	// Only string/path literal resource side effects are needed in this prescan pass.
-	options.deconst_exports = false;
+	// Keep de-const enabled so strings introduced by const inlining reserve the same
+	// string resources before the export resource map is serialized.
 	options.obfuscate_names = false;
 	options.obfuscate_builtin_names = false;
 	options.strip_comments = false;

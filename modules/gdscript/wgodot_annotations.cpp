@@ -16,6 +16,7 @@ void GDScriptParser::register_wgodot_annotations() {
 	register_annotation(MethodInfo("@readonly"), AnnotationInfo::VARIABLE | AnnotationInfo::STATEMENT, &GDScriptParser::wgodot_readonly_annotation);
 	register_annotation(MethodInfo("@static_class"), AnnotationInfo::CLASS, &GDScriptParser::wgodot_static_class_annotation);
 	register_annotation(MethodInfo("@no_mangle"), AnnotationInfo::SCRIPT | AnnotationInfo::CLASS_LEVEL | AnnotationInfo::STATEMENT | AnnotationInfo::ENUM, &GDScriptParser::wgodot_no_mangle_annotation);
+	register_annotation(MethodInfo("@no_string_mangle"), AnnotationInfo::SCRIPT | AnnotationInfo::CLASS | AnnotationInfo::FUNCTION, &GDScriptParser::wgodot_no_string_mangle_annotation);
 	register_annotation(MethodInfo("@obfuscate"), AnnotationInfo::SCRIPT | AnnotationInfo::CLASS | AnnotationInfo::FUNCTION | AnnotationInfo::VARIABLE, &GDScriptParser::wgodot_obfuscate_annotation);
 	register_annotation(MethodInfo("@obfuscate_path"), AnnotationInfo::SCRIPT | AnnotationInfo::CLASS, &GDScriptParser::wgodot_obfuscate_path_annotation);
 	register_annotation(MethodInfo("@partial", PropertyInfo(Variant::STRING, "path")), AnnotationInfo::SCRIPT | AnnotationInfo::CLASS, &GDScriptParser::wgodot_noop_annotation, Vector<Variant>(), true);
@@ -311,6 +312,39 @@ bool GDScriptParser::wgodot_no_mangle_annotation(AnnotationNode *p_annotation, N
 		}
 		default:
 			push_error(R"("@no_mangle" annotation can only be applied to named declarations.)", p_annotation);
+			return false;
+	}
+}
+
+bool GDScriptParser::wgodot_no_string_mangle_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class) {
+	(void)p_class;
+
+	if (p_target == nullptr) {
+		push_error(R"("@no_string_mangle" annotation can only be applied to a script, class, or function.)", p_annotation);
+		return false;
+	}
+
+	switch (p_target->type) {
+		case Node::CLASS: {
+			ClassNode *class_node = static_cast<ClassNode *>(p_target);
+			if (class_node->wgodot_no_string_mangle) {
+				push_error(R"("@no_string_mangle" annotation can only be used once per class.)", p_annotation);
+				return false;
+			}
+			class_node->wgodot_no_string_mangle = true;
+			return true;
+		}
+		case Node::FUNCTION: {
+			FunctionNode *function = static_cast<FunctionNode *>(p_target);
+			if (function->wgodot_no_string_mangle) {
+				push_error(R"("@no_string_mangle" annotation can only be used once per function.)", p_annotation);
+				return false;
+			}
+			function->wgodot_no_string_mangle = true;
+			return true;
+		}
+		default:
+			push_error(R"("@no_string_mangle" annotation can only be applied to a script, class, or function.)", p_annotation);
 			return false;
 	}
 }

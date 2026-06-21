@@ -764,6 +764,7 @@ public:
 		bool wgodot_protected = false;
 		bool wgodot_static_class = false;
 		bool wgodot_no_mangle = false;
+		bool wgodot_no_string_mangle = false;
 		bool wgodot_obfuscate = false;
 		bool wgodot_obfuscate_path = false;
 		bool wgodot_is_interface = false;
@@ -894,6 +895,7 @@ public:
 		bool wgodot_protected = false;
 		bool wgodot_override = false;
 		bool wgodot_no_mangle = false;
+		bool wgodot_no_string_mangle = false;
 		bool wgodot_obfuscate = false;
 		// wgodot-changes::end
 		Variant rpc_config;
@@ -1635,6 +1637,7 @@ private:
 	bool wgodot_readonly_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	bool wgodot_static_class_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	bool wgodot_no_mangle_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
+	bool wgodot_no_string_mangle_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	bool wgodot_obfuscate_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	bool wgodot_obfuscate_path_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	// wgodot-changes::end

@@ -19,6 +19,21 @@
 				[/codeblock]
 			</description>
 		</annotation>
+		<annotation name="@no_string_mangle">
+			<return type="void" />
+			<description>
+				Marks the following script, class, or function as excluded from export-time string obfuscation.
+				Hardcoded [code]String[/code], [code]StringName[/code], and [code]NodePath[/code] literals inside the annotated scope keep their exported source representation, while other export transforms can still run. If a constant string is removed by de-const and inlined at a usage site, the usage site's scope controls whether the inlined string is obfuscated.
+				[codeblock]
+				@no_string_mangle
+				class_name ScriptWithVisibleStrings
+
+				@no_string_mangle
+				func print_user_message() -> void:
+					print("This string is not string-obfuscated on export.")
+				[/codeblock]
+			</description>
+		</annotation>
 		<annotation name="@override">
 			<return type="void" />
 			<description>

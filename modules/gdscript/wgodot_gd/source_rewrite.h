@@ -31,6 +31,7 @@ struct RewriteContext {
 	TransformOptions options;
 	ExportContext *export_context = nullptr;
 	const GDScriptParser::ClassNode *current_class = nullptr;
+	bool no_string_mangle_scope = false;
 	Vector<int> line_offsets;
 	Vector<Replacement> replacements;
 	HashSet<StringName> reserved_obfuscated_names;

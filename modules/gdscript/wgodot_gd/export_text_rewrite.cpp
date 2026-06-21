@@ -47,7 +47,7 @@ String get_export_string_literal_replacement(RewriteContext &r_context, Variant:
 		}
 	}
 
-	if (r_context.options.obfuscate_strings) {
+	if (r_context.options.obfuscate_strings && !r_context.no_string_mangle_scope) {
 		return r_context.export_context->get_or_create_obfuscated_string_literal(p_type, value);
 	}
 
@@ -95,7 +95,7 @@ bool expression_reduces_to_string(const GDScriptParser::ExpressionNode *p_expres
 }
 
 bool add_string_concat_replacement(RewriteContext &r_context, const GDScriptParser::BinaryOpNode *p_binary) {
-	if (!r_context.options.obfuscate_strings || r_context.export_context == nullptr || p_binary == nullptr || p_binary->operation != GDScriptParser::BinaryOpNode::OP_ADDITION) {
+	if (!r_context.options.obfuscate_strings || r_context.no_string_mangle_scope || r_context.export_context == nullptr || p_binary == nullptr || p_binary->operation != GDScriptParser::BinaryOpNode::OP_ADDITION) {
 		return false;
 	}
 	if (!expression_reduces_to_string(p_binary) || !expression_reduces_to_string(p_binary->left_operand) || !expression_reduces_to_string(p_binary->right_operand)) {
@@ -137,6 +137,7 @@ bool should_strip_export_annotation(const GDScriptParser::AnnotationNode *p_anno
 	static const StringName stripped_annotations[] = {
 		SNAME("@private"),
 		SNAME("@no_mangle"),
+		SNAME("@no_string_mangle"),
 		SNAME("@obfuscate"),
 		SNAME("@obfuscate_path"),
 		SNAME("@static_class"),

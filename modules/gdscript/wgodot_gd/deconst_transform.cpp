@@ -5,6 +5,8 @@
 
 #include "deconst_transform.h"
 
+#include "export_transform_internal.h"
+
 #include "core/error/error_macros.h"
 #include "core/variant/array.h"
 #include "core/variant/dictionary.h"
@@ -19,6 +21,38 @@ String variant_to_source(const Variant &p_value) {
 	}
 
 	return text;
+}
+
+bool get_string_literal_value(const Variant &p_value, String *r_value) {
+	ERR_FAIL_NULL_V(r_value, false);
+
+	switch (p_value.get_type()) {
+		case Variant::STRING:
+			*r_value = p_value;
+			return true;
+		case Variant::STRING_NAME:
+			*r_value = String(StringName(p_value));
+			return true;
+		case Variant::NODE_PATH:
+			*r_value = String(NodePath(p_value));
+			return true;
+		default:
+			return false;
+	}
+}
+
+String variant_to_export_source(WGodotGDScriptExportTransform::RewriteContext *p_context, const Variant &p_value) {
+	if (p_context != nullptr) {
+		String value;
+		if (get_string_literal_value(p_value, &value)) {
+			const String replacement = WGodotGDScriptExportTransform::get_export_string_literal_replacement(*p_context, p_value.get_type(), value);
+			if (!replacement.is_empty()) {
+				return replacement;
+			}
+		}
+	}
+
+	return variant_to_source(p_value);
 }
 
 bool is_array_source_type(Variant::Type p_type) {
@@ -40,9 +74,9 @@ bool is_array_source_type(Variant::Type p_type) {
 	}
 }
 
-bool variant_to_untyped_container_source(const Variant &p_value, String &r_text);
+bool variant_to_untyped_container_source(WGodotGDScriptExportTransform::RewriteContext *p_context, const Variant &p_value, String &r_text);
 
-bool array_to_untyped_source(const Variant &p_value, String &r_text) {
+bool array_to_untyped_source(WGodotGDScriptExportTransform::RewriteContext *p_context, const Variant &p_value, String &r_text) {
 	if (p_value.get_type() != Variant::ARRAY) {
 		return false;
 	}
@@ -51,7 +85,7 @@ bool array_to_untyped_source(const Variant &p_value, String &r_text) {
 	String text = "[";
 	for (int i = 0; i < array.size(); i++) {
 		String element_text;
-		if (!variant_to_untyped_container_source(array[i], element_text)) {
+		if (!variant_to_untyped_container_source(p_context, array[i], element_text)) {
 			return false;
 		}
 
@@ -65,7 +99,7 @@ bool array_to_untyped_source(const Variant &p_value, String &r_text) {
 	return true;
 }
 
-bool indexed_array_to_untyped_source(const Variant &p_value, String &r_text) {
+bool indexed_array_to_untyped_source(WGodotGDScriptExportTransform::RewriteContext *p_context, const Variant &p_value, String &r_text) {
 	if (!is_array_source_type(p_value.get_type()) || p_value.get_type() == Variant::ARRAY) {
 		return false;
 	}
@@ -81,7 +115,7 @@ bool indexed_array_to_untyped_source(const Variant &p_value, String &r_text) {
 		}
 
 		String element_text;
-		if (!variant_to_untyped_container_source(element, element_text)) {
+		if (!variant_to_untyped_container_source(p_context, element, element_text)) {
 			return false;
 		}
 
@@ -95,7 +129,7 @@ bool indexed_array_to_untyped_source(const Variant &p_value, String &r_text) {
 	return true;
 }
 
-bool dictionary_to_untyped_source(const Variant &p_value, String &r_text) {
+bool dictionary_to_untyped_source(WGodotGDScriptExportTransform::RewriteContext *p_context, const Variant &p_value, String &r_text) {
 	if (p_value.get_type() != Variant::DICTIONARY) {
 		return false;
 	}
@@ -106,8 +140,8 @@ bool dictionary_to_untyped_source(const Variant &p_value, String &r_text) {
 	for (const KeyValue<Variant, Variant> &entry : dictionary) {
 		String key_text;
 		String value_text;
-		if (!variant_to_untyped_container_source(entry.key, key_text) ||
-				!variant_to_untyped_container_source(entry.value, value_text)) {
+		if (!variant_to_untyped_container_source(p_context, entry.key, key_text) ||
+				!variant_to_untyped_container_source(p_context, entry.value, value_text)) {
 			return false;
 		}
 
@@ -122,24 +156,24 @@ bool dictionary_to_untyped_source(const Variant &p_value, String &r_text) {
 	return true;
 }
 
-bool variant_to_untyped_container_source(const Variant &p_value, String &r_text) {
+bool variant_to_untyped_container_source(WGodotGDScriptExportTransform::RewriteContext *p_context, const Variant &p_value, String &r_text) {
 	if (p_value.get_type() == Variant::ARRAY) {
-		return array_to_untyped_source(p_value, r_text);
+		return array_to_untyped_source(p_context, p_value, r_text);
 	}
 
 	if (is_array_source_type(p_value.get_type())) {
-		return indexed_array_to_untyped_source(p_value, r_text);
+		return indexed_array_to_untyped_source(p_context, p_value, r_text);
 	}
 
 	if (p_value.get_type() == Variant::DICTIONARY) {
-		return dictionary_to_untyped_source(p_value, r_text);
+		return dictionary_to_untyped_source(p_context, p_value, r_text);
 	}
 
-	r_text = variant_to_source(p_value);
+	r_text = variant_to_export_source(p_context, p_value);
 	return !r_text.is_empty();
 }
 
-bool constant_to_indexable_source(const GDScriptParser::ConstantNode *p_constant, String &r_text) {
+bool constant_to_indexable_source(WGodotGDScriptExportTransform::RewriteContext *p_context, const GDScriptParser::ConstantNode *p_constant, String &r_text) {
 	ERR_FAIL_NULL_V(p_constant, false);
 	ERR_FAIL_NULL_V(p_constant->initializer, false);
 
@@ -149,7 +183,7 @@ bool constant_to_indexable_source(const GDScriptParser::ConstantNode *p_constant
 	}
 
 	String text;
-	if (!variant_to_untyped_container_source(value, text) || text.is_empty()) {
+	if (!variant_to_untyped_container_source(p_context, value, text) || text.is_empty()) {
 		return false;
 	}
 
@@ -206,7 +240,7 @@ void add_constant_reference_replacement(RewriteContext &r_context, const GDScrip
 	ERR_FAIL_NULL(p_constant);
 	ERR_FAIL_NULL(p_constant->initializer);
 
-	const String text = variant_to_source(p_constant->initializer->reduced_value);
+	const String text = variant_to_export_source(&r_context, p_constant->initializer->reduced_value);
 	if (text.is_empty()) {
 		return;
 	}
@@ -229,7 +263,7 @@ bool add_constant_indexed_reference_replacement(RewriteContext &r_context, const
 
 	if (p_subscript->is_constant) {
 		String value_text;
-		if (!variant_to_untyped_container_source(p_subscript->reduced_value, value_text) || value_text.is_empty()) {
+		if (!variant_to_untyped_container_source(&r_context, p_subscript->reduced_value, value_text) || value_text.is_empty()) {
 			return false;
 		}
 
@@ -239,7 +273,7 @@ bool add_constant_indexed_reference_replacement(RewriteContext &r_context, const
 	}
 
 	String base_text;
-	if (!constant_to_indexable_source(constant, base_text)) {
+	if (!constant_to_indexable_source(&r_context, constant, base_text)) {
 		return false;
 	}
 
