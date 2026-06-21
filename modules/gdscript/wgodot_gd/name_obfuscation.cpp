@@ -287,25 +287,6 @@ String get_obfuscated_class_name(WGodotGDScriptExportTransform::RewriteContext &
 	return String();
 }
 
-bool add_class_member_name_reference_replacement(WGodotGDScriptExportTransform::RewriteContext &r_context, const GDScriptParser::IdentifierNode *p_identifier) {
-	if (!r_context.options.obfuscate_names || p_identifier == nullptr) {
-		return false;
-	}
-
-	const GDScriptParser::ClassNode *class_type = p_identifier->get_datatype().class_type;
-	if (class_type == nullptr || class_type->outer == nullptr) {
-		return false;
-	}
-
-	const String obfuscated_name = get_obfuscated_class_name(r_context, class_type);
-	if (obfuscated_name.is_empty()) {
-		return false;
-	}
-
-	add_replacement(r_context, p_identifier, obfuscated_name);
-	return true;
-}
-
 } // namespace
 
 namespace WGodotGDScriptExportTransform {
@@ -452,6 +433,29 @@ void add_builtin_class_alias_reference_replacement(RewriteContext &r_context, co
 	}
 
 	add_replacement(r_context, p_identifier, String(*alias));
+}
+
+bool add_class_member_name_reference_replacement(RewriteContext &r_context, const GDScriptParser::IdentifierNode *p_identifier) {
+	return p_identifier != nullptr && add_class_member_name_reference_replacement(r_context, p_identifier, p_identifier->get_datatype());
+}
+
+bool add_class_member_name_reference_replacement(RewriteContext &r_context, const GDScriptParser::IdentifierNode *p_identifier, const GDScriptParser::DataType &p_datatype) {
+	if (!r_context.options.obfuscate_names || p_identifier == nullptr) {
+		return false;
+	}
+
+	const GDScriptParser::ClassNode *class_type = p_datatype.class_type;
+	if (class_type == nullptr || class_type->outer == nullptr) {
+		return false;
+	}
+
+	const String obfuscated_name = get_obfuscated_class_name(r_context, class_type);
+	if (obfuscated_name.is_empty()) {
+		return false;
+	}
+
+	add_replacement(r_context, p_identifier, obfuscated_name);
+	return true;
 }
 
 void add_global_class_name_reference_replacement(RewriteContext &r_context, const GDScriptParser::IdentifierNode *p_identifier) {
@@ -638,6 +642,21 @@ void add_local_name_reference_replacement(RewriteContext &r_context, const GDScr
 	}
 
 	add_replacement(r_context, p_identifier, *obfuscated_name);
+}
+
+void add_signal_parameter_name_replacements(RewriteContext &r_context, const GDScriptParser::SignalNode *p_signal) {
+	if (!r_context.options.obfuscate_names || p_signal == nullptr) {
+		return;
+	}
+
+	for (const GDScriptParser::ParameterNode *parameter : p_signal->parameters) {
+		if (parameter == nullptr || parameter->identifier == nullptr || String(parameter->identifier->name).is_empty()) {
+			continue;
+		}
+
+		const String obfuscated_name = make_obfuscated_local_name(r_context);
+		add_replacement(r_context, parameter->identifier, obfuscated_name);
+	}
 }
 
 void collect_suite_local_name_obfuscation(RewriteContext &r_context, const GDScriptParser::SuiteNode *p_suite) {

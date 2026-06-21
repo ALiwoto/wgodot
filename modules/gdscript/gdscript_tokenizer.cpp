@@ -942,23 +942,17 @@ GDScriptTokenizer::Token GDScriptTokenizerText::string() {
 				_advance();
 				_advance();
 
-				if (is_multiline) {
-					if (_peek() == quote_char && _peek(1) == quote_char && _peek(2) == quote_char) {
-						_advance();
-						_advance();
-						_advance();
-						break;
-					}
-				} else if (_peek() == quote_char) {
+				if (_peek() == quote_char) {
 					_advance();
+					if (is_multiline && _peek() == quote_char && _peek(1) == quote_char) {
+						_advance();
+						_advance();
+					}
 					break;
 				}
 				continue;
 			}
 
-			if (!is_multiline && (ch == '\n' || ch == '\r')) {
-				return make_error("Unterminated obfuscated string marker.");
-			}
 			if (ch == quote_char) {
 				return make_error("Unterminated obfuscated string marker.");
 			}

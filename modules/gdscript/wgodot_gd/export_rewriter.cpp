@@ -38,7 +38,12 @@ void collect_type_replacements(RewriteContext &r_context, const GDScriptParser::
 
 	add_builtin_class_alias_type_replacement(r_context, p_type);
 	if (!p_type->type_chain.is_empty()) {
-		add_global_class_name_reference_replacement(r_context, p_type->type_chain[0]);
+		if (p_type->type_chain.size() != 1 || !add_class_member_name_reference_replacement(r_context, p_type->type_chain[0], p_type->get_datatype())) {
+			add_global_class_name_reference_replacement(r_context, p_type->type_chain[0]);
+		}
+	}
+	for (int i = 1; i < p_type->type_chain.size(); i++) {
+		add_class_member_name_reference_replacement(r_context, p_type->type_chain[i]);
 	}
 
 	for (const GDScriptParser::TypeNode *container_type : p_type->container_types) {
@@ -335,6 +340,8 @@ void collect_node_replacements(RewriteContext &r_context, const GDScriptParser::
 		const GDScriptParser::FunctionNode *function_node = static_cast<const GDScriptParser::FunctionNode *>(p_node);
 		no_mangle_scope = no_mangle_scope || function_node->wgodot_no_mangle;
 		r_context.no_string_mangle_scope = r_context.no_string_mangle_scope || function_node->wgodot_no_string_mangle;
+	} else if (p_node->type == GDScriptParser::Node::SIGNAL) {
+		no_mangle_scope = no_mangle_scope || static_cast<const GDScriptParser::SignalNode *>(p_node)->wgodot_no_mangle;
 	} else if (p_node->type == GDScriptParser::Node::VARIABLE) {
 		no_mangle_scope = no_mangle_scope || is_no_mangle_property_scope(static_cast<const GDScriptParser::VariableNode *>(p_node));
 	}
@@ -428,6 +435,9 @@ void collect_node_replacements(RewriteContext &r_context, const GDScriptParser::
 		} break;
 		case GDScriptParser::Node::SIGNAL: {
 			const GDScriptParser::SignalNode *signal = static_cast<const GDScriptParser::SignalNode *>(p_node);
+			if (!no_mangle_scope) {
+				add_signal_parameter_name_replacements(r_context, signal);
+			}
 			for (const GDScriptParser::ParameterNode *parameter : signal->parameters) {
 				collect_parameter_replacements(r_context, parameter, no_mangle_scope);
 			}
