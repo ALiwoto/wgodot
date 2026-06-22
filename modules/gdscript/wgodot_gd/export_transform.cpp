@@ -7,6 +7,7 @@
 
 #include "deadcode_injection.h"
 #include "export_context.h"
+#include "export_no_export_blocks.h"
 #include "export_transform_internal.h"
 #include "obfuscation_names.h"
 #include "source_rewrite.h"
@@ -87,7 +88,8 @@ void prescan_project_scripts(ExportContext *p_context, const HashSet<String> &p_
 		}
 
 		const String raw_source = String::utf8(reinterpret_cast<const char *>(file.ptr()), file.size());
-		const String source = WGodotGDScriptDeadCodeInjection::inject_in_class_dead_code(raw_source, path, options);
+		const String export_source = strip_no_export_blocks(raw_source, path);
+		const String source = WGodotGDScriptDeadCodeInjection::inject_in_class_dead_code(export_source, path, options);
 		ScriptSource script;
 		script.path = path;
 		script.source = source;
@@ -193,12 +195,18 @@ static String transform_source_with_options(const String &p_source, const String
 		*r_changed = false;
 	}
 
+	bool no_export_changed = false;
+	const String export_source = strip_no_export_blocks(p_source, p_path, &no_export_changed);
+
 	if (!p_options.deconst_exports && !p_options.obfuscate_names && !p_options.obfuscate_builtin_names && !p_options.obfuscate_file_paths && !p_options.obfuscate_strings && !p_options.dead_code_injection_enabled && !p_options.strip_comments && !p_options.strip_empty_lines) {
-		return p_source;
+		if (no_export_changed && r_changed != nullptr) {
+			*r_changed = true;
+		}
+		return export_source;
 	}
 
 	bool dead_code_changed = false;
-	const String source = WGodotGDScriptDeadCodeInjection::inject_in_class_dead_code(p_source, p_path, p_options, &dead_code_changed);
+	const String source = WGodotGDScriptDeadCodeInjection::inject_in_class_dead_code(export_source, p_path, p_options, &dead_code_changed);
 
 	AnalyzedSource analyzed_source;
 	String analysis_error;
@@ -235,7 +243,7 @@ static String transform_source_with_options(const String &p_source, const String
 	}
 	collect_export_replacements(context, *analyzed_source.parser);
 	if (context.replacements.is_empty()) {
-		if (dead_code_changed && r_changed != nullptr) {
+		if ((no_export_changed || dead_code_changed) && r_changed != nullptr) {
 			*r_changed = true;
 		}
 		return source;

@@ -42,7 +42,9 @@ This file tracks user-facing wgodot features. It intentionally avoids internal e
 
 18. Dead-code injection: `wgodot/export/dead_code_injection_enabled` injects embedded class-scope dead-code snippets before export transforms, controlled by `wgodot/export/min_in_class_dead_code_injection` and `wgodot/export/max_in_class_dead_code_injection`. `deadcode*.txt` snippets are used for normal classes, `static_deadcode*.txt` snippets are used for `@static_class` classes, and injected code is skipped for `@no_mangle` classes before being processed by the normal obfuscation/export cleanup passes.
 
-19. Export cleanup: exported GDScript strips wgodot annotations, normal comments, doc comments, and empty physical lines. Original project source files are not changed.
+19. No-export source blocks: full-line `#wgodot::no_export::begin` and `#wgodot::no_export::end` comment markers remove editor/debug-only GDScript blocks from exported scripts before export analysis and transforms. Leading whitespace before the marker is allowed, multiple blocks per file are allowed, and nested blocks are rejected with a warning.
+
+20. Export cleanup: exported GDScript strips wgodot annotations, normal comments, doc comments, and empty physical lines. Original project source files are not changed.
 
 ## Annotation Documentation
 
