@@ -10,9 +10,8 @@ static var _wgdc_use_second_func: bool = false
 static func _wgdc_static_node_path_weight2(_wgdc_path: NodePath) -> int:
 	if not _wgdc_use_second_func:
 		return _wgdc_static_node_path_weight(_wgdc_path)
-	var _wgdc_names: PackedStringArray = String(_wgdc_path).split("\", false)
+	var _wgdc_names: PackedStringArray = String(_wgdc_path).split("\\", false)
 	var _wgdc_weight: int = 10
 	for _wgdc_name in _wgdc_names:
 		_wgdc_weight += String(_wgdc_name).hash()
 	return _wgdc_weight
-
