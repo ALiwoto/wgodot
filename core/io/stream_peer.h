@@ -59,6 +59,10 @@ public:
 
 	virtual int get_available_bytes() const = 0;
 
+	// wgodot-changes::begin
+	Vector<uint8_t> get_data_bytes(int p_bytes);
+	// wgodot-changes::end
+
 	/* helpers */
 	void set_big_endian(bool p_big_endian);
 	bool is_big_endian_enabled() const;

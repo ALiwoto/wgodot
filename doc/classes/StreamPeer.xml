@@ -47,6 +47,15 @@
 				Returns a chunk data with the received bytes, as an [Array] containing two elements: an [enum Error] constant and a [PackedByteArray]. [param bytes] is the number of bytes to be received. If not enough bytes are available, the function will block until the desired amount is received.
 			</description>
 		</method>
+		<!-- wgodot-changes::begin -->
+		<method name="get_data_bytes">
+			<return type="PackedByteArray" />
+			<param index="0" name="bytes" type="int" />
+			<description>
+				Returns the data chunk that would be returned as the second element of [method get_data], without wrapping it in an untyped [Array].
+			</description>
+		</method>
+		<!-- wgodot-changes::end -->
 		<method name="get_double">
 			<return type="float" />
 			<description>

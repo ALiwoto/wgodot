@@ -49,3 +49,7 @@ This file tracks user-facing wgodot features. It intentionally avoids internal e
 ## Annotation Documentation
 
 WGodot annotations are registered in `modules/gdscript/wgodot_annotations.cpp` and documented in `modules/gdscript/doc_classes/@GDScript_wgodot.xml` for editor help, completion, and language-server users.
+
+## Core API Helpers
+
+- `StreamPeer.get_data_bytes(bytes)` returns the `PackedByteArray` payload from `get_data(bytes)` directly, avoiding untyped `Array` indexing in strict type checking.
