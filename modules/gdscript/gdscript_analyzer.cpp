@@ -2345,7 +2345,26 @@ void GDScriptAnalyzer::resolve_parameter(GDScriptParser::ParameterNode *p_parame
 void GDScriptAnalyzer::resolve_if(GDScriptParser::IfNode *p_if) {
 	reduce_expression(p_if->condition);
 
-	resolve_suite(p_if->true_block);
+	// wgodot-changes::begin
+	{
+		bool wgodot_pushed_narrowing = false;
+		if (wgodot_strict_type_checking_enabled()) {
+			HashMap<const GDScriptParser::Node *, WGodotNarrowedType> wgodot_narrowing;
+			if (wgodot_try_extract_type_narrowing(p_if->condition, wgodot_narrowing)) {
+				wgodot_narrowed_type_stack.push_back(std::move(wgodot_narrowing));
+				wgodot_pushed_narrowing = true;
+			}
+		}
+		Finally wgodot_narrowing_cleanup([&]() {
+			if (wgodot_pushed_narrowing) {
+				wgodot_narrowed_type_stack.remove_at(wgodot_narrowed_type_stack.size() - 1);
+			}
+		});
+
+		resolve_suite(p_if->true_block);
+	}
+	// wgodot-changes::end
+
 	p_if->set_datatype(p_if->true_block->get_datatype());
 
 	if (p_if->false_block != nullptr) {
@@ -4656,6 +4675,13 @@ void GDScriptAnalyzer::reduce_identifier(GDScriptParser::IdentifierNode *p_ident
 	}
 
 	if (found_source) {
+		// wgodot-changes::begin
+		WGodotNarrowedType wgodot_narrowed_type;
+		if (wgodot_try_get_narrowed_type(p_identifier, wgodot_narrowed_type) && wgodot_narrowed_type.alternatives.size() == 1) {
+			p_identifier->set_datatype(wgodot_narrowed_type.alternatives[0]);
+		}
+		// wgodot-changes::end
+
 		const bool source_is_instance_variable = p_identifier->source == GDScriptParser::IdentifierNode::MEMBER_VARIABLE || p_identifier->source == GDScriptParser::IdentifierNode::INHERITED_VARIABLE;
 		const bool source_is_instance_function = p_identifier->source == GDScriptParser::IdentifierNode::MEMBER_FUNCTION && !p_identifier->function_source_is_static;
 		const bool source_is_signal = p_identifier->source == GDScriptParser::IdentifierNode::MEMBER_SIGNAL;
@@ -4995,9 +5021,16 @@ void GDScriptAnalyzer::reduce_subscript(GDScriptParser::SubscriptNode *p_subscri
 
 		GDScriptParser::DataType base_type = p_subscript->base->get_datatype();
 		bool valid = false;
+		// wgodot-changes::begin
+		bool wgodot_narrowed_attribute_handled = false;
+		if (wgodot_try_reduce_narrowed_attribute_access(p_subscript, p_can_be_pseudo_type, result_type, valid)) {
+			wgodot_narrowed_attribute_handled = true;
+		}
 
 		// If the base is a metatype, use the analyzer instead.
-		if (p_subscript->base->is_constant && !base_type.is_meta_type) {
+		if (!wgodot_narrowed_attribute_handled && p_subscript->base->is_constant && !base_type.is_meta_type) {
+			// wgodot-changes::end
+
 			// GH-92534. If the base is a GDScript, use the analyzer instead.
 			bool base_is_gdscript = false;
 			if (p_subscript->base->reduced_value.get_type() == Variant::OBJECT) {
@@ -5034,6 +5067,10 @@ void GDScriptAnalyzer::reduce_subscript(GDScriptParser::SubscriptNode *p_subscri
 
 		if (valid) {
 			// Do nothing.
+			// wgodot-changes::begin
+		} else if (wgodot_narrowed_attribute_handled) {
+			// Already handled by the narrowed-type strict checker.
+			// wgodot-changes::end
 		} else if (base_type.is_variant() || !base_type.is_hard_type()) {
 			valid = !base_type.is_pseudo_type || p_can_be_pseudo_type;
 			result_type.kind = GDScriptParser::DataType::VARIANT;
@@ -5093,7 +5130,9 @@ void GDScriptAnalyzer::reduce_subscript(GDScriptParser::SubscriptNode *p_subscri
 			}
 		}
 
-		if (!valid) {
+		// wgodot-changes::begin
+		if (!valid && !wgodot_narrowed_attribute_handled) {
+			// wgodot-changes::end
 			GDScriptParser::DataType attr_type = p_subscript->attribute->get_datatype();
 			if (!p_can_be_pseudo_type && (attr_type.is_pseudo_type || result_type.is_pseudo_type)) {
 				push_error(vformat(R"(Type "%s" in base "%s" cannot be used on its own.)", p_subscript->attribute->name, type_from_metatype(base_type).to_string()), p_subscript->attribute);

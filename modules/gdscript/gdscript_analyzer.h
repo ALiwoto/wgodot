@@ -56,6 +56,13 @@ class GDScriptAnalyzer {
 	HashMap<const GDScriptParser::ClassNode *, Ref<GDScriptParserRef>> external_class_parser_cache;
 	bool static_context = false;
 
+	// wgodot-changes::begin
+	struct WGodotNarrowedType {
+		Vector<GDScriptParser::DataType> alternatives;
+	};
+	Vector<HashMap<const GDScriptParser::Node *, WGodotNarrowedType>> wgodot_narrowed_type_stack;
+	// wgodot-changes::end
+
 	// Tests for detecting invalid overloading of script members
 	static _FORCE_INLINE_ bool has_member_name_conflict_in_script_class(const StringName &p_name, const GDScriptParser::ClassNode *p_current_class_node, const GDScriptParser::Node *p_member);
 	static _FORCE_INLINE_ bool has_member_name_conflict_in_native_type(const StringName &p_name, const StringName &p_native_type_string);
@@ -112,6 +119,11 @@ class GDScriptAnalyzer {
 	void wgodot_validate_strict_dynamic_call(const GDScriptParser::DataType &p_base_type, const GDScriptParser::CallNode *p_call, bool p_is_self);
 	void wgodot_validate_strict_dynamic_property_access(const GDScriptParser::DataType &p_base_type, const GDScriptParser::SubscriptNode *p_subscript);
 	void wgodot_validate_strict_dynamic_index_access(const GDScriptParser::DataType &p_base_type, const GDScriptParser::SubscriptNode *p_subscript);
+	bool wgodot_try_get_identifier_narrowing_key(const GDScriptParser::IdentifierNode *p_identifier, const GDScriptParser::Node *&r_key) const;
+	bool wgodot_try_extract_type_narrowing(GDScriptParser::ExpressionNode *p_condition, HashMap<const GDScriptParser::Node *, WGodotNarrowedType> &r_narrowing);
+	bool wgodot_try_get_narrowed_type(const GDScriptParser::IdentifierNode *p_identifier, WGodotNarrowedType &r_narrowed_type) const;
+	bool wgodot_try_reduce_narrowed_attribute_access(GDScriptParser::SubscriptNode *p_subscript, bool p_can_be_pseudo_type, GDScriptParser::DataType &r_result_type, bool &r_valid);
+	bool wgodot_datatypes_match_for_narrowed_access(const GDScriptParser::DataType &p_left, const GDScriptParser::DataType &p_right) const;
 	void wgodot_validate_signal_callable_connection(GDScriptParser::CallNode *p_call);
 	bool wgodot_try_get_connect_signal_info(const GDScriptParser::CallNode *p_call, MethodInfo &r_signal_info) const;
 	bool wgodot_try_get_callable_info(const GDScriptParser::ExpressionNode *p_expression, MethodInfo &r_callable_info) const;

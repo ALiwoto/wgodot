@@ -261,6 +261,244 @@ void GDScriptAnalyzer::wgodot_validate_strict_dynamic_index_access(const GDScrip
 	push_error(vformat(R"*(Strict type checking does not allow dynamic index access on base "%s"; the result type must be fully known and non-Variant.)*", p_base_type.to_string()), p_subscript);
 }
 
+bool GDScriptAnalyzer::wgodot_try_get_identifier_narrowing_key(const GDScriptParser::IdentifierNode *p_identifier, const GDScriptParser::Node *&r_key) const {
+	ERR_FAIL_NULL_V(p_identifier, false);
+
+	r_key = nullptr;
+	switch (p_identifier->source) {
+		case GDScriptParser::IdentifierNode::FUNCTION_PARAMETER:
+			r_key = p_identifier->parameter_source;
+			break;
+		case GDScriptParser::IdentifierNode::LOCAL_VARIABLE:
+			r_key = p_identifier->variable_source;
+			break;
+		case GDScriptParser::IdentifierNode::LOCAL_CONSTANT:
+			r_key = p_identifier->constant_source;
+			break;
+		case GDScriptParser::IdentifierNode::LOCAL_ITERATOR:
+		case GDScriptParser::IdentifierNode::LOCAL_BIND:
+			r_key = p_identifier->bind_source;
+			break;
+		default:
+			break;
+	}
+
+	return r_key != nullptr;
+}
+
+bool GDScriptAnalyzer::wgodot_try_extract_type_narrowing(GDScriptParser::ExpressionNode *p_condition, HashMap<const GDScriptParser::Node *, WGodotNarrowedType> &r_narrowing) {
+	r_narrowing.clear();
+
+	if (!wgodot_strict_type_checking_enabled() || p_condition == nullptr) {
+		return false;
+	}
+
+	if (p_condition->type == GDScriptParser::Node::TYPE_TEST) {
+		GDScriptParser::TypeTestNode *type_test = static_cast<GDScriptParser::TypeTestNode *>(p_condition);
+		if (type_test->operand == nullptr || type_test->operand->type != GDScriptParser::Node::IDENTIFIER || !type_test->test_datatype.is_set() || !type_test->test_datatype.is_hard_type() || wgodot_datatype_contains_variant(type_test->test_datatype)) {
+			return false;
+		}
+
+		const GDScriptParser::Node *key = nullptr;
+		if (!wgodot_try_get_identifier_narrowing_key(static_cast<GDScriptParser::IdentifierNode *>(type_test->operand), key)) {
+			return false;
+		}
+
+		WGodotNarrowedType narrowed_type;
+		narrowed_type.alternatives.push_back(type_test->test_datatype);
+		r_narrowing.insert(key, narrowed_type);
+		return true;
+	}
+
+	if (p_condition->type != GDScriptParser::Node::BINARY_OPERATOR) {
+		return false;
+	}
+
+	GDScriptParser::BinaryOpNode *binary_op = static_cast<GDScriptParser::BinaryOpNode *>(p_condition);
+	if (binary_op->operation != GDScriptParser::BinaryOpNode::OP_LOGIC_AND && binary_op->operation != GDScriptParser::BinaryOpNode::OP_LOGIC_OR) {
+		return false;
+	}
+
+	HashMap<const GDScriptParser::Node *, WGodotNarrowedType> left_narrowing;
+	HashMap<const GDScriptParser::Node *, WGodotNarrowedType> right_narrowing;
+	const bool has_left = wgodot_try_extract_type_narrowing(binary_op->left_operand, left_narrowing);
+	const bool has_right = wgodot_try_extract_type_narrowing(binary_op->right_operand, right_narrowing);
+
+	if (binary_op->operation == GDScriptParser::BinaryOpNode::OP_LOGIC_OR) {
+		if (!has_left || !has_right || left_narrowing.size() != right_narrowing.size()) {
+			return false;
+		}
+
+		for (const KeyValue<const GDScriptParser::Node *, WGodotNarrowedType> &left_kv : left_narrowing) {
+			const WGodotNarrowedType *right_type = right_narrowing.getptr(left_kv.key);
+			if (right_type == nullptr) {
+				r_narrowing.clear();
+				return false;
+			}
+
+			WGodotNarrowedType combined = left_kv.value;
+			for (const GDScriptParser::DataType &right_alternative : right_type->alternatives) {
+				bool already_present = false;
+				for (const GDScriptParser::DataType &existing_alternative : combined.alternatives) {
+					if (wgodot_datatypes_match_for_narrowed_access(existing_alternative, right_alternative)) {
+						already_present = true;
+						break;
+					}
+				}
+				if (!already_present) {
+					combined.alternatives.push_back(right_alternative);
+				}
+			}
+
+			r_narrowing.insert(left_kv.key, combined);
+		}
+		return !r_narrowing.is_empty();
+	}
+
+	if (!has_left && !has_right) {
+		return false;
+	}
+
+	r_narrowing = left_narrowing;
+	for (const KeyValue<const GDScriptParser::Node *, WGodotNarrowedType> &right_kv : right_narrowing) {
+		WGodotNarrowedType *existing = r_narrowing.getptr(right_kv.key);
+		if (existing == nullptr) {
+			r_narrowing.insert(right_kv.key, right_kv.value);
+			continue;
+		}
+
+		Vector<GDScriptParser::DataType> intersection;
+		for (const GDScriptParser::DataType &left_alternative : existing->alternatives) {
+			for (const GDScriptParser::DataType &right_alternative : right_kv.value.alternatives) {
+				if (check_type_compatibility(left_alternative, right_alternative)) {
+					intersection.push_back(right_alternative);
+				} else if (check_type_compatibility(right_alternative, left_alternative)) {
+					intersection.push_back(left_alternative);
+				}
+			}
+		}
+		existing->alternatives = intersection;
+	}
+
+	return !r_narrowing.is_empty();
+}
+
+bool GDScriptAnalyzer::wgodot_try_get_narrowed_type(const GDScriptParser::IdentifierNode *p_identifier, WGodotNarrowedType &r_narrowed_type) const {
+	if (!wgodot_strict_type_checking_enabled()) {
+		return false;
+	}
+
+	const GDScriptParser::Node *key = nullptr;
+	if (!wgodot_try_get_identifier_narrowing_key(p_identifier, key)) {
+		return false;
+	}
+
+	for (int i = wgodot_narrowed_type_stack.size() - 1; i >= 0; i--) {
+		if (const WGodotNarrowedType *narrowed_type = wgodot_narrowed_type_stack[i].getptr(key)) {
+			r_narrowed_type = *narrowed_type;
+			return !r_narrowed_type.alternatives.is_empty();
+		}
+	}
+
+	return false;
+}
+
+bool GDScriptAnalyzer::wgodot_try_reduce_narrowed_attribute_access(GDScriptParser::SubscriptNode *p_subscript, bool p_can_be_pseudo_type, GDScriptParser::DataType &r_result_type, bool &r_valid) {
+	ERR_FAIL_NULL_V(p_subscript, false);
+
+	r_valid = false;
+	if (!wgodot_strict_type_checking_enabled() || !p_subscript->is_attribute || p_subscript->base == nullptr || p_subscript->base->type != GDScriptParser::Node::IDENTIFIER || p_subscript->attribute == nullptr) {
+		return false;
+	}
+
+	WGodotNarrowedType narrowed_type;
+	if (!wgodot_try_get_narrowed_type(static_cast<GDScriptParser::IdentifierNode *>(p_subscript->base), narrowed_type)) {
+		return false;
+	}
+
+	bool has_result_type = false;
+	for (const GDScriptParser::DataType &alternative_type : narrowed_type.alternatives) {
+		GDScriptParser::IdentifierNode attribute = *p_subscript->attribute;
+		attribute.source = GDScriptParser::IdentifierNode::UNDEFINED_SOURCE;
+		attribute.parameter_source = nullptr;
+		attribute.function_source_is_static = false;
+		attribute.is_constant = false;
+		attribute.reduced_value = Variant();
+		attribute.set_datatype(GDScriptParser::DataType());
+
+		GDScriptParser::DataType base_type = alternative_type;
+		reduce_identifier_from_base(&attribute, &base_type);
+		GDScriptParser::DataType attribute_type = attribute.get_datatype();
+
+		if (!attribute_type.is_set() || (!p_can_be_pseudo_type && attribute_type.is_pseudo_type)) {
+			r_result_type.kind = GDScriptParser::DataType::VARIANT;
+			push_error(vformat(R"*(Strict type checking cannot use narrowed property "%s"; the member does not exist on alternative "%s".)*", p_subscript->attribute->name, alternative_type.to_string()), p_subscript->attribute);
+			return true;
+		}
+
+		if (wgodot_datatype_contains_variant(attribute_type)) {
+			r_result_type.kind = GDScriptParser::DataType::VARIANT;
+			push_error(vformat(R"*(Strict type checking cannot use narrowed property "%s"; the member resolves to Variant on alternative "%s".)*", p_subscript->attribute->name, alternative_type.to_string()), p_subscript->attribute);
+			return true;
+		}
+
+		if (!has_result_type) {
+			r_result_type = attribute_type;
+			has_result_type = true;
+			continue;
+		}
+
+		if (!wgodot_datatypes_match_for_narrowed_access(r_result_type, attribute_type)) {
+			push_error(vformat(R"*(Strict type checking cannot use narrowed property "%s"; alternatives resolve to different types ("%s" and "%s").)*", p_subscript->attribute->name, r_result_type.to_string(), attribute_type.to_string()), p_subscript->attribute);
+			r_result_type.kind = GDScriptParser::DataType::VARIANT;
+			return true;
+		}
+	}
+
+	if (!has_result_type) {
+		return false;
+	}
+
+	p_subscript->attribute->set_datatype(r_result_type);
+	r_valid = true;
+	return true;
+}
+
+bool GDScriptAnalyzer::wgodot_datatypes_match_for_narrowed_access(const GDScriptParser::DataType &p_left, const GDScriptParser::DataType &p_right) const {
+	if (!p_left.is_set() || !p_right.is_set() || wgodot_datatype_contains_variant(p_left) || wgodot_datatype_contains_variant(p_right)) {
+		return false;
+	}
+
+	if (p_left.kind != p_right.kind || p_left.is_meta_type != p_right.is_meta_type || p_left.get_container_element_type_count() != p_right.get_container_element_type_count()) {
+		return false;
+	}
+
+	for (int i = 0; i < p_left.get_container_element_type_count(); i++) {
+		if (!wgodot_datatypes_match_for_narrowed_access(p_left.get_container_element_type(i), p_right.get_container_element_type(i))) {
+			return false;
+		}
+	}
+
+	switch (p_left.kind) {
+		case GDScriptParser::DataType::BUILTIN:
+			return p_left.builtin_type == p_right.builtin_type;
+		case GDScriptParser::DataType::NATIVE:
+			return p_left.native_type == p_right.native_type;
+		case GDScriptParser::DataType::SCRIPT:
+			return p_left.script_type == p_right.script_type;
+		case GDScriptParser::DataType::CLASS:
+			return p_left.class_type == p_right.class_type || (p_left.class_type != nullptr && p_right.class_type != nullptr && p_left.class_type->fqcn == p_right.class_type->fqcn);
+		case GDScriptParser::DataType::ENUM:
+			return p_left.native_type == p_right.native_type && p_left.enum_type == p_right.enum_type;
+		case GDScriptParser::DataType::VARIANT:
+		case GDScriptParser::DataType::RESOLVING:
+		case GDScriptParser::DataType::UNRESOLVED:
+			break;
+	}
+
+	return false;
+}
+
 void GDScriptAnalyzer::wgodot_validate_signal_callable_connection(GDScriptParser::CallNode *p_call) {
 	ERR_FAIL_NULL(p_call);
 
