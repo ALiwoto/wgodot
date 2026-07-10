@@ -32,6 +32,7 @@ struct RewriteContext {
 	ExportContext *export_context = nullptr;
 	const GDScriptParser::ClassNode *current_class = nullptr;
 	bool no_string_mangle_scope = false;
+	bool timing_enabled = false;
 	Vector<int> line_offsets;
 	Vector<Replacement> replacements;
 	HashSet<StringName> reserved_obfuscated_names;
@@ -42,6 +43,15 @@ struct RewriteContext {
 	HashMap<const GDScriptParser::FunctionNode *, String> obfuscated_function_names;
 	HashMap<const GDScriptParser::SignalNode *, String> obfuscated_signal_names;
 	HashMap<const GDScriptParser::VariableNode *, String> obfuscated_variable_names;
+	uint64_t local_name_make_calls = 0;
+	uint64_t local_name_make_usec = 0;
+	uint64_t string_literal_replacement_calls = 0;
+	uint64_t string_literal_replacement_usec = 0;
+	uint64_t string_concat_replacement_calls = 0;
+	uint64_t string_concat_replacement_usec = 0;
+	uint64_t overlap_check_count = 0;
+	uint64_t overlap_scanned_replacements = 0;
+	uint64_t overlap_check_usec = 0;
 	RandomPCG obfuscation_random;
 };
 

@@ -5,6 +5,7 @@
 
 #include "export_context.h"
 
+#include "export_timing.h"
 #include "obfuscation_names.h"
 #include "string_obfuscation.h"
 
@@ -19,6 +20,9 @@
 #include "core/variant/variant.h"
 
 namespace {
+
+using WGodotGDScriptExportTransform::IndexScriptProbe;
+using WGodotGDScriptExportTransform::export_timing_get_ticks_usec;
 
 String get_class_primary_key(const GDScriptParser::ClassNode *p_class, const String &p_script_path) {
 	if (p_class == nullptr) {
@@ -316,19 +320,37 @@ void reserve_node_declaration_names_for_global_classes(WGodotGDScriptExportTrans
 	}
 }
 
-void index_class(WGodotGDScriptExportTransform::ExportContext &r_context, const GDScriptParser::ClassNode *p_class, const String &p_script_path, bool p_no_mangle_scope, bool p_obfuscate_scope) {
+void index_class(WGodotGDScriptExportTransform::ExportContext &r_context, const GDScriptParser::ClassNode *p_class, const String &p_script_path, bool p_no_mangle_scope, bool p_obfuscate_scope, IndexScriptProbe *r_probe) {
 	if (p_class == nullptr) {
 		return;
 	}
 
+	if (r_probe != nullptr) {
+		r_probe->classes++;
+	}
+	uint64_t phase_start_usec = r_probe != nullptr ? export_timing_get_ticks_usec() : 0;
 	r_context.reserve_script_global_class_name(p_class);
+	if (r_probe != nullptr) {
+		r_probe->reserve_script_global_usec += export_timing_get_ticks_usec() - phase_start_usec;
+	}
 
 	const bool no_mangle_scope = p_no_mangle_scope || p_class->wgodot_no_mangle;
 	const bool obfuscate_scope = p_obfuscate_scope || p_class->wgodot_obfuscate;
 	for (const GDScriptParser::ClassNode::Member &member : p_class->members) {
+		if (r_probe != nullptr) {
+			r_probe->members++;
+		}
+		phase_start_usec = r_probe != nullptr ? export_timing_get_ticks_usec() : 0;
 		const String member_name = member.get_name();
+		if (r_probe != nullptr) {
+			r_probe->member_get_name_usec += export_timing_get_ticks_usec() - phase_start_usec;
+		}
 		if (!member_name.is_empty()) {
+			phase_start_usec = r_probe != nullptr ? export_timing_get_ticks_usec() : 0;
 			r_context.reserve_member_name(StringName(member_name));
+			if (r_probe != nullptr) {
+				r_probe->reserve_member_name_usec += export_timing_get_ticks_usec() - phase_start_usec;
+			}
 		}
 	}
 
@@ -340,15 +362,30 @@ void index_class(WGodotGDScriptExportTransform::ExportContext &r_context, const 
 					(obfuscate_scope || member.m_class->wgodot_private || member.m_class->wgodot_obfuscate) &&
 					!member.m_class->wgodot_no_mangle) {
 				Vector<String> keys;
+				phase_start_usec = r_probe != nullptr ? export_timing_get_ticks_usec() : 0;
 				WGodotGDScriptExportTransform::ExportContext::make_member_keys(p_class, p_script_path, member.m_class->identifier->name, keys);
+				if (r_probe != nullptr) {
+					r_probe->make_member_keys_usec += export_timing_get_ticks_usec() - phase_start_usec;
+				}
 				if (!keys.is_empty()) {
+					if (r_probe != nullptr) {
+						r_probe->obfuscatable_members++;
+					}
+					phase_start_usec = r_probe != nullptr ? export_timing_get_ticks_usec() : 0;
 					const String obfuscated_name = r_context.get_or_create_member_rename(keys[0]);
+					if (r_probe != nullptr) {
+						r_probe->get_or_create_member_rename_usec += export_timing_get_ticks_usec() - phase_start_usec;
+					}
 					for (int i = 1; i < keys.size(); i++) {
+						phase_start_usec = r_probe != nullptr ? export_timing_get_ticks_usec() : 0;
 						r_context.bind_member_rename(keys[i], obfuscated_name);
+						if (r_probe != nullptr) {
+							r_probe->bind_member_rename_usec += export_timing_get_ticks_usec() - phase_start_usec;
+						}
 					}
 				}
 			}
-			index_class(r_context, member.m_class, p_script_path, no_mangle_scope, obfuscate_scope);
+			index_class(r_context, member.m_class, p_script_path, no_mangle_scope, obfuscate_scope, r_probe);
 			continue;
 		}
 
@@ -380,14 +417,29 @@ void index_class(WGodotGDScriptExportTransform::ExportContext &r_context, const 
 		}
 
 		Vector<String> keys;
+		phase_start_usec = r_probe != nullptr ? export_timing_get_ticks_usec() : 0;
 		WGodotGDScriptExportTransform::ExportContext::make_member_keys(p_class, p_script_path, member_name, keys);
+		if (r_probe != nullptr) {
+			r_probe->make_member_keys_usec += export_timing_get_ticks_usec() - phase_start_usec;
+		}
 		if (keys.is_empty()) {
 			continue;
 		}
 
+		if (r_probe != nullptr) {
+			r_probe->obfuscatable_members++;
+		}
+		phase_start_usec = r_probe != nullptr ? export_timing_get_ticks_usec() : 0;
 		const String obfuscated_name = r_context.get_or_create_member_rename(keys[0]);
+		if (r_probe != nullptr) {
+			r_probe->get_or_create_member_rename_usec += export_timing_get_ticks_usec() - phase_start_usec;
+		}
 		for (int i = 1; i < keys.size(); i++) {
+			phase_start_usec = r_probe != nullptr ? export_timing_get_ticks_usec() : 0;
 			r_context.bind_member_rename(keys[i], obfuscated_name);
+			if (r_probe != nullptr) {
+				r_probe->bind_member_rename_usec += export_timing_get_ticks_usec() - phase_start_usec;
+			}
 		}
 	}
 }
@@ -517,6 +569,10 @@ void ExportContext::seed_reserved_obfuscated_names(HashSet<StringName> &r_reserv
 
 String ExportContext::make_obfuscated_name(HashSet<StringName> &r_reserved_names, const String &p_warning_context) {
 	seed_reserved_obfuscated_names(r_reserved_names);
+	return make_obfuscated_name_from_reserved_names(r_reserved_names, p_warning_context);
+}
+
+String ExportContext::make_obfuscated_name_from_reserved_names(HashSet<StringName> &r_reserved_names, const String &p_warning_context) {
 	return WGodotGDScriptExportTransform::make_obfuscated_name(options.obfuscation_strategy, obfuscation_random, r_reserved_names, p_warning_context, options.binary_tokens_export);
 }
 
@@ -544,7 +600,41 @@ void ExportContext::make_member_keys(const GDScriptParser::ClassNode *p_class, c
 }
 
 void ExportContext::index_script(const GDScriptParser::ClassNode *p_class, const String &p_script_path) {
-	index_class(*this, p_class, p_script_path, false, false);
+	if (!export_timing_should_log(options)) {
+		index_class(*this, p_class, p_script_path, false, false, nullptr);
+		return;
+	}
+
+	reset_obfuscation_name_probe();
+	set_obfuscation_name_probe_enabled(true);
+	IndexScriptProbe probe;
+	const uint64_t start_usec = export_timing_get_ticks_usec();
+	index_class(*this, p_class, p_script_path, false, false, &probe);
+	const uint64_t total_usec = export_timing_get_ticks_usec() - start_usec;
+	set_obfuscation_name_probe_enabled(false);
+	const ObfuscationNameProbe name_probe = get_obfuscation_name_probe();
+	const uint64_t slow_threshold_usec = export_timing_slow_threshold_usec(options);
+	if (total_usec >= slow_threshold_usec || name_probe.usec >= slow_threshold_usec || probe.get_or_create_member_rename_usec >= slow_threshold_usec) {
+		WARN_PRINT(export_timing_prefix() + vformat("index_script %s total=%s ms classes=%d members=%d obfuscatable=%d reserve_script_global=%s reserve_member=%s member_get_name=%s make_keys=%s get_or_create_member=%s bind=%s name_calls=%d name_time=%s name_attempts=%d name_collisions=%d name_max_attempts=%d member_renames=%d reserved_member_names=%d",
+				p_script_path,
+				export_timing_format_msec(total_usec),
+				probe.classes,
+				probe.members,
+				probe.obfuscatable_members,
+				export_timing_format_msec(probe.reserve_script_global_usec),
+				export_timing_format_msec(probe.reserve_member_name_usec),
+				export_timing_format_msec(probe.member_get_name_usec),
+				export_timing_format_msec(probe.make_member_keys_usec),
+				export_timing_format_msec(probe.get_or_create_member_rename_usec),
+				export_timing_format_msec(probe.bind_member_rename_usec),
+				name_probe.calls,
+				export_timing_format_msec(name_probe.usec),
+				name_probe.attempts,
+				name_probe.collisions,
+				name_probe.max_attempts,
+				member_renames.size(),
+				reserved_member_names.size()));
+	}
 }
 
 void ExportContext::index_global_class_rename(const GDScriptParser::ClassNode *p_class, const String &p_script_path) {
@@ -571,7 +661,7 @@ String ExportContext::get_or_create_member_rename(const String &p_key) {
 		return *existing;
 	}
 
-	const String obfuscated_name = make_obfuscated_name(reserved_member_names, "member name");
+	const String obfuscated_name = WGodotGDScriptExportTransform::make_obfuscated_name(options.obfuscation_strategy, obfuscation_random, reserved_member_names, "member name", options.binary_tokens_export);
 	member_renames[p_key] = obfuscated_name;
 	return obfuscated_name;
 }

@@ -46,6 +46,8 @@ This file tracks user-facing wgodot features. It intentionally avoids internal e
 
 20. Export cleanup: exported GDScript strips wgodot annotations, normal comments, doc comments, and empty physical lines. Original project source files are not changed.
 
+21. Export timing logs: `wgodot/export/timing_logs_enabled` emits UTC-timestamped export timing summaries and slow transform breakdowns. `wgodot/export/timing_verbose_logs_enabled` adds high-frequency per-script checkpoints, and `wgodot/export/timing_slow_threshold_msec` controls the slow-log threshold.
+
 ## Annotation Documentation
 
 WGodot annotations are registered in `modules/gdscript/wgodot_annotations.cpp` and documented in `modules/gdscript/doc_classes/@GDScript_wgodot.xml` for editor help, completion, and language-server users.

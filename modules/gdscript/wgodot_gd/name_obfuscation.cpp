@@ -6,6 +6,7 @@
 #include "name_obfuscation.h"
 
 #include "export_context.h"
+#include "export_timing.h"
 #include "obfuscation_names.h"
 
 #include "core/error/error_macros.h"
@@ -14,10 +15,20 @@
 namespace {
 
 String make_obfuscated_local_name(WGodotGDScriptExportTransform::RewriteContext &r_context) {
-	if (r_context.export_context != nullptr) {
-		return r_context.export_context->make_obfuscated_name(r_context.reserved_obfuscated_names, "local variable");
+	const uint64_t start_usec = r_context.timing_enabled ? WGodotGDScriptExportTransform::export_timing_get_ticks_usec() : 0;
+	if (r_context.timing_enabled) {
+		r_context.local_name_make_calls++;
 	}
-	return WGodotGDScriptExportTransform::make_obfuscated_name(r_context.options.obfuscation_strategy, r_context.obfuscation_random, r_context.reserved_obfuscated_names, "local variable", r_context.options.binary_tokens_export);
+	String obfuscated_name;
+	if (r_context.export_context != nullptr) {
+		obfuscated_name = r_context.export_context->make_obfuscated_name_from_reserved_names(r_context.reserved_obfuscated_names, "local variable");
+	} else {
+		obfuscated_name = WGodotGDScriptExportTransform::make_obfuscated_name(r_context.options.obfuscation_strategy, r_context.obfuscation_random, r_context.reserved_obfuscated_names, "local variable", r_context.options.binary_tokens_export);
+	}
+	if (r_context.timing_enabled) {
+		r_context.local_name_make_usec += WGodotGDScriptExportTransform::export_timing_get_ticks_usec() - start_usec;
+	}
+	return obfuscated_name;
 }
 
 const GDScriptParser::Node *get_local_declaration_node(const GDScriptParser::SuiteNode::Local &p_local) {

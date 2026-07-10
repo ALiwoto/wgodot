@@ -5,6 +5,8 @@
 
 #include "obfuscation_names.h"
 
+#include "export_timing.h"
+
 #include "core/error/error_macros.h"
 
 namespace WGodotGDScriptExportTransform {
@@ -90,8 +92,12 @@ String make_obfuscated_name(ObfuscationStrategy p_strategy, RandomPCG &r_random,
 		WARN_PRINT_ONCE(String("WGodot ") + p_warning_context + " obfuscation currently only supports the 'short' strategy. Falling back to 'short'.");
 	}
 
+	const bool probe_enabled = is_obfuscation_name_probe_enabled();
+	const uint64_t start_usec = probe_enabled ? export_timing_get_ticks_usec() : 0;
+	int attempts = 0;
 	int fallback_counter = 0;
 	while (true) {
+		attempts++;
 		String candidate = p_binary_tokens_export ? make_random_binary_obfuscated_name(r_random) : make_random_short_obfuscated_name(r_random);
 		if (fallback_counter > 10000) {
 			candidate = make_short_obfuscated_name(fallback_counter++);
@@ -104,6 +110,9 @@ String make_obfuscated_name(ObfuscationStrategy p_strategy, RandomPCG &r_random,
 		if (!r_reserved_names.has(candidate_name) && !r_reserved_names.has(source_candidate_name)) {
 			r_reserved_names.insert(candidate_name);
 			r_reserved_names.insert(source_candidate_name);
+			if (probe_enabled) {
+				record_obfuscation_name_probe(attempts, export_timing_get_ticks_usec() - start_usec);
+			}
 			return source_candidate;
 		}
 	}

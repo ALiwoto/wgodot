@@ -7,6 +7,8 @@
 
 #include "core/error/error_macros.h"
 #include "core/math/math_funcs.h"
+#include "core/string/string_buffer.h"
+#include "core/templates/local_vector.h"
 
 namespace {
 
@@ -83,22 +85,50 @@ void add_replacement(RewriteContext &r_context, const GDScriptParser::Node *p_no
 String apply_replacements(RewriteContext &r_context) {
 	r_context.replacements.sort_custom<ReplacementSort>();
 
-	String result = r_context.source;
-	int last_start = result.length() + 1;
+	const int source_length = r_context.source.length();
+	LocalVector<int> accepted_replacements;
+	accepted_replacements.reserve(r_context.replacements.size());
+	int last_start = source_length + 1;
 	for (int i = r_context.replacements.size() - 1; i >= 0; i--) {
 		const Replacement &replacement = r_context.replacements[i];
-		if (replacement.start < 0 || replacement.end < replacement.start || replacement.end > result.length()) {
+		if (replacement.start < 0 || replacement.end < replacement.start || replacement.end > source_length) {
 			continue;
 		}
 		if (replacement.end > last_start) {
 			continue;
 		}
 
-		result = result.substr(0, replacement.start) + replacement.text + result.substr(replacement.end);
+		accepted_replacements.push_back(i);
 		last_start = replacement.start;
 	}
 
-	return result;
+	if (accepted_replacements.is_empty()) {
+		return r_context.source;
+	}
+
+	int final_length = source_length;
+	for (uint32_t i = 0; i < accepted_replacements.size(); i++) {
+		const Replacement &replacement = r_context.replacements[accepted_replacements[i]];
+		final_length += replacement.text.length() - (replacement.end - replacement.start);
+	}
+
+	StringBuffer<1024> result;
+	result.reserve(final_length + 1);
+	const char32_t *source_chars = r_context.source.get_data();
+	int cursor = 0;
+	for (int i = accepted_replacements.size() - 1; i >= 0; i--) {
+		const Replacement &replacement = r_context.replacements[accepted_replacements[i]];
+		if (replacement.start > cursor) {
+			result.append(source_chars + cursor, replacement.start - cursor);
+		}
+		result.append(replacement.text);
+		cursor = replacement.end;
+	}
+	if (cursor < source_length) {
+		result.append(source_chars + cursor, source_length - cursor);
+	}
+
+	return result.as_string();
 }
 
 } // namespace WGodotGDScriptExportTransform

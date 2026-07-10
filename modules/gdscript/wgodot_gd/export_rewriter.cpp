@@ -7,6 +7,7 @@
 
 #include "deconst_transform.h"
 #include "deenum_transform.h"
+#include "export_timing.h"
 #include "name_obfuscation.h"
 
 #include "../gdscript_tokenizer.h"
@@ -541,13 +542,37 @@ void collect_member_names(RewriteContext &r_context, const GDScriptParser::Node 
 	}
 }
 
-void collect_export_replacements(RewriteContext &r_context, const GDScriptParser &p_parser) {
+void collect_export_replacements(RewriteContext &r_context, const GDScriptParser &p_parser, ExportReplacementTiming *r_timing) {
 	const GDScriptParser::ClassNode *tree = p_parser.get_tree();
+	uint64_t phase_start_usec = r_timing != nullptr ? export_timing_get_ticks_usec() : 0;
 	build_line_offsets(r_context);
+	if (r_timing != nullptr) {
+		r_timing->build_line_offsets_usec = export_timing_get_ticks_usec() - phase_start_usec;
+	}
+
+	phase_start_usec = r_timing != nullptr ? export_timing_get_ticks_usec() : 0;
 	collect_member_names(r_context, tree, false);
+	if (r_timing != nullptr) {
+		r_timing->member_names_usec = export_timing_get_ticks_usec() - phase_start_usec;
+	}
+
+	phase_start_usec = r_timing != nullptr ? export_timing_get_ticks_usec() : 0;
 	collect_node_replacements(r_context, tree, false);
+	if (r_timing != nullptr) {
+		r_timing->node_replacements_usec = export_timing_get_ticks_usec() - phase_start_usec;
+	}
+
+	phase_start_usec = r_timing != nullptr ? export_timing_get_ticks_usec() : 0;
 	collect_comment_replacements(r_context, p_parser);
+	if (r_timing != nullptr) {
+		r_timing->comment_replacements_usec = export_timing_get_ticks_usec() - phase_start_usec;
+	}
+
+	phase_start_usec = r_timing != nullptr ? export_timing_get_ticks_usec() : 0;
 	collect_empty_line_replacements(r_context);
+	if (r_timing != nullptr) {
+		r_timing->empty_line_replacements_usec = export_timing_get_ticks_usec() - phase_start_usec;
+	}
 }
 
 void collect_string_obfuscation_resources(const String &p_source, const String &p_path, ExportContext *p_context) {
@@ -559,6 +584,14 @@ void collect_string_obfuscation_resources(const String &p_source, const String &
 	String analysis_error;
 	if (!analyzed_source.load(p_source, p_path, &analysis_error)) {
 		WARN_PRINT("Failed to analyze wgodot-transformed GDScript while collecting string obfuscation resources for '" + p_path + "'. Some string resources may be incomplete for this script.\n" + analysis_error);
+		return;
+	}
+
+	collect_string_obfuscation_resources_from_tree(p_source, p_path, analyzed_source.parser->get_tree(), p_context);
+}
+
+void collect_string_obfuscation_resources_from_tree(const String &p_source, const String &p_path, const GDScriptParser::ClassNode *p_tree, ExportContext *p_context) {
+	if (p_context == nullptr || !p_context->get_options().obfuscate_strings || p_tree == nullptr) {
 		return;
 	}
 
@@ -577,7 +610,7 @@ void collect_string_obfuscation_resources(const String &p_source, const String &
 	context.options = options;
 	context.export_context = p_context;
 	build_line_offsets(context);
-	collect_node_replacements(context, analyzed_source.parser->get_tree(), false);
+	collect_node_replacements(context, p_tree, false);
 }
 
 bool has_obfuscate_path_annotation(const GDScriptParser::ClassNode *p_class) {

@@ -5,6 +5,7 @@
 
 #include "export_transform_internal.h"
 
+#include "export_timing.h"
 #include "string_obfuscation.h"
 
 #include "../gdscript_tokenizer.h"
@@ -72,7 +73,14 @@ void add_string_literal_replacement(RewriteContext &r_context, const GDScriptPar
 		return;
 	}
 
+	const uint64_t string_start_usec = r_context.timing_enabled ? export_timing_get_ticks_usec() : 0;
+	if (r_context.timing_enabled) {
+		r_context.string_literal_replacement_calls++;
+	}
 	const String text = get_export_string_literal_replacement(r_context, p_literal->value.get_type(), value);
+	if (r_context.timing_enabled) {
+		r_context.string_literal_replacement_usec += export_timing_get_ticks_usec() - string_start_usec;
+	}
 	if (text.is_empty()) {
 		return;
 	}
@@ -110,7 +118,14 @@ bool add_string_concat_replacement(RewriteContext &r_context, const GDScriptPars
 		}
 	}
 
+	const uint64_t string_start_usec = r_context.timing_enabled ? export_timing_get_ticks_usec() : 0;
+	if (r_context.timing_enabled) {
+		r_context.string_concat_replacement_calls++;
+	}
 	const String text = r_context.export_context->get_or_create_obfuscated_string_literal(Variant::STRING, value);
+	if (r_context.timing_enabled) {
+		r_context.string_concat_replacement_usec += export_timing_get_ticks_usec() - string_start_usec;
+	}
 	if (text.is_empty()) {
 		return false;
 	}
@@ -183,13 +198,26 @@ void add_annotation_strip_replacement(RewriteContext &r_context, const GDScriptP
 	r_context.replacements.push_back(replacement);
 }
 
-bool overlaps_existing_replacement(const RewriteContext &p_context, int p_start, int p_end) {
-	for (const Replacement &replacement : p_context.replacements) {
+bool overlaps_existing_replacement(RewriteContext &r_context, int p_start, int p_end) {
+	const uint64_t start_usec = r_context.timing_enabled ? export_timing_get_ticks_usec() : 0;
+	if (r_context.timing_enabled) {
+		r_context.overlap_check_count++;
+	}
+	for (const Replacement &replacement : r_context.replacements) {
+		if (r_context.timing_enabled) {
+			r_context.overlap_scanned_replacements++;
+		}
 		if (p_start < replacement.end && p_end > replacement.start) {
+			if (r_context.timing_enabled) {
+				r_context.overlap_check_usec += export_timing_get_ticks_usec() - start_usec;
+			}
 			return true;
 		}
 	}
 
+	if (r_context.timing_enabled) {
+		r_context.overlap_check_usec += export_timing_get_ticks_usec() - start_usec;
+	}
 	return false;
 }
 
@@ -354,9 +382,6 @@ void collect_empty_line_replacements(RewriteContext &r_context) {
 			replacement.end = line_end;
 		}
 		if (replacement.end <= replacement.start) {
-			continue;
-		}
-		if (overlaps_existing_replacement(r_context, replacement.start, replacement.end)) {
 			continue;
 		}
 		replacement.text = "";

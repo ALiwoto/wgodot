@@ -54,6 +54,7 @@ public:
 	void reserve_script_declaration_names_for_global_classes(const GDScriptParser::ClassNode *p_class);
 	void seed_reserved_obfuscated_names(HashSet<StringName> &r_reserved_names) const;
 	String make_obfuscated_name(HashSet<StringName> &r_reserved_names, const String &p_warning_context);
+	String make_obfuscated_name_from_reserved_names(HashSet<StringName> &r_reserved_names, const String &p_warning_context);
 
 	static String make_member_key(const String &p_class_key, const StringName &p_member_name);
 	static void make_member_keys(const GDScriptParser::ClassNode *p_class, const String &p_script_path, const StringName &p_member_name, Vector<String> &r_keys);
