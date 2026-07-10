@@ -93,6 +93,10 @@ bool is_static_class(const GDScriptParser::ClassNode *p_class) {
 	return p_class != nullptr && (p_class->wgodot_static_class || has_annotation(p_class, SNAME("@static_class")));
 }
 
+bool is_interface_class(const GDScriptParser::ClassNode *p_class) {
+	return p_class != nullptr && p_class->wgodot_is_interface;
+}
+
 int get_annotated_start_line(const GDScriptParser::Node *p_node) {
 	if (p_node == nullptr) {
 		return -1;
@@ -214,6 +218,10 @@ int get_empty_class_insertion_offset(const String &p_source, const Vector<int> &
 
 void collect_class_insertions(const String &p_source, const Vector<int> &p_line_offsets, const GDScriptParser::ClassNode *p_class, bool p_no_mangle_scope, RandomPCG &r_random, uint64_t &r_unique_id, int p_min, int p_max, LocalVector<DeadCodeInsertion> &r_insertions) {
 	if (p_class == nullptr) {
+		return;
+	}
+
+	if (is_interface_class(p_class)) {
 		return;
 	}
 
