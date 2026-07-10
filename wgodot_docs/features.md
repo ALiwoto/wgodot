@@ -20,33 +20,35 @@ This file tracks user-facing wgodot features. It intentionally avoids internal e
 
 8. Embedded GDScript blocking: `wgodot/gdscript/disable_embedded_gdscript` prevents exported resources from carrying embedded script source.
 
+9. Project GDScript CLI check: `godot --headless --wgodot-check` scans all project `.gd` files under `res://`, respecting `.gdignore` directories, then prints parse errors, analyzer errors, and active GDScript warnings. It uses the normal project path resolution, so `--path <project>`, `--path .`, and running from the project directory without `--path` are supported.
+
 ## Export Protection
 
-9. De-const/de-enum: `wgodot/export/deconst_exports` removes exported constant and enum declarations, inlines their values where possible, folds constant indexed uses to the indexed value, keeps dynamic indexed containers as parenthesized literals, and converts stripped enum type hints to `int`.
+10. De-const/de-enum: `wgodot/export/deconst_exports` removes exported constant and enum declarations, inlines their values where possible, folds constant indexed uses to the indexed value, keeps dynamic indexed containers as parenthesized literals, and converts stripped enum type hints to `int`.
 
-10. `@no_mangle`: keeps the annotated declaration from being renamed or stripped by export transforms. For de-const/de-enum, only `@no_mangle` on the constant or enum declaration itself prevents stripping; containing class/function/property `@no_mangle` does not stop usages from being inlined.
+11. `@no_mangle`: keeps the annotated declaration from being renamed or stripped by export transforms. For de-const/de-enum, only `@no_mangle` on the constant or enum declaration itself prevents stripping; containing class/function/property `@no_mangle` does not stop usages from being inlined.
 
-11. `@no_string_mangle`: keeps hardcoded strings inside the annotated script, class, or function from export-time string obfuscation. If a constant string is inlined elsewhere by de-const, the usage scope controls whether the inlined string is obfuscated.
+12. `@no_string_mangle`: keeps hardcoded strings inside the annotated script, class, or function from export-time string obfuscation. If a constant string is inlined elsewhere by de-const, the usage scope controls whether the inlined string is obfuscated.
 
-12. `@obfuscate`: explicitly marks a declaration for configured export-time obfuscation without making it private. On a class, eligible members are obfuscated unless they use `@no_mangle`.
+13. `@obfuscate`: explicitly marks a declaration for configured export-time obfuscation without making it private. On a class, eligible members are obfuscated unless they use `@no_mangle`.
 
-13. Name obfuscation: `wgodot/export/obfuscate_names` renames exported GDScript locals, parameters, private members including signals, `@obfuscate` declarations, and obfuscated `class_name` entries.
+14. Name obfuscation: `wgodot/export/obfuscate_names` renames exported GDScript locals, parameters, private members including signals, `@obfuscate` declarations, and obfuscated `class_name` entries.
 
-14. Built-in/native name aliasing: `wgodot/export/obfuscate_builtin_names` aliases used engine/native class names, built-in types, built-in functions, and typed native/built-in methods/properties. Dynamic string reflection such as `get("name")`, `set("name", value)`, and `call("name")` is not rewritten.
+15. Built-in/native name aliasing: `wgodot/export/obfuscate_builtin_names` aliases used engine/native class names, built-in types, built-in functions, and typed native/built-in methods/properties. Dynamic string reflection such as `get("name")`, `set("name", value)`, and `call("name")` is not rewritten.
 
-15. Obfuscation strategy: `wgodot/export/obfuscation_strategy` exposes `Short`, `Hash`, and `Unicode`. Currently only `Short` is implemented.
+16. Obfuscation strategy: `wgodot/export/obfuscation_strategy` exposes `Short`, `Hash`, and `Unicode`. Currently only `Short` is implemented.
 
-16. Script path obfuscation: `@obfuscate_path` with `wgodot/export/obfuscate_file_paths` renames marked exported scripts using `wgodot/export/obfuscate_file_paths_strategy` (`Short`, `Hash`, or `Unicode`), rewrites exact `res://...` string literals that refer to those scripts, and updates exported global class paths without adding runtime remap files.
+17. Script path obfuscation: `@obfuscate_path` with `wgodot/export/obfuscate_file_paths` renames marked exported scripts using `wgodot/export/obfuscate_file_paths_strategy` (`Short`, `Hash`, or `Unicode`), rewrites exact `res://...` string literals that refer to those scripts, and updates exported global class paths without adding runtime remap files.
 
-17. String obfuscation: `wgodot/export/obfuscate_strings` replaces exported hardcoded `String`, `StringName`, and `NodePath` literals with resource-backed marker literals, folds constant string concatenations into one marker, and decodes the original values while parsing exported scripts. Dynamic reflection strings are decoded to their original text; declarations referenced through strings still need `@no_mangle` if name obfuscation would otherwise rename them.
+18. String obfuscation: `wgodot/export/obfuscate_strings` replaces exported hardcoded `String`, `StringName`, and `NodePath` literals with resource-backed marker literals, folds constant string concatenations into one marker, and decodes the original values while parsing exported scripts. Dynamic reflection strings are decoded to their original text; declarations referenced through strings still need `@no_mangle` if name obfuscation would otherwise rename them.
 
-18. Dead-code injection: `wgodot/export/dead_code_injection_enabled` injects embedded class-scope dead-code snippets before export transforms, controlled by `wgodot/export/min_in_class_dead_code_injection` and `wgodot/export/max_in_class_dead_code_injection`. `deadcode*.txt` snippets are used for normal classes, `static_deadcode*.txt` snippets are used for `@static_class` classes, and injected code is skipped for `@no_mangle` classes before being processed by the normal obfuscation/export cleanup passes.
+19. Dead-code injection: `wgodot/export/dead_code_injection_enabled` injects embedded class-scope dead-code snippets before export transforms, controlled by `wgodot/export/min_in_class_dead_code_injection` and `wgodot/export/max_in_class_dead_code_injection`. `deadcode*.txt` snippets are used for normal classes, `static_deadcode*.txt` snippets are used for `@static_class` classes, and injected code is skipped for `@no_mangle` classes before being processed by the normal obfuscation/export cleanup passes.
 
-19. No-export source blocks: full-line `#wgodot::no_export::begin` and `#wgodot::no_export::end` comment markers remove editor/debug-only GDScript blocks from exported scripts before export analysis and transforms. Leading whitespace before the marker is allowed, multiple blocks per file are allowed, and nested blocks are rejected with a warning.
+20. No-export source blocks: full-line `#wgodot::no_export::begin` and `#wgodot::no_export::end` comment markers remove editor/debug-only GDScript blocks from exported scripts before export analysis and transforms. Leading whitespace before the marker is allowed, multiple blocks per file are allowed, and nested blocks are rejected with a warning.
 
-20. Export cleanup: exported GDScript strips wgodot annotations, normal comments, doc comments, and empty physical lines. Original project source files are not changed.
+21. Export cleanup: exported GDScript strips wgodot annotations, normal comments, doc comments, and empty physical lines. Original project source files are not changed.
 
-21. Export timing logs: `wgodot/export/timing_logs_enabled` emits UTC-timestamped export timing summaries and slow transform breakdowns. `wgodot/export/timing_verbose_logs_enabled` adds high-frequency per-script checkpoints, and `wgodot/export/timing_slow_threshold_msec` controls the slow-log threshold.
+22. Export timing logs: `wgodot/export/timing_logs_enabled` emits UTC-timestamped export timing summaries and slow transform breakdowns. `wgodot/export/timing_verbose_logs_enabled` adds high-frequency per-script checkpoints, and `wgodot/export/timing_slow_threshold_msec` controls the slow-log threshold.
 
 ## Annotation Documentation
 
