@@ -29,6 +29,10 @@ HashMap<StringName, StringName> instance_method_aliases;
 HashMap<StringName, StringName> static_method_aliases;
 HashMap<StringName, StringName> instance_property_aliases;
 HashMap<StringName, StringName> static_property_aliases;
+HashMap<StringName, StringName> instance_method_targets_by_unqualified_alias;
+HashMap<StringName, StringName> static_method_targets_by_unqualified_alias;
+HashMap<StringName, StringName> instance_property_targets_by_unqualified_alias;
+HashMap<StringName, StringName> static_property_targets_by_unqualified_alias;
 bool aliases_loaded = false;
 
 enum class AliasRecordKind : uint8_t {
@@ -183,8 +187,14 @@ void read_member_alias_record(const StringName &p_alias, const StringName &p_tar
 		return;
 	}
 
-	HashMap<StringName, StringName> &aliases = p_property ? (p_static ? static_property_aliases : instance_property_aliases) : (p_static ? static_method_aliases : instance_method_aliases);
+	HashMap<StringName, StringName> &aliases = p_property ? 
+		(p_static ? static_property_aliases : instance_property_aliases) :
+		(p_static ? static_method_aliases : instance_method_aliases);
+	HashMap<StringName, StringName> &targets_by_unqualified_alias = p_property ? 
+		(p_static ? static_property_targets_by_unqualified_alias : instance_property_targets_by_unqualified_alias) :
+		(p_static ? static_method_targets_by_unqualified_alias : instance_method_targets_by_unqualified_alias);
 	aliases[make_member_key(owner, p_alias)] = member;
+	targets_by_unqualified_alias[p_alias] = member;
 }
 
 void load_aliases() {
@@ -301,6 +311,10 @@ StringName resolve_member_alias(const StringName &p_owner, const StringName &p_n
 	load_aliases();
 	const HashMap<StringName, StringName> &aliases = p_property ? (p_static ? static_property_aliases : instance_property_aliases) : (p_static ? static_method_aliases : instance_method_aliases);
 	const StringName *member = aliases.getptr(make_member_key(p_owner, p_name));
+	if (member == nullptr) {
+		const HashMap<StringName, StringName> &targets_by_unqualified_alias = p_property ? (p_static ? static_property_targets_by_unqualified_alias : instance_property_targets_by_unqualified_alias) : (p_static ? static_method_targets_by_unqualified_alias : instance_method_targets_by_unqualified_alias);
+		member = targets_by_unqualified_alias.getptr(p_name);
+	}
 	return member != nullptr ? *member : StringName();
 }
 
@@ -319,6 +333,10 @@ void clear_runtime_cache() {
 	static_method_aliases.clear();
 	instance_property_aliases.clear();
 	static_property_aliases.clear();
+	instance_method_targets_by_unqualified_alias.clear();
+	static_method_targets_by_unqualified_alias.clear();
+	instance_property_targets_by_unqualified_alias.clear();
+	static_property_targets_by_unqualified_alias.clear();
 	aliases_loaded = false;
 }
 
