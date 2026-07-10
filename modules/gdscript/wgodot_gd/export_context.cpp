@@ -443,16 +443,22 @@ void index_class(WGodotGDScriptExportTransform::ExportContext &r_context, const 
 			}
 		}
 		if (obfuscated_name.is_empty()) {
-			obfuscated_name = r_context.get_or_create_member_rename(keys[0]);
-		} else {
-			r_context.bind_member_rename(keys[0], obfuscated_name);
+			for (const String &key : keys) {
+				if (const String *existing = r_context.get_member_rename(key)) {
+					obfuscated_name = *existing;
+					break;
+				}
+			}
+			if (obfuscated_name.is_empty()) {
+				obfuscated_name = r_context.get_or_create_member_rename(keys[0]);
+			}
 		}
 		if (r_probe != nullptr) {
 			r_probe->get_or_create_member_rename_usec += export_timing_get_ticks_usec() - phase_start_usec;
 		}
-		for (int i = 1; i < keys.size(); i++) {
+		for (const String &key : keys) {
 			phase_start_usec = r_probe != nullptr ? export_timing_get_ticks_usec() : 0;
-			r_context.bind_member_rename(keys[i], obfuscated_name);
+			r_context.bind_member_rename(key, obfuscated_name);
 			if (r_probe != nullptr) {
 				r_probe->bind_member_rename_usec += export_timing_get_ticks_usec() - phase_start_usec;
 			}
