@@ -183,12 +183,16 @@ bool GDScriptAnalyzer::wgodot_strict_override_checking_enabled() const {
 }
 
 bool GDScriptAnalyzer::wgodot_strict_type_checking_enabled() const {
+#ifndef TOOLS_ENABLED
+	return false;
+#else
 	const char *setting = "wgodot/gdscript/strict_type_checking";
 	if (!ProjectSettings::get_singleton()->has_setting(setting)) {
 		return true;
 	}
 
 	return GLOBAL_GET_CACHED(bool, setting);
+#endif
 }
 
 bool GDScriptAnalyzer::wgodot_datatype_contains_variant(const GDScriptParser::DataType &p_datatype) const {
