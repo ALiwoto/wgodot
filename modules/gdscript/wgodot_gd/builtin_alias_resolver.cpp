@@ -53,10 +53,6 @@ StringName get_owner_from_codegen_type(const GDScriptDataType &p_type) {
 
 StringName resolve_member_alias_for_codegen(const GDScriptDataType &p_type, const StringName &p_name, bool p_static, bool p_property) {
 	const StringName owner = get_owner_from_codegen_type(p_type);
-	if (owner.is_empty()) {
-		return p_name;
-	}
-
 	StringName resolved = WGodotGDScriptBuiltinClassAliases::resolve_member_alias(owner, p_name, p_static, p_property);
 	if (resolved.is_empty() && p_property) {
 		resolved = WGodotGDScriptBuiltinClassAliases::resolve_member_alias(owner, p_name, !p_static, p_property);

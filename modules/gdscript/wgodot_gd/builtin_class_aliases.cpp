@@ -304,13 +304,13 @@ StringName resolve_function_alias(const StringName &p_name) {
 }
 
 StringName resolve_member_alias(const StringName &p_owner, const StringName &p_name, bool p_static, bool p_property) {
-	if (p_owner.is_empty() || p_name.is_empty()) {
+	if (p_name.is_empty()) {
 		return StringName();
 	}
 
 	load_aliases();
 	const HashMap<StringName, StringName> &aliases = p_property ? (p_static ? static_property_aliases : instance_property_aliases) : (p_static ? static_method_aliases : instance_method_aliases);
-	const StringName *member = aliases.getptr(make_member_key(p_owner, p_name));
+	const StringName *member = p_owner.is_empty() ? nullptr : aliases.getptr(make_member_key(p_owner, p_name));
 	if (member == nullptr) {
 		const HashMap<StringName, StringName> &targets_by_unqualified_alias = p_property ? (p_static ? static_property_targets_by_unqualified_alias : instance_property_targets_by_unqualified_alias) : (p_static ? static_method_targets_by_unqualified_alias : instance_method_targets_by_unqualified_alias);
 		member = targets_by_unqualified_alias.getptr(p_name);

@@ -4229,15 +4229,13 @@ void GDScriptAnalyzer::reduce_identifier_from_base(GDScriptParser::IdentifierNod
 	StringName name = p_identifier->name;
 	// wgodot-changes::begin
 	const StringName wgodot_builtin_owner = WGodotGDScriptBuiltinAliasResolver::get_owner_from_datatype(base);
-	if (!wgodot_builtin_owner.is_empty()) {
-		StringName wgodot_member_alias_target = WGodotGDScriptBuiltinClassAliases::resolve_member_alias(wgodot_builtin_owner, name, base.is_meta_type, true);
-		if (wgodot_member_alias_target.is_empty()) {
-			wgodot_member_alias_target = WGodotGDScriptBuiltinClassAliases::resolve_member_alias(wgodot_builtin_owner, name, base.is_meta_type, false);
-		}
-		if (!wgodot_member_alias_target.is_empty()) {
-			name = wgodot_member_alias_target;
-			p_identifier->name = name;
-		}
+	StringName wgodot_member_alias_target = WGodotGDScriptBuiltinClassAliases::resolve_member_alias(wgodot_builtin_owner, name, base.is_meta_type, true);
+	if (wgodot_member_alias_target.is_empty()) {
+		wgodot_member_alias_target = WGodotGDScriptBuiltinClassAliases::resolve_member_alias(wgodot_builtin_owner, name, base.is_meta_type, false);
+	}
+	if (!wgodot_member_alias_target.is_empty()) {
+		name = wgodot_member_alias_target;
+		p_identifier->name = name;
 	}
 	// wgodot-changes::end
 
