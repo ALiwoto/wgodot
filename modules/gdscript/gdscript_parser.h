@@ -897,6 +897,7 @@ public:
 		bool wgodot_no_mangle = false;
 		bool wgodot_no_string_mangle = false;
 		bool wgodot_obfuscate = false;
+		bool wgodot_interface_implementation = false;
 		// wgodot-changes::end
 		Variant rpc_config;
 		MethodInfo info;

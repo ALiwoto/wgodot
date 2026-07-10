@@ -398,7 +398,9 @@ void index_class(WGodotGDScriptExportTransform::ExportContext &r_context, const 
 				member.function != nullptr &&
 				member.function->identifier != nullptr &&
 				(obfuscate_scope || member.function->wgodot_obfuscate) &&
-				!member.function->wgodot_no_mangle) {
+				!member.function->wgodot_no_mangle &&
+				!member.function->wgodot_interface_implementation &&
+				!r_context.is_contract_method_name(member.function->identifier->name)) {
 			member_name = member.function->identifier->name;
 		} else if (member.type == GDScriptParser::ClassNode::Member::VARIABLE &&
 				member.variable != nullptr &&
@@ -450,6 +452,7 @@ namespace WGodotGDScriptExportTransform {
 
 void ExportContext::reset() {
 	member_renames.clear();
+	contract_method_names.clear();
 	global_class_renames.clear();
 	global_class_renames_by_path.clear();
 	builtin_class_aliases.clear();
@@ -469,6 +472,40 @@ void ExportContext::reset() {
 	reserve_builtin_class_names();
 	reserve_builtin_function_names();
 	obfuscation_random.randomize();
+}
+
+void ExportContext::index_contract_methods(const GDScriptParser::ClassNode *p_class) {
+	if (p_class == nullptr) {
+		return;
+	}
+
+	for (const GDScriptParser::ClassNode::Member &member : p_class->members) {
+		if (member.type == GDScriptParser::ClassNode::Member::FUNCTION &&
+				member.function != nullptr &&
+				member.function->identifier != nullptr &&
+				(p_class->wgodot_is_interface || member.function->wgodot_interface_implementation)) {
+			contract_method_names.insert(member.function->identifier->name);
+			reserve_member_name(member.function->identifier->name);
+		} else if (member.type == GDScriptParser::ClassNode::Member::CLASS) {
+			index_contract_methods(member.m_class);
+		}
+	}
+
+	for (const GDScriptParser::ClassNode *base_class = p_class->base_type.class_type; base_class != nullptr; base_class = base_class->base_type.class_type) {
+		for (const GDScriptParser::ClassNode::Member &member : base_class->members) {
+			if (member.type == GDScriptParser::ClassNode::Member::FUNCTION &&
+					member.function != nullptr &&
+					member.function->identifier != nullptr &&
+					member.function->wgodot_interface_implementation) {
+				contract_method_names.insert(member.function->identifier->name);
+				reserve_member_name(member.function->identifier->name);
+			}
+		}
+	}
+}
+
+bool ExportContext::is_contract_method_name(const StringName &p_name) const {
+	return contract_method_names.has(p_name);
 }
 
 void ExportContext::set_options(const TransformOptions &p_options) {
@@ -585,16 +622,23 @@ String ExportContext::make_member_key(const String &p_class_key, const StringNam
 }
 
 void ExportContext::make_member_keys(const GDScriptParser::ClassNode *p_class, const String &p_script_path, const StringName &p_member_name, Vector<String> &r_keys) {
-	const String primary_key = get_class_primary_key(p_class, p_script_path);
-	const String primary_member_key = make_member_key(primary_key, p_member_name);
-	if (!primary_member_key.is_empty()) {
-		r_keys.push_back(primary_member_key);
-	}
+	for (const GDScriptParser::ClassNode *script_class = p_class; script_class != nullptr; script_class = script_class->base_type.class_type) {
+		const String class_script_path = script_class == p_class ? p_script_path : String();
+		const String primary_key = get_class_primary_key(script_class, class_script_path);
+		const String primary_member_key = make_member_key(primary_key, p_member_name);
+		if (!primary_member_key.is_empty() && !r_keys.has(primary_member_key)) {
+			r_keys.push_back(primary_member_key);
+		}
 
-	if (p_class != nullptr && p_class->outer == nullptr && !p_script_path.is_empty() && primary_key != p_script_path) {
-		const String script_member_key = make_member_key(p_script_path, p_member_name);
-		if (!script_member_key.is_empty()) {
-			r_keys.push_back(script_member_key);
+		if (script_class->outer == nullptr && !class_script_path.is_empty() && primary_key != class_script_path) {
+			const String script_member_key = make_member_key(class_script_path, p_member_name);
+			if (!script_member_key.is_empty() && !r_keys.has(script_member_key)) {
+				r_keys.push_back(script_member_key);
+			}
+		}
+
+		if (script_class != p_class && script_class->has_member(p_member_name)) {
+			break;
 		}
 	}
 }

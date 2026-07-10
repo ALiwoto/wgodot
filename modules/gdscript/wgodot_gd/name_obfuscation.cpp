@@ -113,7 +113,8 @@ bool should_obfuscate_function(const GDScriptParser::FunctionNode *p_function, b
 			p_function->identifier != nullptr &&
 			!is_gdscript_magic_function_name(p_function->identifier->name) &&
 			(p_obfuscate_scope || p_function->wgodot_private || p_function->wgodot_obfuscate) &&
-			!p_function->wgodot_no_mangle;
+			!p_function->wgodot_no_mangle &&
+			!p_function->wgodot_interface_implementation;
 }
 
 bool should_obfuscate_variable(const GDScriptParser::VariableNode *p_variable, bool p_no_mangle_scope, bool p_obfuscate_scope) {
@@ -339,7 +340,9 @@ void collect_member_name_obfuscation(RewriteContext &r_context, const GDScriptPa
 				collect_member_name_obfuscation(r_context, member.m_class, no_mangle_scope, obfuscate_scope);
 			} break;
 			case GDScriptParser::ClassNode::Member::FUNCTION: {
-				if (!should_obfuscate_function(member.function, no_mangle_scope, obfuscate_scope) || r_context.obfuscated_function_names.has(member.function)) {
+				if (!should_obfuscate_function(member.function, no_mangle_scope, obfuscate_scope) ||
+						r_context.obfuscated_function_names.has(member.function) ||
+						(r_context.export_context != nullptr && r_context.export_context->is_contract_method_name(member.function->identifier->name))) {
 					break;
 				}
 
@@ -454,6 +457,9 @@ bool add_class_member_name_reference_replacement(RewriteContext &r_context, cons
 	if (!r_context.options.obfuscate_names || p_identifier == nullptr) {
 		return false;
 	}
+	if (!p_datatype.is_meta_type) {
+		return false;
+	}
 
 	const GDScriptParser::ClassNode *class_type = p_datatype.class_type;
 	if (class_type == nullptr || class_type->outer == nullptr) {
@@ -527,20 +533,33 @@ void add_attribute_member_name_reference_replacement(RewriteContext &r_context, 
 	if (is_no_mangle_datatype_class(base_type)) {
 		return;
 	}
+	if (r_context.export_context->is_contract_method_name(p_identifier->name)) {
+		return;
+	}
 	reserve_datatype_class_member_names(r_context, base_type);
 
-	const String class_key = get_datatype_class_key(base_type);
-	const String member_key = ExportContext::make_member_key(class_key, p_identifier->name);
-	if (member_key.is_empty()) {
+	Vector<String> member_keys;
+	if (base_type.class_type != nullptr) {
+		ExportContext::make_member_keys(base_type.class_type, base_type.script_path, p_identifier->name, member_keys);
+	} else {
+		const String member_key = ExportContext::make_member_key(get_datatype_class_key(base_type), p_identifier->name);
+		if (!member_key.is_empty()) {
+			member_keys.push_back(member_key);
+		}
+	}
+	if (member_keys.is_empty()) {
 		return;
 	}
 
 	String obfuscated_name;
-	const String *existing = r_context.export_context->get_member_rename(member_key);
-	if (existing != nullptr) {
-		obfuscated_name = *existing;
-	} else if (datatype_attribute_allows_context_member_obfuscation(base_type, p_identifier->name)) {
-		obfuscated_name = r_context.export_context->get_or_create_member_rename(member_key);
+	for (const String &member_key : member_keys) {
+		if (const String *existing = r_context.export_context->get_member_rename(member_key)) {
+			obfuscated_name = *existing;
+			break;
+		}
+	}
+	if (obfuscated_name.is_empty() && datatype_attribute_allows_context_member_obfuscation(base_type, p_identifier->name)) {
+		obfuscated_name = get_or_create_context_member_name(r_context, member_keys);
 	}
 	if (obfuscated_name.is_empty()) {
 		return;
@@ -551,6 +570,9 @@ void add_attribute_member_name_reference_replacement(RewriteContext &r_context, 
 
 void add_call_member_name_reference_replacement(RewriteContext &r_context, const GDScriptParser::CallNode *p_call) {
 	if (!r_context.options.obfuscate_names || r_context.export_context == nullptr || p_call == nullptr || p_call->function_name.is_empty()) {
+		return;
+	}
+	if (r_context.export_context->is_contract_method_name(p_call->function_name)) {
 		return;
 	}
 
@@ -604,18 +626,28 @@ void add_call_member_name_reference_replacement(RewriteContext &r_context, const
 	}
 	reserve_datatype_class_member_names(r_context, base_type);
 
-	const String class_key = get_datatype_class_key(base_type);
-	const String member_key = ExportContext::make_member_key(class_key, p_call->function_name);
-	if (member_key.is_empty()) {
+	Vector<String> member_keys;
+	if (base_type.class_type != nullptr) {
+		ExportContext::make_member_keys(base_type.class_type, base_type.script_path, p_call->function_name, member_keys);
+	} else {
+		const String member_key = ExportContext::make_member_key(get_datatype_class_key(base_type), p_call->function_name);
+		if (!member_key.is_empty()) {
+			member_keys.push_back(member_key);
+		}
+	}
+	if (member_keys.is_empty()) {
 		return;
 	}
 
 	String obfuscated_name;
-	const String *existing = r_context.export_context->get_member_rename(member_key);
-	if (existing != nullptr) {
-		obfuscated_name = *existing;
-	} else if (datatype_function_allows_context_member_obfuscation(base_type, p_call->function_name)) {
-		obfuscated_name = r_context.export_context->get_or_create_member_rename(member_key);
+	for (const String &member_key : member_keys) {
+		if (const String *existing = r_context.export_context->get_member_rename(member_key)) {
+			obfuscated_name = *existing;
+			break;
+		}
+	}
+	if (obfuscated_name.is_empty() && datatype_function_allows_context_member_obfuscation(base_type, p_call->function_name)) {
+		obfuscated_name = get_or_create_context_member_name(r_context, member_keys);
 	}
 
 	if (obfuscated_name.is_empty()) {

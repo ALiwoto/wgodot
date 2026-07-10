@@ -704,6 +704,8 @@ void GDScriptAnalyzer::wgodot_validate_implemented_interfaces(GDScriptParser::Cl
 				continue;
 			}
 
+			implementation_function->wgodot_interface_implementation = true;
+
 			String signature_error;
 			if (!wgodot_interface_method_signature_matches(interface_member.function, implementation_function, signature_error)) {
 				push_error(vformat(R"*(Class "%s" implements interface "%s", but method "%s()" has an incompatible signature: %s)*",

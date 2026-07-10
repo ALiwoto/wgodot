@@ -34,6 +34,7 @@ class ExportContext {
 	HashMap<uint64_t, String> string_resources;
 	HashMap<String, String> obfuscated_string_literals;
 	HashSet<StringName> reserved_member_names;
+	HashSet<StringName> contract_method_names;
 	HashSet<StringName> reserved_global_class_names;
 	HashSet<String> reserved_script_paths;
 	uint64_t next_string_resource_id = 1;
@@ -48,6 +49,8 @@ public:
 	void set_options(const TransformOptions &p_options);
 	const TransformOptions &get_options() const;
 	void reserve_member_name(const StringName &p_name);
+	void index_contract_methods(const GDScriptParser::ClassNode *p_class);
+	bool is_contract_method_name(const StringName &p_name) const;
 	void reserve_global_class_name(const StringName &p_name);
 	void reserve_script_path(const String &p_path);
 	void reserve_script_global_class_name(const GDScriptParser::ClassNode *p_class);

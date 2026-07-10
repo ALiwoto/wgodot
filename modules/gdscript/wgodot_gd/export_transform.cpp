@@ -162,6 +162,13 @@ void prescan_project_scripts(ExportContext *p_context, const HashSet<String> &p_
 			if (script.analyzed_source == nullptr || script.analyzed_source->parser == nullptr) {
 				continue;
 			}
+			p_context->index_contract_methods(script.analyzed_source->parser->get_tree());
+		}
+
+		for (const ScriptSource &script : scripts) {
+			if (script.analyzed_source == nullptr || script.analyzed_source->parser == nullptr) {
+				continue;
+			}
 
 			export_timing_log_checkpoint(options, script.path, "index script begin");
 			uint64_t phase_start_usec = export_timing_get_ticks_usec();
