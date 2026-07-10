@@ -845,10 +845,16 @@ String ExportContext::get_exported_script_path(const String &p_path) const {
 		return String();
 	}
 
-	if (options.binary_tokens_export && renamed_path->get_extension() == "gd") {
-		return renamed_path->get_basename() + ".gdc";
-	}
 	return *renamed_path;
+}
+
+String ExportContext::get_exported_binary_script_path(const String &p_path) const {
+	const String exported_path = get_exported_script_path(p_path);
+	if (exported_path.is_empty() || exported_path.get_extension() != "gd") {
+		return String();
+	}
+
+	return exported_path.get_basename() + ".gdc";
 }
 
 uint32_t ExportContext::get_random_uint(uint32_t p_bounds) {

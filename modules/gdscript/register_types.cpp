@@ -160,8 +160,8 @@ protected:
 		if (script_mode == EditorExportPreset::MODE_SCRIPT_TEXT) {
 			// Text replacement adds a `.gd` file directly, so skip() is needed to stop
 			// the normal exporter from also writing the original source. Binary export
-			// below normally adds `.gdc` with remap=true; path-obfuscated scripts are
-			// renamed directly with remap=false and also need skip().
+			// below normally adds `.gdc` with remap=true; path-obfuscated scripts use an
+			// obfuscated `.gd` remap instead and also need skip().
 			if (source_changed || script_path_changed) {
 				add_file(script_path_changed ? obfuscated_script_path : p_path, source.to_utf8_buffer(), false);
 				skip();
@@ -176,7 +176,10 @@ protected:
 		}
 
 		if (script_path_changed) {
-			add_file(obfuscated_script_path, file, false);
+			const String obfuscated_binary_script_path = transform_context.get_exported_binary_script_path(p_path);
+			const String remap_source = "[remap]\n\npath=\"" + obfuscated_binary_script_path.c_escape() + "\"\n";
+			add_file(obfuscated_binary_script_path, file, false);
+			add_file(obfuscated_script_path + ".remap", remap_source.to_utf8_buffer(), false);
 			skip();
 		} else {
 			add_file(p_path.get_basename() + ".gdc", file, true);

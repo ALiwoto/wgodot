@@ -75,6 +75,7 @@ public:
 	String get_or_create_script_path_rename(const String &p_path);
 	const String *get_script_path_rename(const String &p_path) const;
 	String get_exported_script_path(const String &p_path) const;
+	String get_exported_binary_script_path(const String &p_path) const;
 	uint32_t get_random_uint(uint32_t p_bounds);
 	uint64_t create_string_resource(const String &p_value);
 	const HashMap<uint64_t, String> &get_string_resources() const;
