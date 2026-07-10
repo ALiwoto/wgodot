@@ -162,7 +162,13 @@ void prescan_project_scripts(ExportContext *p_context, const HashSet<String> &p_
 			if (script.analyzed_source == nullptr || script.analyzed_source->parser == nullptr) {
 				continue;
 			}
-			p_context->index_contract_methods(script.analyzed_source->parser->get_tree());
+			p_context->reserve_script_member_names(script.analyzed_source->parser->get_tree());
+		}
+		for (const ScriptSource &script : scripts) {
+			if (script.analyzed_source == nullptr || script.analyzed_source->parser == nullptr) {
+				continue;
+			}
+			p_context->index_interface_methods(script.analyzed_source->parser->get_tree());
 		}
 
 		for (const ScriptSource &script : scripts) {

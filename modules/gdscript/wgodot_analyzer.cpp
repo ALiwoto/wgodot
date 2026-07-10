@@ -10,6 +10,7 @@
 #include "gdscript_analyzer.h"
 
 #include "gdscript.h"
+#include "wgodot_gd/interface_method_aliases.h"
 #include "wgodot_stdlib.h"
 
 #include "core/config/project_settings.h"
@@ -688,7 +689,9 @@ void GDScriptAnalyzer::wgodot_validate_implemented_interfaces(GDScriptParser::Cl
 	HashSet<StringName> conflicted_methods = wgodot_validate_implemented_interface_conflicts(p_class, interface_classes);
 
 	for (GDScriptParser::ClassNode *interface_class : interface_classes) {
-		for (GDScriptParser::ClassNode::Member interface_member : interface_class->members) {
+		const int builtin_interface_index = WGodotGDScriptStdLib::get_builtin_interface_index(interface_class->wgodot_interface_name);
+		for (int interface_method_index = 0; interface_method_index < interface_class->members.size(); interface_method_index++) {
+			const GDScriptParser::ClassNode::Member &interface_member = interface_class->members[interface_method_index];
 			if (interface_member.type != GDScriptParser::ClassNode::Member::FUNCTION) {
 				continue;
 			}
@@ -696,10 +699,13 @@ void GDScriptAnalyzer::wgodot_validate_implemented_interfaces(GDScriptParser::Cl
 				continue;
 			}
 
-			GDScriptParser::FunctionNode *implementation_function = wgodot_find_function_in_class_hierarchy(p_class, interface_member.function->identifier->name);
+			const StringName interface_method_name = interface_member.function->identifier->name;
+			const StringName interface_method_alias = WGodotGDScriptInterfaceMethodAliases::resolve_builtin_alias(builtin_interface_index, interface_method_index);
+			const StringName implementation_method_name = interface_method_alias.is_empty() ? interface_method_name : interface_method_alias;
+			GDScriptParser::FunctionNode *implementation_function = wgodot_find_function_in_class_hierarchy(p_class, implementation_method_name);
 			if (implementation_function == nullptr) {
 				push_error(vformat(R"*(Class "%s" implements interface "%s" but is missing method "%s()".)*",
-								   wgodot_get_class_display_name(p_class), wgodot_get_class_display_name(interface_class), interface_member.function->identifier->name),
+								   wgodot_get_class_display_name(p_class), wgodot_get_class_display_name(interface_class), implementation_method_name),
 						p_class);
 				continue;
 			}

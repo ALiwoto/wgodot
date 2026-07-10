@@ -40,6 +40,7 @@
 #include "wgodot_gd/builtin_class_aliases.h"
 #include "wgodot_gd/export_context.h"
 #include "wgodot_gd/export_transform.h"
+#include "wgodot_gd/interface_method_aliases.h"
 #include "wgodot_gd/string_obfuscation.h"
 // wgodot-changes::end
 
@@ -119,6 +120,10 @@ protected:
 		const Vector<uint8_t> builtin_class_aliases = WGodotGDScriptBuiltinClassAliases::serialize_alias_map(transform_context);
 		if (!builtin_class_aliases.is_empty()) {
 			add_file(WGodotGDScriptBuiltinClassAliases::get_alias_map_path(), builtin_class_aliases, false);
+		}
+		const Vector<uint8_t> interface_method_aliases = WGodotGDScriptInterfaceMethodAliases::serialize_alias_map(transform_context);
+		if (!interface_method_aliases.is_empty()) {
+			add_file(WGodotGDScriptInterfaceMethodAliases::get_alias_map_path(), interface_method_aliases, false);
 		}
 		const Vector<uint8_t> string_map = WGodotGDScriptStringObfuscation::serialize_string_map(transform_context);
 		if (!string_map.is_empty()) {
@@ -200,6 +205,7 @@ void initialize_gdscript_module(ModuleInitializationLevel p_level) {
 	if (p_level == MODULE_INITIALIZATION_LEVEL_SERVERS) {
 		// wgodot-changes::begin
 		WGodotGDScriptBuiltinClassAliases::clear_runtime_cache();
+		WGodotGDScriptInterfaceMethodAliases::clear_runtime_cache();
 		WGodotGDScriptStringObfuscation::clear_runtime_cache();
 		// wgodot-changes::end
 

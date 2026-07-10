@@ -113,8 +113,7 @@ bool should_obfuscate_function(const GDScriptParser::FunctionNode *p_function, b
 			p_function->identifier != nullptr &&
 			!is_gdscript_magic_function_name(p_function->identifier->name) &&
 			(p_obfuscate_scope || p_function->wgodot_private || p_function->wgodot_obfuscate) &&
-			!p_function->wgodot_no_mangle &&
-			!p_function->wgodot_interface_implementation;
+			!p_function->wgodot_no_mangle;
 }
 
 bool should_obfuscate_variable(const GDScriptParser::VariableNode *p_variable, bool p_no_mangle_scope, bool p_obfuscate_scope) {
@@ -188,6 +187,32 @@ bool class_has_no_mangle_scope(const GDScriptParser::ClassNode *p_class) {
 
 bool is_no_mangle_datatype_class(const GDScriptParser::DataType &p_datatype) {
 	return class_has_no_mangle_scope(p_datatype.class_type);
+}
+
+const StringName *get_datatype_interface_method_alias(WGodotGDScriptExportTransform::RewriteContext &r_context, const GDScriptParser::DataType &p_datatype, const StringName &p_method_name) {
+	if (r_context.export_context == nullptr || p_datatype.class_type == nullptr || p_method_name.is_empty()) {
+		return nullptr;
+	}
+
+	const StringName *interface_alias = r_context.export_context->get_interface_method_alias(p_method_name);
+	if (interface_alias == nullptr) {
+		return nullptr;
+	}
+
+	for (const GDScriptParser::ClassNode *script_class = p_datatype.class_type; script_class != nullptr; script_class = script_class->base_type.class_type) {
+		if (!script_class->has_member(p_method_name)) {
+			continue;
+		}
+
+		const GDScriptParser::ClassNode::Member member = script_class->get_member(p_method_name);
+		if (member.type != GDScriptParser::ClassNode::Member::FUNCTION || member.function == nullptr || member.function->wgodot_no_mangle) {
+			return nullptr;
+		}
+
+		return script_class->wgodot_is_interface || member.function->wgodot_interface_implementation ? interface_alias : nullptr;
+	}
+
+	return nullptr;
 }
 
 void reserve_datatype_class_member_names(WGodotGDScriptExportTransform::RewriteContext &r_context, const GDScriptParser::DataType &p_datatype) {
@@ -340,14 +365,16 @@ void collect_member_name_obfuscation(RewriteContext &r_context, const GDScriptPa
 				collect_member_name_obfuscation(r_context, member.m_class, no_mangle_scope, obfuscate_scope);
 			} break;
 			case GDScriptParser::ClassNode::Member::FUNCTION: {
-				if (!should_obfuscate_function(member.function, no_mangle_scope, obfuscate_scope) ||
-						r_context.obfuscated_function_names.has(member.function) ||
-						(r_context.export_context != nullptr && r_context.export_context->is_contract_method_name(member.function->identifier->name))) {
+				const StringName *interface_alias = r_context.export_context != nullptr ? r_context.export_context->get_interface_method_alias(member.function->identifier->name) : nullptr;
+				const bool is_interface_method = interface_alias != nullptr &&
+						(p_class->wgodot_is_interface || member.function->wgodot_interface_implementation || obfuscate_scope);
+				if ((!is_interface_method && !should_obfuscate_function(member.function, no_mangle_scope, obfuscate_scope)) ||
+						r_context.obfuscated_function_names.has(member.function) || member.function->wgodot_no_mangle) {
 					break;
 				}
 
-				String obfuscated_name;
-				if (member.function->wgodot_obfuscate || obfuscate_scope) {
+				String obfuscated_name = is_interface_method ? String(*interface_alias) : String();
+				if (obfuscated_name.is_empty() && (member.function->wgodot_obfuscate || obfuscate_scope)) {
 					Vector<String> keys;
 					ExportContext::make_member_keys(p_class, r_context.script_path, member.function->identifier->name, keys);
 					obfuscated_name = get_or_create_context_member_name(r_context, keys);
@@ -530,10 +557,11 @@ void add_attribute_member_name_reference_replacement(RewriteContext &r_context, 
 	}
 
 	const GDScriptParser::DataType base_type = p_base->get_datatype();
-	if (is_no_mangle_datatype_class(base_type)) {
+	if (const StringName *interface_alias = get_datatype_interface_method_alias(r_context, base_type, p_identifier->name)) {
+		add_replacement(r_context, p_identifier, String(*interface_alias));
 		return;
 	}
-	if (r_context.export_context->is_contract_method_name(p_identifier->name)) {
+	if (is_no_mangle_datatype_class(base_type)) {
 		return;
 	}
 	reserve_datatype_class_member_names(r_context, base_type);
@@ -572,10 +600,6 @@ void add_call_member_name_reference_replacement(RewriteContext &r_context, const
 	if (!r_context.options.obfuscate_names || r_context.export_context == nullptr || p_call == nullptr || p_call->function_name.is_empty()) {
 		return;
 	}
-	if (r_context.export_context->is_contract_method_name(p_call->function_name)) {
-		return;
-	}
-
 	if (p_call->callee != nullptr && p_call->callee->type == GDScriptParser::Node::IDENTIFIER) {
 		const GDScriptParser::IdentifierNode *callee = static_cast<const GDScriptParser::IdentifierNode *>(p_call->callee);
 		if (callee->source != GDScriptParser::IdentifierNode::UNDEFINED_SOURCE &&
@@ -621,6 +645,10 @@ void add_call_member_name_reference_replacement(RewriteContext &r_context, const
 	}
 
 	const GDScriptParser::DataType base_type = subscript->base->get_datatype();
+	if (const StringName *interface_alias = get_datatype_interface_method_alias(r_context, base_type, p_call->function_name)) {
+		add_replacement(r_context, subscript->attribute, String(*interface_alias));
+		return;
+	}
 	if (is_no_mangle_datatype_class(base_type)) {
 		return;
 	}

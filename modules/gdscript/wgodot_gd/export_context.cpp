@@ -397,11 +397,15 @@ void index_class(WGodotGDScriptExportTransform::ExportContext &r_context, const 
 		if (member.type == GDScriptParser::ClassNode::Member::FUNCTION &&
 				member.function != nullptr &&
 				member.function->identifier != nullptr &&
-				(obfuscate_scope || member.function->wgodot_obfuscate) &&
-				!member.function->wgodot_no_mangle &&
-				!member.function->wgodot_interface_implementation &&
-				!r_context.is_contract_method_name(member.function->identifier->name)) {
-			member_name = member.function->identifier->name;
+				!member.function->wgodot_no_mangle) {
+			const StringName function_name = member.function->identifier->name;
+			const bool is_interface_method = r_context.get_interface_method_alias(function_name) != nullptr &&
+					(p_class->wgodot_is_interface || member.function->wgodot_interface_implementation || obfuscate_scope);
+			if (obfuscate_scope || member.function->wgodot_obfuscate || is_interface_method) {
+				member_name = function_name;
+			} else {
+				continue;
+			}
 		} else if (member.type == GDScriptParser::ClassNode::Member::VARIABLE &&
 				member.variable != nullptr &&
 				member.variable->identifier != nullptr &&
@@ -432,7 +436,17 @@ void index_class(WGodotGDScriptExportTransform::ExportContext &r_context, const 
 			r_probe->obfuscatable_members++;
 		}
 		phase_start_usec = r_probe != nullptr ? export_timing_get_ticks_usec() : 0;
-		const String obfuscated_name = r_context.get_or_create_member_rename(keys[0]);
+		String obfuscated_name;
+		if (member.type == GDScriptParser::ClassNode::Member::FUNCTION && member.function != nullptr) {
+			if (const StringName *interface_alias = r_context.get_interface_method_alias(member_name)) {
+				obfuscated_name = String(*interface_alias);
+			}
+		}
+		if (obfuscated_name.is_empty()) {
+			obfuscated_name = r_context.get_or_create_member_rename(keys[0]);
+		} else {
+			r_context.bind_member_rename(keys[0], obfuscated_name);
+		}
 		if (r_probe != nullptr) {
 			r_probe->get_or_create_member_rename_usec += export_timing_get_ticks_usec() - phase_start_usec;
 		}
@@ -452,7 +466,7 @@ namespace WGodotGDScriptExportTransform {
 
 void ExportContext::reset() {
 	member_renames.clear();
-	contract_method_names.clear();
+	interface_method_aliases.clear();
 	global_class_renames.clear();
 	global_class_renames_by_path.clear();
 	builtin_class_aliases.clear();
@@ -474,7 +488,23 @@ void ExportContext::reset() {
 	obfuscation_random.randomize();
 }
 
-void ExportContext::index_contract_methods(const GDScriptParser::ClassNode *p_class) {
+void ExportContext::reserve_script_member_names(const GDScriptParser::ClassNode *p_class) {
+	if (p_class == nullptr) {
+		return;
+	}
+
+	for (const GDScriptParser::ClassNode::Member &member : p_class->members) {
+		const String member_name = member.get_name();
+		if (!member_name.is_empty()) {
+			reserve_member_name(StringName(member_name));
+		}
+		if (member.type == GDScriptParser::ClassNode::Member::CLASS) {
+			reserve_script_member_names(member.m_class);
+		}
+	}
+}
+
+void ExportContext::index_interface_methods(const GDScriptParser::ClassNode *p_class) {
 	if (p_class == nullptr) {
 		return;
 	}
@@ -484,10 +514,12 @@ void ExportContext::index_contract_methods(const GDScriptParser::ClassNode *p_cl
 				member.function != nullptr &&
 				member.function->identifier != nullptr &&
 				(p_class->wgodot_is_interface || member.function->wgodot_interface_implementation)) {
-			contract_method_names.insert(member.function->identifier->name);
-			reserve_member_name(member.function->identifier->name);
+			const StringName method_name = member.function->identifier->name;
+			if (!interface_method_aliases.has(method_name)) {
+				interface_method_aliases[method_name] = StringName(make_obfuscated_name_from_reserved_names(reserved_member_names, "interface method"));
+			}
 		} else if (member.type == GDScriptParser::ClassNode::Member::CLASS) {
-			index_contract_methods(member.m_class);
+			index_interface_methods(member.m_class);
 		}
 	}
 
@@ -497,15 +529,21 @@ void ExportContext::index_contract_methods(const GDScriptParser::ClassNode *p_cl
 					member.function != nullptr &&
 					member.function->identifier != nullptr &&
 					member.function->wgodot_interface_implementation) {
-				contract_method_names.insert(member.function->identifier->name);
-				reserve_member_name(member.function->identifier->name);
+				const StringName method_name = member.function->identifier->name;
+				if (!interface_method_aliases.has(method_name)) {
+					interface_method_aliases[method_name] = StringName(make_obfuscated_name_from_reserved_names(reserved_member_names, "interface method"));
+				}
 			}
 		}
 	}
 }
 
-bool ExportContext::is_contract_method_name(const StringName &p_name) const {
-	return contract_method_names.has(p_name);
+const StringName *ExportContext::get_interface_method_alias(const StringName &p_name) const {
+	return interface_method_aliases.getptr(p_name);
+}
+
+const HashMap<StringName, StringName> &ExportContext::get_interface_method_aliases() const {
+	return interface_method_aliases;
 }
 
 void ExportContext::set_options(const TransformOptions &p_options) {

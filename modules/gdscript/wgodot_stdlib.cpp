@@ -9,6 +9,7 @@
 
 #include "wgodot_stdlib.h"
 
+#include "core/error/error_macros.h"
 #include "core/object/script_language.h"
 
 namespace {
@@ -62,6 +63,29 @@ void WGodotGDScriptStdLib::get_global_interface_list(LocalVector<StringName> &r_
 	for (const WGodotStdLibScript &script : builtin_interfaces) {
 		r_interfaces.push_back(StringName(script.global_name));
 	}
+}
+
+int WGodotGDScriptStdLib::get_builtin_interface_count() {
+	return sizeof(builtin_interfaces) / sizeof(builtin_interfaces[0]);
+}
+
+int WGodotGDScriptStdLib::get_builtin_interface_index(const StringName &p_name) {
+	for (int i = 0; i < get_builtin_interface_count(); i++) {
+		if (StringName(builtin_interfaces[i].global_name) == p_name) {
+			return i;
+		}
+	}
+	return -1;
+}
+
+String WGodotGDScriptStdLib::get_builtin_interface_path(int p_index) {
+	ERR_FAIL_INDEX_V(p_index, get_builtin_interface_count(), String());
+	return String(builtin_interfaces[p_index].path);
+}
+
+String WGodotGDScriptStdLib::get_builtin_interface_source(int p_index) {
+	ERR_FAIL_INDEX_V(p_index, get_builtin_interface_count(), String());
+	return String::utf8(builtin_interfaces[p_index].source);
 }
 
 bool WGodotGDScriptStdLib::has_script_path(const String &p_path) {
