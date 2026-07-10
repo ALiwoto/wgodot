@@ -173,6 +173,56 @@ bool variant_to_untyped_container_source(WGodotGDScriptExportTransform::RewriteC
 	return !r_text.is_empty();
 }
 
+bool datatype_is_container_type(const GDScriptParser::DataType &p_datatype, Variant::Type p_type) {
+	return p_datatype.kind == GDScriptParser::DataType::BUILTIN && p_datatype.builtin_type == p_type;
+}
+
+bool typed_container_constant_to_source(WGodotGDScriptExportTransform::RewriteContext *p_context, const GDScriptParser::ConstantNode *p_constant, String &r_text) {
+	ERR_FAIL_NULL_V(p_constant, false);
+	ERR_FAIL_NULL_V(p_constant->initializer, false);
+
+	const Variant value = p_constant->initializer->reduced_value;
+	if (value.get_type() != Variant::ARRAY && value.get_type() != Variant::DICTIONARY) {
+		return false;
+	}
+
+	const GDScriptParser::DataType datatype = p_constant->get_datatype();
+	if (!datatype_is_container_type(datatype, value.get_type())) {
+		return false;
+	}
+
+	String literal_text;
+	if (!variant_to_untyped_container_source(p_context, value, literal_text) || literal_text.is_empty()) {
+		return false;
+	}
+
+	r_text = "(" + literal_text + " as " + datatype.to_string() + ")";
+	return true;
+}
+
+bool constant_to_reference_source(WGodotGDScriptExportTransform::RewriteContext *p_context, const GDScriptParser::ConstantNode *p_constant, String &r_text) {
+	ERR_FAIL_NULL_V(p_constant, false);
+	ERR_FAIL_NULL_V(p_constant->initializer, false);
+
+	if (typed_container_constant_to_source(p_context, p_constant, r_text)) {
+		return true;
+	}
+
+	const Variant value = p_constant->initializer->reduced_value;
+	if (value.get_type() == Variant::ARRAY || value.get_type() == Variant::DICTIONARY) {
+		String literal_text;
+		if (!variant_to_untyped_container_source(p_context, value, literal_text) || literal_text.is_empty()) {
+			return false;
+		}
+
+		r_text = "(" + literal_text + ")";
+		return true;
+	}
+
+	r_text = variant_to_export_source(p_context, value);
+	return !r_text.is_empty();
+}
+
 bool constant_to_indexable_source(WGodotGDScriptExportTransform::RewriteContext *p_context, const GDScriptParser::ConstantNode *p_constant, String &r_text) {
 	ERR_FAIL_NULL_V(p_constant, false);
 	ERR_FAIL_NULL_V(p_constant->initializer, false);
@@ -240,8 +290,8 @@ void add_constant_reference_replacement(RewriteContext &r_context, const GDScrip
 	ERR_FAIL_NULL(p_constant);
 	ERR_FAIL_NULL(p_constant->initializer);
 
-	const String text = variant_to_export_source(&r_context, p_constant->initializer->reduced_value);
-	if (text.is_empty()) {
+	String text;
+	if (!constant_to_reference_source(&r_context, p_constant, text)) {
 		return;
 	}
 
