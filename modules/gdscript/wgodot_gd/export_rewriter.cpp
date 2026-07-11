@@ -75,7 +75,14 @@ void add_extends_path_replacement(RewriteContext &r_context, const GDScriptParse
 		}
 
 		if (expect_extends_path) {
-			if (token.type == GDScriptTokenizer::Token::LITERAL && token.literal.get_type() == Variant::STRING && String(token.literal) == p_class->extends_path) {
+			String source_extends_path;
+			if (token.type == GDScriptTokenizer::Token::LITERAL && token.literal.get_type() == Variant::STRING) {
+				source_extends_path = token.literal;
+				if (source_extends_path.is_relative_path()) {
+					source_extends_path = r_context.script_path.get_base_dir().path_join(source_extends_path).simplify_path();
+				}
+			}
+			if (source_extends_path == p_class->extends_path) {
 				const int start = get_offset(r_context, token.start_line, token.start_column);
 				const int end = get_offset(r_context, token.end_line, token.end_column);
 				if (start >= 0 && end >= start && !overlaps_existing_replacement(r_context, start, end)) {
