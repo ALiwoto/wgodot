@@ -107,9 +107,6 @@ void collect_records_from_directory(const String &p_directory, Vector<EditorReco
 		if (!load_editor_record(p_directory.path_join(file_name), record)) {
 			continue;
 		}
-		if (!OS::get_singleton()->is_process_running(record.pid)) {
-			continue;
-		}
 		r_records.push_back(record);
 	}
 }
@@ -231,6 +228,17 @@ void print_status_human(const Dictionary &p_response) {
 	}
 }
 
+int print_status_response(const Dictionary &p_response, bool p_json_output) {
+	if (p_json_output) {
+		print_line(JSON::stringify(p_response, "", true));
+	} else if ((bool)p_response.get("ok", false)) {
+		print_status_human(p_response);
+	} else {
+		print_line("wgodot: " + String(p_response.get("message", "The editor rejected the request.")));
+	}
+	return (bool)p_response.get("ok", false) ? 0 : 4;
+}
+
 int run_status(const Vector<String> &p_arguments) {
 	bool json_output = false;
 	int requested_session = -1;
@@ -256,18 +264,6 @@ int run_status(const Vector<String> &p_arguments) {
 
 	bool project_was_resolved = false;
 	Vector<EditorRecord> records = find_editor_records(project_was_resolved);
-	if (!project_was_resolved && records.size() > 1) {
-		Dictionary error;
-		error["ok"] = false;
-		error["error"] = "multiple_editors";
-		error["message"] = "No project.godot was found and more than one WGodot editor is running.";
-		if (json_output) {
-			print_line(JSON::stringify(error, "", true));
-		} else {
-			print_line("wgodot: " + String(error["message"]));
-		}
-		return 3;
-	}
 
 	Dictionary request;
 	request["protocol"] = PROTOCOL_VERSION;
@@ -276,6 +272,8 @@ int run_status(const Vector<String> &p_arguments) {
 		request["session"] = requested_session;
 	}
 
+	Dictionary discovered_response;
+	int live_editor_count = 0;
 	while (!records.is_empty()) {
 		int newest_index = 0;
 		for (int i = 1; i < records.size(); i++) {
@@ -290,16 +288,29 @@ int run_status(const Vector<String> &p_arguments) {
 				records.remove_at(newest_index);
 				continue;
 			}
-			if (json_output) {
-				print_line(JSON::stringify(response, "", true));
-			} else if ((bool)response.get("ok", false)) {
-				print_status_human(response);
-			} else {
-				print_line("wgodot: " + String(response.get("message", "The editor rejected the request.")));
+			if (project_was_resolved) {
+				return print_status_response(response, json_output);
 			}
-			return (bool)response.get("ok", false) ? 0 : 4;
+			discovered_response = response;
+			live_editor_count++;
 		}
 		records.remove_at(newest_index);
+	}
+
+	if (!project_was_resolved && live_editor_count > 1) {
+		Dictionary error;
+		error["ok"] = false;
+		error["error"] = "multiple_editors";
+		error["message"] = "No project.godot was found and more than one WGodot editor is running.";
+		if (json_output) {
+			print_line(JSON::stringify(error, "", true));
+		} else {
+			print_line("wgodot: " + String(error["message"]));
+		}
+		return 3;
+	}
+	if (!project_was_resolved && live_editor_count == 1) {
+		return print_status_response(discovered_response, json_output);
 	}
 
 	Dictionary error;

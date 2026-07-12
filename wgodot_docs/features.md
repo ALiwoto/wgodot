@@ -24,11 +24,7 @@ This file tracks user-facing wgodot features. It intentionally avoids internal e
 
 ## Agent CLI
 
-- `godot --wg status` connects to the running WGodot editor for the current project and prints its editor and active game-session status. `--json` returns the same result as structured JSON, and `--session <id>` is available only when an explicit game instance is needed.
-
-- Running editors publish per-project discovery records in the Godot editor data directory. Each editor generates a new random authentication token at startup; the CLI reads it automatically and includes it directly in its single request, so normal commands need no token, project path, or session argument.
-
-- WGodot CLI project discovery searches from the current directory upward. When no project can be resolved, the CLI uses the only running WGodot editor if exactly one exists and otherwise reports the ambiguity.
+See the [WGodot CLI skill](./wgodot-cli/SKILL.md) for agent-oriented usage, commands, and workflow guidance.
 
 ## Export Protection
 
