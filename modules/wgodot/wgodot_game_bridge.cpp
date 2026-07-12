@@ -19,6 +19,9 @@
 #include "scene/main/window.h"
 #include "servers/rendering/rendering_device.h"
 #include "servers/rendering/rendering_server.h"
+#ifdef MODULE_GDSCRIPT_ENABLED
+#include "modules/gdscript/gdscript.h"
+#endif
 
 namespace WGodotGameBridge {
 
@@ -76,6 +79,24 @@ bool node_matches_any_type(Node *p_node, const PackedStringArray &p_types) {
 	return false;
 }
 
+String get_node_display_type(Node *p_node) {
+	Ref<Script> script = p_node->get_script();
+	while (script.is_valid()) {
+		const StringName global_name = script->get_global_name();
+		if (!global_name.is_empty()) {
+			return global_name;
+		}
+#ifdef MODULE_GDSCRIPT_ENABLED
+		const Ref<GDScript> gdscript = script;
+		if (gdscript.is_valid() && !gdscript->get_local_name().is_empty()) {
+			return gdscript->get_local_name();
+		}
+#endif
+		script = script->get_base_script();
+	}
+	return p_node->get_class();
+}
+
 Array collect_tree(const Dictionary &p_options, Dictionary &r_error) {
 	Array result;
 	SceneTree *scene_tree = SceneTree::get_singleton();
@@ -120,7 +141,7 @@ Array collect_tree(const Dictionary &p_options, Dictionary &r_error) {
 			entry["depth"] = pending.depth;
 			entry["path"] = String(node->get_path());
 			entry["name"] = String(node->get_name());
-			entry["type"] = String(node->get_class());
+			entry["type"] = get_node_display_type(node);
 			entry["id"] = static_cast<int64_t>(node->get_instance_id());
 			entry["child_count"] = node->get_child_count();
 			entry["scene_file_path"] = node->get_scene_file_path();

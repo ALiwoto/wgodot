@@ -112,6 +112,8 @@ godot --wg tree --include Control --root /root/Main/UI --json
 - `--root <node-path>` inspects only that runtime subtree.
 - `--json` returns node paths, names, types, IDs, visibility, child counts, and scene paths as structured data.
 
+The displayed node type prefers the nearest named script class, including a GDScript `class_name` or named inner class. It falls back to the native Godot class, such as `Node2D`, when the node's script inheritance chain has no named class.
+
 Prefer `--include Control`, `--root`, or a shallow `--depth` when looking for a UI element. Use an exact node path returned by this command in later commands that accept node targets.
 
 ## Screenshots
