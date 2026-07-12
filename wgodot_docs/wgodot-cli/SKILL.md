@@ -95,18 +95,24 @@ godot --wg tree
 Use filters for large projects instead of repeatedly dumping the complete tree:
 
 ```powershell
-godot --wg tree --controls
+godot --wg tree --include Control
+godot --wg tree --include Control --include Node3D
+godot --wg tree --include "Control, Node3D" --exclude Button
+godot --wg tree --exclude "Timer, AnimationPlayer"
 godot --wg tree --depth 3
 godot --wg tree --root /root/Main/UI
-godot --wg tree --controls --root /root/Main/UI --json
+godot --wg tree --include Control --root /root/Main/UI --json
 ```
 
-- `--controls` includes only `Control` nodes.
+- `--include <type>` includes that type and all types that inherit it. Its default value is `*`, which includes every type.
+- `--exclude <type>` excludes that type and all types that inherit it. Exclusions are applied after inclusions and take precedence.
+- Repeat `--include` or `--exclude`, or pass a comma-separated list, to match several types. `*` means every type for either option.
+- Use native Godot class names or registered global script class names. The command reports unknown type names instead of silently returning an empty tree.
 - `--depth <number>` limits traversal depth relative to the selected root.
 - `--root <node-path>` inspects only that runtime subtree.
 - `--json` returns node paths, names, types, IDs, visibility, child counts, and scene paths as structured data.
 
-Prefer `--controls`, `--root`, or a shallow `--depth` when looking for a UI element. Use an exact node path returned by this command in later commands that accept node targets.
+Prefer `--include Control`, `--root`, or a shallow `--depth` when looking for a UI element. Use an exact node path returned by this command in later commands that accept node targets.
 
 ## Screenshots
 
@@ -136,7 +142,7 @@ godot --wg observe --json
 Use the same tree filters and screenshot output option when appropriate:
 
 ```powershell
-godot --wg observe --controls --root /root/Main/UI -o screenshots/ui.png --json
+godot --wg observe --include Control --root /root/Main/UI -o screenshots/ui.png --json
 ```
 
 Prefer `observe` when both visual state and runtime node structure are needed after an action. Prefer `ss` or `tree` alone when only one result is needed.

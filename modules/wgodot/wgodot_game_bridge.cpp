@@ -8,12 +8,15 @@
 #include "core/debugger/engine_debugger.h"
 #include "core/io/dir_access.h"
 #include "core/io/image.h"
+#include "core/object/class_db.h"
+#include "core/object/script_language.h"
 #include "core/os/os.h"
 #include "core/os/time.h"
 #include "core/templates/vector.h"
 #include "scene/main/node.h"
 #include "scene/main/scene_tree.h"
 #include "scene/main/viewport.h"
+#include "scene/main/window.h"
 #include "servers/rendering/rendering_device.h"
 #include "servers/rendering/rendering_server.h"
 
@@ -32,6 +35,45 @@ Dictionary make_error(const String &p_command, const String &p_error, const Stri
 	response["error"] = p_error;
 	response["message"] = p_message;
 	return response;
+}
+
+bool validate_filter_types(const PackedStringArray &p_types, const String &p_option, Dictionary &r_error) {
+	for (int i = 0; i < p_types.size(); i++) {
+		const StringName type = p_types[i];
+		if (type != SNAME("*") && !ClassDB::class_exists(type) && !ScriptServer::is_global_class(type)) {
+			r_error = make_error("tree", "invalid_type_filter", "Unknown type for " + p_option + ": " + String(type));
+			return false;
+		}
+	}
+	return true;
+}
+
+bool node_matches_type(Node *p_node, const StringName &p_type) {
+	if (p_type == SNAME("*") || (ClassDB::class_exists(p_type) && p_node->is_class(p_type))) {
+		return true;
+	}
+
+	Ref<Script> script = p_node->get_script();
+	if (script.is_null()) {
+		return false;
+	}
+	StringName script_type = script->get_global_name();
+	while (!script_type.is_empty() && ScriptServer::is_global_class(script_type)) {
+		if (script_type == p_type) {
+			return true;
+		}
+		script_type = ScriptServer::get_global_class_base(script_type);
+	}
+	return false;
+}
+
+bool node_matches_any_type(Node *p_node, const PackedStringArray &p_types) {
+	for (int i = 0; i < p_types.size(); i++) {
+		if (node_matches_type(p_node, p_types[i])) {
+			return true;
+		}
+	}
+	return false;
 }
 
 Array collect_tree(const Dictionary &p_options, Dictionary &r_error) {
@@ -53,7 +95,14 @@ Array collect_tree(const Dictionary &p_options, Dictionary &r_error) {
 	}
 
 	const int max_depth = p_options.get("max_depth", -1);
-	const bool controls_only = p_options.get("controls_only", false);
+	PackedStringArray include_types = p_options.get("include_types", PackedStringArray());
+	const PackedStringArray exclude_types = p_options.get("exclude_types", PackedStringArray());
+	if (include_types.is_empty()) {
+		include_types.push_back("*");
+	}
+	if (!validate_filter_types(include_types, "--include", r_error) || !validate_filter_types(exclude_types, "--exclude", r_error)) {
+		return result;
+	}
 
 	struct PendingNode {
 		Node *node = nullptr;
@@ -66,7 +115,7 @@ Array collect_tree(const Dictionary &p_options, Dictionary &r_error) {
 		stack.resize(stack.size() - 1);
 		Node *node = pending.node;
 
-		if (!controls_only || node->is_class("Control")) {
+		if (node_matches_any_type(node, include_types) && !node_matches_any_type(node, exclude_types)) {
 			Dictionary entry;
 			entry["depth"] = pending.depth;
 			entry["path"] = String(node->get_path());

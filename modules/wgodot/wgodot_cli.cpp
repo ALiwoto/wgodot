@@ -386,12 +386,26 @@ String make_absolute_output_path(const String &p_path) {
 
 struct GameCommandOptions {
 	bool json_output = false;
-	bool controls_only = false;
 	int session = -1;
 	int max_depth = -1;
 	String root;
 	String output;
+	PackedStringArray include_types;
+	PackedStringArray exclude_types;
 };
+
+bool append_tree_filter_types(const String &p_option, const String &p_value, PackedStringArray &r_types) {
+	const PackedStringArray values = p_value.split(",");
+	for (int i = 0; i < values.size(); i++) {
+		const String type = values[i].strip_edges();
+		if (type.is_empty()) {
+			print_line("wgodot: " + p_option + " requires one or more comma-separated type names.");
+			return false;
+		}
+		r_types.push_back(type);
+	}
+	return true;
+}
 
 bool parse_game_command_options(const String &p_command, const Vector<String> &p_arguments, bool p_allow_tree_options, bool p_allow_output, GameCommandOptions &r_options) {
 	for (int i = 0; i < p_arguments.size(); i++) {
@@ -404,8 +418,15 @@ bool parse_game_command_options(const String &p_command, const Vector<String> &p
 				return false;
 			}
 			r_options.session = p_arguments[++i].to_int();
-		} else if (p_allow_tree_options && argument == "--controls") {
-			r_options.controls_only = true;
+		} else if (p_allow_tree_options && (argument == "--include" || argument == "--exclude")) {
+			if (i + 1 >= p_arguments.size()) {
+				print_line("wgodot: " + argument + " requires one or more type names.");
+				return false;
+			}
+			PackedStringArray &types = argument == "--include" ? r_options.include_types : r_options.exclude_types;
+			if (!append_tree_filter_types(argument, p_arguments[++i], types)) {
+				return false;
+			}
 		} else if (p_allow_tree_options && argument == "--depth") {
 			if (i + 1 >= p_arguments.size() || !p_arguments[i + 1].is_valid_int() || p_arguments[i + 1].to_int() < 0) {
 				print_line("wgodot: --depth requires a non-negative integer.");
@@ -429,13 +450,21 @@ bool parse_game_command_options(const String &p_command, const Vector<String> &p
 			return false;
 		}
 	}
+	if (p_allow_tree_options && r_options.include_types.is_empty()) {
+		r_options.include_types.push_back("*");
+	}
 	return true;
 }
 
 void add_game_options_to_request(const GameCommandOptions &p_options, Dictionary &r_request) {
 	Dictionary options;
-	options["controls_only"] = p_options.controls_only;
 	options["max_depth"] = p_options.max_depth;
+	if (!p_options.include_types.is_empty()) {
+		options["include_types"] = p_options.include_types;
+	}
+	if (!p_options.exclude_types.is_empty()) {
+		options["exclude_types"] = p_options.exclude_types;
+	}
 	if (!p_options.root.is_empty()) {
 		options["root"] = p_options.root;
 	}
