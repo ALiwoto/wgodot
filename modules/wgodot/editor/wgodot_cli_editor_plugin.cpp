@@ -1,0 +1,303 @@
+// wgodot-changes::file
+/**************************************************************************/
+/*  wgodot_cli_editor_plugin.cpp                                          */
+/**************************************************************************/
+
+#include "wgodot_cli_editor_plugin.h"
+
+#include "../wgodot_cli.h"
+
+#include "core/crypto/crypto_core.h"
+#include "core/io/dir_access.h"
+#include "core/io/file_access.h"
+#include "core/io/json.h"
+#include "core/os/os.h"
+#include "core/os/time.h"
+#include "editor/debugger/editor_debugger_node.h"
+#include "editor/debugger/script_editor_debugger.h"
+
+namespace {
+
+constexpr uint64_t CONNECTION_TIMEOUT_MSEC = 5000;
+constexpr int MAX_PACKET_SIZE = 1024 * 1024;
+
+Dictionary make_error_response(const String &p_error, const String &p_message) {
+	Dictionary response;
+	response["ok"] = false;
+	response["error"] = p_error;
+	response["message"] = p_message;
+	response["protocol"] = WGodotCLI::PROTOCOL_VERSION;
+	return response;
+}
+
+} // namespace
+
+void WGodotCLIEditorPlugin::_bind_methods() {
+}
+
+String WGodotCLIEditorPlugin::generate_random_hex(int p_byte_count) {
+	Vector<uint8_t> random_bytes;
+	random_bytes.resize(p_byte_count);
+
+	CryptoCore::RandomGenerator random;
+	if (random.init() != OK || random.get_random_bytes(random_bytes.ptrw(), random_bytes.size()) != OK) {
+		return String();
+	}
+	return String::hex_encode_buffer(random_bytes.ptr(), random_bytes.size());
+}
+
+bool WGodotCLIEditorPlugin::secure_token_matches(const String &p_expected, const String &p_received) {
+	const CharString expected = p_expected.utf8();
+	const CharString received = p_received.utf8();
+	const int expected_length = expected.length();
+	const int received_length = received.length();
+	uint32_t difference = static_cast<uint32_t>(expected_length ^ received_length);
+	for (int i = 0; i < expected_length; i++) {
+		const uint8_t received_byte = i < received_length ? static_cast<uint8_t>(received[i]) : 0;
+		difference |= static_cast<uint8_t>(expected[i]) ^ received_byte;
+	}
+	return difference == 0;
+}
+
+bool WGodotCLIEditorPlugin::start_server() {
+	project_root = WGodotCLI::get_current_project_root();
+	if (project_root.is_empty()) {
+		return false;
+	}
+	project_key = WGodotCLI::get_project_key(project_root);
+	token = generate_random_hex(32);
+	instance_id = generate_random_hex(16);
+	if (token.is_empty() || instance_id.is_empty()) {
+		ERR_PRINT("WGodot CLI server could not generate its authentication token.");
+		return false;
+	}
+
+	server.instantiate();
+	const Error listen_error = server->listen(0, IPAddress("127.0.0.1"));
+	if (listen_error != OK) {
+		ERR_PRINT("WGodot CLI server could not listen on the loopback interface.");
+		server.unref();
+		return false;
+	}
+
+	const String discovery_directory = WGodotCLI::get_project_agents_directory(project_key);
+	if (DirAccess::make_dir_recursive_absolute(discovery_directory) != OK) {
+		ERR_PRINT("WGodot CLI server could not create its discovery directory.");
+		server->stop();
+		server.unref();
+		return false;
+	}
+
+	Dictionary record;
+	record["protocol"] = WGodotCLI::PROTOCOL_VERSION;
+	record["project_root"] = project_root;
+	record["project_key"] = project_key;
+	record["instance_id"] = instance_id;
+	record["host"] = "127.0.0.1";
+	record["port"] = server->get_local_port();
+	record["token"] = token;
+	record["pid"] = OS::get_singleton()->get_process_id();
+	record["started_at"] = static_cast<int64_t>(Time::get_singleton()->get_unix_time_from_system() * 1000000.0);
+
+	discovery_file = discovery_directory.path_join(instance_id + ".json");
+	const String temporary_discovery_file = discovery_file + ".tmp";
+	Ref<FileAccess> file = FileAccess::open(temporary_discovery_file, FileAccess::WRITE);
+	if (file.is_null()) {
+		ERR_PRINT("WGodot CLI server could not write its discovery record.");
+		server->stop();
+		server.unref();
+		discovery_file.clear();
+		return false;
+	}
+	file->store_string(JSON::stringify(record, "", true));
+	file->flush();
+	file.unref();
+	if (DirAccess::rename_absolute(temporary_discovery_file, discovery_file) != OK) {
+		ERR_PRINT("WGodot CLI server could not publish its discovery record.");
+		DirAccess::remove_absolute(temporary_discovery_file);
+		server->stop();
+		server.unref();
+		discovery_file.clear();
+		return false;
+	}
+
+	return true;
+}
+
+void WGodotCLIEditorPlugin::stop_server() {
+	connections.clear();
+	if (server.is_valid()) {
+		server->stop();
+		server.unref();
+	}
+	if (!discovery_file.is_empty() && FileAccess::exists(discovery_file)) {
+		DirAccess::remove_absolute(discovery_file);
+	}
+	discovery_file.clear();
+	token.clear();
+}
+
+void WGodotCLIEditorPlugin::accept_connections() {
+	if (server.is_null()) {
+		return;
+	}
+	while (server->is_connection_available()) {
+		Ref<StreamPeerTCP> tcp = server->take_connection();
+		if (tcp.is_null()) {
+			break;
+		}
+
+		PendingConnection connection;
+		connection.tcp = tcp;
+		connection.packet.instantiate();
+		connection.packet->set_input_buffer_max_size(MAX_PACKET_SIZE);
+		connection.packet->set_output_buffer_max_size(MAX_PACKET_SIZE);
+		connection.packet->set_stream_peer(tcp);
+		connection.accepted_at_msec = OS::get_singleton()->get_ticks_msec();
+		connections.push_back(connection);
+	}
+}
+
+Dictionary WGodotCLIEditorPlugin::make_status_response(const Dictionary &p_request) const {
+	Dictionary response;
+	response["ok"] = true;
+	response["protocol"] = WGodotCLI::PROTOCOL_VERSION;
+	response["project_root"] = project_root;
+	response["editor_pid"] = OS::get_singleton()->get_process_id();
+
+	Array sessions;
+	int active_session_count = 0;
+	int only_active_session = -1;
+	int current_session = -1;
+	EditorDebuggerNode *debugger_node = EditorDebuggerNode::get_singleton();
+	ScriptEditorDebugger *current_debugger = debugger_node ? debugger_node->get_current_debugger() : nullptr;
+	if (debugger_node) {
+		for (int id = 0;; id++) {
+			ScriptEditorDebugger *debugger = debugger_node->get_debugger(id);
+			if (debugger == nullptr) {
+				break;
+			}
+
+			const bool active = debugger->is_session_active();
+			Dictionary session;
+			session["id"] = id;
+			session["active"] = active;
+			session["selected"] = debugger == current_debugger;
+			session["pid"] = debugger->get_remote_pid();
+			session["paused"] = debugger->is_breaked();
+			session["errors"] = debugger->get_error_count();
+			session["warnings"] = debugger->get_warning_count();
+			sessions.push_back(session);
+
+			if (debugger == current_debugger) {
+				current_session = id;
+			}
+			if (active) {
+				active_session_count++;
+				only_active_session = id;
+			}
+		}
+	}
+
+	int automatic_session = -1;
+	String selection_reason = "no_active_session";
+	if (p_request.has("session")) {
+		const int requested_session = p_request["session"];
+		ScriptEditorDebugger *requested_debugger = debugger_node ? debugger_node->get_debugger(requested_session) : nullptr;
+		if (requested_debugger == nullptr || !requested_debugger->is_session_active()) {
+			return make_error_response("invalid_session", vformat("Session %d is not active.", requested_session));
+		}
+		automatic_session = requested_session;
+		selection_reason = "requested";
+	} else if (current_session >= 0 && current_debugger->is_session_active()) {
+		automatic_session = current_session;
+		selection_reason = "editor_selected";
+	} else if (active_session_count == 1) {
+		automatic_session = only_active_session;
+		selection_reason = "only_active";
+	} else if (active_session_count > 1) {
+		selection_reason = "ambiguous";
+	}
+
+	response["sessions"] = sessions;
+	response["session_count"] = sessions.size();
+	response["active_sessions"] = active_session_count;
+	response["game_running"] = active_session_count > 0;
+	response["automatic_session"] = automatic_session;
+	response["session_selection"] = selection_reason;
+	return response;
+}
+
+void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
+	const uint8_t *buffer = nullptr;
+	int buffer_size = 0;
+	if (p_connection.packet->get_packet(&buffer, buffer_size) != OK || buffer_size <= 0 || buffer_size > MAX_PACKET_SIZE) {
+		p_connection.tcp->disconnect_from_host();
+		return;
+	}
+
+	Dictionary request;
+	JSON json;
+	if (json.parse(String::utf8(reinterpret_cast<const char *>(buffer), buffer_size)) == OK && json.get_data().get_type() == Variant::DICTIONARY) {
+		request = json.get_data();
+	}
+
+	Dictionary response;
+	const String received_token = request.get("token", String());
+	if (!secure_token_matches(token, received_token) || String(request.get("project_key", String())) != project_key) {
+		response = make_error_response("authentication_failed", "Authentication failed.");
+	} else if ((int)request.get("protocol", 0) != WGodotCLI::PROTOCOL_VERSION) {
+		response = make_error_response("protocol_mismatch", "The CLI and editor protocol versions do not match.");
+	} else {
+		const String command = request.get("command", String());
+		if (command == "status") {
+			response = make_status_response(request);
+		} else {
+			response = make_error_response("unknown_command", "Unknown WGodot editor command: " + command);
+		}
+	}
+
+	const PackedByteArray response_bytes = JSON::stringify(response, "", true).to_utf8_buffer();
+	p_connection.packet->put_packet(response_bytes.ptr(), response_bytes.size());
+	p_connection.tcp->disconnect_from_host();
+}
+
+void WGodotCLIEditorPlugin::poll_connections() {
+	const uint64_t now = OS::get_singleton()->get_ticks_msec();
+	for (int i = connections.size() - 1; i >= 0; i--) {
+		PendingConnection &connection = connections.write[i];
+		connection.tcp->poll();
+		if (connection.packet->get_available_packet_count() > 0) {
+			process_request(connection);
+			connections.remove_at(i);
+		} else if (connection.tcp->get_status() != StreamPeerTCP::STATUS_CONNECTED || now - connection.accepted_at_msec > CONNECTION_TIMEOUT_MSEC) {
+			connection.tcp->disconnect_from_host();
+			connections.remove_at(i);
+		}
+	}
+}
+
+void WGodotCLIEditorPlugin::_notification(int p_what) {
+	switch (p_what) {
+		case NOTIFICATION_ENTER_TREE: {
+			if (start_server()) {
+				set_process(true);
+			}
+		} break;
+		case NOTIFICATION_PROCESS: {
+			accept_connections();
+			poll_connections();
+		} break;
+		case NOTIFICATION_EXIT_TREE: {
+			set_process(false);
+			stop_server();
+		} break;
+	}
+}
+
+WGodotCLIEditorPlugin::WGodotCLIEditorPlugin() {
+}
+
+WGodotCLIEditorPlugin::~WGodotCLIEditorPlugin() {
+	stop_server();
+}

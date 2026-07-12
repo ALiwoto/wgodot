@@ -20,7 +20,15 @@ This file tracks user-facing wgodot features. It intentionally avoids internal e
 
 8. Embedded GDScript blocking: `wgodot/gdscript/disable_embedded_gdscript` prevents exported resources from carrying embedded script source.
 
-9. Project GDScript CLI check: `godot --headless --wgodot-check` scans all project `.gd` files under `res://`, respecting `.gdignore` directories, then prints parse errors, analyzer errors, and active GDScript warnings. It uses the normal project path resolution, so `--path <project>`, `--path .`, and running from the project directory without `--path` are supported.
+9. Project GDScript CLI check: `godot --wg check` scans all project `.gd` files under `res://`, respecting `.gdignore` directories, then prints parse errors, analyzer errors, and active GDScript warnings. WGodot CLI commands run headlessly and search upward from the current directory for `project.godot`; normal Godot options such as `--path` can be placed before `--wg`.
+
+## Agent CLI
+
+- `godot --wg status` connects to the running WGodot editor for the current project and prints its editor and active game-session status. `--json` returns the same result as structured JSON, and `--session <id>` is available only when an explicit game instance is needed.
+
+- Running editors publish per-project discovery records in the Godot editor data directory. Each editor generates a new random authentication token at startup; the CLI reads it automatically and includes it directly in its single request, so normal commands need no token, project path, or session argument.
+
+- WGodot CLI project discovery searches from the current directory upward. When no project can be resolved, the CLI uses the only running WGodot editor if exactly one exists and otherwise reports the ambiguity.
 
 ## Export Protection
 

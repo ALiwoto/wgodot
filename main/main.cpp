@@ -145,15 +145,18 @@
 
 #include "modules/modules_enabled.gen.h" // For mono.
 
+// wgodot-changes::begin
+#ifdef MODULE_WGODOT_ENABLED
+#include "modules/wgodot/wgodot_cli.h"
+#endif
+// wgodot-changes::end
+
 #if defined(MODULE_MONO_ENABLED) && defined(TOOLS_ENABLED)
 #include "modules/mono/editor/bindings_generator.h"
 #endif
 
 #ifdef MODULE_GDSCRIPT_ENABLED
 #include "modules/gdscript/gdscript.h"
-// wgodot-changes::begin
-#include "modules/gdscript/wgodot_gd/gdscript_check_cli.h"
-// wgodot-changes::end
 #if defined(TOOLS_ENABLED) && !defined(GDSCRIPT_NO_LSP)
 #include "modules/gdscript/language_server/gdscript_language_server.h"
 #endif // TOOLS_ENABLED && !GDSCRIPT_NO_LSP
@@ -698,13 +701,13 @@ void Main::print_help(const char *p_binary) {
 	print_help_option("-s, --script <script>", "Run a script.\n", CLI_OPTION_AVAILABILITY_TEMPLATE_UNSAFE);
 	print_help_option("--main-loop <main_loop_name>", "Run a MainLoop specified by its global class name.\n", CLI_OPTION_AVAILABILITY_TEMPLATE_UNSAFE);
 	print_help_option("--check-only", "Only parse for errors and quit (use with --script).\n", CLI_OPTION_AVAILABILITY_TEMPLATE_UNSAFE);
-// wgodot-changes::begin
-#ifdef MODULE_GDSCRIPT_ENABLED
-	print_help_option("--wgodot-check", "Scan project GDScript files for parse errors, analyzer errors, and warnings, then quit.\n", CLI_OPTION_AVAILABILITY_TEMPLATE_UNSAFE);
-#endif
-// wgodot-changes::end
 #endif // defined(OVERRIDE_PATH_ENABLED)
 #ifdef TOOLS_ENABLED
+	// wgodot-changes::begin
+#ifdef MODULE_WGODOT_ENABLED
+	print_help_option("--wg <command> [arguments]", "Run a WGodot CLI command. Use `--wg help` to list commands.\n", CLI_OPTION_AVAILABILITY_EDITOR);
+#endif
+	// wgodot-changes::end
 	print_help_option("--import", "Starts the editor, waits for any resources to be imported, and then quits.\n", CLI_OPTION_AVAILABILITY_EDITOR);
 	print_help_option("--export-release <preset> <path>", "Export the project in release mode using the given preset and output path. The preset name should match one defined in \"export_presets.cfg\".\n", CLI_OPTION_AVAILABILITY_EDITOR);
 	print_help_option("", "<path> should be absolute or relative to the project directory, and include the filename for the binary (e.g. \"builds/game.exe\").\n");
@@ -1161,6 +1164,17 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 	// Exit error code used in the `goto error` conditions.
 	// It's returned as the program exit code. ERR_HELP is special cased and handled as success (0).
 	Error exit_err = ERR_INVALID_PARAMETER;
+
+	// wgodot-changes::begin
+#ifdef MODULE_WGODOT_ENABLED
+	if (WGodotCLI::extract_arguments(args, project_path)) {
+		cmdline_tool = true;
+		audio_driver = NULL_AUDIO_DRIVER;
+		display_driver = NULL_DISPLAY_DRIVER;
+		Engine::get_singleton()->_print_header = false;
+	}
+#endif
+	// wgodot-changes::end
 
 	I = args.front();
 	while (I) {
@@ -1688,13 +1702,6 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 			cmdline_tool = true;
 			wait_for_import = true;
 			quit_after = 1;
-// wgodot-changes::begin
-#ifdef MODULE_GDSCRIPT_ENABLED
-		} else if (arg == "--wgodot-check") {
-			cmdline_tool = true;
-			main_args.push_back(arg);
-#endif
-// wgodot-changes::end
 		} else if (arg == "--export-release" || arg == "--export-debug" ||
 				arg == "--export-pack" || arg == "--export-patch") { // Export project
 			// Actually handling is done in start().
@@ -4033,11 +4040,6 @@ int Main::start() {
 	String script;
 	String main_loop_type;
 	bool check_only = false;
-// wgodot-changes::begin
-#ifdef MODULE_GDSCRIPT_ENABLED
-	bool wgodot_check = false;
-#endif
-// wgodot-changes::end
 
 #ifdef TOOLS_ENABLED
 	String doc_tool_path;
@@ -4068,12 +4070,6 @@ int Main::start() {
 		// Designed to override and pass arguments to the unit test handler.
 		if (E->get() == "--check-only") {
 			check_only = true;
-// wgodot-changes::begin
-#ifdef MODULE_GDSCRIPT_ENABLED
-		} else if (E->get() == "--wgodot-check") {
-			wgodot_check = true;
-#endif
-// wgodot-changes::end
 #ifdef TOOLS_ENABLED
 		} else if (E->get() == "--no-docbase") {
 			gen_flags.set_flag(DocTools::GENERATE_FLAG_SKIP_BASIC_TYPES);
@@ -4341,13 +4337,14 @@ int Main::start() {
 
 #endif // TOOLS_ENABLED
 
-// wgodot-changes::begin
-#ifdef MODULE_GDSCRIPT_ENABLED
-	if (wgodot_check) {
-		return WGodotGDScriptCheckCLI::run_project_check();
+	// wgodot-changes::begin
+#ifdef MODULE_WGODOT_ENABLED
+	int wgodot_exit_code = EXIT_SUCCESS;
+	if (WGodotCLI::execute_if_requested(wgodot_exit_code)) {
+		return wgodot_exit_code;
 	}
 #endif
-// wgodot-changes::end
+	// wgodot-changes::end
 
 #if defined(OVERRIDE_PATH_ENABLED)
 	bool disable_override = GLOBAL_GET("application/config/disable_project_settings_override");
