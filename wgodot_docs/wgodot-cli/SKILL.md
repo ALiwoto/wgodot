@@ -101,6 +101,7 @@ godot --wg tree --include "Control, Node3D" --exclude Button
 godot --wg tree --exclude "Timer, AnimationPlayer"
 godot --wg tree --include Button --property text
 godot --wg tree --include ButtonElement --property "element_text, position"
+godot --wg tree --include ButtonElement --property "position.x"
 godot --wg tree --depth 3
 godot --wg tree --root /root/Main/UI
 godot --wg tree --include Control --root /root/Main/UI --json
@@ -110,7 +111,7 @@ godot --wg tree --include Control --root /root/Main/UI --json
 - `--exclude <type>` excludes that type and all types that inherit it. Exclusions are applied after inclusions and take precedence.
 - Repeat `--include` or `--exclude`, or pass a comma-separated list, to match several types. `*` means every type for either option.
 - Use native Godot class names or registered global script class names. The command reports unknown type names instead of silently returning an empty tree.
-- `--property <name>` appends a runtime property value to each matching node. The argument is repeatable, and comma-separated property names are also accepted.
+- `--property <name>` appends a runtime property value to each matching node. Use dots for nested access, such as `position.x` or `state.player.stats.health`. Nesting may continue through objects, dictionaries, and built-in value fields. The argument is repeatable, and comma-separated property names are also accepted.
 - `--depth <number>` limits traversal depth relative to the selected root.
 - `--root <node-path>` inspects only that runtime subtree.
 - `--json` returns node paths, names, types, IDs, visibility, child counts, and scene paths as structured data.

@@ -110,6 +110,19 @@ String get_property_display_value(const Variant &p_value) {
 	return p_value.stringify();
 }
 
+Variant get_nested_property(Node *p_node, const String &p_property_path, bool &r_valid) {
+	r_valid = false;
+	const PackedStringArray segments = p_property_path.split(".");
+	Vector<StringName> property_path;
+	for (int i = 0; i < segments.size(); i++) {
+		if (segments[i].is_empty()) {
+			return Variant();
+		}
+		property_path.push_back(segments[i]);
+	}
+	return p_node->get_indexed(property_path, &r_valid);
+}
+
 Array collect_tree(const Dictionary &p_options, Dictionary &r_error) {
 	Array result;
 	SceneTree *scene_tree = SceneTree::get_singleton();
@@ -162,11 +175,11 @@ Array collect_tree(const Dictionary &p_options, Dictionary &r_error) {
 			if (!requested_properties.is_empty()) {
 				Array properties;
 				for (int i = 0; i < requested_properties.size(); i++) {
-					const StringName property_name = requested_properties[i];
+					const String property_name = requested_properties[i];
 					bool valid = false;
-					const Variant value = node->get(property_name, &valid);
+					const Variant value = get_nested_property(node, property_name, valid);
 					Dictionary property;
-					property["name"] = String(property_name);
+					property["name"] = property_name;
 					property["valid"] = valid;
 					property["value"] = valid ? get_property_display_value(value) : String("<missing>");
 					properties.push_back(property);
