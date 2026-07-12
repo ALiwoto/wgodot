@@ -6,13 +6,19 @@
 #include "wgodot_game_bridge.h"
 
 #include "core/debugger/engine_debugger.h"
+#include "core/input/input.h"
+#include "core/input/input_event.h"
+#include "core/input/input_map.h"
 #include "core/io/dir_access.h"
 #include "core/io/image.h"
+#include "core/math/math_funcs.h"
 #include "core/object/class_db.h"
 #include "core/object/script_language.h"
+#include "core/os/keyboard.h"
 #include "core/os/os.h"
 #include "core/os/time.h"
 #include "core/templates/vector.h"
+#include "scene/gui/control.h"
 #include "scene/main/node.h"
 #include "scene/main/scene_tree.h"
 #include "scene/main/viewport.h"
@@ -217,6 +223,270 @@ Dictionary take_screenshot(const Dictionary &p_options) {
 	return screenshot;
 }
 
+Window *find_keyboard_window() {
+	SceneTree *scene_tree = SceneTree::get_singleton();
+	Window *root = scene_tree ? scene_tree->get_root() : nullptr;
+	if (root == nullptr) {
+		return nullptr;
+	}
+
+	Vector<Node *> stack;
+	stack.push_back(root);
+	while (!stack.is_empty()) {
+		Node *node = stack[stack.size() - 1];
+		stack.resize(stack.size() - 1);
+		Viewport *viewport = Object::cast_to<Viewport>(node);
+		if (viewport && viewport->gui_get_focus_owner()) {
+			return viewport->gui_get_focus_owner()->get_window();
+		}
+		for (int i = node->get_child_count() - 1; i >= 0; i--) {
+			stack.push_back(node->get_child(i));
+		}
+	}
+	return root;
+}
+
+void send_key_event(Key p_keycode, char32_t p_unicode, bool p_pressed, int64_t p_window_id) {
+	Ref<InputEventKey> event = InputEventKey::create_reference(p_keycode);
+	event->set_unicode(p_unicode);
+	event->set_key_label(fix_key_label(p_unicode, p_keycode & KeyModifierMask::CODE_MASK));
+	event->set_pressed(p_pressed);
+	event->set_window_id(p_window_id);
+	Input::get_singleton()->parse_input_event(event);
+}
+
+bool parse_keycode(const String &p_text, Key &r_keycode) {
+	const PackedStringArray parts = p_text.split("+", false);
+	if (parts.is_empty()) {
+		return false;
+	}
+
+	const String key_text = parts[parts.size() - 1].strip_edges();
+	Key keycode = find_keycode(key_text);
+	if (keycode == Key::NONE && key_text.length() == 1) {
+		keycode = fix_keycode(key_text[0], static_cast<Key>(String::char_uppercase(key_text[0])));
+	}
+	if (keycode == Key::NONE) {
+		return false;
+	}
+
+	for (int i = 0; i < parts.size() - 1; i++) {
+		const String modifier = parts[i].strip_edges().to_lower();
+		if (modifier == "shift") {
+			keycode |= KeyModifierMask::SHIFT;
+		} else if (modifier == "ctrl" || modifier == "control") {
+			keycode |= KeyModifierMask::CTRL;
+		} else if (modifier == "alt" || modifier == "option") {
+			keycode |= KeyModifierMask::ALT;
+		} else if (modifier == "meta" || modifier == "command" || modifier == "cmd" || modifier == "windows" || modifier == "win") {
+			keycode |= KeyModifierMask::META;
+		} else if (modifier == "cmdorctrl" || modifier == "commandorcontrol") {
+			keycode |= KeyModifierMask::CMD_OR_CTRL;
+		} else {
+			return false;
+		}
+	}
+
+	r_keycode = keycode;
+	return true;
+}
+
+Dictionary type_text(const Dictionary &p_options) {
+	const String text = p_options.get("text", String());
+	Window *window = find_keyboard_window();
+	if (window == nullptr) {
+		return make_error("type", "window_unavailable", "The running game has no window available for keyboard input.");
+	}
+
+	for (int i = 0; i < text.length(); i++) {
+		const char32_t unicode = text[i];
+		const Key keycode = fix_keycode(unicode, Key::NONE);
+		send_key_event(keycode, unicode, true, window->get_window_id());
+		send_key_event(keycode, unicode, false, window->get_window_id());
+	}
+
+	Dictionary response;
+	response["ok"] = true;
+	response["command"] = "type";
+	response["characters"] = text.length();
+	return response;
+}
+
+Dictionary send_key(const Dictionary &p_options) {
+	const String requested_key = p_options.get("key", String());
+	Key keycode = Key::NONE;
+	if (!parse_keycode(requested_key, keycode)) {
+		return make_error("key", "invalid_key", "Unknown key or key combination: " + requested_key);
+	}
+
+	const String state = p_options.get("state", "tap");
+	if (state != "tap" && state != "down" && state != "up") {
+		return make_error("key", "invalid_key_state", "Key state must be tap, down, or up.");
+	}
+	Window *window = find_keyboard_window();
+	if (window == nullptr) {
+		return make_error("key", "window_unavailable", "The running game has no window available for keyboard input.");
+	}
+
+	if (state != "up") {
+		send_key_event(keycode, 0, true, window->get_window_id());
+	}
+	if (state != "down") {
+		send_key_event(keycode, 0, false, window->get_window_id());
+	}
+
+	Dictionary response;
+	response["ok"] = true;
+	response["command"] = "key";
+	response["key"] = keycode_get_string(keycode);
+	response["state"] = state;
+	return response;
+}
+
+Dictionary send_action(const Dictionary &p_options) {
+	const StringName action = p_options.get("action", StringName());
+	if (action.is_empty() || !InputMap::get_singleton()->has_action(action)) {
+		return make_error("action", "action_not_found", "InputMap action was not found: " + String(action));
+	}
+	const String state = p_options.get("state", "tap");
+	if (state != "tap" && state != "down" && state != "up") {
+		return make_error("action", "invalid_action_state", "Action state must be tap, down, or up.");
+	}
+	const float strength = p_options.get("strength", 1.0);
+	if (!Math::is_finite(strength) || strength < 0.0f || strength > 1.0f) {
+		return make_error("action", "invalid_action_strength", "Action strength must be from 0 to 1.");
+	}
+
+	if (state != "up") {
+		Ref<InputEventAction> press;
+		press.instantiate();
+		press->set_action(action);
+		press->set_strength(strength);
+		press->set_pressed(true);
+		Input::get_singleton()->parse_input_event(press);
+	}
+	if (state != "down") {
+		Ref<InputEventAction> release;
+		release.instantiate();
+		release->set_action(action);
+		release->set_strength(0.0f);
+		release->set_pressed(false);
+		Input::get_singleton()->parse_input_event(release);
+	}
+
+	Dictionary response;
+	response["ok"] = true;
+	response["command"] = "action";
+	response["action"] = String(action);
+	response["state"] = state;
+	response["strength"] = strength;
+	return response;
+}
+
+MouseButton get_mouse_button(const String &p_button) {
+	if (p_button == "right") {
+		return MouseButton::RIGHT;
+	}
+	if (p_button == "middle") {
+		return MouseButton::MIDDLE;
+	}
+	return MouseButton::LEFT;
+}
+
+void send_mouse_button_event(const Vector2 &p_position, MouseButton p_button, bool p_pressed, bool p_double_click, int64_t p_window_id, BitField<MouseButtonMask> p_button_mask) {
+	Ref<InputEventMouseButton> event;
+	event.instantiate();
+	event->set_position(p_position);
+	event->set_global_position(p_position);
+	event->set_button_index(p_button);
+	event->set_button_mask(p_button_mask);
+	event->set_pressed(p_pressed);
+	event->set_double_click(p_double_click);
+	event->set_window_id(p_window_id);
+	Input::get_singleton()->parse_input_event(event);
+}
+
+Dictionary click(const Dictionary &p_options) {
+	SceneTree *scene_tree = SceneTree::get_singleton();
+	Window *window = scene_tree ? scene_tree->get_root() : nullptr;
+	if (window == nullptr) {
+		return make_error("click", "window_unavailable", "The running game has no window available for mouse input.");
+	}
+
+	Vector2 position;
+	String target_path;
+	if (p_options.has("target")) {
+		target_path = p_options.get("target", String());
+		Node *node = window->get_node_or_null(NodePath(target_path));
+		if (node == nullptr) {
+			return make_error("click", "node_not_found", "Click target was not found: " + target_path);
+		}
+		Control *control = Object::cast_to<Control>(node);
+		if (control == nullptr) {
+			return make_error("click", "target_not_control", "Click target is not a Control: " + target_path);
+		}
+		if (!control->is_visible_in_tree()) {
+			return make_error("click", "target_not_visible", "Click target is not visible: " + target_path);
+		}
+		if (control->get_mouse_filter_with_override() == Control::MOUSE_FILTER_IGNORE) {
+			return make_error("click", "target_ignores_mouse", "Click target ignores mouse input: " + target_path);
+		}
+		if (control->get_size().x <= 0.0f || control->get_size().y <= 0.0f) {
+			return make_error("click", "target_has_no_area", "Click target has no clickable area: " + target_path);
+		}
+		position = control->get_screen_transform().xform(control->get_size() * 0.5f);
+		window = control->get_window();
+		if (window == nullptr) {
+			return make_error("click", "window_unavailable", "Click target has no window: " + target_path);
+		}
+	} else {
+		position.x = p_options.get("x", 0.0);
+		position.y = p_options.get("y", 0.0);
+		if (!Math::is_finite(position.x) || !Math::is_finite(position.y)) {
+			return make_error("click", "invalid_position", "Click coordinates must be finite numbers.");
+		}
+	}
+
+	const String button_name = p_options.get("button", "left");
+	if (button_name != "left" && button_name != "right" && button_name != "middle") {
+		return make_error("click", "invalid_mouse_button", "Mouse button must be left, right, or middle.");
+	}
+	const MouseButton button = get_mouse_button(button_name);
+	const MouseButtonMask button_flag = mouse_button_to_mask(button);
+	const BitField<MouseButtonMask> initial_mask = Input::get_singleton()->get_mouse_button_mask();
+	BitField<MouseButtonMask> pressed_mask = initial_mask;
+	pressed_mask.set_flag(button_flag);
+	BitField<MouseButtonMask> released_mask = initial_mask;
+	released_mask.clear_flag(button_flag);
+
+	Ref<InputEventMouseMotion> motion;
+	motion.instantiate();
+	motion->set_position(position);
+	motion->set_global_position(position);
+	motion->set_relative(position - Input::get_singleton()->get_mouse_position());
+	motion->set_relative_screen_position(motion->get_relative());
+	motion->set_button_mask(initial_mask);
+	motion->set_window_id(window->get_window_id());
+	Input::get_singleton()->parse_input_event(motion);
+
+	send_mouse_button_event(position, button, true, false, window->get_window_id(), pressed_mask);
+	send_mouse_button_event(position, button, false, false, window->get_window_id(), released_mask);
+	if ((bool)p_options.get("double", false)) {
+		send_mouse_button_event(position, button, true, true, window->get_window_id(), pressed_mask);
+		send_mouse_button_event(position, button, false, true, window->get_window_id(), released_mask);
+	}
+
+	Dictionary response;
+	response["ok"] = true;
+	response["command"] = "click";
+	response["target"] = target_path;
+	response["x"] = position.x;
+	response["y"] = position.y;
+	response["button"] = button_name;
+	response["double"] = (bool)p_options.get("double", false);
+	return response;
+}
+
 Error parse_message(void *p_user, const String &p_message, const Array &p_arguments, bool &r_captured) {
 	r_captured = p_message == "request";
 	if (!r_captured) {
@@ -267,6 +537,14 @@ Error parse_message(void *p_user, const String &p_message, const Array &p_argume
 				response["screenshot"] = screenshot;
 			}
 		}
+	} else if (command == "click") {
+		response = click(options);
+	} else if (command == "type") {
+		response = type_text(options);
+	} else if (command == "key") {
+		response = send_key(options);
+	} else if (command == "action") {
+		response = send_action(options);
 	} else {
 		response = make_error(command, "unknown_game_command", "Unknown WGodot game command: " + command);
 	}

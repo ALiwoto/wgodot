@@ -1,6 +1,6 @@
 ---
 name: wgodot-cli
-description: Use WGodot's agent-oriented command-line interface to run or stop a project, inspect the runtime scene tree, capture screenshots, observe game state, query editor sessions, and check project GDScript. Use when an agent needs `godot --wg` commands while developing, inspecting, or testing a WGodot project.
+description: Use WGodot's agent-oriented command-line interface to run or stop a project, inspect the runtime scene tree, capture screenshots, inject mouse, keyboard, text, and InputMap action input, query editor sessions, and check project GDScript. Use when an agent needs `godot --wg` commands while developing, inspecting, or testing a WGodot project.
 ---
 
 # WGodot CLI
@@ -52,7 +52,7 @@ WGodot normally chooses the editor-selected active game session automatically. D
 godot --wg status --session 1
 ```
 
-Commands that inspect a running game, including `tree`, `ss`, and `observe`, also accept `--session <id>`.
+Commands that operate on a running game, including `tree`, `ss`, `observe`, `click`, `type`, `key`, and `action`, also accept `--session <id>`.
 
 `status` does not start the editor or game. If it reports that no editor was found, ensure a WGodot editor is open on the same project. If it reports that no game is running, start the project in that editor before using commands that operate on the running game.
 
@@ -149,6 +149,57 @@ godot --wg observe --include Control --root /root/Main/UI -o screenshots/ui.png 
 
 Prefer `observe` when both visual state and runtime node structure are needed after an action. Prefer `ss` or `tree` alone when only one result is needed.
 
+## Input
+
+Click the center of a runtime `Control` using an exact path from `tree`:
+
+```powershell
+godot --wg click /root/Main/UI/PlayButton
+```
+
+Click a window position when no suitable `Control` exists:
+
+```powershell
+godot --wg click 640 360
+godot --wg click 640 360 --button right
+godot --wg click /root/Main/UI/Item --double
+```
+
+`--button` accepts `left`, `right`, or `middle` and defaults to `left`. Node-targeted clicks report an error when the target is missing, is not a `Control`, is hidden, ignores mouse input, or has no area. Prefer node paths because they avoid guessed coordinates.
+
+Type text through native key events. Click or otherwise focus the intended text control first:
+
+```powershell
+godot --wg click /root/Main/UI/NameEdit
+godot --wg type "Agent Name"
+```
+
+Send a logical key or key combination:
+
+```powershell
+godot --wg key Enter
+godot --wg key "Ctrl+A"
+godot --wg key Escape
+```
+
+Send an `InputMap` action:
+
+```powershell
+godot --wg action ui_accept
+godot --wg action move_right --strength 0.5
+```
+
+A plain `key` or `action` sends a press followed by a release. Hold and release input explicitly when testing code that polls input state:
+
+```powershell
+godot --wg key W --down
+godot --wg key W --up
+godot --wg action move_right --down
+godot --wg action move_right --up
+```
+
+These commands queue native Godot input but do not wait for a later rendered frame. Inspect the result with a separate `observe`, `tree`, or `ss` command. Add `--json` when structured acknowledgement or errors are useful.
+
 ## GDScript check
 
 After editing GDScript, scan all project `.gd` files for parser errors, analyzer errors, and active warnings:
@@ -166,9 +217,10 @@ This command works without a running editor because it checks the project direct
 1. Work from the target project directory or one of its subdirectories.
 2. Run the command needed for the task directly; do not use `status` as a mandatory first step.
 3. Use `run` when the game is not already running, then issue game commands directly.
-4. Prefer `observe` for a combined visual and structural check; use filtered `tree` output for large interfaces.
-5. Prefer normal human-readable output for interactive work and `--json` when reliable parsing is useful.
-6. Inspect the command's output and exit code before continuing.
-7. Use `godot --wg help` when a requested operation is not documented here.
+4. Prefer node-targeted `click` over coordinate clicks, then use `type`, `key`, or `action` for the intended interaction.
+5. Use `observe` after input for a combined visual and structural check; use filtered `tree` output for large interfaces.
+6. Prefer normal human-readable output for interactive work and `--json` when reliable parsing is useful.
+7. Inspect the command's output and exit code before continuing.
+8. Use `godot --wg help` when a requested operation is not documented here.
 
 Rely on automatic project and game-session selection unless the task genuinely involves multiple projects or game instances.

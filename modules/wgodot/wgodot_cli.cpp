@@ -201,6 +201,10 @@ void print_cli_help() {
 	print_line("  tree [options]                    Print the running game's scene tree.");
 	print_line("  ss [-o <path>] [--json]           Capture the running game viewport.");
 	print_line("  observe [options]                 Capture a screenshot and scene tree together.");
+	print_line("  click <node-path>|<x> <y>         Click a Control or viewport position.");
+	print_line("  type <text>                       Type text into the running game.");
+	print_line("  key <key> [--down|--up]           Send a logical key event.");
+	print_line("  action <name> [--down|--up]       Send an InputMap action event.");
 	print_line("  check                             Check all project GDScript files.");
 	print_line("  help                              Show this help.");
 }
@@ -509,6 +513,16 @@ int print_command_response(const Dictionary &p_response, bool p_json_output) {
 		const Dictionary screenshot = p_response.get("screenshot", Dictionary());
 		print_line(vformat("Screenshot: %s (%dx%d)", String(screenshot.get("path", String())), (int)screenshot.get("width", 0), (int)screenshot.get("height", 0)));
 		print_tree(p_response.get("tree", Array()));
+	} else if (command == "click") {
+		const String target = p_response.get("target", String());
+		const String location = target.is_empty() ? vformat("(%s, %s)", p_response.get("x", 0.0), p_response.get("y", 0.0)) : target;
+		print_line(vformat("Clicked %s with %s.", location, String(p_response.get("button", "left"))));
+	} else if (command == "type") {
+		print_line(vformat("Typed %d characters.", (int)p_response.get("characters", 0)));
+	} else if (command == "key") {
+		print_line(vformat("Key %s: %s.", String(p_response.get("key", String())), String(p_response.get("state", String()))));
+	} else if (command == "action") {
+		print_line(vformat("Action %s: %s.", String(p_response.get("action", String())), String(p_response.get("state", String()))));
 	}
 	return 0;
 }
@@ -540,6 +554,117 @@ int run_game_query_command(const String &p_command, const Vector<String> &p_argu
 	request["command"] = p_command;
 	add_game_options_to_request(options, request);
 	return run_editor_command(request, options.json_output);
+}
+
+struct InputCommandOptions {
+	bool json_output = false;
+	bool double_click = false;
+	int session = -1;
+	double strength = 1.0;
+	String button = "left";
+	String state = "tap";
+	Vector<String> operands;
+};
+
+bool parse_input_command_options(const String &p_command, const Vector<String> &p_arguments, InputCommandOptions &r_options) {
+	for (int i = 0; i < p_arguments.size(); i++) {
+		const String &argument = p_arguments[i];
+		if (argument == "--json") {
+			r_options.json_output = true;
+		} else if (argument == "--session") {
+			if (i + 1 >= p_arguments.size() || !p_arguments[i + 1].is_valid_int() || p_arguments[i + 1].to_int() < 0) {
+				print_line("wgodot: --session requires a non-negative integer session ID.");
+				return false;
+			}
+			r_options.session = p_arguments[++i].to_int();
+		} else if ((p_command == "key" || p_command == "action") && (argument == "--down" || argument == "--up")) {
+			if (r_options.state != "tap") {
+				print_line("wgodot: specify only one of --down or --up.");
+				return false;
+			}
+			r_options.state = argument == "--down" ? "down" : "up";
+		} else if (p_command == "action" && argument == "--strength") {
+			if (i + 1 >= p_arguments.size() || !p_arguments[i + 1].is_valid_float()) {
+				print_line("wgodot: --strength requires a number from 0 to 1.");
+				return false;
+			}
+			r_options.strength = p_arguments[++i].to_float();
+			if (r_options.strength < 0.0 || r_options.strength > 1.0) {
+				print_line("wgodot: --strength requires a number from 0 to 1.");
+				return false;
+			}
+		} else if (p_command == "click" && argument == "--button") {
+			if (i + 1 >= p_arguments.size()) {
+				print_line("wgodot: --button requires left, right, or middle.");
+				return false;
+			}
+			r_options.button = p_arguments[++i].to_lower();
+			if (r_options.button != "left" && r_options.button != "right" && r_options.button != "middle") {
+				print_line("wgodot: --button requires left, right, or middle.");
+				return false;
+			}
+		} else if (p_command == "click" && argument == "--double") {
+			r_options.double_click = true;
+		} else if (argument.begins_with("--")) {
+			print_line("wgodot: unknown " + p_command + " argument: " + argument);
+			return false;
+		} else {
+			r_options.operands.push_back(argument);
+		}
+	}
+	return true;
+}
+
+int run_input_command(const String &p_command, const Vector<String> &p_arguments) {
+	InputCommandOptions command_options;
+	if (!parse_input_command_options(p_command, p_arguments, command_options)) {
+		return 2;
+	}
+
+	Dictionary options;
+	if (p_command == "click") {
+		if (command_options.operands.size() == 1) {
+			options["target"] = command_options.operands[0];
+		} else if (command_options.operands.size() == 2 && command_options.operands[0].is_valid_float() && command_options.operands[1].is_valid_float()) {
+			options["x"] = command_options.operands[0].to_float();
+			options["y"] = command_options.operands[1].to_float();
+		} else {
+			print_line("wgodot: click requires one node path or two numeric coordinates.");
+			return 2;
+		}
+		options["button"] = command_options.button;
+		options["double"] = command_options.double_click;
+	} else if (p_command == "type") {
+		if (command_options.operands.size() != 1) {
+			print_line("wgodot: type requires one text argument; quote text containing spaces.");
+			return 2;
+		}
+		options["text"] = command_options.operands[0];
+	} else if (p_command == "key") {
+		if (command_options.operands.size() != 1) {
+			print_line("wgodot: key requires one key name, such as Enter or Ctrl+A.");
+			return 2;
+		}
+		options["key"] = command_options.operands[0];
+		options["state"] = command_options.state;
+	} else if (p_command == "action") {
+		if (command_options.operands.size() != 1 || command_options.operands[0].is_empty()) {
+			print_line("wgodot: action requires one InputMap action name.");
+			return 2;
+		}
+		options["action"] = command_options.operands[0];
+		options["state"] = command_options.state;
+		options["strength"] = command_options.strength;
+	}
+
+	Dictionary request;
+	request["protocol"] = PROTOCOL_VERSION;
+	request["command"] = p_command;
+	request["options"] = options;
+	if (command_options.session >= 0) {
+		request["session"] = command_options.session;
+	}
+	return run_editor_command(request, command_options.json_output);
 }
 
 int run_run_command(const Vector<String> &p_arguments) {
@@ -667,6 +792,10 @@ bool execute_if_requested(int &r_exit_code) {
 	}
 	if (command == "tree" || command == "ss" || command == "screenshot" || command == "observe") {
 		r_exit_code = run_game_query_command(command == "screenshot" ? "ss" : command, arguments);
+		return true;
+	}
+	if (command == "click" || command == "type" || command == "key" || command == "action") {
+		r_exit_code = run_input_command(command, arguments);
 		return true;
 	}
 

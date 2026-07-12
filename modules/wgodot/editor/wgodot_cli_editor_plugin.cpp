@@ -327,7 +327,7 @@ void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
 		finish_connection(p_connection, response);
 		return;
 	}
-	if (command == "tree" || command == "ss" || command == "observe") {
+	if (command == "tree" || command == "ss" || command == "observe" || command == "click" || command == "type" || command == "key" || command == "action") {
 		Dictionary session_error;
 		const int session = get_automatic_session(request, session_error);
 		if (session < 0) {
