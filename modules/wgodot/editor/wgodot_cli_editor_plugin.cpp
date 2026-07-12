@@ -6,6 +6,7 @@
 #include "wgodot_cli_editor_plugin.h"
 
 #include "../wgodot_cli.h"
+#include "wgodot_cli_debugger_bridge.h"
 
 #include "core/crypto/crypto_core.h"
 #include "core/io/dir_access.h"
@@ -15,11 +16,13 @@
 #include "core/os/time.h"
 #include "editor/debugger/editor_debugger_node.h"
 #include "editor/debugger/script_editor_debugger.h"
+#include "editor/run/editor_run_bar.h"
 
 namespace {
 
 constexpr uint64_t CONNECTION_TIMEOUT_MSEC = 5000;
-constexpr int MAX_PACKET_SIZE = 1024 * 1024;
+constexpr uint64_t ASYNC_TIMEOUT_MSEC = 15000;
+constexpr int MAX_PACKET_SIZE = 4 * 1024 * 1024;
 
 Dictionary make_error_response(const String &p_error, const String &p_message) {
 	Dictionary response;
@@ -126,6 +129,12 @@ bool WGodotCLIEditorPlugin::start_server() {
 
 void WGodotCLIEditorPlugin::stop_server() {
 	connections.clear();
+	if (debugger_bridge.is_valid()) {
+		if (EditorDebuggerNode::get_singleton()) {
+			EditorDebuggerNode::get_singleton()->remove_debugger_plugin(debugger_bridge);
+		}
+		debugger_bridge.unref();
+	}
 	if (server.is_valid()) {
 		server->stop();
 		server.unref();
@@ -154,6 +163,7 @@ void WGodotCLIEditorPlugin::accept_connections() {
 		connection.packet->set_output_buffer_max_size(MAX_PACKET_SIZE);
 		connection.packet->set_stream_peer(tcp);
 		connection.accepted_at_msec = OS::get_singleton()->get_ticks_msec();
+		connection.deadline_msec = connection.accepted_at_msec + CONNECTION_TIMEOUT_MSEC;
 		connections.push_back(connection);
 	}
 }
@@ -228,11 +238,41 @@ Dictionary WGodotCLIEditorPlugin::make_status_response(const Dictionary &p_reque
 	return response;
 }
 
+int WGodotCLIEditorPlugin::get_automatic_session(const Dictionary &p_request, Dictionary &r_error) const {
+	const Dictionary status = make_status_response(p_request);
+	if (!(bool)status.get("ok", false)) {
+		r_error = status;
+		return -1;
+	}
+
+	const int session = status.get("automatic_session", -1);
+	if (session >= 0) {
+		return session;
+	}
+	if ((int)status.get("active_sessions", 0) > 1) {
+		r_error = make_error_response("ambiguous_session", "More than one game is running and no active session is selected.");
+	} else {
+		r_error = make_error_response("game_not_running", "No game is running for this editor.");
+	}
+	return -1;
+}
+
+void WGodotCLIEditorPlugin::finish_connection(PendingConnection &p_connection, const Dictionary &p_response) {
+	if (p_connection.completed) {
+		return;
+	}
+	const PackedByteArray response_bytes = JSON::stringify(p_response, "", true).to_utf8_buffer();
+	p_connection.packet->put_packet(response_bytes.ptr(), response_bytes.size());
+	p_connection.tcp->disconnect_from_host();
+	p_connection.completed = true;
+}
+
 void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
 	const uint8_t *buffer = nullptr;
 	int buffer_size = 0;
 	if (p_connection.packet->get_packet(&buffer, buffer_size) != OK || buffer_size <= 0 || buffer_size > MAX_PACKET_SIZE) {
 		p_connection.tcp->disconnect_from_host();
+		p_connection.completed = true;
 		return;
 	}
 
@@ -242,24 +282,102 @@ void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
 		request = json.get_data();
 	}
 
-	Dictionary response;
 	const String received_token = request.get("token", String());
 	if (!secure_token_matches(token, received_token) || String(request.get("project_key", String())) != project_key) {
-		response = make_error_response("authentication_failed", "Authentication failed.");
+		finish_connection(p_connection, make_error_response("authentication_failed", "Authentication failed."));
+		return;
 	} else if ((int)request.get("protocol", 0) != WGodotCLI::PROTOCOL_VERSION) {
-		response = make_error_response("protocol_mismatch", "The CLI and editor protocol versions do not match.");
-	} else {
-		const String command = request.get("command", String());
-		if (command == "status") {
-			response = make_status_response(request);
-		} else {
-			response = make_error_response("unknown_command", "Unknown WGodot editor command: " + command);
-		}
+		finish_connection(p_connection, make_error_response("protocol_mismatch", "The CLI and editor protocol versions do not match."));
+		return;
 	}
 
-	const PackedByteArray response_bytes = JSON::stringify(response, "", true).to_utf8_buffer();
-	p_connection.packet->put_packet(response_bytes.ptr(), response_bytes.size());
-	p_connection.tcp->disconnect_from_host();
+	const String command = request.get("command", String());
+	const Dictionary options = request.get("options", Dictionary());
+	if (command == "status") {
+		finish_connection(p_connection, make_status_response(request));
+		return;
+	}
+	if (command == "run") {
+		const String mode = options.get("mode", "main");
+		if (mode == "main") {
+			EditorRunBar::get_singleton()->play_main_scene(false);
+		} else if (mode == "current") {
+			EditorRunBar::get_singleton()->play_current_scene(false);
+		} else if (mode == "custom") {
+			EditorRunBar::get_singleton()->play_custom_scene(options.get("scene", String()));
+		} else {
+			finish_connection(p_connection, make_error_response("invalid_run_mode", "Unknown run mode: " + mode));
+			return;
+		}
+		if (!EditorRunBar::get_singleton()->is_playing()) {
+			finish_connection(p_connection, make_error_response("game_start_failed", "The editor did not start the game."));
+			return;
+		}
+		p_connection.wait_kind = PendingConnection::WAIT_GAME_START;
+		p_connection.deadline_msec = OS::get_singleton()->get_ticks_msec() + ASYNC_TIMEOUT_MSEC;
+		return;
+	}
+	if (command == "stop") {
+		const bool was_playing = EditorRunBar::get_singleton()->is_playing();
+		EditorRunBar::get_singleton()->stop_playing();
+		Dictionary response;
+		response["ok"] = true;
+		response["command"] = "stop";
+		response["was_running"] = was_playing;
+		finish_connection(p_connection, response);
+		return;
+	}
+	if (command == "tree" || command == "ss" || command == "observe") {
+		Dictionary session_error;
+		const int session = get_automatic_session(request, session_error);
+		if (session < 0) {
+			finish_connection(p_connection, session_error);
+			return;
+		}
+		const uint64_t game_request_id = next_game_request_id++;
+		if (debugger_bridge.is_null() || !debugger_bridge->send_request(session, game_request_id, command, options)) {
+			finish_connection(p_connection, make_error_response("game_request_failed", "Could not send the request to the running game."));
+			return;
+		}
+		p_connection.game_request_id = game_request_id;
+		p_connection.game_session = session;
+		p_connection.wait_kind = PendingConnection::WAIT_GAME_RESPONSE;
+		p_connection.deadline_msec = OS::get_singleton()->get_ticks_msec() + ASYNC_TIMEOUT_MSEC;
+		return;
+	}
+
+	finish_connection(p_connection, make_error_response("unknown_command", "Unknown WGodot editor command: " + command));
+}
+
+void WGodotCLIEditorPlugin::poll_waiting_connection(PendingConnection &p_connection) {
+	if (p_connection.wait_kind != PendingConnection::WAIT_GAME_START) {
+		return;
+	}
+
+	Dictionary session_error;
+	const int session = get_automatic_session(Dictionary(), session_error);
+	if (session < 0) {
+		return;
+	}
+	ScriptEditorDebugger *debugger = EditorDebuggerNode::get_singleton()->get_debugger(session);
+	Dictionary response;
+	response["ok"] = true;
+	response["command"] = "run";
+	response["scene"] = EditorRunBar::get_singleton()->get_playing_scene();
+	response["session"] = session;
+	response["pid"] = debugger ? debugger->get_remote_pid() : 0;
+	finish_connection(p_connection, response);
+}
+
+void WGodotCLIEditorPlugin::handle_game_response(int p_session, uint64_t p_request_id, const Dictionary &p_response) {
+	for (PendingConnection &connection : connections) {
+		if (!connection.completed && connection.wait_kind == PendingConnection::WAIT_GAME_RESPONSE && connection.game_request_id == p_request_id && connection.game_session == p_session) {
+			Dictionary response = p_response;
+			response["session"] = p_session;
+			finish_connection(connection, response);
+			return;
+		}
+	}
 }
 
 void WGodotCLIEditorPlugin::poll_connections() {
@@ -267,11 +385,22 @@ void WGodotCLIEditorPlugin::poll_connections() {
 	for (int i = connections.size() - 1; i >= 0; i--) {
 		PendingConnection &connection = connections.write[i];
 		connection.tcp->poll();
-		if (connection.packet->get_available_packet_count() > 0) {
-			process_request(connection);
+		if (connection.completed) {
 			connections.remove_at(i);
-		} else if (connection.tcp->get_status() != StreamPeerTCP::STATUS_CONNECTED || now - connection.accepted_at_msec > CONNECTION_TIMEOUT_MSEC) {
+			continue;
+		}
+		if (connection.wait_kind == PendingConnection::WAIT_NONE && connection.packet->get_available_packet_count() > 0) {
+			process_request(connection);
+		} else if (connection.wait_kind != PendingConnection::WAIT_NONE) {
+			poll_waiting_connection(connection);
+		}
+		if (connection.completed) {
+			connections.remove_at(i);
+		} else if (connection.tcp->get_status() != StreamPeerTCP::STATUS_CONNECTED) {
 			connection.tcp->disconnect_from_host();
+			connections.remove_at(i);
+		} else if (now > connection.deadline_msec) {
+			finish_connection(connection, make_error_response("timeout", "The WGodot command timed out."));
 			connections.remove_at(i);
 		}
 	}
@@ -280,6 +409,8 @@ void WGodotCLIEditorPlugin::poll_connections() {
 void WGodotCLIEditorPlugin::_notification(int p_what) {
 	switch (p_what) {
 		case NOTIFICATION_ENTER_TREE: {
+			debugger_bridge = Ref<WGodotCLIDebuggerBridge>(memnew(WGodotCLIDebuggerBridge(this)));
+			EditorDebuggerNode::get_singleton()->add_debugger_plugin(debugger_bridge);
 			if (start_server()) {
 				set_process(true);
 			}

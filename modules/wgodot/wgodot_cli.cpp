@@ -22,8 +22,8 @@ namespace WGodotCLI {
 namespace {
 
 constexpr uint64_t CONNECT_TIMEOUT_MSEC = 750;
-constexpr uint64_t RESPONSE_TIMEOUT_MSEC = 3000;
-constexpr int MAX_PACKET_SIZE = 1024 * 1024;
+constexpr uint64_t RESPONSE_TIMEOUT_MSEC = 20000;
+constexpr int MAX_PACKET_SIZE = 4 * 1024 * 1024;
 
 bool command_requested = false;
 Vector<String> command_arguments;
@@ -196,6 +196,11 @@ void print_cli_help() {
 	print_line("");
 	print_line("Commands:");
 	print_line("  status [--json] [--session <id>]  Show the matching editor and running game sessions.");
+	print_line("  run [--current|<scene>] [--json]  Run the main, current, or specified scene.");
+	print_line("  stop [--json]                     Stop the running game.");
+	print_line("  tree [options]                    Print the running game's scene tree.");
+	print_line("  ss [-o <path>] [--json]           Capture the running game viewport.");
+	print_line("  observe [options]                 Capture a screenshot and scene tree together.");
 	print_line("  check                             Check all project GDScript files.");
 	print_line("  help                              Show this help.");
 }
@@ -325,6 +330,239 @@ int run_status(const Vector<String> &p_arguments) {
 	return 3;
 }
 
+int request_editor(const Dictionary &p_request, Dictionary &r_response) {
+	bool project_was_resolved = false;
+	Vector<EditorRecord> records = find_editor_records(project_was_resolved);
+	Dictionary discovered_response;
+	int live_editor_count = 0;
+
+	while (!records.is_empty()) {
+		int newest_index = 0;
+		for (int i = 1; i < records.size(); i++) {
+			if (records[i].started_at > records[newest_index].started_at) {
+				newest_index = i;
+			}
+		}
+
+		Dictionary response;
+		if (send_request(records[newest_index], p_request, response)) {
+			if (!(bool)response.get("ok", false) && String(response.get("error", String())) == "authentication_failed") {
+				records.remove_at(newest_index);
+				continue;
+			}
+			if (project_was_resolved) {
+				r_response = response;
+				return 0;
+			}
+			discovered_response = response;
+			live_editor_count++;
+		}
+		records.remove_at(newest_index);
+	}
+
+	if (!project_was_resolved && live_editor_count == 1) {
+		r_response = discovered_response;
+		return 0;
+	}
+
+	r_response["ok"] = false;
+	if (!project_was_resolved && live_editor_count > 1) {
+		r_response["error"] = "multiple_editors";
+		r_response["message"] = "No project.godot was found and more than one WGodot editor is running.";
+	} else {
+		r_response["error"] = "editor_not_found";
+		r_response["message"] = project_was_resolved ? "No running WGodot editor was found for this project." : "No running WGodot editor was found.";
+	}
+	return 3;
+}
+
+String make_absolute_output_path(const String &p_path) {
+	if (p_path.is_empty() || p_path.is_absolute_path() || p_path.begins_with("res://") || p_path.begins_with("user://")) {
+		return p_path;
+	}
+	Ref<DirAccess> directory = DirAccess::open(OS::get_singleton()->get_cwd());
+	return directory.is_valid() ? directory->get_current_dir().path_join(p_path).simplify_path() : p_path;
+}
+
+struct GameCommandOptions {
+	bool json_output = false;
+	bool controls_only = false;
+	int session = -1;
+	int max_depth = -1;
+	String root;
+	String output;
+};
+
+bool parse_game_command_options(const String &p_command, const Vector<String> &p_arguments, bool p_allow_tree_options, bool p_allow_output, GameCommandOptions &r_options) {
+	for (int i = 0; i < p_arguments.size(); i++) {
+		const String &argument = p_arguments[i];
+		if (argument == "--json") {
+			r_options.json_output = true;
+		} else if (argument == "--session") {
+			if (i + 1 >= p_arguments.size() || !p_arguments[i + 1].is_valid_int() || p_arguments[i + 1].to_int() < 0) {
+				print_line("wgodot: --session requires a non-negative integer session ID.");
+				return false;
+			}
+			r_options.session = p_arguments[++i].to_int();
+		} else if (p_allow_tree_options && argument == "--controls") {
+			r_options.controls_only = true;
+		} else if (p_allow_tree_options && argument == "--depth") {
+			if (i + 1 >= p_arguments.size() || !p_arguments[i + 1].is_valid_int() || p_arguments[i + 1].to_int() < 0) {
+				print_line("wgodot: --depth requires a non-negative integer.");
+				return false;
+			}
+			r_options.max_depth = p_arguments[++i].to_int();
+		} else if (p_allow_tree_options && argument == "--root") {
+			if (i + 1 >= p_arguments.size()) {
+				print_line("wgodot: --root requires a node path.");
+				return false;
+			}
+			r_options.root = p_arguments[++i];
+		} else if (p_allow_output && (argument == "-o" || argument == "--output")) {
+			if (i + 1 >= p_arguments.size()) {
+				print_line("wgodot: " + argument + " requires a file path.");
+				return false;
+			}
+			r_options.output = make_absolute_output_path(p_arguments[++i]);
+		} else {
+			print_line("wgodot: unknown " + p_command + " argument: " + argument);
+			return false;
+		}
+	}
+	return true;
+}
+
+void add_game_options_to_request(const GameCommandOptions &p_options, Dictionary &r_request) {
+	Dictionary options;
+	options["controls_only"] = p_options.controls_only;
+	options["max_depth"] = p_options.max_depth;
+	if (!p_options.root.is_empty()) {
+		options["root"] = p_options.root;
+	}
+	if (!p_options.output.is_empty()) {
+		options["output"] = p_options.output;
+	}
+	r_request["options"] = options;
+	if (p_options.session >= 0) {
+		r_request["session"] = p_options.session;
+	}
+}
+
+void print_tree(const Array &p_tree) {
+	for (const Variant &entry_variant : p_tree) {
+		const Dictionary entry = entry_variant;
+		const int depth = entry.get("depth", 0);
+		print_line(String("  ").repeat(depth) + String(entry.get("name", String())) + " [" + String(entry.get("type", String())) + "] " + String(entry.get("path", String())));
+	}
+}
+
+int print_command_response(const Dictionary &p_response, bool p_json_output) {
+	if (p_json_output) {
+		print_line(JSON::stringify(p_response, "", true));
+		return (bool)p_response.get("ok", false) ? 0 : 4;
+	}
+	if (!(bool)p_response.get("ok", false)) {
+		print_line("wgodot: " + String(p_response.get("message", "The editor rejected the request.")));
+		return 4;
+	}
+
+	const String command = p_response.get("command", String());
+	if (command == "run") {
+		print_line(vformat("Game started: %s (session %d, PID %d)", String(p_response.get("scene", String())), (int)p_response.get("session", -1), (int64_t)p_response.get("pid", 0)));
+	} else if (command == "stop") {
+		print_line((bool)p_response.get("was_running", false) ? "Game stopped." : "Game was not running.");
+	} else if (command == "tree") {
+		print_tree(p_response.get("tree", Array()));
+	} else if (command == "ss") {
+		const Dictionary screenshot = p_response.get("screenshot", Dictionary());
+		print_line(vformat("Screenshot: %s (%dx%d)", String(screenshot.get("path", String())), (int)screenshot.get("width", 0), (int)screenshot.get("height", 0)));
+	} else if (command == "observe") {
+		const Dictionary screenshot = p_response.get("screenshot", Dictionary());
+		print_line(vformat("Screenshot: %s (%dx%d)", String(screenshot.get("path", String())), (int)screenshot.get("width", 0), (int)screenshot.get("height", 0)));
+		print_tree(p_response.get("tree", Array()));
+	}
+	return 0;
+}
+
+int run_editor_command(const Dictionary &p_request, bool p_json_output) {
+	Dictionary response;
+	const int discovery_result = request_editor(p_request, response);
+	if (discovery_result != 0) {
+		if (p_json_output) {
+			print_line(JSON::stringify(response, "", true));
+		} else {
+			print_line("wgodot: " + String(response.get("message", "No matching editor was found.")));
+		}
+		return discovery_result;
+	}
+	return print_command_response(response, p_json_output);
+}
+
+int run_game_query_command(const String &p_command, const Vector<String> &p_arguments) {
+	GameCommandOptions options;
+	const bool allow_tree_options = p_command == "tree" || p_command == "observe";
+	const bool allow_output = p_command == "ss" || p_command == "observe";
+	if (!parse_game_command_options(p_command, p_arguments, allow_tree_options, allow_output, options)) {
+		return 2;
+	}
+
+	Dictionary request;
+	request["protocol"] = PROTOCOL_VERSION;
+	request["command"] = p_command;
+	add_game_options_to_request(options, request);
+	return run_editor_command(request, options.json_output);
+}
+
+int run_run_command(const Vector<String> &p_arguments) {
+	bool json_output = false;
+	String mode = "main";
+	String scene;
+	for (const String &argument : p_arguments) {
+		if (argument == "--json") {
+			json_output = true;
+		} else if (argument == "--current") {
+			if (mode != "main" || !scene.is_empty()) {
+				print_line("wgodot: specify either --current or a scene path, not both.");
+				return 2;
+			}
+			mode = "current";
+		} else if (!argument.begins_with("-") && scene.is_empty() && mode == "main") {
+			scene = argument;
+			mode = "custom";
+		} else {
+			print_line("wgodot: unknown run argument: " + argument);
+			return 2;
+		}
+	}
+
+	Dictionary options;
+	options["mode"] = mode;
+	if (!scene.is_empty()) {
+		options["scene"] = scene;
+	}
+	Dictionary request;
+	request["protocol"] = PROTOCOL_VERSION;
+	request["command"] = "run";
+	request["options"] = options;
+	return run_editor_command(request, json_output);
+}
+
+int run_stop_command(const Vector<String> &p_arguments) {
+	bool json_output = false;
+	for (const String &argument : p_arguments) {
+		if (argument == "--json") {
+			json_output = true;
+		} else {
+			print_line("wgodot: unknown stop argument: " + argument);
+			return 2;
+		}
+	}
+	Dictionary request;
+	request["protocol"] = PROTOCOL_VERSION;
+	request["command"] = "stop";
+	return run_editor_command(request, json_output);
+}
+
 } // namespace
 
 bool extract_arguments(List<String> &r_arguments, String &r_project_path) {
@@ -388,6 +626,18 @@ bool execute_if_requested(int &r_exit_code) {
 
 	if (command == "status") {
 		r_exit_code = run_status(arguments);
+		return true;
+	}
+	if (command == "run") {
+		r_exit_code = run_run_command(arguments);
+		return true;
+	}
+	if (command == "stop") {
+		r_exit_code = run_stop_command(arguments);
+		return true;
+	}
+	if (command == "tree" || command == "ss" || command == "screenshot" || command == "observe") {
+		r_exit_code = run_game_query_command(command == "screenshot" ? "ss" : command, arguments);
 		return true;
 	}
 
