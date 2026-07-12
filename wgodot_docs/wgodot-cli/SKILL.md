@@ -99,6 +99,8 @@ godot --wg tree --include Control
 godot --wg tree --include Control --include Node3D
 godot --wg tree --include "Control, Node3D" --exclude Button
 godot --wg tree --exclude "Timer, AnimationPlayer"
+godot --wg tree --include Button --property text
+godot --wg tree --include ButtonElement --property "element_text, position"
 godot --wg tree --depth 3
 godot --wg tree --root /root/Main/UI
 godot --wg tree --include Control --root /root/Main/UI --json
@@ -108,9 +110,12 @@ godot --wg tree --include Control --root /root/Main/UI --json
 - `--exclude <type>` excludes that type and all types that inherit it. Exclusions are applied after inclusions and take precedence.
 - Repeat `--include` or `--exclude`, or pass a comma-separated list, to match several types. `*` means every type for either option.
 - Use native Godot class names or registered global script class names. The command reports unknown type names instead of silently returning an empty tree.
+- `--property <name>` appends a runtime property value to each matching node. The argument is repeatable, and comma-separated property names are also accepted.
 - `--depth <number>` limits traversal depth relative to the selected root.
 - `--root <node-path>` inspects only that runtime subtree.
 - `--json` returns node paths, names, types, IDs, visibility, child counts, and scene paths as structured data.
+
+Requested properties appear in argument order. Missing properties are displayed as `<missing>` and marked with `valid: false` in JSON output. Strings are quoted, while vectors and other values use compact Godot-style text.
 
 The displayed node type prefers the nearest named script class, including a GDScript `class_name` or named inner class. It falls back to the native Godot class, such as `Node2D`, when the node's script inheritance chain has no named class.
 
@@ -165,7 +170,19 @@ godot --wg click 640 360 --button right
 godot --wg click /root/Main/UI/Item --double
 ```
 
-`--button` accepts `left`, `right`, or `middle` and defaults to `left`. Node-targeted clicks report an error when the target is missing, is not a `Control`, is hidden, ignores mouse input, or has no area. Prefer node paths because they avoid guessed coordinates.
+`--button` accepts `left`, `right`, or `middle` and defaults to `left`. For a `Control`, WGodot injects native mouse input at its center and reports an error when it is hidden, ignores mouse input, or has no area.
+
+For a non-`Control` node, WGodot calls a zero-argument `simulate_click()` method when the node implements one:
+
+```gdscript
+func simulate_click() -> void:
+    # Run the same behavior as this object's custom input handling.
+    activate()
+```
+
+Use this method as the compatibility hook for custom clickable `Node2D` or other non-`Control` objects. The click command reports an error when a non-`Control` target does not implement it. `--button` and `--double` are not passed to `simulate_click()`.
+
+Prefer node paths because they avoid guessed coordinates.
 
 Type text through native key events. Click or otherwise focus the intended text control first:
 

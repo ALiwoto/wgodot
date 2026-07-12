@@ -103,6 +103,13 @@ String get_node_display_type(Node *p_node) {
 	return p_node->get_class();
 }
 
+String get_property_display_value(const Variant &p_value) {
+	if (p_value.get_type() == Variant::STRING) {
+		return "\"" + String(p_value).c_escape() + "\"";
+	}
+	return p_value.stringify();
+}
+
 Array collect_tree(const Dictionary &p_options, Dictionary &r_error) {
 	Array result;
 	SceneTree *scene_tree = SceneTree::get_singleton();
@@ -124,6 +131,7 @@ Array collect_tree(const Dictionary &p_options, Dictionary &r_error) {
 	const int max_depth = p_options.get("max_depth", -1);
 	PackedStringArray include_types = p_options.get("include_types", PackedStringArray());
 	const PackedStringArray exclude_types = p_options.get("exclude_types", PackedStringArray());
+	const PackedStringArray requested_properties = p_options.get("properties", PackedStringArray());
 	if (include_types.is_empty()) {
 		include_types.push_back("*");
 	}
@@ -151,6 +159,20 @@ Array collect_tree(const Dictionary &p_options, Dictionary &r_error) {
 			entry["id"] = static_cast<int64_t>(node->get_instance_id());
 			entry["child_count"] = node->get_child_count();
 			entry["scene_file_path"] = node->get_scene_file_path();
+			if (!requested_properties.is_empty()) {
+				Array properties;
+				for (int i = 0; i < requested_properties.size(); i++) {
+					const StringName property_name = requested_properties[i];
+					bool valid = false;
+					const Variant value = node->get(property_name, &valid);
+					Dictionary property;
+					property["name"] = String(property_name);
+					property["valid"] = valid;
+					property["value"] = valid ? get_property_display_value(value) : String("<missing>");
+					properties.push_back(property);
+				}
+				entry["properties"] = properties;
+			}
 			if (node->has_method(SNAME("is_visible"))) {
 				const Variant visible = node->call(SNAME("is_visible"));
 				if (visible.get_type() == Variant::BOOL) {
@@ -423,7 +445,22 @@ Dictionary click(const Dictionary &p_options) {
 		}
 		Control *control = Object::cast_to<Control>(node);
 		if (control == nullptr) {
-			return make_error("click", "target_not_control", "Click target is not a Control: " + target_path);
+			if (!node->has_method(SNAME("simulate_click"))) {
+				return make_error("click", "target_not_clickable", "Click target is not a Control and does not implement simulate_click(): " + target_path);
+			}
+			Callable::CallError call_error;
+			node->callp(SNAME("simulate_click"), nullptr, 0, call_error);
+			if (call_error.error != Callable::CallError::CALL_OK) {
+				return make_error("click", "simulate_click_failed", "simulate_click() could not be called without arguments on: " + target_path);
+			}
+
+			Dictionary response;
+			response["ok"] = true;
+			response["command"] = "click";
+			response["target"] = target_path;
+			response["mode"] = "method";
+			response["method"] = "simulate_click";
+			return response;
 		}
 		if (!control->is_visible_in_tree()) {
 			return make_error("click", "target_not_visible", "Click target is not visible: " + target_path);
@@ -484,6 +521,7 @@ Dictionary click(const Dictionary &p_options) {
 	response["y"] = position.y;
 	response["button"] = button_name;
 	response["double"] = (bool)p_options.get("double", false);
+	response["mode"] = "input";
 	return response;
 }
 

@@ -396,17 +396,18 @@ struct GameCommandOptions {
 	String output;
 	PackedStringArray include_types;
 	PackedStringArray exclude_types;
+	PackedStringArray properties;
 };
 
-bool append_tree_filter_types(const String &p_option, const String &p_value, PackedStringArray &r_types) {
+bool append_comma_separated_values(const String &p_option, const String &p_value, const String &p_description, PackedStringArray &r_values) {
 	const PackedStringArray values = p_value.split(",");
 	for (int i = 0; i < values.size(); i++) {
-		const String type = values[i].strip_edges();
-		if (type.is_empty()) {
-			print_line("wgodot: " + p_option + " requires one or more comma-separated type names.");
+		const String value = values[i].strip_edges();
+		if (value.is_empty()) {
+			print_line("wgodot: " + p_option + " requires one or more comma-separated " + p_description + ".");
 			return false;
 		}
-		r_types.push_back(type);
+		r_values.push_back(value);
 	}
 	return true;
 }
@@ -428,7 +429,15 @@ bool parse_game_command_options(const String &p_command, const Vector<String> &p
 				return false;
 			}
 			PackedStringArray &types = argument == "--include" ? r_options.include_types : r_options.exclude_types;
-			if (!append_tree_filter_types(argument, p_arguments[++i], types)) {
+			if (!append_comma_separated_values(argument, p_arguments[++i], "type names", types)) {
+				return false;
+			}
+		} else if (p_allow_tree_options && argument == "--property") {
+			if (i + 1 >= p_arguments.size()) {
+				print_line("wgodot: --property requires one or more property names.");
+				return false;
+			}
+			if (!append_comma_separated_values(argument, p_arguments[++i], "property names", r_options.properties)) {
 				return false;
 			}
 		} else if (p_allow_tree_options && argument == "--depth") {
@@ -469,6 +478,9 @@ void add_game_options_to_request(const GameCommandOptions &p_options, Dictionary
 	if (!p_options.exclude_types.is_empty()) {
 		options["exclude_types"] = p_options.exclude_types;
 	}
+	if (!p_options.properties.is_empty()) {
+		options["properties"] = p_options.properties;
+	}
 	if (!p_options.root.is_empty()) {
 		options["root"] = p_options.root;
 	}
@@ -485,7 +497,19 @@ void print_tree(const Array &p_tree) {
 	for (const Variant &entry_variant : p_tree) {
 		const Dictionary entry = entry_variant;
 		const int depth = entry.get("depth", 0);
-		print_line(String("  ").repeat(depth) + String(entry.get("name", String())) + " [" + String(entry.get("type", String())) + "] " + String(entry.get("path", String())));
+		String line = String("  ").repeat(depth) + String(entry.get("name", String())) + " [" + String(entry.get("type", String())) + "] " + String(entry.get("path", String()));
+		const Array properties = entry.get("properties", Array());
+		if (!properties.is_empty()) {
+			line += ": ";
+			for (int i = 0; i < properties.size(); i++) {
+				const Dictionary property = properties[i];
+				if (i > 0) {
+					line += "; ";
+				}
+				line += String(property.get("name", String())) + ": " + String(property.get("value", "<missing>"));
+			}
+		}
+		print_line(line);
 	}
 }
 
@@ -515,8 +539,12 @@ int print_command_response(const Dictionary &p_response, bool p_json_output) {
 		print_tree(p_response.get("tree", Array()));
 	} else if (command == "click") {
 		const String target = p_response.get("target", String());
-		const String location = target.is_empty() ? vformat("(%s, %s)", p_response.get("x", 0.0), p_response.get("y", 0.0)) : target;
-		print_line(vformat("Clicked %s with %s.", location, String(p_response.get("button", "left"))));
+		if (String(p_response.get("mode", String())) == "method") {
+			print_line("Called simulate_click(): " + target);
+		} else {
+			const String location = target.is_empty() ? vformat("(%s, %s)", p_response.get("x", 0.0), p_response.get("y", 0.0)) : target;
+			print_line(vformat("Clicked %s with %s.", location, String(p_response.get("button", "left"))));
+		}
 	} else if (command == "type") {
 		print_line(vformat("Typed %d characters.", (int)p_response.get("characters", 0)));
 	} else if (command == "key") {
