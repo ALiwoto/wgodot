@@ -14,6 +14,7 @@ enum WaitKind {
 	WAIT_CURRENT_BREAK,
 	WAIT_NEXT_BREAK,
 	WAIT_RESUME,
+	WAIT_VARIABLES,
 };
 
 void initialize();
@@ -29,6 +30,6 @@ void capture_debugger_message(int p_session, const String &p_message, const Arra
 
 Dictionary get_state(int p_session, const String &p_action);
 Dictionary execute_debug(int p_session, const Dictionary &p_options, WaitKind &r_wait_kind, uint64_t &r_generation);
-bool poll_debug_wait(int p_session, const String &p_action, WaitKind p_wait_kind, uint64_t p_generation, Dictionary &r_response);
+bool poll_debug_wait(int p_session, const Dictionary &p_options, WaitKind &r_wait_kind, uint64_t &r_generation, Dictionary &r_response);
 
 } // namespace WGodotDebugService

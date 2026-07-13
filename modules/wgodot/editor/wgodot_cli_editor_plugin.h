@@ -10,6 +10,7 @@
 #include "core/io/tcp_server.h"
 #include "core/templates/hash_map.h"
 #include "core/templates/vector.h"
+#include "core/variant/dictionary.h"
 #include "editor/plugins/editor_plugin.h"
 
 class WGodotCLIDebuggerBridge;
@@ -33,7 +34,7 @@ class WGodotCLIEditorPlugin : public EditorPlugin {
 		uint64_t debug_generation = 0;
 		int game_session = -1;
 		int debug_wait_kind = 0;
-		String debug_action;
+		Dictionary debug_options;
 		WaitKind wait_kind = WAIT_NONE;
 		bool completed = false;
 	};

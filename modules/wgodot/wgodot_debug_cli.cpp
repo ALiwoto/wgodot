@@ -64,7 +64,71 @@ void print_breakpoint(const Dictionary &p_breakpoint) {
 	print_line(vformat("#%d %s:%d [%s]", (int)p_breakpoint.get("id", 0), String(p_breakpoint.get("path", String())), (int)p_breakpoint.get("line", 0), (bool)p_breakpoint.get("enabled", false) ? "enabled" : "disabled"));
 }
 
+String frame_text(const Dictionary &p_frame) {
+	return vformat("Frame #%d: %s:%d @ %s", (int)p_frame.get("index", 0), String(p_frame.get("file", String())), (int)p_frame.get("line", 0), String(p_frame.get("function", String())));
+}
+
+void print_selected_frame(const Dictionary &p_response) {
+	const Dictionary frame = p_response.get("selected_frame", Dictionary());
+	if (frame.is_empty()) {
+		print_line("No stack frame is selected.");
+		return;
+	}
+	print_line(frame_text(frame));
+}
+
+void print_stack(const Dictionary &p_response) {
+	const Array frames = p_response.get("frames", Array());
+	if (frames.is_empty()) {
+		print_line("No stack frames.");
+		return;
+	}
+	const int selected_frame = p_response.get("selected_frame_index", 0);
+	print_line("Stack:");
+	for (const Variant &frame_variant : frames) {
+		const Dictionary frame = frame_variant;
+		const int index = frame.get("index", 0);
+		print_line(vformat("%s #%d %s:%d @ %s", index == selected_frame ? "*" : " ", index, String(frame.get("file", String())), (int)frame.get("line", 0), String(frame.get("function", String()))));
+	}
+}
+
+void print_scope(const String &p_title, const Array &p_variables) {
+	print_line(p_title + ":");
+	if (p_variables.is_empty()) {
+		print_line("- <none>");
+		return;
+	}
+	for (const Variant &variable_variant : p_variables) {
+		const Dictionary variable = variable_variant;
+		print_line(vformat("- %s: %s = %s", String(variable.get("name", String())), String(variable.get("type", "Variant")), String(variable.get("value", String()))));
+	}
+}
+
+void print_frame_variables(const Dictionary &p_response) {
+	print_selected_frame(p_response);
+	const String action = p_response.get("action", String());
+	if (action == "locals" || action == "vars") {
+		print_scope("Locals", p_response.get("locals", Array()));
+	}
+	if (action == "members" || action == "vars") {
+		print_scope("Members", p_response.get("members", Array()));
+	}
+	if (action == "globals" || action == "vars") {
+		print_scope("Globals", p_response.get("globals", Array()));
+	}
+}
+
 void print_debug_state(const Dictionary &p_response) {
+	const String action = p_response.get("action", String());
+	if (action == "stack") {
+		print_stack(p_response);
+		return;
+	}
+	if (action == "frame" || action == "locals" || action == "members" || action == "globals" || action == "vars") {
+		print_frame_variables(p_response);
+		return;
+	}
+
 	const String state = p_response.get("state", "not_running");
 	const int session = p_response.get("session", -1);
 	if (state == "not_running") {
@@ -76,9 +140,9 @@ void print_debug_state(const Dictionary &p_response) {
 	if (!reason.is_empty()) {
 		print_line("Reason: " + reason);
 	}
-	const Dictionary frame = p_response.get("frame", Dictionary());
+	const Dictionary frame = p_response.get("selected_frame", Dictionary());
 	if (!frame.is_empty()) {
-		print_line(vformat("Frame 0: %s:%d @ %s", String(frame.get("file", String())), (int)frame.get("line", 0), String(frame.get("function", String()))));
+		print_line(frame_text(frame));
 	}
 }
 
@@ -165,6 +229,7 @@ int run_breakpoint(const Vector<String> &p_arguments) {
 int run_debug(const Vector<String> &p_arguments) {
 	bool json_output = false;
 	int session = -1;
+	int frame = -1;
 	int timeout_seconds = 15;
 	Vector<String> operands;
 	for (int i = 0; i < p_arguments.size(); i++) {
@@ -185,18 +250,51 @@ int run_debug(const Vector<String> &p_arguments) {
 				return 2;
 			}
 			timeout_seconds = p_arguments[++i].to_int();
+		} else if (argument == "--frame") {
+			if (i + 1 >= p_arguments.size() || !p_arguments[i + 1].is_valid_int() || p_arguments[i + 1].to_int() < 0) {
+				const Dictionary error = make_error("--frame requires a non-negative stack frame index.");
+				print_error(error, json_output);
+				return 2;
+			}
+			frame = p_arguments[++i].to_int();
 		} else {
 			operands.push_back(argument);
 		}
 	}
-	if (operands.size() != 1) {
-		const Dictionary error = make_error("debug requires state, pause, continue, step_into, step_over, step_out, or wait.");
+	if (operands.is_empty()) {
+		const Dictionary error = make_error("debug requires state, pause, continue, step_into, step_over, step_out, wait, stack, frame, locals, members, globals, or vars.");
 		print_error(error, json_output);
 		return 2;
 	}
 	const String action = operands[0].to_lower();
-	if (action != "state" && action != "pause" && action != "continue" && action != "step_into" && action != "step_over" && action != "step_out" && action != "wait") {
+	const bool scope_action = action == "locals" || action == "members" || action == "globals" || action == "vars";
+	const bool simple_action = action == "state" || action == "pause" || action == "continue" || action == "step_into" || action == "step_over" || action == "step_out" || action == "wait" || action == "stack";
+	if (!simple_action && !scope_action && action != "frame") {
 		const Dictionary error = make_error("Unknown debug action: " + action);
+		print_error(error, json_output);
+		return 2;
+	}
+	if (action == "frame") {
+		if (frame >= 0) {
+			const Dictionary error = make_error("Use debug frame <index>; --frame is only for scoped variable commands.");
+			print_error(error, json_output);
+			return 2;
+		}
+		if (operands.size() > 2 || (operands.size() == 2 && (!operands[1].is_valid_int() || operands[1].to_int() < 0))) {
+			const Dictionary error = make_error("debug frame accepts an optional non-negative frame index.");
+			print_error(error, json_output);
+			return 2;
+		}
+		if (operands.size() == 2) {
+			frame = operands[1].to_int();
+		}
+	} else if (operands.size() != 1) {
+		const Dictionary error = make_error("debug " + action + " does not accept operands.");
+		print_error(error, json_output);
+		return 2;
+	}
+	if (frame >= 0 && !scope_action && action != "frame") {
+		const Dictionary error = make_error("--frame is only valid with debug locals, members, globals, or vars.");
 		print_error(error, json_output);
 		return 2;
 	}
@@ -204,6 +302,9 @@ int run_debug(const Vector<String> &p_arguments) {
 	Dictionary options;
 	options["action"] = action;
 	options["timeout_msec"] = timeout_seconds * 1000;
+	if (frame >= 0) {
+		options["frame"] = frame;
+	}
 	Dictionary response;
 	const int result = send_request("debug", options, session, json_output, response);
 	if (result != 0) {

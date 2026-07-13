@@ -110,7 +110,7 @@ godot --wg clear_logs --source debugger --session 1
 
 ## Breakpoints and hard debugging
 
-Use breakpoint CRUD, hard debugger pausing, stepping, and wait commands as described in [references/debugging.md](references/debugging.md). Prefer `debug wait` over polling when waiting for a breakpoint.
+Use breakpoint CRUD, hard debugger pausing, stepping, stack frames, scoped variables, and wait commands as described in [references/debugging.md](references/debugging.md). Prefer `debug wait` over polling when waiting for a breakpoint.
 
 ## Pause and step
 

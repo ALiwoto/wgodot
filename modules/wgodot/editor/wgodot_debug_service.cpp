@@ -8,10 +8,12 @@
 #include "core/config/project_settings.h"
 #include "core/debugger/debugger_marshalls.h"
 #include "core/io/file_access.h"
+#include "core/io/marshalls.h"
 #include "core/io/resource_loader.h"
 #include "core/object/script_language.h"
 #include "core/templates/hash_map.h"
 #include "core/templates/vector.h"
+#include "core/variant/variant_parser.h"
 #include "editor/debugger/editor_debugger_node.h"
 #include "editor/debugger/script_editor_debugger.h"
 #include "editor/script/script_editor_plugin.h"
@@ -27,6 +29,13 @@ struct BreakpointRecord {
 	bool enabled = true;
 };
 
+struct FrameVariables {
+	Array locals;
+	Array members;
+	Array globals;
+	bool ready = false;
+};
+
 struct SessionState {
 	bool active = false;
 	bool breaked = false;
@@ -34,9 +43,15 @@ struct SessionState {
 	bool has_stackdump = false;
 	bool stack_ready = false;
 	String reason;
-	Dictionary frame;
+	Array frames;
+	HashMap<int, FrameVariables> frame_variables;
+	int selected_frame = 0;
+	int pending_variable_frame = -1;
+	int pending_variable_count = -1;
+	int received_variable_count = 0;
 	uint64_t break_generation = 0;
 	uint64_t resume_generation = 0;
+	uint64_t variable_generation = 0;
 };
 
 HashMap<int, BreakpointRecord> breakpoints;
@@ -126,6 +141,130 @@ ScriptEditorDebugger *get_debugger(int p_session) {
 
 SessionState &get_session_state(int p_session) {
 	return sessions[p_session];
+}
+
+void clear_debug_cache(SessionState &p_state) {
+	p_state.frames.clear();
+	p_state.frame_variables.clear();
+	p_state.selected_frame = 0;
+	p_state.pending_variable_frame = -1;
+	p_state.pending_variable_count = -1;
+	p_state.received_variable_count = 0;
+	p_state.variable_generation++;
+}
+
+Dictionary get_frame(const SessionState &p_state, int p_frame) {
+	if (p_frame < 0 || p_frame >= p_state.frames.size()) {
+		return Dictionary();
+	}
+	return p_state.frames[p_frame];
+}
+
+String format_variable_value(const DebuggerMarshalls::ScriptStackVariable &p_variable) {
+	if (p_variable.var_type == Variant::OBJECT) {
+		Object *object = p_variable.value.get_validated_object();
+		if (EncodedObjectAsID *encoded = Object::cast_to<EncodedObjectAsID>(object)) {
+			const String type = p_variable.type_hint.is_empty() ? "Object" : p_variable.type_hint;
+			return vformat("<%s#%d>", type, static_cast<int64_t>(encoded->get_object_id()));
+		}
+		return object ? vformat("<%s#%d>", object->get_class(), static_cast<int64_t>(object->get_instance_id())) : "null";
+	}
+
+	String value;
+	if (VariantWriter::write_to_string(p_variable.value, value) != OK) {
+		value = p_variable.value.stringify();
+	}
+	return value;
+}
+
+Dictionary make_variable(const DebuggerMarshalls::ScriptStackVariable &p_variable) {
+	Dictionary variable;
+	variable["name"] = p_variable.name;
+	variable["type"] = p_variable.type_hint.is_empty() ? Variant::get_type_name(static_cast<Variant::Type>(p_variable.var_type)) : p_variable.type_hint;
+	variable["variant_type"] = Variant::get_type_name(static_cast<Variant::Type>(p_variable.var_type));
+	variable["value"] = format_variable_value(p_variable);
+	return variable;
+}
+
+bool is_frame_action(const String &p_action) {
+	return p_action == "frame" || p_action == "locals" || p_action == "members" || p_action == "globals" || p_action == "vars";
+}
+
+Dictionary make_stack_response(int p_session, const String &p_action, const SessionState &p_state) {
+	Dictionary response;
+	response["ok"] = true;
+	response["command"] = "debug";
+	response["action"] = p_action;
+	response["session"] = p_session;
+	response["frames"] = p_state.frames;
+	response["selected_frame_index"] = p_state.selected_frame;
+	response["selected_frame"] = get_frame(p_state, p_state.selected_frame);
+	return response;
+}
+
+Dictionary make_frame_response(int p_session, const String &p_action, const SessionState &p_state) {
+	Dictionary response = make_stack_response(p_session, p_action, p_state);
+	response.erase("frames");
+	const FrameVariables *variables = p_state.frame_variables.getptr(p_state.selected_frame);
+	if (p_action == "locals" || p_action == "vars") {
+		response["locals"] = variables ? variables->locals : Array();
+	}
+	if (p_action == "members" || p_action == "vars") {
+		response["members"] = variables ? variables->members : Array();
+	}
+	if (p_action == "globals" || p_action == "vars") {
+		response["globals"] = variables ? variables->globals : Array();
+	}
+	return response;
+}
+
+Dictionary prepare_stack_action(int p_session, ScriptEditorDebugger *p_debugger, const Dictionary &p_options, WaitKind &r_wait_kind, uint64_t &r_generation) {
+	SessionState &state = get_session_state(p_session);
+	const String action = p_options.get("action", String());
+	if (action == "stack") {
+		return make_stack_response(p_session, action, state);
+	}
+	if (!is_frame_action(action)) {
+		return make_error("debug", action, "unknown_action", "Unknown debug action: " + action);
+	}
+	if (state.frames.is_empty()) {
+		return make_error("debug", action, "stack_unavailable", "The current debugger break has no stack frames.");
+	}
+
+	const int frame = p_options.has("frame") ? (int)p_options["frame"] : state.selected_frame;
+	if (frame < 0 || frame >= state.frames.size()) {
+		return make_error("debug", action, "frame_not_found", vformat("Stack frame %d is outside the available range 0-%d.", frame, state.frames.size() - 1));
+	}
+	if (action == "frame" && !p_options.has("frame")) {
+		return make_frame_response(p_session, action, state);
+	}
+
+	if (state.pending_variable_frame >= 0 && state.pending_variable_frame != frame) {
+		return make_error("debug", action, "variable_request_busy", vformat("Stack frame %d variables are still being loaded.", state.pending_variable_frame));
+	}
+	state.selected_frame = frame;
+	FrameVariables *cached = state.frame_variables.getptr(frame);
+	if (cached != nullptr && cached->ready) {
+		return make_frame_response(p_session, action, state);
+	}
+	if (state.pending_variable_frame < 0) {
+		FrameVariables &variables = state.frame_variables[frame];
+		variables.locals.clear();
+		variables.members.clear();
+		variables.globals.clear();
+		variables.ready = false;
+		state.pending_variable_frame = frame;
+		state.pending_variable_count = -1;
+		state.received_variable_count = 0;
+		if (!p_debugger->request_stack_dump(frame)) {
+			state.pending_variable_frame = -1;
+			return make_error("debug", action, "variable_request_failed", "Could not request variables for the selected stack frame.");
+		}
+	}
+
+	r_wait_kind = WAIT_VARIABLES;
+	r_generation = state.variable_generation;
+	return Dictionary();
 }
 
 } // namespace
@@ -279,7 +418,7 @@ void debugger_started(int p_session) {
 	state.can_debug = false;
 	state.stack_ready = false;
 	state.reason.clear();
-	state.frame.clear();
+	clear_debug_cache(state);
 }
 
 void debugger_stopped(int p_session) {
@@ -289,7 +428,7 @@ void debugger_stopped(int p_session) {
 	state.can_debug = false;
 	state.stack_ready = false;
 	state.reason.clear();
-	state.frame.clear();
+	clear_debug_cache(state);
 	state.resume_generation++;
 }
 
@@ -300,7 +439,7 @@ void debugger_breaked(int p_session, bool p_breaked, bool p_can_debug, const Str
 	state.can_debug = p_can_debug;
 	state.reason = p_breaked ? p_reason : String();
 	state.has_stackdump = p_has_stackdump;
-	state.frame.clear();
+	clear_debug_cache(state);
 	if (p_breaked) {
 		state.break_generation++;
 		state.stack_ready = !p_has_stackdump;
@@ -311,23 +450,64 @@ void debugger_breaked(int p_session, bool p_breaked, bool p_can_debug, const Str
 }
 
 void capture_debugger_message(int p_session, const String &p_message, const Array &p_data) {
-	if (p_message != "stack_dump") {
-		return;
-	}
-	DebuggerMarshalls::ScriptStackDump stack;
-	if (!stack.deserialize(p_data)) {
-		return;
-	}
 	SessionState &state = get_session_state(p_session);
-	state.frame.clear();
-	if (!stack.frames.is_empty()) {
-		const ScriptLanguage::StackInfo &frame = stack.frames.front()->get();
-		state.frame["index"] = 0;
-		state.frame["file"] = frame.file;
-		state.frame["line"] = frame.line;
-		state.frame["function"] = frame.func;
+	if (p_message == "stack_dump") {
+		DebuggerMarshalls::ScriptStackDump stack;
+		if (!stack.deserialize(p_data)) {
+			return;
+		}
+		clear_debug_cache(state);
+		int index = 0;
+		for (const ScriptLanguage::StackInfo &frame : stack.frames) {
+			Dictionary frame_info;
+			frame_info["index"] = index++;
+			frame_info["file"] = frame.file;
+			frame_info["line"] = frame.line;
+			frame_info["function"] = frame.func;
+			state.frames.push_back(frame_info);
+		}
+		state.stack_ready = true;
+		return;
 	}
-	state.stack_ready = true;
+
+	if (p_message == "stack_frame_vars") {
+		if (state.pending_variable_frame < 0 || p_data.size() != 1) {
+			return;
+		}
+		state.pending_variable_count = p_data[0];
+		state.received_variable_count = 0;
+		if (state.pending_variable_count == 0) {
+			FrameVariables &variables = state.frame_variables[state.pending_variable_frame];
+			variables.ready = true;
+			state.pending_variable_frame = -1;
+			state.variable_generation++;
+		}
+		return;
+	}
+
+	if (p_message != "stack_frame_var" || state.pending_variable_frame < 0 || state.pending_variable_count < 0) {
+		return;
+	}
+	DebuggerMarshalls::ScriptStackVariable variable;
+	if (!variable.deserialize(p_data)) {
+		return;
+	}
+	FrameVariables &variables = state.frame_variables[state.pending_variable_frame];
+	const Dictionary variable_info = make_variable(variable);
+	if (variable.type == 0) {
+		variables.locals.push_back(variable_info);
+	} else if (variable.type == 1 && !variable.name.begins_with("@")) {
+		variables.members.push_back(variable_info);
+	} else if (variable.type == 2) {
+		variables.globals.push_back(variable_info);
+	}
+	state.received_variable_count++;
+	if (state.received_variable_count >= state.pending_variable_count) {
+		variables.ready = true;
+		state.pending_variable_frame = -1;
+		state.pending_variable_count = -1;
+		state.variable_generation++;
+	}
 }
 
 Dictionary get_state(int p_session, const String &p_action) {
@@ -346,7 +526,9 @@ Dictionary get_state(int p_session, const String &p_action) {
 	response["can_debug"] = breaked && debugger->is_debuggable();
 	response["state"] = !active ? "not_running" : (breaked ? "breaked" : "running");
 	response["reason"] = cached && breaked ? cached->reason : String();
-	response["frame"] = cached && breaked ? cached->frame : Dictionary();
+	response["frame"] = cached && breaked ? get_frame(*cached, 0) : Dictionary();
+	response["selected_frame_index"] = cached && breaked ? cached->selected_frame : 0;
+	response["selected_frame"] = cached && breaked ? get_frame(*cached, cached->selected_frame) : Dictionary();
 	return response;
 }
 
@@ -395,17 +577,29 @@ Dictionary execute_debug(int p_session, const Dictionary &p_options, WaitKind &r
 	if (!debugger->is_breaked()) {
 		return make_error("debug", action, "debugger_not_breaked", "The game must be stopped at a debugger break before using this action.");
 	}
-	if (!debugger->is_debuggable()) {
-		return make_error("debug", action, "debugger_cannot_continue", "The current debugger break cannot be continued or stepped.");
+
+	if (action == "stack" || is_frame_action(action)) {
+		if (!state.stack_ready) {
+			r_wait_kind = WAIT_CURRENT_BREAK;
+			r_generation = state.break_generation;
+			return Dictionary();
+		}
+		return prepare_stack_action(p_session, debugger, p_options, r_wait_kind, r_generation);
 	}
 
 	if (action == "continue") {
+		if (!debugger->is_debuggable()) {
+			return make_error("debug", action, "debugger_cannot_continue", "The current debugger break cannot be continued or stepped.");
+		}
 		r_wait_kind = WAIT_RESUME;
 		r_generation = state.resume_generation;
 		debugger->debug_continue();
 		return Dictionary();
 	}
 	if (action == "step_into" || action == "step_over" || action == "step_out") {
+		if (!debugger->is_debuggable()) {
+			return make_error("debug", action, "debugger_cannot_continue", "The current debugger break cannot be continued or stepped.");
+		}
 		r_wait_kind = WAIT_NEXT_BREAK;
 		r_generation = state.break_generation;
 		if (action == "step_into") {
@@ -421,29 +615,51 @@ Dictionary execute_debug(int p_session, const Dictionary &p_options, WaitKind &r
 	return make_error("debug", action, "unknown_action", "Unknown debug action: " + action);
 }
 
-bool poll_debug_wait(int p_session, const String &p_action, WaitKind p_wait_kind, uint64_t p_generation, Dictionary &r_response) {
+bool poll_debug_wait(int p_session, const Dictionary &p_options, WaitKind &r_wait_kind, uint64_t &r_generation, Dictionary &r_response) {
+	const String action = p_options.get("action", String());
 	ScriptEditorDebugger *debugger = get_debugger(p_session);
 	SessionState &state = get_session_state(p_session);
 	const bool active = debugger != nullptr && debugger->is_session_active();
 	if (!active) {
-		if (p_wait_kind == WAIT_RESUME) {
-			r_response = get_state(p_session, p_action);
+		if (r_wait_kind == WAIT_RESUME) {
+			r_response = get_state(p_session, action);
 			return true;
 		}
-		r_response = make_error("debug", p_action, "game_stopped", "The game stopped before reaching a debugger break.");
+		r_response = make_error("debug", action, "game_stopped", "The game stopped before the debugger request completed.");
 		return true;
 	}
 
-	if (p_wait_kind == WAIT_RESUME) {
-		if (state.resume_generation > p_generation || !debugger->is_breaked()) {
-			r_response = get_state(p_session, p_action);
+	if (r_wait_kind == WAIT_RESUME) {
+		if (state.resume_generation > r_generation || !debugger->is_breaked()) {
+			r_response = get_state(p_session, action);
 			return true;
 		}
 		return false;
 	}
-	const bool generation_ready = p_wait_kind == WAIT_CURRENT_BREAK ? state.break_generation >= p_generation : state.break_generation > p_generation;
+	if (r_wait_kind == WAIT_VARIABLES) {
+		if (!debugger->is_breaked()) {
+			r_response = make_error("debug", action, "debugger_resumed", "The debugger resumed before stack variables were loaded.");
+			return true;
+		}
+		if (state.variable_generation > r_generation) {
+			const FrameVariables *variables = state.frame_variables.getptr(state.selected_frame);
+			if (variables == nullptr || !variables->ready) {
+				r_response = make_error("debug", action, "variable_request_interrupted", "The stack-variable request was interrupted by a debugger state change.");
+			} else {
+				r_response = make_frame_response(p_session, action, state);
+			}
+			return true;
+		}
+		return false;
+	}
+
+	const bool generation_ready = r_wait_kind == WAIT_CURRENT_BREAK ? state.break_generation >= r_generation : state.break_generation > r_generation;
 	if (generation_ready && debugger->is_breaked() && state.stack_ready) {
-		r_response = get_state(p_session, p_action);
+		if (action == "stack" || is_frame_action(action)) {
+			r_response = prepare_stack_action(p_session, debugger, p_options, r_wait_kind, r_generation);
+			return r_wait_kind != WAIT_VARIABLES || !r_response.is_empty();
+		}
+		r_response = get_state(p_session, action);
 		return true;
 	}
 	return false;

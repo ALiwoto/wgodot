@@ -59,4 +59,37 @@ The timeout is in seconds, defaults to `15`, and accepts `1` through `60`. If th
 
 Use `--session <id>` only for intentional multi-instance debugging. All debug commands accept `--json`.
 
+## Stack frames and scoped variables
+
+While the game is stopped at a hard debugger break, inspect the cached call stack:
+
+```powershell
+godot --wg debug stack
+```
+
+Frame indices are zero-based. Frame `0` is selected automatically at every new break. Select another frame, or display the current selection without changing it:
+
+```powershell
+godot --wg debug frame 2
+godot --wg debug frame
+```
+
+Inspect variables from the selected frame:
+
+```powershell
+godot --wg debug locals
+godot --wg debug members
+godot --wg debug globals
+godot --wg debug vars
+```
+
+`debug vars` prints all three scopes. Use `--frame` with a scoped-variable command to select and inspect another frame in one request:
+
+```powershell
+godot --wg debug locals --frame 2
+godot --wg debug vars --frame 2
+```
+
+Stacks and loaded frame variables are cached only for the current break. Continuing, stepping, stopping the game, or reaching a new break invalidates them, and a new break selects frame `0` again.
+
 When the main game thread reaches a hard breakpoint, gameplay, physics, and rendering effectively stop. The debugger message loop remains responsive, which allows these commands to operate. Other game threads are not guaranteed to be suspended.

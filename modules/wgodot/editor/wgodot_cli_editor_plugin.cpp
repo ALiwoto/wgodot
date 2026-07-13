@@ -426,7 +426,7 @@ void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
 			return;
 		}
 		p_connection.game_session = session;
-		p_connection.debug_action = action;
+		p_connection.debug_options = options;
 		p_connection.debug_wait_kind = wait_kind;
 		p_connection.debug_generation = generation;
 		p_connection.wait_kind = PendingConnection::WAIT_DEBUG;
@@ -470,8 +470,11 @@ void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
 void WGodotCLIEditorPlugin::poll_waiting_connection(PendingConnection &p_connection) {
 	if (p_connection.wait_kind == PendingConnection::WAIT_DEBUG) {
 		Dictionary response;
-		if (WGodotDebugService::poll_debug_wait(p_connection.game_session, p_connection.debug_action, static_cast<WGodotDebugService::WaitKind>(p_connection.debug_wait_kind), p_connection.debug_generation, response)) {
+		WGodotDebugService::WaitKind wait_kind = static_cast<WGodotDebugService::WaitKind>(p_connection.debug_wait_kind);
+		if (WGodotDebugService::poll_debug_wait(p_connection.game_session, p_connection.debug_options, wait_kind, p_connection.debug_generation, response)) {
 			finish_connection(p_connection, response);
+		} else {
+			p_connection.debug_wait_kind = wait_kind;
 		}
 		return;
 	}
