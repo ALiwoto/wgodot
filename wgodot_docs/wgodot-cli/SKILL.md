@@ -179,6 +179,15 @@ godot --wg list GameStatics
 godot --wg list Node2D
 ```
 
+Follow a registered class's static member and any further nested properties when the final value is a live Object:
+
+```powershell
+godot --wg list GameStatics.current_game_client
+godot --wg list GameStatics.current_game_client.player.inventory
+```
+
+The first dotted segment must be a registered GDScript `class_name`. Each following segment is resolved as a static or ordinary property, matching the nesting behavior of `get_static`. The command reports an error when the final value is `null`, a built-in value, or a freed Object.
+
 Restrict the result by declared type. Object types include members declared as an inheriting type, so `Node2D` also matches a variable declared as a named class that extends `Node2D`:
 
 ```powershell
@@ -199,7 +208,7 @@ For variables, `--filter` checks the declared value type. For functions it check
 
 The normal output combines inherited members rather than separating them by inheritance level or export group. It shows function and signal signatures, static and instance members in separate sections, constant values, enum member counts, and nested class base types. Empty sections are omitted. Nested classes and enums are summarized at one level; their inner contents are not recursively listed. Add `--json` for structured sections and member records.
 
-`list` reads reflection metadata and does not invoke property getters or user methods. It works while the game is paused.
+After resolving its target, `list` reads reflection metadata and does not read every property value or invoke methods. Resolving a dotted target reads that property chain and may therefore invoke getters on the chain. It works while the game is paused.
 
 ## Runtime properties and methods
 

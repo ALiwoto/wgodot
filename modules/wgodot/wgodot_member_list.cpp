@@ -14,6 +14,7 @@
 #include "core/variant/variant_parser.h"
 #include "scene/main/node.h"
 #include "scene/main/scene_tree.h"
+#include "scene/main/window.h"
 
 #ifdef MODULE_GDSCRIPT_ENABLED
 #include "modules/gdscript/gdscript.h"
@@ -341,24 +342,87 @@ void collect_script(const Ref<Script> &p_script, MemberCollection &r_collection)
 	}
 }
 
-void collect_node(Node *p_node, MemberCollection &r_collection) {
+void collect_object(Object *p_object, MemberCollection &r_collection) {
 	List<PropertyInfo> properties;
-	p_node->get_property_list(&properties);
+	p_object->get_property_list(&properties);
 	collect_properties(properties, r_collection, MEMBER_VAR, 2);
 
 	List<MethodInfo> methods;
-	p_node->get_method_list(&methods);
+	p_object->get_method_list(&methods);
 	collect_methods(methods, r_collection, false, 2);
 
 	List<MethodInfo> signals;
-	p_node->get_signal_list(&signals);
+	p_object->get_signal_list(&signals);
 	collect_methods(signals, r_collection, true, 2);
 
-	collect_native_class(p_node->get_class_name(), r_collection, false);
-	Ref<Script> script = p_node->get_script();
+	collect_native_class(p_object->get_class_name(), r_collection, false);
+	Ref<Script> script = p_object->get_script();
 	if (script.is_valid()) {
 		collect_script(script, r_collection);
 	}
+}
+
+bool parse_member_path(const String &p_path, Vector<StringName> &r_segments) {
+	r_segments.clear();
+	const PackedStringArray segments = p_path.split(".");
+	for (const String &segment : segments) {
+		if (segment.is_empty()) {
+			r_segments.clear();
+			return false;
+		}
+		r_segments.push_back(segment);
+	}
+	return !r_segments.is_empty();
+}
+
+bool load_named_class(const String &p_class_name, Ref<Script> &r_script, Dictionary &r_error) {
+	if (!ScriptServer::is_global_class(p_class_name)) {
+		r_error = make_error("named_class_not_found", "Named script class was not found: " + p_class_name);
+		return false;
+	}
+	const String script_path = ScriptServer::get_global_class_path(p_class_name);
+	r_script = ResourceLoader::load(script_path, "Script");
+	if (r_script.is_null() || !r_script->is_valid()) {
+		r_error = make_error("named_class_load_failed", "Could not load named script class " + p_class_name + " from: " + script_path);
+		return false;
+	}
+	return true;
+}
+
+bool resolve_nested_target(const String &p_target, Variant &r_value, Object *&r_object, Dictionary &r_error) {
+	const int separator = p_target.find_char('.');
+	if (separator <= 0 || separator == p_target.length() - 1) {
+		return false;
+	}
+
+	const String class_name = p_target.substr(0, separator);
+	if (!ScriptServer::is_global_class(class_name)) {
+		return false;
+	}
+
+	Ref<Script> script;
+	if (!load_named_class(class_name, script, r_error)) {
+		return true;
+	}
+
+	Vector<StringName> member_path;
+	if (!parse_member_path(p_target.substr(separator + 1), member_path)) {
+		r_error = make_error("invalid_member_path", "Invalid nested list target: " + p_target);
+		return true;
+	}
+
+	bool valid = false;
+	r_value = script->get_indexed(member_path, &valid);
+	if (!valid) {
+		r_error = make_error("member_not_found", "Nested member was not found: " + p_target);
+		return true;
+	}
+	if (r_value.get_type() != Variant::OBJECT || r_value.get_validated_object() == nullptr) {
+		r_error = make_error("member_not_object", "Nested list target is not a live Object: " + p_target);
+		return true;
+	}
+	r_object = r_value.get_validated_object();
+	return true;
 }
 
 bool canonicalize_member_kind(const String &p_source, MemberKind &r_kind) {
@@ -475,6 +539,7 @@ Dictionary execute(const Dictionary &p_options) {
 	MemberCollection collection;
 	String target_kind;
 	String target_type;
+	Variant target_holder;
 	if (target_name.begins_with("/")) {
 		SceneTree *scene_tree = SceneTree::get_singleton();
 		Node *root = scene_tree ? scene_tree->get_root() : nullptr;
@@ -487,12 +552,12 @@ Dictionary execute(const Dictionary &p_options) {
 		}
 		target_kind = "node";
 		target_type = get_object_display_type(node);
-		collect_node(node, collection);
+		collect_object(node, collection);
 	} else if (ScriptServer::is_global_class(target_name)) {
-		const String script_path = ScriptServer::get_global_class_path(target_name);
-		Ref<Script> script = ResourceLoader::load(script_path, "Script");
-		if (script.is_null() || !script->is_valid()) {
-			return make_error("named_class_load_failed", "Could not load named script class " + target_name + " from: " + script_path);
+		Ref<Script> script;
+		Dictionary load_error;
+		if (!load_named_class(target_name, script, load_error)) {
+			return load_error;
 		}
 		target_kind = "class";
 		target_type = target_name;
@@ -503,7 +568,28 @@ Dictionary execute(const Dictionary &p_options) {
 		target_type = target_name;
 		collect_native_class(target_name, collection, true);
 	} else {
-		return make_error("target_not_found", "No runtime node or named/native class was found: " + target_name);
+		Object *nested_object = nullptr;
+		Dictionary nested_error;
+		if (!resolve_nested_target(target_name, target_holder, nested_object, nested_error)) {
+			return make_error("target_not_found", "No runtime node or named/native class was found: " + target_name);
+		}
+		if (!nested_error.is_empty()) {
+			return nested_error;
+		}
+
+		Script *nested_script_object = Object::cast_to<Script>(nested_object);
+		if (nested_script_object) {
+			Ref<Script> nested_script(nested_script_object);
+			target_kind = "class";
+			target_type = get_script_display_name(nested_script);
+			collect_native_class(nested_script->get_instance_base_type(), collection, true);
+			collect_script(nested_script, collection);
+		} else {
+			Node *nested_node = Object::cast_to<Node>(nested_object);
+			target_kind = nested_node ? "node" : "object";
+			target_type = get_object_display_type(nested_object);
+			collect_object(nested_object, collection);
+		}
 	}
 
 	Dictionary response;
