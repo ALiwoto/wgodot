@@ -12,6 +12,7 @@
 #include "core/io/resource_loader.h"
 #include "core/object/script_language.h"
 #include "core/templates/hash_map.h"
+#include "core/templates/hash_set.h"
 #include "core/templates/vector.h"
 #include "core/variant/variant_parser.h"
 #include "editor/debugger/editor_debugger_node.h"
@@ -32,8 +33,12 @@ struct BreakpointRecord {
 struct FrameVariables {
 	Array locals;
 	Array members;
+	Array user_members;
 	Array globals;
+	Array all_members;
+	int64_t self_object_id = 0;
 	bool ready = false;
+	bool members_enriched = false;
 };
 
 struct SessionState {
@@ -49,9 +54,12 @@ struct SessionState {
 	int pending_variable_frame = -1;
 	int pending_variable_count = -1;
 	int received_variable_count = 0;
+	int pending_member_frame = -1;
+	int64_t pending_member_object_id = 0;
 	uint64_t break_generation = 0;
 	uint64_t resume_generation = 0;
 	uint64_t variable_generation = 0;
+	uint64_t member_generation = 0;
 };
 
 HashMap<int, BreakpointRecord> breakpoints;
@@ -150,7 +158,10 @@ void clear_debug_cache(SessionState &p_state) {
 	p_state.pending_variable_frame = -1;
 	p_state.pending_variable_count = -1;
 	p_state.received_variable_count = 0;
+	p_state.pending_member_frame = -1;
+	p_state.pending_member_object_id = 0;
 	p_state.variable_generation++;
+	p_state.member_generation++;
 }
 
 Dictionary get_frame(const SessionState &p_state, int p_frame) {
@@ -160,30 +171,116 @@ Dictionary get_frame(const SessionState &p_state, int p_frame) {
 	return p_state.frames[p_frame];
 }
 
-String format_variable_value(const DebuggerMarshalls::ScriptStackVariable &p_variable) {
-	if (p_variable.var_type == Variant::OBJECT) {
-		Object *object = p_variable.value.get_validated_object();
+int64_t get_encoded_object_id(const Variant &p_value) {
+	if (p_value.get_type() != Variant::OBJECT) {
+		return 0;
+	}
+	Object *object = p_value.get_validated_object();
+	if (EncodedObjectAsID *encoded = Object::cast_to<EncodedObjectAsID>(object)) {
+		return static_cast<int64_t>(encoded->get_object_id());
+	}
+	return object ? static_cast<int64_t>(object->get_instance_id()) : 0;
+}
+
+String format_variable_value(const Variant &p_value, Variant::Type p_declared_type, const String &p_type_hint) {
+	if (p_declared_type == Variant::OBJECT && p_value.get_type() == Variant::OBJECT) {
+		Object *object = p_value.get_validated_object();
 		if (EncodedObjectAsID *encoded = Object::cast_to<EncodedObjectAsID>(object)) {
-			const String type = p_variable.type_hint.is_empty() ? "Object" : p_variable.type_hint;
+			const String type = p_type_hint.is_empty() ? "Object" : p_type_hint;
 			return vformat("<%s#%d>", type, static_cast<int64_t>(encoded->get_object_id()));
 		}
 		return object ? vformat("<%s#%d>", object->get_class(), static_cast<int64_t>(object->get_instance_id())) : "null";
 	}
+	if (p_value.get_type() == Variant::NIL) {
+		return "null";
+	}
 
 	String value;
-	if (VariantWriter::write_to_string(p_variable.value, value) != OK) {
-		value = p_variable.value.stringify();
+	if (VariantWriter::write_to_string(p_value, value) != OK) {
+		value = p_value.stringify();
 	}
 	return value;
+}
+
+String format_property_type(Variant::Type p_type, PropertyHint p_hint, const String &p_hint_string) {
+	if (p_type == Variant::NIL) {
+		return "Variant";
+	}
+	if (p_type == Variant::OBJECT) {
+		return p_hint_string.is_empty() ? "Object" : p_hint_string;
+	}
+	if (p_type == Variant::ARRAY && p_hint == PROPERTY_HINT_ARRAY_TYPE && !p_hint_string.is_empty()) {
+		return "Array[" + p_hint_string + "]";
+	}
+	if (p_type == Variant::DICTIONARY && p_hint == PROPERTY_HINT_DICTIONARY_TYPE && !p_hint_string.is_empty()) {
+		return "Dictionary[" + p_hint_string.replace(";", ", ") + "]";
+	}
+	return Variant::get_type_name(p_type);
+}
+
+String format_property_type(const PropertyInfo &p_property) {
+	if (p_property.type == Variant::OBJECT && !p_property.class_name.is_empty()) {
+		return p_property.class_name;
+	}
+	return format_property_type(p_property.type, p_property.hint, p_property.hint_string);
 }
 
 Dictionary make_variable(const DebuggerMarshalls::ScriptStackVariable &p_variable) {
 	Dictionary variable;
 	variable["name"] = p_variable.name;
-	variable["type"] = p_variable.type_hint.is_empty() ? Variant::get_type_name(static_cast<Variant::Type>(p_variable.var_type)) : p_variable.type_hint;
+	variable["type"] = p_variable.var_type == Variant::NIL ? "Variant" : (p_variable.type_hint.is_empty() ? Variant::get_type_name(static_cast<Variant::Type>(p_variable.var_type)) : p_variable.type_hint);
 	variable["variant_type"] = Variant::get_type_name(static_cast<Variant::Type>(p_variable.var_type));
-	variable["value"] = format_variable_value(p_variable);
+	variable["value"] = format_variable_value(p_variable.value, static_cast<Variant::Type>(p_variable.var_type), p_variable.type_hint);
+	variable["builtin"] = false;
+	const int64_t object_id = get_encoded_object_id(p_variable.value);
+	if (object_id != 0) {
+		variable["object_id"] = object_id;
+	}
 	return variable;
+}
+
+void enrich_declared_member_types(const SessionState &p_state, int p_frame, FrameVariables &p_variables) {
+	p_variables.user_members = p_variables.members.duplicate(true);
+	const Dictionary frame = get_frame(p_state, p_frame);
+	const String path = frame.get("file", String());
+	if (path.is_empty()) {
+		return;
+	}
+	Ref<Script> script = ResourceLoader::load(path, "Script");
+	if (script.is_null()) {
+		return;
+	}
+
+	HashMap<String, String> declared_types;
+	List<PropertyInfo> properties;
+	script->get_script_property_list(&properties);
+	for (const PropertyInfo &property : properties) {
+		if (property.usage & (PROPERTY_USAGE_GROUP | PROPERTY_USAGE_SUBGROUP | PROPERTY_USAGE_CATEGORY)) {
+			continue;
+		}
+		declared_types[property.name] = format_property_type(property);
+	}
+	for (int i = 0; i < p_variables.members.size(); i++) {
+		Dictionary member = p_variables.members[i];
+		const String name = member.get("name", String());
+		const String *declared_type = declared_types.getptr(name);
+		if (declared_type != nullptr) {
+			member["type"] = *declared_type;
+			p_variables.members[i] = member;
+		}
+	}
+	p_variables.user_members = p_variables.members.duplicate(true);
+	HashSet<StringName> current_member_names;
+	script->get_members(&current_member_names);
+	Array current_members;
+	for (const Variant &member_variant : p_variables.members) {
+		const Dictionary member = member_variant;
+		const StringName name = member.get("name", String());
+		if (name == SNAME("self") || current_member_names.has(name)) {
+			current_members.push_back(member);
+		}
+	}
+	p_variables.members = current_members;
 }
 
 bool is_frame_action(const String &p_action) {
@@ -202,20 +299,154 @@ Dictionary make_stack_response(int p_session, const String &p_action, const Sess
 	return response;
 }
 
-Dictionary make_frame_response(int p_session, const String &p_action, const SessionState &p_state) {
-	Dictionary response = make_stack_response(p_session, p_action, p_state);
+Dictionary make_frame_response(int p_session, const Dictionary &p_options, const SessionState &p_state) {
+	const String action = p_options.get("action", String());
+	Dictionary response = make_stack_response(p_session, action, p_state);
 	response.erase("frames");
 	const FrameVariables *variables = p_state.frame_variables.getptr(p_state.selected_frame);
-	if (p_action == "locals" || p_action == "vars") {
+	if (action == "locals" || action == "vars") {
 		response["locals"] = variables ? variables->locals : Array();
 	}
-	if (p_action == "members" || p_action == "vars") {
-		response["members"] = variables ? variables->members : Array();
+	if (action == "members" || action == "vars") {
+		Array members;
+		if (variables) {
+			members = action == "members" && (bool)p_options.get("all", false) ? variables->all_members : variables->members;
+			if ((bool)p_options.get("exclude_builtin", false)) {
+				Array filtered;
+				for (const Variant &member_variant : members) {
+					const Dictionary member = member_variant;
+					if (!(bool)member.get("builtin", false)) {
+						filtered.push_back(member);
+					}
+				}
+				members = filtered;
+			}
+		}
+		response["members"] = members;
 	}
-	if (p_action == "globals" || p_action == "vars") {
+	if (action == "globals" || action == "vars") {
 		response["globals"] = variables ? variables->globals : Array();
 	}
 	return response;
+}
+
+void enrich_frame_members(FrameVariables &p_variables, const Array &p_properties) {
+	HashMap<String, Dictionary> script_properties;
+	Array native_members;
+	for (const Variant &property_variant : p_properties) {
+		if (property_variant.get_type() != Variant::ARRAY) {
+			continue;
+		}
+		const Array property = property_variant;
+		if (property.size() != 6) {
+			continue;
+		}
+		String name = property[0];
+		const Variant::Type declared_type = static_cast<Variant::Type>((int)property[1]);
+		const PropertyHint hint = static_cast<PropertyHint>((int)property[2]);
+		const String hint_string = property[3];
+		const PropertyUsageFlags usage = static_cast<PropertyUsageFlags>((int)property[4]);
+		const Variant value = property[5];
+		if (usage & (PROPERTY_USAGE_GROUP | PROPERTY_USAGE_SUBGROUP | PROPERTY_USAGE_CATEGORY) || name.begins_with("Constants/")) {
+			continue;
+		}
+
+		bool builtin = true;
+		if (name.begins_with("Members/")) {
+			name = name.get_slicec('/', name.get_slice_count("/") - 1);
+			builtin = false;
+		} else if (usage & PROPERTY_USAGE_SCRIPT_VARIABLE) {
+			builtin = false;
+		} else if (name.contains("/")) {
+			continue;
+		}
+
+		Dictionary member;
+		member["name"] = name;
+		member["type"] = format_property_type(declared_type, hint, hint_string);
+		member["variant_type"] = Variant::get_type_name(value.get_type());
+		member["value"] = format_variable_value(value, declared_type, hint_string);
+		member["builtin"] = builtin;
+		const int64_t object_id = get_encoded_object_id(value);
+		if (object_id != 0) {
+			member["object_id"] = object_id;
+		}
+		if (builtin) {
+			native_members.push_back(member);
+		} else {
+			script_properties[name] = member;
+		}
+	}
+
+	auto enrich_script_members = [&script_properties](Array &r_members) {
+		for (int i = 0; i < r_members.size(); i++) {
+			Dictionary member = r_members[i];
+			const String name = member.get("name", String());
+			const Dictionary *declared = script_properties.getptr(name);
+			const String current_type = member.get("type", "Variant");
+			if (declared != nullptr && (current_type.is_empty() || current_type == "Variant" || current_type == "Nil")) {
+				member["type"] = declared->get("type", "Variant");
+			}
+			member["builtin"] = false;
+			r_members[i] = member;
+		}
+	};
+	enrich_script_members(p_variables.members);
+	enrich_script_members(p_variables.user_members);
+
+	HashSet<String> names;
+	for (const Variant &member_variant : p_variables.user_members) {
+		const Dictionary member = member_variant;
+		names.insert(member.get("name", String()));
+	}
+	p_variables.all_members = p_variables.user_members.duplicate(true);
+	for (const Variant &member_variant : native_members) {
+		const Dictionary member = member_variant;
+		const String name = member.get("name", String());
+		if (!names.has(name)) {
+			p_variables.all_members.push_back(member);
+			names.insert(name);
+		}
+	}
+	p_variables.members_enriched = true;
+}
+
+Dictionary prepare_member_metadata(int p_session, ScriptEditorDebugger *p_debugger, const Dictionary &p_options, WaitKind &r_wait_kind, uint64_t &r_generation) {
+	SessionState &state = get_session_state(p_session);
+	const String action = p_options.get("action", String());
+	FrameVariables *variables = state.frame_variables.getptr(state.selected_frame);
+	if (variables == nullptr || !variables->ready) {
+		return make_error("debug", action, "variables_unavailable", "Variables for the selected stack frame are not loaded.");
+	}
+	if (variables->members_enriched) {
+		return make_frame_response(p_session, p_options, state);
+	}
+	if (variables->self_object_id == 0) {
+		variables->all_members = variables->user_members.duplicate(true);
+		variables->members_enriched = true;
+		return make_frame_response(p_session, p_options, state);
+	}
+	if (state.pending_member_frame >= 0 && state.pending_member_frame != state.selected_frame) {
+		return make_error("debug", action, "member_request_busy", vformat("Stack frame %d member metadata is still being loaded.", state.pending_member_frame));
+	}
+	if (state.pending_member_frame < 0) {
+		state.pending_member_frame = state.selected_frame;
+		state.pending_member_object_id = variables->self_object_id;
+		TypedArray<uint64_t> object_ids;
+		object_ids.append(static_cast<uint64_t>(variables->self_object_id));
+		p_debugger->request_remote_objects(object_ids, false);
+	}
+	r_wait_kind = WAIT_MEMBERS;
+	r_generation = state.member_generation;
+	return Dictionary();
+}
+
+Dictionary prepare_ready_frame_action(int p_session, ScriptEditorDebugger *p_debugger, const Dictionary &p_options, WaitKind &r_wait_kind, uint64_t &r_generation) {
+	const String action = p_options.get("action", String());
+	if (action == "members" || action == "vars") {
+		return prepare_member_metadata(p_session, p_debugger, p_options, r_wait_kind, r_generation);
+	}
+	return make_frame_response(p_session, p_options, get_session_state(p_session));
 }
 
 Dictionary prepare_stack_action(int p_session, ScriptEditorDebugger *p_debugger, const Dictionary &p_options, WaitKind &r_wait_kind, uint64_t &r_generation) {
@@ -236,23 +467,30 @@ Dictionary prepare_stack_action(int p_session, ScriptEditorDebugger *p_debugger,
 		return make_error("debug", action, "frame_not_found", vformat("Stack frame %d is outside the available range 0-%d.", frame, state.frames.size() - 1));
 	}
 	if (action == "frame" && !p_options.has("frame")) {
-		return make_frame_response(p_session, action, state);
+		return make_frame_response(p_session, p_options, state);
 	}
 
 	if (state.pending_variable_frame >= 0 && state.pending_variable_frame != frame) {
 		return make_error("debug", action, "variable_request_busy", vformat("Stack frame %d variables are still being loaded.", state.pending_variable_frame));
 	}
+	if (state.pending_member_frame >= 0 && state.pending_member_frame != frame) {
+		return make_error("debug", action, "member_request_busy", vformat("Stack frame %d member metadata is still being loaded.", state.pending_member_frame));
+	}
 	state.selected_frame = frame;
 	FrameVariables *cached = state.frame_variables.getptr(frame);
 	if (cached != nullptr && cached->ready) {
-		return make_frame_response(p_session, action, state);
+		return prepare_ready_frame_action(p_session, p_debugger, p_options, r_wait_kind, r_generation);
 	}
 	if (state.pending_variable_frame < 0) {
 		FrameVariables &variables = state.frame_variables[frame];
 		variables.locals.clear();
 		variables.members.clear();
+		variables.user_members.clear();
 		variables.globals.clear();
+		variables.all_members.clear();
+		variables.self_object_id = 0;
 		variables.ready = false;
+		variables.members_enriched = false;
 		state.pending_variable_frame = frame;
 		state.pending_variable_count = -1;
 		state.received_variable_count = 0;
@@ -477,10 +715,32 @@ void capture_debugger_message(int p_session, const String &p_message, const Arra
 		state.pending_variable_count = p_data[0];
 		state.received_variable_count = 0;
 		if (state.pending_variable_count == 0) {
-			FrameVariables &variables = state.frame_variables[state.pending_variable_frame];
+			const int frame = state.pending_variable_frame;
+			FrameVariables &variables = state.frame_variables[frame];
+			enrich_declared_member_types(state, frame, variables);
 			variables.ready = true;
 			state.pending_variable_frame = -1;
 			state.variable_generation++;
+		}
+		return;
+	}
+	if (p_message == "scene:inspect_objects" && state.pending_member_frame >= 0) {
+		for (const Variant &object_variant : p_data) {
+			if (object_variant.get_type() != Variant::ARRAY) {
+				continue;
+			}
+			const Array object = object_variant;
+			if (object.size() < 3 || (int64_t)object[0] != state.pending_member_object_id || object[2].get_type() != Variant::ARRAY) {
+				continue;
+			}
+			FrameVariables *variables = state.frame_variables.getptr(state.pending_member_frame);
+			if (variables != nullptr && variables->ready) {
+				enrich_frame_members(*variables, object[2]);
+			}
+			state.pending_member_frame = -1;
+			state.pending_member_object_id = 0;
+			state.member_generation++;
+			return;
 		}
 		return;
 	}
@@ -498,11 +758,15 @@ void capture_debugger_message(int p_session, const String &p_message, const Arra
 		variables.locals.push_back(variable_info);
 	} else if (variable.type == 1 && !variable.name.begins_with("@")) {
 		variables.members.push_back(variable_info);
+		if (variable.name == "self") {
+			variables.self_object_id = variable_info.get("object_id", 0);
+		}
 	} else if (variable.type == 2) {
 		variables.globals.push_back(variable_info);
 	}
 	state.received_variable_count++;
 	if (state.received_variable_count >= state.pending_variable_count) {
+		enrich_declared_member_types(state, state.pending_variable_frame, variables);
 		variables.ready = true;
 		state.pending_variable_frame = -1;
 		state.pending_variable_count = -1;
@@ -646,7 +910,23 @@ bool poll_debug_wait(int p_session, const Dictionary &p_options, WaitKind &r_wai
 			if (variables == nullptr || !variables->ready) {
 				r_response = make_error("debug", action, "variable_request_interrupted", "The stack-variable request was interrupted by a debugger state change.");
 			} else {
-				r_response = make_frame_response(p_session, action, state);
+				r_response = prepare_ready_frame_action(p_session, debugger, p_options, r_wait_kind, r_generation);
+			}
+			return r_wait_kind != WAIT_MEMBERS || !r_response.is_empty();
+		}
+		return false;
+	}
+	if (r_wait_kind == WAIT_MEMBERS) {
+		if (!debugger->is_breaked()) {
+			r_response = make_error("debug", action, "debugger_resumed", "The debugger resumed before member metadata was loaded.");
+			return true;
+		}
+		if (state.member_generation > r_generation) {
+			const FrameVariables *variables = state.frame_variables.getptr(state.selected_frame);
+			if (variables == nullptr || !variables->ready || !variables->members_enriched) {
+				r_response = make_error("debug", action, "member_request_interrupted", "The member metadata request was interrupted by a debugger state change.");
+			} else {
+				r_response = make_frame_response(p_session, p_options, state);
 			}
 			return true;
 		}
@@ -657,7 +937,7 @@ bool poll_debug_wait(int p_session, const Dictionary &p_options, WaitKind &r_wai
 	if (generation_ready && debugger->is_breaked() && state.stack_ready) {
 		if (action == "stack" || is_frame_action(action)) {
 			r_response = prepare_stack_action(p_session, debugger, p_options, r_wait_kind, r_generation);
-			return r_wait_kind != WAIT_VARIABLES || !r_response.is_empty();
+			return (r_wait_kind != WAIT_VARIABLES && r_wait_kind != WAIT_MEMBERS) || !r_response.is_empty();
 		}
 		r_response = get_state(p_session, action);
 		return true;

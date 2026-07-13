@@ -15,6 +15,7 @@ enum WaitKind {
 	WAIT_NEXT_BREAK,
 	WAIT_RESUME,
 	WAIT_VARIABLES,
+	WAIT_MEMBERS,
 };
 
 void initialize();

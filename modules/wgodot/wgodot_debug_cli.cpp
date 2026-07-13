@@ -228,6 +228,8 @@ int run_breakpoint(const Vector<String> &p_arguments) {
 
 int run_debug(const Vector<String> &p_arguments) {
 	bool json_output = false;
+	bool all_members = false;
+	bool exclude_builtin = false;
 	int session = -1;
 	int frame = -1;
 	int timeout_seconds = 15;
@@ -236,6 +238,10 @@ int run_debug(const Vector<String> &p_arguments) {
 		const String &argument = p_arguments[i];
 		if (argument == "--json") {
 			json_output = true;
+		} else if (argument == "--all") {
+			all_members = true;
+		} else if (argument == "--exclude-builtin") {
+			exclude_builtin = true;
 		} else if (argument == "--session") {
 			if (i + 1 >= p_arguments.size() || !p_arguments[i + 1].is_valid_int() || p_arguments[i + 1].to_int() < 0) {
 				const Dictionary error = make_error("--session requires a non-negative integer session ID.");
@@ -266,7 +272,10 @@ int run_debug(const Vector<String> &p_arguments) {
 		print_error(error, json_output);
 		return 2;
 	}
-	const String action = operands[0].to_lower();
+	String action = operands[0].to_lower();
+	if (action == "resume") {
+		action = "continue";
+	}
 	const bool scope_action = action == "locals" || action == "members" || action == "globals" || action == "vars";
 	const bool simple_action = action == "state" || action == "pause" || action == "continue" || action == "step_into" || action == "step_over" || action == "step_out" || action == "wait" || action == "stack";
 	if (!simple_action && !scope_action && action != "frame") {
@@ -298,6 +307,11 @@ int run_debug(const Vector<String> &p_arguments) {
 		print_error(error, json_output);
 		return 2;
 	}
+	if ((all_members || exclude_builtin) && action != "members") {
+		const Dictionary error = make_error("--all and --exclude-builtin are only valid with debug members.");
+		print_error(error, json_output);
+		return 2;
+	}
 
 	Dictionary options;
 	options["action"] = action;
@@ -305,6 +319,8 @@ int run_debug(const Vector<String> &p_arguments) {
 	if (frame >= 0) {
 		options["frame"] = frame;
 	}
+	options["all"] = all_members;
+	options["exclude_builtin"] = exclude_builtin;
 	Dictionary response;
 	const int result = send_request("debug", options, session, json_output, response);
 	if (result != 0) {

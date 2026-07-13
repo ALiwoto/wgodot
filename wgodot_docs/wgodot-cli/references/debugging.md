@@ -40,13 +40,13 @@ This differs from `godot --wg pause`. The ordinary `pause` command suspends sche
 Resume or step from a hard debugger break:
 
 ```powershell
-godot --wg debug continue
+godot --wg debug continue # or debug resume
 godot --wg debug step_into
 godot --wg debug step_over
 godot --wg debug step_out
 ```
 
-Continue waits for confirmed resumption. Each step waits until the next debugger break and reports its new top frame. These commands fail if the game is not hard-paused or the current break cannot continue.
+`debug resume` is an alias for `debug continue`. Both wait for confirmed resumption. Each step waits until the next debugger break and reports its new top frame. These commands fail if the game is not hard-paused or the current break cannot continue.
 
 Wait for a running game to reach a breakpoint without polling:
 
@@ -89,6 +89,22 @@ godot --wg debug vars
 godot --wg debug locals --frame 2
 godot --wg debug vars --frame 2
 ```
+
+`debug members` shows members declared by the selected frame's script and uses their declared types even when their current value is `null`. Untyped members are displayed as `Variant`.
+
+Include inherited GDScript members and native properties from the paused `self` object with `--all`:
+
+```powershell
+godot --wg debug members --all
+```
+
+Filter those results by where each field was declared, rather than by its value type:
+
+```powershell
+godot --wg debug members --all --exclude-builtin
+```
+
+`--exclude-builtin` removes properties declared by Godot's native classes. A user-declared field remains included even when its declared type, such as `String`, is built in. Therefore, `--all --exclude-builtin` shows members from the selected script and its GDScript base classes without native properties. Without `--all`, `--exclude-builtin` is allowed but has no additional effect because ordinary `debug members` is already limited to the selected script.
 
 Stacks and loaded frame variables are cached only for the current break. Continuing, stepping, stopping the game, or reaching a new break invalidates them, and a new break selects frame `0` again.
 
