@@ -179,6 +179,22 @@ godot --wg list GameStatics
 godot --wg list Node2D
 ```
 
+Inspect a script directly even when it has no registered `class_name`:
+
+```powershell
+godot --wg list res://src/client/game_client.gd
+```
+
+Inspect one function by appending its name to a class or resolved property target:
+
+```powershell
+godot --wg list GameClient.get_tree
+godot --wg list GameClient.restart_game
+godot --wg list GameStatics.current_game_client.restart_game
+```
+
+Function output shows the complete signature. Native Godot and Variant methods are prefixed with `(built-in)`. GDScript methods show their absolute source-file path and definition line range when parser metadata is available. Bodyless interface functions are supported; their range covers the declaration.
+
 Follow a registered class's member and any further nested properties:
 
 ```powershell
@@ -195,6 +211,15 @@ godot --wg list GameClient.auto_translate_mode
 ```
 
 Metadata fallback can resolve script classes, native classes, built-in Variant types, and named enums. Runtime node paths such as `/root/Main` still require a running game because they identify instances rather than declared types.
+
+Hide native Godot members when only project-defined GDScript members matter:
+
+```powershell
+godot --wg list GameClient --exclude-builtin
+godot --wg list res://src/client/game_client.gd --exclude-builtin
+```
+
+Without `--exclude-builtin`, class and Object listings include inherited native members. With it, WGodot keeps members declared by the target script and its GDScript base classes, including interface functions, but omits native engine properties, methods, signals, constants, and enums. An explicitly targeted built-in function can still be inspected.
 
 Restrict the result by declared type. Object types include members declared as an inheriting type, so `Node2D` also matches a variable declared as a named class that extends `Node2D`:
 

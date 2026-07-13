@@ -211,7 +211,8 @@ void print_cli_help() {
 	print_line("  get_static <class.member...>      Read named-class static members.");
 	print_line("  set_static <class.member> <value> Assign a named-class static member.");
 	print_line("  call_static <class.method> [...]  Call a named-class static method.");
-	print_line("  list <node|class> [options]       List runtime node or class members.");
+	print_line("  list <target> [options]           List node, class, script, type, or function metadata.");
+	print_line("    --exclude-builtin               Hide inherited native Godot members.");
 	print_line("  wait [--physics] [--count <n>]    Wait for running frames or ticks.");
 	print_line("  pause                             Pause process and physics phases.");
 	print_line("  resume                            Resume a full game pause.");
@@ -592,8 +593,12 @@ int print_command_response(const Dictionary &p_response, bool p_json_output) {
 		if (!declaration.is_empty()) {
 			print_line(declaration);
 		}
+		const String location = p_response.get("location", String());
+		if (!location.is_empty()) {
+			print_line(location);
+		}
 		const Array sections = p_response.get("sections", Array());
-		if (sections.is_empty()) {
+		if (sections.is_empty() && String(p_response.get("target_kind", String())) != "function") {
 			print_line("No matching members.");
 		}
 		for (int section_index = 0; section_index < sections.size(); section_index++) {
@@ -883,6 +888,7 @@ int run_list_command(const Vector<String> &p_arguments) {
 	String target;
 	String type_filter;
 	PackedStringArray member_types;
+	bool exclude_builtin = false;
 	bool options_finished = false;
 
 	for (int i = 0; i < p_arguments.size(); i++) {
@@ -907,6 +913,8 @@ int run_list_command(const Vector<String> &p_arguments) {
 				return 2;
 			}
 			type_filter = p_arguments[++i].strip_edges();
+		} else if (!options_finished && argument == "--exclude-builtin") {
+			exclude_builtin = true;
 		} else if (!options_finished && argument == "--member-type") {
 			if (i + 1 >= p_arguments.size()) {
 				print_line("wgodot: --member-type requires a member kind, such as func or var.");
@@ -927,13 +935,13 @@ int run_list_command(const Vector<String> &p_arguments) {
 		} else if (target.is_empty()) {
 			target = argument;
 		} else {
-			print_line("wgodot: list requires exactly one node path or class name.");
+			print_line("wgodot: list requires exactly one node path, class name, script path, or nested target.");
 			return 2;
 		}
 	}
 
 	if (target.is_empty()) {
-		print_line("wgodot: list requires a node path or class name.");
+		print_line("wgodot: list requires a node path, class name, script path, or nested target.");
 		return 2;
 	}
 
@@ -944,6 +952,9 @@ int run_list_command(const Vector<String> &p_arguments) {
 	}
 	if (!member_types.is_empty()) {
 		options["member_types"] = member_types;
+	}
+	if (exclude_builtin) {
+		options["exclude_builtin"] = true;
 	}
 
 	Dictionary request;
