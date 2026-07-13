@@ -1,6 +1,6 @@
 ---
 name: wgodot-cli
-description: Use WGodot's agent-oriented command-line interface to run, stop, pause, step, or frame-sync a project; inspect and modify runtime properties; call runtime methods; capture screenshots; inject input; query editor sessions; and check project GDScript. Use when an agent needs `godot --wg` commands while developing, inspecting, or testing a WGodot project.
+description: Use WGodot's agent-oriented command-line interface to run, stop, pause, step, or frame-sync a project; inspect and modify runtime or named-class static properties; call runtime or static methods; capture screenshots; inject input; query editor sessions; and check project GDScript. Use when an agent needs `godot --wg` commands while developing, inspecting, or testing a WGodot project.
 ---
 
 # WGodot CLI
@@ -202,6 +202,22 @@ godot --wg set /root/Main text '"true"'
 ```
 
 Use `--` before an operand beginning with `--` so it is not parsed as a CLI option. These commands work while the game is paused and accept `--json` for typed, structured results.
+
+### Named-class static members
+
+Use a complete class-qualified path whose first segment is a registered GDScript `class_name`:
+
+```powershell
+godot --wg get_static GameStatics.current_moving_element.element_text
+godot --wg get_static GameStatics.current_score OtherStatics.enabled
+godot --wg set_static GameStatics.current_score 100
+godot --wg call_static GameStatics.reset
+godot --wg call_static GameStatics.spawn_enemy 3 "Vector2(250, 400)"
+```
+
+Continue nesting after the static member as needed. For example, `GameStatics.current_moving_element.element_text` reads the ordinary `element_text` field from the object stored in the static `current_moving_element` variable. A nested call such as `GameStatics.current_moving_element.activate` calls the normal method on that resolved object.
+
+Use the same Variant value syntax, `--`, `--json`, and `--session` rules as `get`, `set`, and `call`. These commands also work while the game is paused.
 
 ## Screenshots
 

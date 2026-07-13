@@ -14,6 +14,7 @@
 #include "core/input/input_map.h"
 #include "core/io/dir_access.h"
 #include "core/io/image.h"
+#include "core/io/resource_loader.h"
 #include "core/math/math_funcs.h"
 #include "core/object/class_db.h"
 #include "core/object/script_language.h"
@@ -199,6 +200,88 @@ Variant parse_cli_value(const String &p_source) {
 	return p_source;
 }
 
+bool resolve_named_class_member(
+		const String &p_command, const String &p_qualified_path, String &r_class_name,
+		String &r_member_path, Ref<Script> &r_script, Dictionary &r_error) {
+	const int separator = p_qualified_path.find_char('.');
+	if (separator <= 0 || separator == p_qualified_path.length() - 1) {
+		r_error = make_error(p_command, "invalid_static_member_path", "Expected a named class and member path, such as GameStatics.current_value.");
+		return false;
+	}
+
+	r_class_name = p_qualified_path.substr(0, separator);
+	r_member_path = p_qualified_path.substr(separator + 1);
+	Vector<StringName> member_path;
+	if (!parse_member_path(r_member_path, member_path)) {
+		r_error = make_error(p_command, "invalid_static_member_path", "Invalid static member path: " + p_qualified_path);
+		return false;
+	}
+	if (!ScriptServer::is_global_class(r_class_name)) {
+		r_error = make_error(p_command, "named_class_not_found", "Named script class was not found: " + r_class_name);
+		return false;
+	}
+
+	const String script_path = ScriptServer::get_global_class_path(r_class_name);
+	r_script = ResourceLoader::load(script_path, "Script");
+	if (r_script.is_null() || !r_script->is_valid()) {
+		r_error = make_error(p_command, "named_class_load_failed", "Could not load named script class " + r_class_name + " from: " + script_path);
+		return false;
+	}
+	return true;
+}
+
+Dictionary call_object_method(
+		const String &p_command, const String &p_target, Object *p_root,
+		const String &p_method_path_text, const String &p_display_method,
+		const PackedStringArray &p_argument_sources) {
+	Vector<StringName> method_path;
+	if (!parse_member_path(p_method_path_text, method_path)) {
+		return make_error(p_command, "invalid_method_path", "Invalid method path: " + p_display_method);
+	}
+
+	const StringName method = method_path[method_path.size() - 1];
+	Object *receiver = p_root;
+	Variant receiver_holder;
+	if (method_path.size() > 1) {
+		method_path.resize(method_path.size() - 1);
+		bool receiver_valid = false;
+		receiver_holder = p_root->get_indexed(method_path, &receiver_valid);
+		if (!receiver_valid) {
+			return make_error(p_command, "method_receiver_not_found", "Method receiver was not found for: " + p_display_method);
+		}
+		if (receiver_holder.get_type() != Variant::OBJECT || receiver_holder.get_validated_object() == nullptr) {
+			return make_error(p_command, "method_receiver_not_object", "Method receiver is not a live Object for: " + p_display_method);
+		}
+		receiver = receiver_holder.get_validated_object();
+	}
+
+	Vector<Variant> arguments;
+	arguments.resize(p_argument_sources.size());
+	for (int i = 0; i < p_argument_sources.size(); i++) {
+		arguments.write[i] = parse_cli_value(p_argument_sources[i]);
+	}
+	Vector<const Variant *> argument_pointers;
+	argument_pointers.resize(arguments.size());
+	for (int i = 0; i < arguments.size(); i++) {
+		argument_pointers.write[i] = &arguments[i];
+	}
+
+	Callable::CallError call_error;
+	call_error.error = Callable::CallError::CALL_ERROR_INVALID_METHOD;
+	const Variant result = receiver->callp(method, (const Variant **)argument_pointers.ptr(), argument_pointers.size(), call_error);
+	if (call_error.error != Callable::CallError::CALL_OK) {
+		return make_error(p_command, "call_failed", Variant::get_call_error_text(receiver, method, (const Variant **)argument_pointers.ptr(), argument_pointers.size(), call_error));
+	}
+
+	Dictionary response;
+	response["ok"] = true;
+	response["command"] = p_command;
+	response["target"] = p_target;
+	response["method"] = p_display_method;
+	response["result"] = make_value_info(result);
+	return response;
+}
+
 Dictionary get_runtime_properties(const Dictionary &p_options) {
 	Dictionary target_error;
 	Node *target = get_target_node("get", p_options, target_error);
@@ -284,54 +367,93 @@ Dictionary call_runtime_method(const Dictionary &p_options) {
 		return target_error;
 	}
 
-	const String method_path_text = p_options.get("method", String());
-	Vector<StringName> method_path;
-	if (!parse_member_path(method_path_text, method_path)) {
-		return make_error("call", "invalid_method_path", "Invalid method path: " + method_path_text);
-	}
-
-	const StringName method = method_path[method_path.size() - 1];
 	const String target_path = String(target->get_path());
-	Object *receiver = target;
-	Variant receiver_holder;
-	if (method_path.size() > 1) {
-		method_path.resize(method_path.size() - 1);
-		bool receiver_valid = false;
-		receiver_holder = target->get_indexed(method_path, &receiver_valid);
-		if (!receiver_valid) {
-			return make_error("call", "method_receiver_not_found", "Method receiver was not found for: " + method_path_text);
-		}
-		if (receiver_holder.get_type() != Variant::OBJECT || receiver_holder.get_validated_object() == nullptr) {
-			return make_error("call", "method_receiver_not_object", "Method receiver is not a live Object for: " + method_path_text);
-		}
-		receiver = receiver_holder.get_validated_object();
-	}
-
+	const String method_path_text = p_options.get("method", String());
 	const PackedStringArray argument_sources = p_options.get("arguments", PackedStringArray());
-	Vector<Variant> arguments;
-	arguments.resize(argument_sources.size());
-	for (int i = 0; i < argument_sources.size(); i++) {
-		arguments.write[i] = parse_cli_value(argument_sources[i]);
-	}
-	Vector<const Variant *> argument_pointers;
-	argument_pointers.resize(arguments.size());
-	for (int i = 0; i < arguments.size(); i++) {
-		argument_pointers.write[i] = &arguments[i];
+	return call_object_method("call", target_path, target, method_path_text, method_path_text, argument_sources);
+}
+
+Dictionary get_static_members(const Dictionary &p_options) {
+	const PackedStringArray members = p_options.get("members", PackedStringArray());
+	if (members.is_empty()) {
+		return make_error("get_static", "static_member_required", "get_static requires at least one named-class member path.");
 	}
 
-	Callable::CallError call_error;
-	const Variant result = receiver->callp(method, (const Variant **)argument_pointers.ptr(), argument_pointers.size(), call_error);
-	if (call_error.error != Callable::CallError::CALL_OK) {
-		return make_error("call", "call_failed", Variant::get_call_error_text(receiver, method, (const Variant **)argument_pointers.ptr(), argument_pointers.size(), call_error));
+	Array values;
+	for (const String &qualified_path : members) {
+		String class_name;
+		String member_path_text;
+		Ref<Script> script;
+		Dictionary resolve_error;
+		if (!resolve_named_class_member("get_static", qualified_path, class_name, member_path_text, script, resolve_error)) {
+			return resolve_error;
+		}
+
+		bool valid = false;
+		const Variant value = get_nested_property(script.ptr(), member_path_text, valid);
+		if (!valid) {
+			return make_error("get_static", "static_member_not_found", "Static member was not found: " + qualified_path);
+		}
+		Dictionary entry = make_value_info(value);
+		entry["property"] = qualified_path;
+		entry["declaring_class"] = class_name;
+		values.push_back(entry);
 	}
 
 	Dictionary response;
 	response["ok"] = true;
-	response["command"] = "call";
-	response["target"] = target_path;
-	response["method"] = method_path_text;
-	response["result"] = make_value_info(result);
+	response["command"] = "get_static";
+	response["values"] = values;
 	return response;
+}
+
+Dictionary set_static_member(const Dictionary &p_options) {
+	const String qualified_path = p_options.get("member", String());
+	String class_name;
+	String member_path_text;
+	Ref<Script> script;
+	Dictionary resolve_error;
+	if (!resolve_named_class_member("set_static", qualified_path, class_name, member_path_text, script, resolve_error)) {
+		return resolve_error;
+	}
+
+	Vector<StringName> member_path;
+	if (!parse_member_path(member_path_text, member_path)) {
+		return make_error("set_static", "invalid_static_member_path", "Invalid static member path: " + qualified_path);
+	}
+	const String value_source = p_options.get("value", String());
+	bool valid = false;
+	script->set_indexed(member_path, parse_cli_value(value_source), &valid);
+	if (!valid) {
+		return make_error("set_static", "static_member_not_set", "Static member could not be assigned: " + qualified_path);
+	}
+
+	const Variant actual_value = script->get_indexed(member_path, &valid);
+	if (!valid) {
+		return make_error("set_static", "static_member_not_found", "Static member could not be read after assignment: " + qualified_path);
+	}
+
+	Dictionary response;
+	response["ok"] = true;
+	response["command"] = "set_static";
+	response["target"] = class_name;
+	response["property"] = qualified_path;
+	response["result"] = make_value_info(actual_value);
+	return response;
+}
+
+Dictionary call_static_method(const Dictionary &p_options) {
+	const String qualified_path = p_options.get("method", String());
+	String class_name;
+	String method_path_text;
+	Ref<Script> script;
+	Dictionary resolve_error;
+	if (!resolve_named_class_member("call_static", qualified_path, class_name, method_path_text, script, resolve_error)) {
+		return resolve_error;
+	}
+
+	const PackedStringArray argument_sources = p_options.get("arguments", PackedStringArray());
+	return call_object_method("call_static", class_name, script.ptr(), method_path_text, qualified_path, argument_sources);
 }
 
 Array collect_tree(const Dictionary &p_options, Dictionary &r_error) {
@@ -821,6 +943,12 @@ Error parse_message(void *p_user, const String &p_message, const Array &p_argume
 		response = set_runtime_property(options);
 	} else if (command == "call") {
 		response = call_runtime_method(options);
+	} else if (command == "get_static") {
+		response = get_static_members(options);
+	} else if (command == "set_static") {
+		response = set_static_member(options);
+	} else if (command == "call_static") {
+		response = call_static_method(options);
 	} else if (command == "wait") {
 		const int count = options.get("count", 1);
 		const bool physics = options.get("physics", false);

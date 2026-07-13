@@ -208,6 +208,9 @@ void print_cli_help() {
 	print_line("  get <node> <property...>           Read runtime properties.");
 	print_line("  set <node> <property> <value>     Assign a runtime property.");
 	print_line("  call <node> <method> [args...]    Call a runtime method.");
+	print_line("  get_static <class.member...>      Read named-class static members.");
+	print_line("  set_static <class.member> <value> Assign a named-class static member.");
+	print_line("  call_static <class.method> [...]  Call a named-class static method.");
 	print_line("  wait [--physics] [--count <n>]    Wait for running frames or ticks.");
 	print_line("  pause                             Pause process and physics phases.");
 	print_line("  resume                            Resume a full game pause.");
@@ -571,16 +574,16 @@ int print_command_response(const Dictionary &p_response, bool p_json_output) {
 		print_line(vformat("Key %s: %s.", String(p_response.get("key", String())), String(p_response.get("state", String()))));
 	} else if (command == "action") {
 		print_line(vformat("Action %s: %s.", String(p_response.get("action", String())), String(p_response.get("state", String()))));
-	} else if (command == "get") {
+	} else if (command == "get" || command == "get_static") {
 		const Array values = p_response.get("values", Array());
 		for (const Variant &value_variant : values) {
 			const Dictionary value = value_variant;
 			print_line(String(value.get("property", String())) + " = " + String(value.get("value", String())));
 		}
-	} else if (command == "set") {
+	} else if (command == "set" || command == "set_static") {
 		const Dictionary result = p_response.get("result", Dictionary());
 		print_line(String(p_response.get("property", String())) + " = " + String(result.get("value", String())));
-	} else if (command == "call") {
+	} else if (command == "call" || command == "call_static") {
 		const Dictionary result = p_response.get("result", Dictionary());
 		print_line("Result: " + String(result.get("value", String())));
 	} else if (command == "wait") {
@@ -812,6 +815,34 @@ int run_runtime_command(const String &p_command, const Vector<String> &p_argumen
 			arguments.push_back(command_options.operands[i]);
 		}
 		options["arguments"] = arguments;
+	} else if (p_command == "get_static") {
+		if (command_options.operands.is_empty()) {
+			print_line("wgodot: get_static requires at least one named-class member path.");
+			return 2;
+		}
+		PackedStringArray members;
+		for (const String &operand : command_options.operands) {
+			members.push_back(operand);
+		}
+		options["members"] = members;
+	} else if (p_command == "set_static") {
+		if (command_options.operands.size() != 2) {
+			print_line("wgodot: set_static requires a named-class member path and one value; quote values containing spaces.");
+			return 2;
+		}
+		options["member"] = command_options.operands[0];
+		options["value"] = command_options.operands[1];
+	} else if (p_command == "call_static") {
+		if (command_options.operands.is_empty()) {
+			print_line("wgodot: call_static requires a named-class method path.");
+			return 2;
+		}
+		options["method"] = command_options.operands[0];
+		PackedStringArray arguments;
+		for (int i = 1; i < command_options.operands.size(); i++) {
+			arguments.push_back(command_options.operands[i]);
+		}
+		options["arguments"] = arguments;
 	}
 
 	Dictionary request;
@@ -1038,7 +1069,7 @@ bool execute_if_requested(int &r_exit_code) {
 		r_exit_code = run_input_command(command, arguments);
 		return true;
 	}
-	if (command == "get" || command == "set" || command == "call") {
+	if (command == "get" || command == "set" || command == "call" || command == "get_static" || command == "set_static" || command == "call_static") {
 		r_exit_code = run_runtime_command(command, arguments);
 		return true;
 	}
