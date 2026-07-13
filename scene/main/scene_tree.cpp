@@ -59,6 +59,13 @@ STATIC_ASSERT_INCOMPLETE_TYPE(class, RenderingServer);
 #include "servers/display/display_server.h"
 #include "servers/rendering/rendering_server.h"
 
+// wgodot-changes::begin
+#include "modules/modules_enabled.gen.h"
+#ifdef MODULE_WGODOT_ENABLED
+#include "modules/wgodot/wgodot_pause_controller.h"
+#endif
+// wgodot-changes::end
+
 #ifndef _3D_DISABLED
 #include "scene/3d/node_3d.h"
 #include "scene/resources/3d/world_3d.h"
@@ -686,6 +693,13 @@ void SceneTree::iteration_end() {
 }
 
 bool SceneTree::process(double p_time) {
+	// wgodot-changes::begin
+#ifdef MODULE_WGODOT_ENABLED
+	if (!WGodotPauseController::begin_process_frame()) {
+		return _quit;
+	}
+#endif
+	// wgodot-changes::end
 	// First pass of scene tree fixed timestep interpolation.
 	if (get_scene_tree_fti().is_enabled()) {
 		// Special, we need to ensure RenderingServer is up to date
@@ -787,6 +801,12 @@ bool SceneTree::process(double p_time) {
 		RenderingServer::get_singleton()->pre_draw(true);
 	}
 
+	// wgodot-changes::begin
+#ifdef MODULE_WGODOT_ENABLED
+	WGodotPauseController::end_process_frame();
+#endif
+	// wgodot-changes::end
+
 	return _quit;
 }
 
@@ -794,12 +814,23 @@ void SceneTree::process_timers(double p_delta, bool p_physics_frame) {
 	_THREAD_SAFE_METHOD_
 	const List<Ref<SceneTreeTimer>>::Element *L = timers.back(); // Last element.
 	const double unscaled_delta = Engine::get_singleton()->get_process_step();
+	// wgodot-changes::begin
+	bool pause_blocks_processing = paused;
+#ifdef MODULE_WGODOT_ENABLED
+	pause_blocks_processing = paused && !(p_physics_frame ? WGodotPauseController::is_physics_step_active() : WGodotPauseController::is_process_step_active());
+#endif
+	// wgodot-changes::end
 
 	for (List<Ref<SceneTreeTimer>>::Element *E = timers.front(); E;) {
 		List<Ref<SceneTreeTimer>>::Element *N = E->next();
 		Ref<SceneTreeTimer> timer = E->get();
 
-		if ((paused && !timer->is_process_always()) || (timer->is_process_in_physics() != p_physics_frame)) {
+		if (
+			// wgodot-changes::begin
+			(pause_blocks_processing &&
+			// wgodot-changes::end
+				!timer->is_process_always()) ||
+			(timer->is_process_in_physics() != p_physics_frame)) {
 			if (E == L) {
 				break; // Break on last, so if new timers were added during list traversal, ignore them.
 			}
@@ -827,13 +858,23 @@ void SceneTree::process_tweens(double p_delta, bool p_physics) {
 	// This methods works similarly to how SceneTreeTimers are handled.
 	const List<Ref<Tween>>::Element *L = tweens.back();
 	const double unscaled_delta = Engine::get_singleton()->get_process_step();
+	// wgodot-changes::begin
+	bool pause_blocks_processing = paused;
+#ifdef MODULE_WGODOT_ENABLED
+	pause_blocks_processing = paused && !(p_physics ? WGodotPauseController::is_physics_step_active() : WGodotPauseController::is_process_step_active());
+#endif
+	// wgodot-changes::end
 
 	for (List<Ref<Tween>>::Element *E = tweens.front(); E;) {
 		List<Ref<Tween>>::Element *N = E->next();
 		Ref<Tween> &tween = E->get();
 
 		// Don't process if paused or process mode doesn't match.
-		if (!tween->can_process(paused) || (p_physics == (tween->get_process_mode() == Tween::TWEEN_PROCESS_IDLE))) {
+		if (
+			// wgodot-changes::begin
+			!tween->can_process(pause_blocks_processing) ||
+			// wgodot-changes::end
+			(p_physics == (tween->get_process_mode() == Tween::TWEEN_PROCESS_IDLE))) {
 			if (E == L) {
 				break;
 			}

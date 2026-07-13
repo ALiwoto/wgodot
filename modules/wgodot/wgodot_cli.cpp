@@ -205,6 +205,12 @@ void print_cli_help() {
 	print_line("  type <text>                       Type text into the running game.");
 	print_line("  key <key> [--down|--up]           Send a logical key event.");
 	print_line("  action <name> [--down|--up]       Send an InputMap action event.");
+	print_line("  pause                             Pause process and physics phases.");
+	print_line("  resume                            Resume a full game pause.");
+	print_line("  step [--count <number>]           Advance paused process frames.");
+	print_line("  pause_physics                     Pause fixed physics ticks only.");
+	print_line("  resume_physics                    Resume physics-only pausing.");
+	print_line("  step_physics [--count <number>]   Advance paused physics ticks.");
 	print_line("  check                             Check all project GDScript files.");
 	print_line("  help                              Show this help.");
 }
@@ -551,6 +557,18 @@ int print_command_response(const Dictionary &p_response, bool p_json_output) {
 		print_line(vformat("Key %s: %s.", String(p_response.get("key", String())), String(p_response.get("state", String()))));
 	} else if (command == "action") {
 		print_line(vformat("Action %s: %s.", String(p_response.get("action", String())), String(p_response.get("state", String()))));
+	} else if (command == "pause") {
+		print_line("Game paused.");
+	} else if (command == "resume") {
+		print_line((bool)p_response.get("physics_effectively_paused", false) ? "Game process resumed; physics remains paused." : "Game resumed.");
+	} else if (command == "pause_physics") {
+		print_line("Physics paused.");
+	} else if (command == "resume_physics") {
+		print_line((bool)p_response.get("physics_effectively_paused", false) ? "Physics-only pause cleared; the full game pause is still active." : "Physics resumed.");
+	} else if (command == "step") {
+		print_line(vformat("Advanced %d process step(s).", (int)p_response.get("count", 1)));
+	} else if (command == "step_physics") {
+		print_line(vformat("Advanced %d physics step(s).", (int)p_response.get("count", 1)));
 	}
 	return 0;
 }
@@ -695,6 +713,47 @@ int run_input_command(const String &p_command, const Vector<String> &p_arguments
 	return run_editor_command(request, command_options.json_output);
 }
 
+int run_pause_command(const String &p_command, const Vector<String> &p_arguments) {
+	bool json_output = false;
+	int session = -1;
+	int count = 1;
+	const bool allow_count = p_command == "step" || p_command == "step_physics";
+	for (int i = 0; i < p_arguments.size(); i++) {
+		const String &argument = p_arguments[i];
+		if (argument == "--json") {
+			json_output = true;
+		} else if (argument == "--session") {
+			if (i + 1 >= p_arguments.size() || !p_arguments[i + 1].is_valid_int() || p_arguments[i + 1].to_int() < 0) {
+				print_line("wgodot: --session requires a non-negative integer session ID.");
+				return 2;
+			}
+			session = p_arguments[++i].to_int();
+		} else if (allow_count && argument == "--count") {
+			if (i + 1 >= p_arguments.size() || !p_arguments[i + 1].is_valid_int() || p_arguments[i + 1].to_int() <= 0) {
+				print_line("wgodot: --count requires a positive integer.");
+				return 2;
+			}
+			count = p_arguments[++i].to_int();
+		} else {
+			print_line("wgodot: unknown " + p_command + " argument: " + argument);
+			return 2;
+		}
+	}
+
+	Dictionary options;
+	if (allow_count) {
+		options["count"] = count;
+	}
+	Dictionary request;
+	request["protocol"] = PROTOCOL_VERSION;
+	request["command"] = p_command;
+	request["options"] = options;
+	if (session >= 0) {
+		request["session"] = session;
+	}
+	return run_editor_command(request, json_output);
+}
+
 int run_run_command(const Vector<String> &p_arguments) {
 	bool json_output = false;
 	String mode = "main";
@@ -824,6 +883,10 @@ bool execute_if_requested(int &r_exit_code) {
 	}
 	if (command == "click" || command == "type" || command == "key" || command == "action") {
 		r_exit_code = run_input_command(command, arguments);
+		return true;
+	}
+	if (command == "pause" || command == "resume" || command == "step" || command == "pause_physics" || command == "resume_physics" || command == "step_physics") {
+		r_exit_code = run_pause_command(command, arguments);
 		return true;
 	}
 

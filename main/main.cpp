@@ -148,6 +148,7 @@
 // wgodot-changes::begin
 #ifdef MODULE_WGODOT_ENABLED
 #include "modules/wgodot/wgodot_cli.h"
+#include "modules/wgodot/wgodot_pause_controller.h"
 #endif
 // wgodot-changes::end
 
@@ -4995,6 +4996,13 @@ bool Main::iteration() {
 
 	GodotProfileZoneGrouped(_profile_zone, "physics");
 	for (int iters = 0; iters < advance.physics_steps; ++iters) {
+		// wgodot-changes::begin
+#ifdef MODULE_WGODOT_ENABLED
+		if (!WGodotPauseController::begin_physics_step()) {
+			continue;
+		}
+#endif
+		// wgodot-changes::end
 		GodotProfileZone("Physics Step");
 		GodotProfileZoneGroupedFirst(_physics_zone, "setup");
 		if (Input::get_singleton()->is_agile_input_event_flushing()) {
@@ -5032,6 +5040,11 @@ bool Main::iteration() {
 #ifndef PHYSICS_2D_DISABLED
 			PhysicsServer2D::get_singleton()->end_sync();
 #endif // PHYSICS_2D_DISABLED
+			// wgodot-changes::begin
+#ifdef MODULE_WGODOT_ENABLED
+			WGodotPauseController::end_physics_step();
+#endif
+			// wgodot-changes::end
 
 			Engine::get_singleton()->_in_physics = false;
 			exit = true;
@@ -5072,6 +5085,12 @@ bool Main::iteration() {
 
 		GodotProfileZoneGrouped(_profile_zone, "main loop iteration end");
 		OS::get_singleton()->get_main_loop()->iteration_end();
+
+		// wgodot-changes::begin
+#ifdef MODULE_WGODOT_ENABLED
+		WGodotPauseController::end_physics_step();
+#endif
+		// wgodot-changes::end
 
 		physics_process_ticks = MAX(physics_process_ticks, OS::get_singleton()->get_ticks_usec() - physics_begin); // keep the largest one for reference
 		physics_process_max = MAX(OS::get_singleton()->get_ticks_usec() - physics_begin, physics_process_max);

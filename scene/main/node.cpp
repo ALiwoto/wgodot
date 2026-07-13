@@ -55,6 +55,13 @@ STATIC_ASSERT_INCOMPLETE_TYPE(class, Engine);
 #include "scene/resources/packed_scene.h"
 #include "servers/display/accessibility_server.h"
 
+// wgodot-changes::begin
+#include "modules/modules_enabled.gen.h"
+#ifdef MODULE_WGODOT_ENABLED
+#include "modules/wgodot/wgodot_pause_controller.h"
+#endif
+// wgodot-changes::end
+
 #ifdef DEBUG_ENABLED
 #include "scene/debugger/scene_debugger.h"
 #endif
@@ -909,6 +916,13 @@ bool Node::can_process() const {
 }
 
 bool Node::_can_process(bool p_paused) const {
+	// wgodot-changes::begin
+#ifdef MODULE_WGODOT_ENABLED
+	if (p_paused && (WGodotPauseController::is_process_step_active() || WGodotPauseController::is_physics_step_active())) {
+		p_paused = false;
+	}
+#endif
+	// wgodot-changes::end
 	ProcessMode process_mode;
 
 	if (data.process_mode == PROCESS_MODE_INHERIT) {

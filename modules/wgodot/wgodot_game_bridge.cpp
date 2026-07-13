@@ -5,6 +5,8 @@
 
 #include "wgodot_game_bridge.h"
 
+#include "wgodot_pause_controller.h"
+
 #include "core/debugger/engine_debugger.h"
 #include "core/input/input.h"
 #include "core/input/input_event.h"
@@ -538,6 +540,13 @@ Dictionary click(const Dictionary &p_options) {
 	return response;
 }
 
+Dictionary make_pause_response(const String &p_command) {
+	Dictionary response = WGodotPauseController::get_state();
+	response["ok"] = true;
+	response["command"] = p_command;
+	return response;
+}
+
 Error parse_message(void *p_user, const String &p_message, const Array &p_arguments, bool &r_captured) {
 	r_captured = p_message == "request";
 	if (!r_captured) {
@@ -551,6 +560,7 @@ Error parse_message(void *p_user, const String &p_message, const Array &p_argume
 	const String command = p_arguments[1];
 	const Dictionary options = p_arguments[2];
 	Dictionary response;
+	bool response_deferred = false;
 	if (command == "tree") {
 		Dictionary tree_error;
 		const Array tree = collect_tree(options, tree_error);
@@ -596,11 +606,38 @@ Error parse_message(void *p_user, const String &p_message, const Array &p_argume
 		response = send_key(options);
 	} else if (command == "action") {
 		response = send_action(options);
+	} else if (command == "pause") {
+		WGodotPauseController::set_game_paused(true);
+		response = make_pause_response(command);
+	} else if (command == "resume") {
+		WGodotPauseController::set_game_paused(false);
+		response = make_pause_response(command);
+	} else if (command == "pause_physics") {
+		WGodotPauseController::set_physics_paused(true);
+		response = make_pause_response(command);
+	} else if (command == "resume_physics") {
+		WGodotPauseController::set_physics_paused(false);
+		response = make_pause_response(command);
+	} else if (command == "step" || command == "step_physics") {
+		const int count = options.get("count", 1);
+		if (count <= 0) {
+			response = make_error(command, "invalid_step_count", "Step count must be a positive integer.");
+		} else {
+			Dictionary step_error;
+			const bool accepted = command == "step" ? WGodotPauseController::request_process_steps(request_id, count, step_error) : WGodotPauseController::request_physics_steps(request_id, count, step_error);
+			if (accepted) {
+				response_deferred = true;
+			} else {
+				response = step_error;
+			}
+		}
 	} else {
 		response = make_error(command, "unknown_game_command", "Unknown WGodot game command: " + command);
 	}
 
-	EngineDebugger::get_singleton()->send_message("wgodot:response", { request_id, response });
+	if (!response_deferred) {
+		EngineDebugger::get_singleton()->send_message("wgodot:response", { request_id, response });
+	}
 	return OK;
 }
 

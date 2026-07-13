@@ -1,6 +1,6 @@
 ---
 name: wgodot-cli
-description: Use WGodot's agent-oriented command-line interface to run or stop a project, inspect the runtime scene tree, capture screenshots, inject mouse, keyboard, text, and InputMap action input, query editor sessions, and check project GDScript. Use when an agent needs `godot --wg` commands while developing, inspecting, or testing a WGodot project.
+description: Use WGodot's agent-oriented command-line interface to run, stop, pause, or step a project, inspect the runtime scene tree, capture screenshots, inject mouse, keyboard, text, and InputMap action input, query editor sessions, and check project GDScript. Use when an agent needs `godot --wg` commands while developing, inspecting, or testing a WGodot project.
 ---
 
 # WGodot CLI
@@ -83,6 +83,37 @@ godot --wg stop
 ```
 
 These commands also support `--json` when their results need to be parsed.
+
+## Pause and step
+
+Pause scheduled process and physics work while keeping rendering and WGodot inspection commands available:
+
+```powershell
+godot --wg pause
+godot --wg resume
+```
+
+Advance normal process frames while the full game pause remains active:
+
+```powershell
+godot --wg step
+godot --wg step --count 3
+```
+
+Pause only fixed physics ticks. Normal process frames and rendering continue:
+
+```powershell
+godot --wg pause_physics
+godot --wg step_physics
+godot --wg step_physics --count 3
+godot --wg resume_physics
+```
+
+`step` requires `pause`. It advances `_process`, idle timers, and idle tweens without advancing physics. `step_physics` requires either `pause` or `pause_physics`; it advances complete fixed ticks, including `_physics_process`, physics timers and tweens, navigation, and the 2D/3D physics servers.
+
+Step commands wait until the requested count has completed. Use a positive integer for `--count`; its default is `1`.
+
+`resume` clears the full game pause but preserves an explicit `pause_physics`. `resume_physics` clears only the explicit physics pause, so a full game pause still keeps physics stopped. These commands also accept `--json` and `--session <id>`.
 
 ## Scene tree
 
