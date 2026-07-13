@@ -205,6 +205,10 @@ void print_cli_help() {
 	print_line("  type <text>                       Type text into the running game.");
 	print_line("  key <key> [--down|--up]           Send a logical key event.");
 	print_line("  action <name> [--down|--up]       Send an InputMap action event.");
+	print_line("  get <node> <property...>           Read runtime properties.");
+	print_line("  set <node> <property> <value>     Assign a runtime property.");
+	print_line("  call <node> <method> [args...]    Call a runtime method.");
+	print_line("  wait [--physics] [--count <n>]    Wait for running frames or ticks.");
 	print_line("  pause                             Pause process and physics phases.");
 	print_line("  resume                            Resume a full game pause.");
 	print_line("  step [--count <number>]           Advance paused process frames.");
@@ -567,6 +571,23 @@ int print_command_response(const Dictionary &p_response, bool p_json_output) {
 		print_line(vformat("Key %s: %s.", String(p_response.get("key", String())), String(p_response.get("state", String()))));
 	} else if (command == "action") {
 		print_line(vformat("Action %s: %s.", String(p_response.get("action", String())), String(p_response.get("state", String()))));
+	} else if (command == "get") {
+		const Array values = p_response.get("values", Array());
+		for (const Variant &value_variant : values) {
+			const Dictionary value = value_variant;
+			print_line(String(value.get("property", String())) + " = " + String(value.get("value", String())));
+		}
+	} else if (command == "set") {
+		const Dictionary result = p_response.get("result", Dictionary());
+		print_line(String(p_response.get("property", String())) + " = " + String(result.get("value", String())));
+	} else if (command == "call") {
+		const Dictionary result = p_response.get("result", Dictionary());
+		print_line("Result: " + String(result.get("value", String())));
+	} else if (command == "wait") {
+		const String phase = p_response.get("phase", "process");
+		const int count = p_response.get("count", 1);
+		const String unit = phase == "physics" ? (count == 1 ? "physics tick" : "physics ticks") : (count == 1 ? "process frame" : "process frames");
+		print_line(vformat("Waited for %d %s.", count, unit));
 	} else if (command == "pause") {
 		print_line("Game paused.");
 	} else if (command == "resume") {
@@ -721,6 +742,128 @@ int run_input_command(const String &p_command, const Vector<String> &p_arguments
 		request["session"] = command_options.session;
 	}
 	return run_editor_command(request, command_options.json_output);
+}
+
+struct RuntimeCommandOptions {
+	bool json_output = false;
+	int session = -1;
+	Vector<String> operands;
+};
+
+bool parse_runtime_command_options(const String &p_command, const Vector<String> &p_arguments, RuntimeCommandOptions &r_options) {
+	bool options_finished = false;
+	for (int i = 0; i < p_arguments.size(); i++) {
+		const String &argument = p_arguments[i];
+		if (!options_finished && argument == "--") {
+			options_finished = true;
+		} else if (!options_finished && argument == "--json") {
+			r_options.json_output = true;
+		} else if (!options_finished && argument == "--session") {
+			if (i + 1 >= p_arguments.size() || !p_arguments[i + 1].is_valid_int() || p_arguments[i + 1].to_int() < 0) {
+				print_line("wgodot: --session requires a non-negative integer session ID.");
+				return false;
+			}
+			r_options.session = p_arguments[++i].to_int();
+		} else if (!options_finished && argument.begins_with("--")) {
+			print_line("wgodot: unknown " + p_command + " argument: " + argument);
+			return false;
+		} else {
+			r_options.operands.push_back(argument);
+		}
+	}
+	return true;
+}
+
+int run_runtime_command(const String &p_command, const Vector<String> &p_arguments) {
+	RuntimeCommandOptions command_options;
+	if (!parse_runtime_command_options(p_command, p_arguments, command_options)) {
+		return 2;
+	}
+
+	Dictionary options;
+	if (p_command == "get") {
+		if (command_options.operands.size() < 2) {
+			print_line("wgodot: get requires a node path and at least one property path.");
+			return 2;
+		}
+		options["target"] = command_options.operands[0];
+		PackedStringArray properties;
+		for (int i = 1; i < command_options.operands.size(); i++) {
+			properties.push_back(command_options.operands[i]);
+		}
+		options["properties"] = properties;
+	} else if (p_command == "set") {
+		if (command_options.operands.size() != 3) {
+			print_line("wgodot: set requires a node path, property path, and one value; quote values containing spaces.");
+			return 2;
+		}
+		options["target"] = command_options.operands[0];
+		options["property"] = command_options.operands[1];
+		options["value"] = command_options.operands[2];
+	} else if (p_command == "call") {
+		if (command_options.operands.size() < 2) {
+			print_line("wgodot: call requires a node path and method path.");
+			return 2;
+		}
+		options["target"] = command_options.operands[0];
+		options["method"] = command_options.operands[1];
+		PackedStringArray arguments;
+		for (int i = 2; i < command_options.operands.size(); i++) {
+			arguments.push_back(command_options.operands[i]);
+		}
+		options["arguments"] = arguments;
+	}
+
+	Dictionary request;
+	request["protocol"] = PROTOCOL_VERSION;
+	request["command"] = p_command;
+	request["options"] = options;
+	if (command_options.session >= 0) {
+		request["session"] = command_options.session;
+	}
+	return run_editor_command(request, command_options.json_output);
+}
+
+int run_wait_command(const Vector<String> &p_arguments) {
+	bool json_output = false;
+	bool physics = false;
+	int session = -1;
+	int count = 1;
+	for (int i = 0; i < p_arguments.size(); i++) {
+		const String &argument = p_arguments[i];
+		if (argument == "--json") {
+			json_output = true;
+		} else if (argument == "--physics") {
+			physics = true;
+		} else if (argument == "--session") {
+			if (i + 1 >= p_arguments.size() || !p_arguments[i + 1].is_valid_int() || p_arguments[i + 1].to_int() < 0) {
+				print_line("wgodot: --session requires a non-negative integer session ID.");
+				return 2;
+			}
+			session = p_arguments[++i].to_int();
+		} else if (argument == "--count") {
+			if (i + 1 >= p_arguments.size() || !p_arguments[i + 1].is_valid_int() || p_arguments[i + 1].to_int() <= 0) {
+				print_line("wgodot: --count requires a positive integer.");
+				return 2;
+			}
+			count = p_arguments[++i].to_int();
+		} else {
+			print_line("wgodot: unknown wait argument: " + argument);
+			return 2;
+		}
+	}
+
+	Dictionary options;
+	options["physics"] = physics;
+	options["count"] = count;
+	Dictionary request;
+	request["protocol"] = PROTOCOL_VERSION;
+	request["command"] = "wait";
+	request["options"] = options;
+	if (session >= 0) {
+		request["session"] = session;
+	}
+	return run_editor_command(request, json_output);
 }
 
 int run_pause_command(const String &p_command, const Vector<String> &p_arguments) {
@@ -893,6 +1036,14 @@ bool execute_if_requested(int &r_exit_code) {
 	}
 	if (command == "click" || command == "type" || command == "key" || command == "action") {
 		r_exit_code = run_input_command(command, arguments);
+		return true;
+	}
+	if (command == "get" || command == "set" || command == "call") {
+		r_exit_code = run_runtime_command(command, arguments);
+		return true;
+	}
+	if (command == "wait") {
+		r_exit_code = run_wait_command(arguments);
 		return true;
 	}
 	if (command == "pause" || command == "resume" || command == "step" || command == "pause_physics" || command == "resume_physics" || command == "step_physics") {

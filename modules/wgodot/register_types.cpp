@@ -7,6 +7,7 @@
 
 #include "wgodot_game_bridge.h"
 #include "wgodot_pause_controller.h"
+#include "wgodot_wait_controller.h"
 
 #ifdef TOOLS_ENABLED
 #include "editor/wgodot_cli_editor_plugin.h"
@@ -16,6 +17,7 @@
 void initialize_wgodot_module(ModuleInitializationLevel p_level) {
 	if (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {
 		WGodotPauseController::initialize();
+		WGodotWaitController::initialize();
 		WGodotGameBridge::initialize();
 	}
 #ifdef TOOLS_ENABLED
@@ -28,6 +30,7 @@ void initialize_wgodot_module(ModuleInitializationLevel p_level) {
 void uninitialize_wgodot_module(ModuleInitializationLevel p_level) {
 	if (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {
 		WGodotGameBridge::deinitialize();
+		WGodotWaitController::deinitialize();
 		WGodotPauseController::deinitialize();
 	}
 }

@@ -149,6 +149,7 @@
 #ifdef MODULE_WGODOT_ENABLED
 #include "modules/wgodot/wgodot_cli.h"
 #include "modules/wgodot/wgodot_pause_controller.h"
+#include "modules/wgodot/wgodot_wait_controller.h"
 #endif
 // wgodot-changes::end
 
@@ -5043,6 +5044,7 @@ bool Main::iteration() {
 			// wgodot-changes::begin
 #ifdef MODULE_WGODOT_ENABLED
 			WGodotPauseController::end_physics_step();
+			WGodotWaitController::end_physics_step();
 #endif
 			// wgodot-changes::end
 
@@ -5089,6 +5091,7 @@ bool Main::iteration() {
 		// wgodot-changes::begin
 #ifdef MODULE_WGODOT_ENABLED
 		WGodotPauseController::end_physics_step();
+		WGodotWaitController::end_physics_step();
 #endif
 		// wgodot-changes::end
 
@@ -5141,6 +5144,12 @@ bool Main::iteration() {
 			force_redraw_requested = false;
 		}
 	}
+
+	// wgodot-changes::begin
+#ifdef MODULE_WGODOT_ENABLED
+	WGodotWaitController::end_frame();
+#endif
+	// wgodot-changes::end
 
 	process_ticks = OS::get_singleton()->get_ticks_usec() - process_begin;
 	process_max = MAX(process_ticks, process_max);

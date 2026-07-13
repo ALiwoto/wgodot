@@ -6,6 +6,7 @@
 #include "wgodot_game_bridge.h"
 
 #include "wgodot_pause_controller.h"
+#include "wgodot_wait_controller.h"
 
 #include "core/debugger/engine_debugger.h"
 #include "core/input/input.h"
@@ -20,6 +21,7 @@
 #include "core/os/os.h"
 #include "core/os/time.h"
 #include "core/templates/vector.h"
+#include "core/variant/variant_parser.h"
 #include "scene/gui/control.h"
 #include "scene/main/node.h"
 #include "scene/main/scene_tree.h"
@@ -112,17 +114,224 @@ String get_property_display_value(const Variant &p_value) {
 	return p_value.stringify();
 }
 
-Variant get_nested_property(Node *p_node, const String &p_property_path, bool &r_valid) {
-	r_valid = false;
-	const PackedStringArray segments = p_property_path.split(".");
-	Vector<StringName> property_path;
+bool parse_member_path(const String &p_member_path, Vector<StringName> &r_path) {
+	r_path.clear();
+	if (p_member_path.is_empty()) {
+		return false;
+	}
+
+	const PackedStringArray segments = p_member_path.split(".");
 	for (int i = 0; i < segments.size(); i++) {
 		if (segments[i].is_empty()) {
-			return Variant();
+			r_path.clear();
+			return false;
 		}
-		property_path.push_back(segments[i]);
+		r_path.push_back(segments[i]);
 	}
-	return p_node->get_indexed(property_path, &r_valid);
+	return true;
+}
+
+Variant get_nested_property(Object *p_object, const String &p_property_path, bool &r_valid) {
+	r_valid = false;
+	Vector<StringName> property_path;
+	if (!parse_member_path(p_property_path, property_path)) {
+		return Variant();
+	}
+	return p_object->get_indexed(property_path, &r_valid);
+}
+
+Node *get_target_node(const String &p_command, const Dictionary &p_options, Dictionary &r_error) {
+	SceneTree *scene_tree = SceneTree::get_singleton();
+	Node *root = scene_tree ? scene_tree->get_root() : nullptr;
+	if (root == nullptr) {
+		r_error = make_error(p_command, "scene_tree_unavailable", "The running game has no scene tree.");
+		return nullptr;
+	}
+
+	const String target_path = p_options.get("target", String());
+	Node *target = target_path.is_empty() ? nullptr : root->get_node_or_null(NodePath(target_path));
+	if (target == nullptr) {
+		r_error = make_error(p_command, "node_not_found", "Target node was not found: " + target_path);
+	}
+	return target;
+}
+
+Dictionary make_value_info(const Variant &p_value) {
+	String value_text;
+	if (p_value.get_type() == Variant::OBJECT) {
+		Object *object = p_value.get_validated_object();
+		value_text = object ? vformat("<%s#%d>", object->get_class(), static_cast<int64_t>(object->get_instance_id())) : "null";
+	} else if (p_value.get_type() == Variant::ARRAY || p_value.get_type() == Variant::DICTIONARY) {
+		value_text = p_value.stringify();
+	} else if (VariantWriter::write_to_string(p_value, value_text) != OK) {
+		value_text = p_value.stringify();
+	}
+
+	Dictionary info;
+	info["type"] = Variant::get_type_name(p_value.get_type());
+	info["value"] = value_text;
+	if (p_value.get_type() == Variant::OBJECT) {
+		Object *object = p_value.get_validated_object();
+		if (object) {
+			info["class"] = object->get_class();
+			info["instance_id"] = static_cast<int64_t>(object->get_instance_id());
+			Node *node = Object::cast_to<Node>(object);
+			if (node && node->is_inside_tree()) {
+				info["node_path"] = String(node->get_path());
+			}
+		}
+	}
+	return info;
+}
+
+Variant parse_cli_value(const String &p_source) {
+	VariantParser::StreamString stream;
+	stream.s = p_source;
+	Variant value;
+	String error_text;
+	int error_line = 0;
+	if (VariantParser::parse(&stream, value, error_text, error_line) == OK) {
+		VariantParser::Token trailing_token;
+		if (VariantParser::get_token(&stream, trailing_token, error_line, error_text) == OK && trailing_token.type == VariantParser::TK_EOF) {
+			return value;
+		}
+	}
+	return p_source;
+}
+
+Dictionary get_runtime_properties(const Dictionary &p_options) {
+	Dictionary target_error;
+	Node *target = get_target_node("get", p_options, target_error);
+	if (target == nullptr) {
+		return target_error;
+	}
+
+	const PackedStringArray properties = p_options.get("properties", PackedStringArray());
+	if (properties.is_empty()) {
+		return make_error("get", "property_required", "Get requires at least one property path.");
+	}
+
+	const ObjectID target_id = target->get_instance_id();
+	const String target_path = String(target->get_path());
+	Array values;
+	for (const String &property : properties) {
+		target = Object::cast_to<Node>(ObjectDB::get_instance(target_id));
+		if (target == nullptr) {
+			return make_error("get", "target_freed", "The target node was freed while reading properties: " + target_path);
+		}
+		bool valid = false;
+		const Variant value = get_nested_property(target, property, valid);
+		if (!valid) {
+			return make_error("get", "property_not_found", "Property was not found: " + property);
+		}
+		Dictionary entry = make_value_info(value);
+		entry["property"] = property;
+		values.push_back(entry);
+	}
+
+	Dictionary response;
+	response["ok"] = true;
+	response["command"] = "get";
+	response["target"] = target_path;
+	response["values"] = values;
+	return response;
+}
+
+Dictionary set_runtime_property(const Dictionary &p_options) {
+	Dictionary target_error;
+	Node *target = get_target_node("set", p_options, target_error);
+	if (target == nullptr) {
+		return target_error;
+	}
+
+	const String property = p_options.get("property", String());
+	Vector<StringName> property_path;
+	if (!parse_member_path(property, property_path)) {
+		return make_error("set", "invalid_property_path", "Invalid property path: " + property);
+	}
+
+	const ObjectID target_id = target->get_instance_id();
+	const String target_path = String(target->get_path());
+	const String value_source = p_options.get("value", String());
+	bool valid = false;
+	target->set_indexed(property_path, parse_cli_value(value_source), &valid);
+	if (!valid) {
+		return make_error("set", "property_not_set", "Property could not be assigned: " + property);
+	}
+	target = Object::cast_to<Node>(ObjectDB::get_instance(target_id));
+	if (target == nullptr) {
+		return make_error("set", "target_freed", "The target node was freed while assigning: " + property);
+	}
+
+	const Variant actual_value = target->get_indexed(property_path, &valid);
+	if (!valid) {
+		return make_error("set", "property_not_found", "Property could not be read after assignment: " + property);
+	}
+
+	Dictionary response;
+	response["ok"] = true;
+	response["command"] = "set";
+	response["target"] = target_path;
+	response["property"] = property;
+	response["result"] = make_value_info(actual_value);
+	return response;
+}
+
+Dictionary call_runtime_method(const Dictionary &p_options) {
+	Dictionary target_error;
+	Node *target = get_target_node("call", p_options, target_error);
+	if (target == nullptr) {
+		return target_error;
+	}
+
+	const String method_path_text = p_options.get("method", String());
+	Vector<StringName> method_path;
+	if (!parse_member_path(method_path_text, method_path)) {
+		return make_error("call", "invalid_method_path", "Invalid method path: " + method_path_text);
+	}
+
+	const StringName method = method_path[method_path.size() - 1];
+	const String target_path = String(target->get_path());
+	Object *receiver = target;
+	Variant receiver_holder;
+	if (method_path.size() > 1) {
+		method_path.resize(method_path.size() - 1);
+		bool receiver_valid = false;
+		receiver_holder = target->get_indexed(method_path, &receiver_valid);
+		if (!receiver_valid) {
+			return make_error("call", "method_receiver_not_found", "Method receiver was not found for: " + method_path_text);
+		}
+		if (receiver_holder.get_type() != Variant::OBJECT || receiver_holder.get_validated_object() == nullptr) {
+			return make_error("call", "method_receiver_not_object", "Method receiver is not a live Object for: " + method_path_text);
+		}
+		receiver = receiver_holder.get_validated_object();
+	}
+
+	const PackedStringArray argument_sources = p_options.get("arguments", PackedStringArray());
+	Vector<Variant> arguments;
+	arguments.resize(argument_sources.size());
+	for (int i = 0; i < argument_sources.size(); i++) {
+		arguments.write[i] = parse_cli_value(argument_sources[i]);
+	}
+	Vector<const Variant *> argument_pointers;
+	argument_pointers.resize(arguments.size());
+	for (int i = 0; i < arguments.size(); i++) {
+		argument_pointers.write[i] = &arguments[i];
+	}
+
+	Callable::CallError call_error;
+	const Variant result = receiver->callp(method, (const Variant **)argument_pointers.ptr(), argument_pointers.size(), call_error);
+	if (call_error.error != Callable::CallError::CALL_OK) {
+		return make_error("call", "call_failed", Variant::get_call_error_text(receiver, method, (const Variant **)argument_pointers.ptr(), argument_pointers.size(), call_error));
+	}
+
+	Dictionary response;
+	response["ok"] = true;
+	response["command"] = "call";
+	response["target"] = target_path;
+	response["method"] = method_path_text;
+	response["result"] = make_value_info(result);
+	return response;
 }
 
 Array collect_tree(const Dictionary &p_options, Dictionary &r_error) {
@@ -606,13 +815,31 @@ Error parse_message(void *p_user, const String &p_message, const Array &p_argume
 		response = send_key(options);
 	} else if (command == "action") {
 		response = send_action(options);
+	} else if (command == "get") {
+		response = get_runtime_properties(options);
+	} else if (command == "set") {
+		response = set_runtime_property(options);
+	} else if (command == "call") {
+		response = call_runtime_method(options);
+	} else if (command == "wait") {
+		const int count = options.get("count", 1);
+		const bool physics = options.get("physics", false);
+		Dictionary wait_error;
+		if (WGodotWaitController::request_wait(request_id, count, physics, wait_error)) {
+			response_deferred = true;
+		} else {
+			response = wait_error;
+		}
 	} else if (command == "pause") {
+		WGodotWaitController::cancel_process_wait("The game was paused before the requested process frames completed.");
+		WGodotWaitController::cancel_physics_wait("The game was paused before the requested physics ticks completed.");
 		WGodotPauseController::set_game_paused(true);
 		response = make_pause_response(command);
 	} else if (command == "resume") {
 		WGodotPauseController::set_game_paused(false);
 		response = make_pause_response(command);
 	} else if (command == "pause_physics") {
+		WGodotWaitController::cancel_physics_wait("Physics was paused before the requested ticks completed.");
 		WGodotPauseController::set_physics_paused(true);
 		response = make_pause_response(command);
 	} else if (command == "resume_physics") {

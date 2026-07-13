@@ -1,6 +1,6 @@
 ---
 name: wgodot-cli
-description: Use WGodot's agent-oriented command-line interface to run, stop, pause, or step a project, inspect the runtime scene tree, capture screenshots, inject mouse, keyboard, text, and InputMap action input, query editor sessions, and check project GDScript. Use when an agent needs `godot --wg` commands while developing, inspecting, or testing a WGodot project.
+description: Use WGodot's agent-oriented command-line interface to run, stop, pause, step, or frame-sync a project; inspect and modify runtime properties; call runtime methods; capture screenshots; inject input; query editor sessions; and check project GDScript. Use when an agent needs `godot --wg` commands while developing, inspecting, or testing a WGodot project.
 ---
 
 # WGodot CLI
@@ -52,7 +52,7 @@ WGodot normally chooses the editor-selected active game session automatically. D
 godot --wg status --session 1
 ```
 
-Commands that operate on a running game, including `tree`, `ss`, `observe`, `click`, `type`, `key`, and `action`, also accept `--session <id>`.
+Commands that operate on a running game also accept `--session <id>`.
 
 `status` does not start the editor or game. If it reports that no editor was found, ensure a WGodot editor is open on the same project. If it reports that no game is running, start the project in that editor before using commands that operate on the running game.
 
@@ -115,6 +115,22 @@ Step commands wait until the requested count has completed. Use a positive integ
 
 `resume` clears the full game pause but preserves an explicit `pause_physics`. `resume_physics` clears only the explicit physics pause, so a full game pause still keeps physics stopped. These commands also accept `--json` and `--session <id>`.
 
+Wait for naturally running process frames after an action:
+
+```powershell
+godot --wg wait
+godot --wg wait --count 3
+```
+
+Wait for fixed physics ticks instead:
+
+```powershell
+godot --wg wait --physics
+godot --wg wait --physics --count 3
+```
+
+`wait` observes normal execution and defaults to one process frame. It does not advance paused work: use `step` during a full pause and `step_physics` while physics is paused. The command returns after the requested frames or ticks and the corresponding rendered frame have completed.
+
 ## Scene tree
 
 Print the running game's scene tree:
@@ -152,6 +168,40 @@ Requested properties appear in argument order. Missing properties are displayed 
 The displayed node type prefers the nearest named script class, including a GDScript `class_name` or named inner class. It falls back to the native Godot class, such as `Node2D`, when the node's script inheritance chain has no named class.
 
 Prefer `--include Control`, `--root`, or a shallow `--depth` when looking for a UI element. Use an exact node path returned by this command in later commands that accept node targets.
+
+## Runtime properties and methods
+
+Read one or several properties from an exact runtime node path:
+
+```powershell
+godot --wg get /root/Main player.health
+godot --wg get /root/Main player.health position.x visible
+```
+
+Assign flat or nested properties. The command prints the actual value read back after assignment:
+
+```powershell
+godot --wg set /root/Main player.health 100
+godot --wg set /root/Main position.x 250
+godot --wg set /root/Main position "Vector2(250, 400)"
+godot --wg set /root/Main title "Hello world"
+```
+
+Call a node method with optional arguments, or call a method on a nested Object property:
+
+```powershell
+godot --wg call /root/Main restart_game
+godot --wg call /root/Main spawn_enemy 3 "Vector2(250, 400)"
+godot --wg call /root/Main inventory.add_item potion 3
+```
+
+Values use Godot Variant syntax when valid, including `true`, `null`, numbers, arrays, dictionaries, `Vector2(...)`, `Color(...)`, and `NodePath(...)`. Otherwise, the argument is treated as a String. Quote an argument at the shell level when it contains spaces. To pass a String that itself looks like Variant syntax, preserve quotes inside the argument; in PowerShell, for example:
+
+```powershell
+godot --wg set /root/Main text '"true"'
+```
+
+Use `--` before an operand beginning with `--` so it is not parsed as a CLI option. These commands work while the game is paused and accept `--json` for typed, structured results.
 
 ## Screenshots
 
@@ -247,7 +297,7 @@ godot --wg action move_right --down
 godot --wg action move_right --up
 ```
 
-These commands queue native Godot input but do not wait for a later rendered frame. Inspect the result with a separate `observe`, `tree`, or `ss` command. Add `--json` when structured acknowledgement or errors are useful.
+These commands queue native Godot input but do not wait for a later rendered frame. Use `wait` when frame synchronization matters, then inspect the result with `observe`, `tree`, `get`, or `ss`. Add `--json` when structured acknowledgement or errors are useful.
 
 ## GDScript check
 
@@ -267,7 +317,7 @@ This command works without a running editor because it checks the project direct
 2. Run the command needed for the task directly; do not use `status` as a mandatory first step.
 3. Use `run` when the game is not already running, then issue game commands directly.
 4. Prefer node-targeted `click` over coordinate clicks, then use `type`, `key`, or `action` for the intended interaction.
-5. Use `observe` after input for a combined visual and structural check; use filtered `tree` output for large interfaces.
+5. Use `wait` after input when the game needs a frame to react, then use `observe` for a combined visual and structural check or `get` for exact runtime state.
 6. Prefer normal human-readable output for interactive work and `--json` when reliable parsing is useful.
 7. Inspect the command's output and exit code before continuing.
 8. Use `godot --wg help` when a requested operation is not documented here.
