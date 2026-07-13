@@ -22,6 +22,7 @@ class WGodotCLIEditorPlugin : public EditorPlugin {
 			WAIT_NONE,
 			WAIT_GAME_START,
 			WAIT_GAME_RESPONSE,
+			WAIT_DEBUG,
 		};
 
 		Ref<StreamPeerTCP> tcp;
@@ -29,7 +30,10 @@ class WGodotCLIEditorPlugin : public EditorPlugin {
 		uint64_t accepted_at_msec = 0;
 		uint64_t deadline_msec = 0;
 		uint64_t game_request_id = 0;
+		uint64_t debug_generation = 0;
 		int game_session = -1;
+		int debug_wait_kind = 0;
+		String debug_action;
 		WaitKind wait_kind = WAIT_NONE;
 		bool completed = false;
 	};
@@ -74,6 +78,10 @@ public:
 	void setup_debugger_session(int p_session);
 	void handle_debugger_data(const String &p_message, const Array &p_data, int p_session);
 	void handle_debugger_errors_cleared(int p_session);
+	void handle_debugger_started(int p_session);
+	void handle_debugger_stopped(int p_session);
+	void handle_debugger_breaked(bool p_breaked, bool p_can_debug, const String &p_reason, bool p_has_stackdump, int p_session);
+	void handle_breakpoint_toggled(const String &p_path, int p_line, bool p_enabled);
 
 	WGodotCLIEditorPlugin();
 	~WGodotCLIEditorPlugin();

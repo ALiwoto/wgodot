@@ -1,6 +1,6 @@
 ---
 name: wgodot-cli
-description: Use WGodot's agent-oriented command-line interface to run, stop, pause, step, or frame-sync a project; inspect logs, debugger errors, scene trees, class members, source declarations, and runtime or named-class static properties; modify properties; call runtime or static methods; semantically rename GDScript symbols; capture screenshots; inject input; query editor sessions; and check project GDScript. Use when an agent needs `godot --wg` commands while developing, inspecting, refactoring, or testing a WGodot project.
+description: Use WGodot's agent-oriented command-line interface to run, stop, pause, step, frame-sync, set breakpoints, or control a hard debugger pause; inspect logs, debugger errors, scene trees, class members, source declarations, and runtime or named-class static properties; modify properties; call runtime or static methods; semantically rename GDScript symbols; capture screenshots; inject input; query editor sessions; and check project GDScript. Use when an agent needs `godot --wg` commands while developing, inspecting, debugging, refactoring, or testing a WGodot project.
 ---
 
 # WGodot CLI
@@ -107,6 +107,10 @@ godot --wg clear_logs --source debugger --session 1
 ```
 
 `clear_logs` defaults to both sources and clears the corresponding editor UI buffers as well. It does not delete rotated log files such as `user://logs/godot.log`.
+
+## Breakpoints and hard debugging
+
+Use breakpoint CRUD, hard debugger pausing, stepping, and wait commands as described in [references/debugging.md](references/debugging.md). Prefer `debug wait` over polling when waiting for a breakpoint.
 
 ## Pause and step
 

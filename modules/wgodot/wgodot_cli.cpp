@@ -5,6 +5,7 @@
 
 #include "wgodot_cli.h"
 
+#include "wgodot_debug_cli.h"
 #include "wgodot_logs_cli.h"
 #include "wgodot_rename_cli.h"
 
@@ -25,7 +26,7 @@ namespace WGodotCLI {
 namespace {
 
 constexpr uint64_t CONNECT_TIMEOUT_MSEC = 750;
-constexpr uint64_t RESPONSE_TIMEOUT_MSEC = 20000;
+constexpr uint64_t RESPONSE_TIMEOUT_MSEC = 65000;
 constexpr int MAX_PACKET_SIZE = 4 * 1024 * 1024;
 
 bool command_requested = false;
@@ -225,6 +226,9 @@ void print_cli_help() {
 	print_line("    --level <level>                 Select standard, warning, error, or editor messages.");
 	print_line("    --tail <number>                 Return the newest entries per source (default: 100).");
 	print_line("  clear_logs [options]              Clear Output and Debugger error buffers.");
+	print_line("  breakpoint|bp <action> [...]      Add, list, remove, enable, disable, or clear breakpoints.");
+	print_line("  debug <action> [options]          Inspect or control a hard debugger pause.");
+	print_line("    Actions: state, pause, continue, step_into, step_over, step_out, wait.");
 	print_line("  wait [--physics] [--count <n>]    Wait for running frames or ticks.");
 	print_line("  pause                             Pause process and physics phases.");
 	print_line("  resume                            Resume a full game pause.");
@@ -1219,6 +1223,14 @@ bool execute_if_requested(int &r_exit_code) {
 	}
 	if (command == "logs" || command == "clear_logs") {
 		r_exit_code = WGodotLogsCLI::run(command, arguments);
+		return true;
+	}
+	if (command == "breakpoint" || command == "bp") {
+		r_exit_code = WGodotDebugCLI::run_breakpoint(arguments);
+		return true;
+	}
+	if (command == "debug") {
+		r_exit_code = WGodotDebugCLI::run_debug(arguments);
 		return true;
 	}
 	if (command == "wait") {

@@ -8,6 +8,7 @@
 #include "../wgodot_cli.h"
 #include "../wgodot_member_list.h"
 #include "wgodot_cli_debugger_bridge.h"
+#include "wgodot_debug_service.h"
 #include "wgodot_log_service.h"
 #include "wgodot_project_info.h"
 #include "wgodot_source_info.h"
@@ -396,6 +397,42 @@ void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
 		finish_connection(p_connection, WGodotLogService::clear_logs(options));
 		return;
 	}
+	if (command == "breakpoint") {
+		finish_connection(p_connection, WGodotDebugService::execute_breakpoint(options));
+		return;
+	}
+	if (command == "debug") {
+		const String action = options.get("action", String());
+		Dictionary session_error;
+		int session = get_automatic_session(request, session_error);
+		if (session < 0 && action == "state" && String(session_error.get("error", String())) == "game_not_running") {
+			finish_connection(p_connection, WGodotDebugService::get_state(-1, "state"));
+			return;
+		}
+		if (session < 0) {
+			finish_connection(p_connection, session_error);
+			return;
+		}
+		const int timeout_msec = options.get("timeout_msec", 15000);
+		if (timeout_msec <= 0 || timeout_msec > 60000) {
+			finish_connection(p_connection, make_error_response("invalid_timeout", "Debug timeout must be between 1 and 60000 milliseconds."));
+			return;
+		}
+		WGodotDebugService::WaitKind wait_kind = WGodotDebugService::WAIT_NONE;
+		uint64_t generation = 0;
+		const Dictionary response = WGodotDebugService::execute_debug(session, options, wait_kind, generation);
+		if (!(bool)response.get("ok", true) || wait_kind == WGodotDebugService::WAIT_NONE) {
+			finish_connection(p_connection, response);
+			return;
+		}
+		p_connection.game_session = session;
+		p_connection.debug_action = action;
+		p_connection.debug_wait_kind = wait_kind;
+		p_connection.debug_generation = generation;
+		p_connection.wait_kind = PendingConnection::WAIT_DEBUG;
+		p_connection.deadline_msec = OS::get_singleton()->get_ticks_msec() + timeout_msec;
+		return;
+	}
 	if (is_forwarded_game_command(command)) {
 		Dictionary session_error;
 		const int session = get_automatic_session(request, session_error);
@@ -431,6 +468,13 @@ void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
 }
 
 void WGodotCLIEditorPlugin::poll_waiting_connection(PendingConnection &p_connection) {
+	if (p_connection.wait_kind == PendingConnection::WAIT_DEBUG) {
+		Dictionary response;
+		if (WGodotDebugService::poll_debug_wait(p_connection.game_session, p_connection.debug_action, static_cast<WGodotDebugService::WaitKind>(p_connection.debug_wait_kind), p_connection.debug_generation, response)) {
+			finish_connection(p_connection, response);
+		}
+		return;
+	}
 	if (p_connection.wait_kind != PendingConnection::WAIT_GAME_START) {
 		return;
 	}
@@ -487,14 +531,46 @@ void WGodotCLIEditorPlugin::setup_debugger_session(int p_session) {
 	if (!debugger->is_connected("errors_cleared", clear_callback)) {
 		debugger->connect("errors_cleared", clear_callback);
 	}
+	const Callable started_callback = callable_mp(this, &WGodotCLIEditorPlugin::handle_debugger_started).bind(p_session);
+	if (!debugger->is_connected("started", started_callback)) {
+		debugger->connect("started", started_callback);
+	}
+	const Callable stopped_callback = callable_mp(this, &WGodotCLIEditorPlugin::handle_debugger_stopped).bind(p_session);
+	if (!debugger->is_connected("stopped", stopped_callback)) {
+		debugger->connect("stopped", stopped_callback);
+	}
+	const Callable breaked_callback = callable_mp(this, &WGodotCLIEditorPlugin::handle_debugger_breaked).bind(p_session);
+	if (!debugger->is_connected("breaked", breaked_callback)) {
+		debugger->connect("breaked", breaked_callback);
+	}
+	if (debugger->is_session_active()) {
+		WGodotDebugService::debugger_started(p_session);
+	}
 }
 
 void WGodotCLIEditorPlugin::handle_debugger_data(const String &p_message, const Array &p_data, int p_session) {
 	WGodotLogService::capture_debugger_message(p_session, p_message, p_data);
+	WGodotDebugService::capture_debugger_message(p_session, p_message, p_data);
 }
 
 void WGodotCLIEditorPlugin::handle_debugger_errors_cleared(int p_session) {
 	WGodotLogService::clear_debugger_session(p_session);
+}
+
+void WGodotCLIEditorPlugin::handle_debugger_started(int p_session) {
+	WGodotDebugService::debugger_started(p_session);
+}
+
+void WGodotCLIEditorPlugin::handle_debugger_stopped(int p_session) {
+	WGodotDebugService::debugger_stopped(p_session);
+}
+
+void WGodotCLIEditorPlugin::handle_debugger_breaked(bool p_breaked, bool p_can_debug, const String &p_reason, bool p_has_stackdump, int p_session) {
+	WGodotDebugService::debugger_breaked(p_session, p_breaked, p_can_debug, p_reason, p_has_stackdump);
+}
+
+void WGodotCLIEditorPlugin::handle_breakpoint_toggled(const String &p_path, int p_line, bool p_enabled) {
+	WGodotDebugService::sync_breakpoint(p_path, p_line, p_enabled);
 }
 
 void WGodotCLIEditorPlugin::poll_connections() {
@@ -517,7 +593,11 @@ void WGodotCLIEditorPlugin::poll_connections() {
 			connection.tcp->disconnect_from_host();
 			connections.remove_at(i);
 		} else if (now > connection.deadline_msec) {
-			finish_connection(connection, make_error_response("timeout", "The WGodot command timed out."));
+			if (connection.wait_kind == PendingConnection::WAIT_DEBUG) {
+				finish_connection(connection, make_error_response("debug_timeout", "Timed out while waiting for the debugger state transition."));
+			} else {
+				finish_connection(connection, make_error_response("timeout", "The WGodot command timed out."));
+			}
 			connections.remove_at(i);
 		}
 	}
@@ -527,6 +607,11 @@ void WGodotCLIEditorPlugin::_notification(int p_what) {
 	switch (p_what) {
 		case NOTIFICATION_ENTER_TREE: {
 			WGodotLogService::reset();
+			WGodotDebugService::initialize();
+			const Callable breakpoint_callback = callable_mp(this, &WGodotCLIEditorPlugin::handle_breakpoint_toggled);
+			if (!EditorDebuggerNode::get_singleton()->is_connected("breakpoint_toggled", breakpoint_callback)) {
+				EditorDebuggerNode::get_singleton()->connect("breakpoint_toggled", breakpoint_callback);
+			}
 			debugger_bridge = Ref<WGodotCLIDebuggerBridge>(memnew(WGodotCLIDebuggerBridge(this)));
 			EditorDebuggerNode::get_singleton()->add_debugger_plugin(debugger_bridge);
 			if (start_server()) {
@@ -541,6 +626,7 @@ void WGodotCLIEditorPlugin::_notification(int p_what) {
 			set_process(false);
 			stop_server();
 			WGodotLogService::reset();
+			WGodotDebugService::reset();
 		} break;
 	}
 }
