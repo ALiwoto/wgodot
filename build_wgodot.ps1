@@ -4,7 +4,8 @@ param(
 	[AllowNull()]
 	[string]$RunTest = $null,
 
-	[switch]$SkipBuild
+	[switch]$SkipBuild,
+	[switch]$Templates
 )
 
 $defaultTests = @(
@@ -15,9 +16,14 @@ $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
 Import-Module "$vs\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
 Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments "-arch=x64"
 
+$target = "editor"
+if ($Templates) {
+	$target = "template_debug"
+}
+
 $sconsArgs = @(
 	"platform=windows",
-	"target=editor",
+	"target=$target",
 	"debug_symbols=no",
 	"windows_subsystem=console",
 	"accesskit=no",

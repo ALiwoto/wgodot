@@ -8,6 +8,7 @@
 #include "../wgodot_cli.h"
 #include "../wgodot_member_list.h"
 #include "wgodot_cli_debugger_bridge.h"
+#include "wgodot_project_info.h"
 #include "wgodot_source_info.h"
 
 #include "core/crypto/crypto_core.h"
@@ -209,6 +210,7 @@ Dictionary WGodotCLIEditorPlugin::make_status_response(const Dictionary &p_reque
 	response["protocol"] = WGodotCLI::PROTOCOL_VERSION;
 	response["project_root"] = project_root;
 	response["editor_pid"] = OS::get_singleton()->get_process_id();
+	WGodotProjectInfo::add_status_fields(response);
 
 	Array sessions;
 	int active_session_count = 0;
