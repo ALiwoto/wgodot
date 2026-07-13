@@ -227,14 +227,24 @@ void print_status_human(const Dictionary &p_response) {
 	} else if (automatic_session >= 0) {
 		const Array sessions = p_response.get("sessions", Array());
 		int64_t game_pid = 0;
+		bool game_paused = false;
+		bool physics_paused = false;
 		for (const Variant &session_variant : sessions) {
 			const Dictionary session = session_variant;
 			if ((int)session.get("id", -1) == automatic_session) {
 				game_pid = session.get("pid", 0);
+				game_paused = session.get("game_paused", false);
+				physics_paused = session.get("physics_paused", false);
 				break;
 			}
 		}
-		print_line(vformat("Game: running (session %d, PID %d)", automatic_session, game_pid));
+		String game_state = "running";
+		if (game_paused) {
+			game_state = "paused";
+		} else if (physics_paused) {
+			game_state = "running, physics paused";
+		}
+		print_line(vformat("Game: %s (session %d, PID %d)", game_state, automatic_session, game_pid));
 		if (active_sessions > 1) {
 			print_line(vformat("Sessions: %d active; using the editor-selected session", active_sessions));
 		}

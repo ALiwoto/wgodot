@@ -8,6 +8,7 @@
 #include "core/io/packet_peer.h"
 #include "core/io/stream_peer_tcp.h"
 #include "core/io/tcp_server.h"
+#include "core/templates/hash_map.h"
 #include "core/templates/vector.h"
 #include "editor/plugins/editor_plugin.h"
 
@@ -33,9 +34,17 @@ class WGodotCLIEditorPlugin : public EditorPlugin {
 		bool completed = false;
 	};
 
+	struct GameSessionState {
+		int64_t pid = 0;
+		bool game_paused = false;
+		bool physics_paused = false;
+		bool physics_effectively_paused = false;
+	};
+
 	Ref<TCPServer> server;
 	Ref<WGodotCLIDebuggerBridge> debugger_bridge;
 	Vector<PendingConnection> connections;
+	HashMap<int, GameSessionState> game_session_states;
 	uint64_t next_game_request_id = 1;
 	String token;
 	String instance_id;

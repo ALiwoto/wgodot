@@ -23,6 +23,21 @@ namespace {
 constexpr uint64_t CONNECTION_TIMEOUT_MSEC = 5000;
 constexpr uint64_t ASYNC_TIMEOUT_MSEC = 15000;
 constexpr int MAX_PACKET_SIZE = 4 * 1024 * 1024;
+constexpr const char *const FORWARDED_GAME_COMMANDS[] = {
+	"tree",
+	"ss",
+	"observe",
+	"click",
+	"type",
+	"key",
+	"action",
+	"pause",
+	"resume",
+	"step",
+	"pause_physics",
+	"resume_physics",
+	"step_physics",
+};
 
 Dictionary make_error_response(const String &p_error, const String &p_message) {
 	Dictionary response;
@@ -31,6 +46,15 @@ Dictionary make_error_response(const String &p_error, const String &p_message) {
 	response["message"] = p_message;
 	response["protocol"] = WGodotCLI::PROTOCOL_VERSION;
 	return response;
+}
+
+bool is_forwarded_game_command(const String &p_command) {
+	for (const char *command : FORWARDED_GAME_COMMANDS) {
+		if (p_command == command) {
+			return true;
+		}
+	}
+	return false;
 }
 
 } // namespace
@@ -129,6 +153,7 @@ bool WGodotCLIEditorPlugin::start_server() {
 
 void WGodotCLIEditorPlugin::stop_server() {
 	connections.clear();
+	game_session_states.clear();
 	if (debugger_bridge.is_valid()) {
 		if (EditorDebuggerNode::get_singleton()) {
 			EditorDebuggerNode::get_singleton()->remove_debugger_plugin(debugger_bridge);
@@ -189,14 +214,21 @@ Dictionary WGodotCLIEditorPlugin::make_status_response(const Dictionary &p_reque
 			}
 
 			const bool active = debugger->is_session_active();
+			const int64_t remote_pid = debugger->get_remote_pid();
 			Dictionary session;
 			session["id"] = id;
 			session["active"] = active;
 			session["selected"] = debugger == current_debugger;
-			session["pid"] = debugger->get_remote_pid();
+			session["pid"] = remote_pid;
 			session["paused"] = debugger->is_breaked();
 			session["errors"] = debugger->get_error_count();
 			session["warnings"] = debugger->get_warning_count();
+
+			const GameSessionState *game_state = game_session_states.getptr(id);
+			const bool has_matching_game_state = game_state && game_state->pid == remote_pid;
+			session["game_paused"] = has_matching_game_state && game_state->game_paused;
+			session["physics_paused"] = has_matching_game_state && game_state->physics_paused;
+			session["physics_effectively_paused"] = has_matching_game_state && game_state->physics_effectively_paused;
 			sessions.push_back(session);
 
 			if (debugger == current_debugger) {
@@ -299,15 +331,17 @@ void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
 	}
 	if (command == "run") {
 		const String mode = options.get("mode", "main");
+		if (mode != "main" && mode != "current" && mode != "custom") {
+			finish_connection(p_connection, make_error_response("invalid_run_mode", "Unknown run mode: " + mode));
+			return;
+		}
+		game_session_states.clear();
 		if (mode == "main") {
 			EditorRunBar::get_singleton()->play_main_scene(false);
 		} else if (mode == "current") {
 			EditorRunBar::get_singleton()->play_current_scene(false);
-		} else if (mode == "custom") {
-			EditorRunBar::get_singleton()->play_custom_scene(options.get("scene", String()));
 		} else {
-			finish_connection(p_connection, make_error_response("invalid_run_mode", "Unknown run mode: " + mode));
-			return;
+			EditorRunBar::get_singleton()->play_custom_scene(options.get("scene", String()));
 		}
 		if (!EditorRunBar::get_singleton()->is_playing()) {
 			finish_connection(p_connection, make_error_response("game_start_failed", "The editor did not start the game."));
@@ -320,6 +354,7 @@ void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
 	if (command == "stop") {
 		const bool was_playing = EditorRunBar::get_singleton()->is_playing();
 		EditorRunBar::get_singleton()->stop_playing();
+		game_session_states.clear();
 		Dictionary response;
 		response["ok"] = true;
 		response["command"] = "stop";
@@ -327,11 +362,7 @@ void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
 		finish_connection(p_connection, response);
 		return;
 	}
-	if (command == "tree" || command == "ss" || command == "observe" ||
-			command == "click" || command == "type" || command == "key" ||
-			command == "action" || command == "pause" || command == "resume" ||
-			command == "step" || command == "pause_physics" || command == "resume_physics" ||
-			command == "step_physics") {
+	if (is_forwarded_game_command(command)) {
 		Dictionary session_error;
 		const int session = get_automatic_session(request, session_error);
 		if (session < 0) {
@@ -364,16 +395,29 @@ void WGodotCLIEditorPlugin::poll_waiting_connection(PendingConnection &p_connect
 		return;
 	}
 	ScriptEditorDebugger *debugger = EditorDebuggerNode::get_singleton()->get_debugger(session);
+	if (!debugger || debugger->get_remote_pid() == 0) {
+		return;
+	}
 	Dictionary response;
 	response["ok"] = true;
 	response["command"] = "run";
 	response["scene"] = EditorRunBar::get_singleton()->get_playing_scene();
 	response["session"] = session;
-	response["pid"] = debugger ? debugger->get_remote_pid() : 0;
+	response["pid"] = debugger->get_remote_pid();
 	finish_connection(p_connection, response);
 }
 
 void WGodotCLIEditorPlugin::handle_game_response(int p_session, uint64_t p_request_id, const Dictionary &p_response) {
+	if (p_response.has("paused") && p_response.has("physics_paused") && p_response.has("physics_effectively_paused")) {
+		ScriptEditorDebugger *debugger = EditorDebuggerNode::get_singleton()->get_debugger(p_session);
+		GameSessionState state;
+		state.pid = debugger ? debugger->get_remote_pid() : 0;
+		state.game_paused = p_response["paused"];
+		state.physics_paused = p_response["physics_paused"];
+		state.physics_effectively_paused = p_response["physics_effectively_paused"];
+		game_session_states[p_session] = state;
+	}
+
 	for (PendingConnection &connection : connections) {
 		if (!connection.completed && connection.wait_kind == PendingConnection::WAIT_GAME_RESPONSE && connection.game_request_id == p_request_id && connection.game_session == p_session) {
 			Dictionary response = p_response;
