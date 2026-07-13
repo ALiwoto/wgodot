@@ -1,6 +1,6 @@
 ---
 name: wgodot-cli
-description: Use WGodot's agent-oriented command-line interface to run, stop, pause, step, or frame-sync a project; inspect and modify runtime or named-class static properties; call runtime or static methods; capture screenshots; inject input; query editor sessions; and check project GDScript. Use when an agent needs `godot --wg` commands while developing, inspecting, or testing a WGodot project.
+description: Use WGodot's agent-oriented command-line interface to run, stop, pause, step, or frame-sync a project; inspect scene trees, class members, and runtime or named-class static properties; modify properties; call runtime or static methods; capture screenshots; inject input; query editor sessions; and check project GDScript. Use when an agent needs `godot --wg` commands while developing, inspecting, or testing a WGodot project.
 ---
 
 # WGodot CLI
@@ -168,6 +168,38 @@ Requested properties appear in argument order. Missing properties are displayed 
 The displayed node type prefers the nearest named script class, including a GDScript `class_name` or named inner class. It falls back to the native Godot class, such as `Node2D`, when the node's script inheritance chain has no named class.
 
 Prefer `--include Control`, `--root`, or a shallow `--depth` when looking for a UI element. Use an exact node path returned by this command in later commands that accept node targets.
+
+## Member listing
+
+List the members of an exact runtime node, a registered GDScript `class_name`, or a native Godot class:
+
+```powershell
+godot --wg list /root/Main/UI/PlayButton
+godot --wg list GameStatics
+godot --wg list Node2D
+```
+
+Restrict the result by declared type. Object types include members declared as an inheriting type, so `Node2D` also matches a variable declared as a named class that extends `Node2D`:
+
+```powershell
+godot --wg list GameClient --filter Node2D
+```
+
+Restrict the member categories with `--member-type`:
+
+```powershell
+godot --wg list GameClient --member-type func
+godot --wg list GameClient --member-type "var, static_var"
+godot --wg list GameClient --member-type signal --member-type static_func
+```
+
+`--member-type` is case-insensitive and repeatable, and accepts comma-separated values. Its primary values are `func`, `static_func`, `signal`, `var`, `static_var`, `const`, `enum`, and `class`. `function` aliases `func`; long forms such as `static_function`, `variable`, `static_variable`, `constant`, `enumeration`, and `nested_class` are also accepted.
+
+For variables, `--filter` checks the declared value type. For functions it checks the return type, for constants it checks the stored value type, and for nested classes it checks the base type. Signals have the type `Signal`. Use `--member-type` instead when the goal is to select a category rather than a value type.
+
+The normal output combines inherited members rather than separating them by inheritance level or export group. It shows function and signal signatures, static and instance members in separate sections, constant values, enum member counts, and nested class base types. Empty sections are omitted. Nested classes and enums are summarized at one level; their inner contents are not recursively listed. Add `--json` for structured sections and member records.
+
+`list` reads reflection metadata and does not invoke property getters or user methods. It works while the game is paused.
 
 ## Runtime properties and methods
 

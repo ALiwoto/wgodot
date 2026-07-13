@@ -211,6 +211,7 @@ void print_cli_help() {
 	print_line("  get_static <class.member...>      Read named-class static members.");
 	print_line("  set_static <class.member> <value> Assign a named-class static member.");
 	print_line("  call_static <class.method> [...]  Call a named-class static method.");
+	print_line("  list <node|class> [options]       List runtime node or class members.");
 	print_line("  wait [--physics] [--count <n>]    Wait for running frames or ticks.");
 	print_line("  pause                             Pause process and physics phases.");
 	print_line("  resume                            Resume a full game pause.");
@@ -586,6 +587,23 @@ int print_command_response(const Dictionary &p_response, bool p_json_output) {
 	} else if (command == "call" || command == "call_static") {
 		const Dictionary result = p_response.get("result", Dictionary());
 		print_line("Result: " + String(result.get("value", String())));
+	} else if (command == "list") {
+		const Array sections = p_response.get("sections", Array());
+		if (sections.is_empty()) {
+			print_line("No matching members.");
+		}
+		for (int section_index = 0; section_index < sections.size(); section_index++) {
+			const Dictionary section = sections[section_index];
+			if (section_index > 0) {
+				print_line("");
+			}
+			print_line(String(section.get("title", String())) + ":");
+			const Array members = section.get("members", Array());
+			for (const Variant &member_variant : members) {
+				const Dictionary member = member_variant;
+				print_line("- " + String(member.get("display", String())));
+			}
+		}
 	} else if (command == "wait") {
 		const String phase = p_response.get("phase", "process");
 		const int count = p_response.get("count", 1);
@@ -855,6 +873,85 @@ int run_runtime_command(const String &p_command, const Vector<String> &p_argumen
 	return run_editor_command(request, command_options.json_output);
 }
 
+int run_list_command(const Vector<String> &p_arguments) {
+	bool json_output = false;
+	int session = -1;
+	String target;
+	String type_filter;
+	PackedStringArray member_types;
+	bool options_finished = false;
+
+	for (int i = 0; i < p_arguments.size(); i++) {
+		const String &argument = p_arguments[i];
+		if (!options_finished && argument == "--") {
+			options_finished = true;
+		} else if (!options_finished && argument == "--json") {
+			json_output = true;
+		} else if (!options_finished && argument == "--session") {
+			if (i + 1 >= p_arguments.size() || !p_arguments[i + 1].is_valid_int() || p_arguments[i + 1].to_int() < 0) {
+				print_line("wgodot: --session requires a non-negative integer session ID.");
+				return 2;
+			}
+			session = p_arguments[++i].to_int();
+		} else if (!options_finished && argument == "--filter") {
+			if (i + 1 >= p_arguments.size() || p_arguments[i + 1].strip_edges().is_empty()) {
+				print_line("wgodot: --filter requires a type name.");
+				return 2;
+			}
+			if (!type_filter.is_empty()) {
+				print_line("wgodot: --filter may only be specified once.");
+				return 2;
+			}
+			type_filter = p_arguments[++i].strip_edges();
+		} else if (!options_finished && argument == "--member-type") {
+			if (i + 1 >= p_arguments.size()) {
+				print_line("wgodot: --member-type requires a member kind, such as func or var.");
+				return 2;
+			}
+			const PackedStringArray kinds = p_arguments[++i].split(",");
+			for (const String &kind_source : kinds) {
+				const String kind = kind_source.strip_edges();
+				if (kind.is_empty()) {
+					print_line("wgodot: --member-type contains an empty member kind.");
+					return 2;
+				}
+				member_types.push_back(kind);
+			}
+		} else if (!options_finished && argument.begins_with("--")) {
+			print_line("wgodot: unknown list argument: " + argument);
+			return 2;
+		} else if (target.is_empty()) {
+			target = argument;
+		} else {
+			print_line("wgodot: list requires exactly one node path or class name.");
+			return 2;
+		}
+	}
+
+	if (target.is_empty()) {
+		print_line("wgodot: list requires a node path or class name.");
+		return 2;
+	}
+
+	Dictionary options;
+	options["target"] = target;
+	if (!type_filter.is_empty()) {
+		options["filter"] = type_filter;
+	}
+	if (!member_types.is_empty()) {
+		options["member_types"] = member_types;
+	}
+
+	Dictionary request;
+	request["protocol"] = PROTOCOL_VERSION;
+	request["command"] = "list";
+	request["options"] = options;
+	if (session >= 0) {
+		request["session"] = session;
+	}
+	return run_editor_command(request, json_output);
+}
+
 int run_wait_command(const Vector<String> &p_arguments) {
 	bool json_output = false;
 	bool physics = false;
@@ -1071,6 +1168,10 @@ bool execute_if_requested(int &r_exit_code) {
 	}
 	if (command == "get" || command == "set" || command == "call" || command == "get_static" || command == "set_static" || command == "call_static") {
 		r_exit_code = run_runtime_command(command, arguments);
+		return true;
+	}
+	if (command == "list") {
+		r_exit_code = run_list_command(arguments);
 		return true;
 	}
 	if (command == "wait") {

@@ -37,6 +37,7 @@ constexpr const char *const FORWARDED_GAME_COMMANDS[] = {
 	"get_static",
 	"set_static",
 	"call_static",
+	"list",
 	"wait",
 	"pause",
 	"resume",
