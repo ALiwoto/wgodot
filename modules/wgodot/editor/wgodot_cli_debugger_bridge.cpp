@@ -10,6 +10,12 @@
 void WGodotCLIDebuggerBridge::_bind_methods() {
 }
 
+void WGodotCLIDebuggerBridge::setup_session(int p_session) {
+	if (owner) {
+		owner->setup_debugger_session(p_session);
+	}
+}
+
 bool WGodotCLIDebuggerBridge::capture(const String &p_message, const Array &p_data, int p_session) {
 	if (p_message != "wgodot:response" || p_data.size() != 2 || p_data[0].get_type() != Variant::INT || p_data[1].get_type() != Variant::DICTIONARY) {
 		return false;

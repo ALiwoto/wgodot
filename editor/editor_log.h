@@ -31,6 +31,9 @@
 #pragma once
 
 #include "core/os/thread.h"
+// wgodot-changes::begin
+#include "core/variant/array.h"
+// wgodot-changes::end
 #include "editor/docks/editor_dock.h"
 #include "scene/gui/button.h"
 #include "scene/gui/line_edit.h"
@@ -184,6 +187,10 @@ public:
 	void deinit();
 
 	void clear();
+
+	// wgodot-changes::begin
+	Array wgodot_get_messages() const;
+	// wgodot-changes::end
 
 	EditorLog();
 	~EditorLog();

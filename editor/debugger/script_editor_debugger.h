@@ -347,6 +347,9 @@ public:
 
 	int get_error_count() const { return error_count; }
 	int get_warning_count() const { return warning_count; }
+	// wgodot-changes::begin
+	void wgodot_clear_errors() { _clear_errors_list(); }
+	// wgodot-changes::end
 	String get_stack_script_file() const;
 	int get_stack_script_line() const;
 	int get_stack_script_frame() const;

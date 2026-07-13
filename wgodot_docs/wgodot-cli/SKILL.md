@@ -1,6 +1,6 @@
 ---
 name: wgodot-cli
-description: Use WGodot's agent-oriented command-line interface to run, stop, pause, step, or frame-sync a project; inspect scene trees, class members, source declarations, and runtime or named-class static properties; modify properties; call runtime or static methods; semantically rename GDScript symbols; capture screenshots; inject input; query editor sessions; and check project GDScript. Use when an agent needs `godot --wg` commands while developing, inspecting, refactoring, or testing a WGodot project.
+description: Use WGodot's agent-oriented command-line interface to run, stop, pause, step, or frame-sync a project; inspect logs, debugger errors, scene trees, class members, source declarations, and runtime or named-class static properties; modify properties; call runtime or static methods; semantically rename GDScript symbols; capture screenshots; inject input; query editor sessions; and check project GDScript. Use when an agent needs `godot --wg` commands while developing, inspecting, refactoring, or testing a WGodot project.
 ---
 
 # WGodot CLI
@@ -83,6 +83,30 @@ godot --wg stop
 ```
 
 These commands also support `--json` when their results need to be parsed.
+
+## Logs and errors
+
+Read recent Output-dock messages and structured Debugger errors together:
+
+```powershell
+godot --wg logs
+godot --wg logs --level "error, warning"
+godot --wg logs --source debugger --tail 20
+```
+
+Output and Debugger results stay in separate sections. Output levels are `standard` (alias: `info`), `warning`, `error`, and `editor`. Debugger entries contain runtime error or warning details, source locations, sessions, and stack frames. Repeat `--source` or `--level`, or use comma-separated values. Sources are `output`, `debugger`, and `all`; both sources are included by default. `--tail` defaults to the newest 100 matching entries per source.
+
+Use `--session <id>` to restrict Debugger errors during intentional multi-instance testing. Use `--json` for structured entries. Logs remain available after the game stops.
+
+Clear stale buffers before a focused test run:
+
+```powershell
+godot --wg clear_logs
+godot --wg clear_logs --source output
+godot --wg clear_logs --source debugger --session 1
+```
+
+`clear_logs` defaults to both sources and clears the corresponding editor UI buffers as well. It does not delete rotated log files such as `user://logs/godot.log`.
 
 ## Pause and step
 

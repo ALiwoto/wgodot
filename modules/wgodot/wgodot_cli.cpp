@@ -5,6 +5,7 @@
 
 #include "wgodot_cli.h"
 
+#include "wgodot_logs_cli.h"
 #include "wgodot_rename_cli.h"
 
 #include "core/config/project_settings.h"
@@ -219,6 +220,11 @@ void print_cli_help() {
 	print_line("  rename <target> <new-name>        Semantically rename a GDScript symbol.");
 	print_line("    --at <file>:<line>:<column>     Rename the symbol at a one-based source position.");
 	print_line("    --dry-run                       Validate and preview the rename without writing files.");
+	print_line("  logs [options]                    Show Output and structured Debugger errors.");
+	print_line("    --source <source>               Select output, debugger, or all.");
+	print_line("    --level <level>                 Select standard, warning, error, or editor messages.");
+	print_line("    --tail <number>                 Return the newest entries per source (default: 100).");
+	print_line("  clear_logs [options]              Clear Output and Debugger error buffers.");
 	print_line("  wait [--physics] [--count <n>]    Wait for running frames or ticks.");
 	print_line("  pause                             Pause process and physics phases.");
 	print_line("  resume                            Resume a full game pause.");
@@ -1209,6 +1215,10 @@ bool execute_if_requested(int &r_exit_code) {
 	}
 	if (command == "rename") {
 		r_exit_code = WGodotRenameCLI::run_rename(arguments);
+		return true;
+	}
+	if (command == "logs" || command == "clear_logs") {
+		r_exit_code = WGodotLogsCLI::run(command, arguments);
 		return true;
 	}
 	if (command == "wait") {

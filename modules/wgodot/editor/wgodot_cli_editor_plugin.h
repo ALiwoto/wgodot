@@ -71,6 +71,9 @@ protected:
 
 public:
 	void handle_game_response(int p_session, uint64_t p_request_id, const Dictionary &p_response);
+	void setup_debugger_session(int p_session);
+	void handle_debugger_data(const String &p_message, const Array &p_data, int p_session);
+	void handle_debugger_errors_cleared(int p_session);
 
 	WGodotCLIEditorPlugin();
 	~WGodotCLIEditorPlugin();
