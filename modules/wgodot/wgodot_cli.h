@@ -7,6 +7,7 @@
 
 #include "core/string/ustring.h"
 #include "core/templates/list.h"
+#include "core/variant/dictionary.h"
 
 namespace WGodotCLI {
 
@@ -14,6 +15,8 @@ constexpr int PROTOCOL_VERSION = 1;
 
 bool extract_arguments(List<String> &r_arguments, String &r_project_path);
 bool execute_if_requested(int &r_exit_code);
+
+int request_editor_command(const Dictionary &p_request, Dictionary &r_response);
 
 String get_current_project_root();
 String get_project_key(const String &p_project_root);

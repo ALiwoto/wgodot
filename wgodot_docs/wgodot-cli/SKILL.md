@@ -1,6 +1,6 @@
 ---
 name: wgodot-cli
-description: Use WGodot's agent-oriented command-line interface to run, stop, pause, step, or frame-sync a project; inspect scene trees, class members, and runtime or named-class static properties; modify properties; call runtime or static methods; capture screenshots; inject input; query editor sessions; and check project GDScript. Use when an agent needs `godot --wg` commands while developing, inspecting, or testing a WGodot project.
+description: Use WGodot's agent-oriented command-line interface to run, stop, pause, step, or frame-sync a project; inspect scene trees, class members, source declarations, and runtime or named-class static properties; modify properties; call runtime or static methods; semantically rename GDScript symbols; capture screenshots; inject input; query editor sessions; and check project GDScript. Use when an agent needs `godot --wg` commands while developing, inspecting, refactoring, or testing a WGodot project.
 ---
 
 # WGodot CLI
@@ -388,6 +388,51 @@ godot --wg action move_right --up
 ```
 
 These commands queue native Godot input but do not wait for a later rendered frame. Use `wait` when frame synchronization matters, then inspect the result with `observe`, `tree`, `get`, or `ss`. Add `--json` when structured acknowledgement or errors are useful.
+
+## Source declarations and semantic rename
+
+Resolve a registered class or qualified member to its declaration:
+
+```powershell
+godot --wg source_info GameClient
+godot --wg source_info GameStatics.current_game_client
+godot --wg source_info res://src/client/game_client.gd::restart_game
+```
+
+The result contains the exact script path and one-based line and column. Use `--json` when those coordinates will feed another tool.
+
+Rename a GDScript declaration and all semantically resolved GDScript usages across the project:
+
+```powershell
+godot --wg rename GameStatics.current_game_client active_game_client
+godot --wg rename GameClient.restart_game restart_current_game
+godot --wg rename GameClient ActiveGameClient
+```
+
+The first dotted segment must be a registered `class_name`. Nested targets follow declared GDScript types, so each intermediate property needs enough type information to resolve its declaration. For an unnamed script, separate its member path with `::`:
+
+```powershell
+godot --wg rename res://src/client/main.gd::restart_game restart_current_game
+```
+
+For locals, parameters, ambiguous expressions, or any symbol already known by location, bypass qualified-name resolution with a one-based source position:
+
+```powershell
+godot --wg rename --at res://src/client/game_client.gd:124:18 active_player
+```
+
+Preview and fully validate a broad rename before writing:
+
+```powershell
+godot --wg rename GameStatics.current_game_client active_game_client --dry-run
+godot --wg rename GameStatics.current_game_client active_game_client --json
+```
+
+`--dry-run` still performs semantic resolution and validates every proposed edit, then reports affected files and edit counts without changing them. A normal rename prepares every changed file first and replaces the set atomically with rollback on failure.
+
+Save scripts open in Godot before renaming. WGodot refuses a rename while the Godot script editor has unsaved files, because disk edits could otherwise overwrite them. Also save files in external editors first; Godot cannot detect an unsaved VS Code buffer.
+
+Rename operates only on semantic GDScript references in project `.gd` files. It deliberately does not rewrite string-based member names, dynamically constructed calls, scene/resource serialization, documentation text, or unrelated identifiers with the same spelling. Inspect those separately when the project intentionally uses reflective string references. The matching Godot editor must be open, but the game does not need to be running.
 
 ## GDScript check
 

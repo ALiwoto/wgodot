@@ -8,6 +8,7 @@
 #include "../wgodot_cli.h"
 #include "../wgodot_member_list.h"
 #include "wgodot_cli_debugger_bridge.h"
+#include "wgodot_source_info.h"
 
 #include "core/crypto/crypto_core.h"
 #include "core/io/dir_access.h"
@@ -369,6 +370,18 @@ void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
 		response["command"] = "stop";
 		response["was_running"] = was_playing;
 		finish_connection(p_connection, response);
+		return;
+	}
+	if (command == "source_info") {
+		finish_connection(p_connection, WGodotSourceInfo::resolve(options));
+		return;
+	}
+	if (command == "rename_preflight") {
+		finish_connection(p_connection, WGodotSourceInfo::rename_preflight(options));
+		return;
+	}
+	if (command == "rename_complete") {
+		finish_connection(p_connection, WGodotSourceInfo::rename_complete());
 		return;
 	}
 	if (is_forwarded_game_command(command)) {
