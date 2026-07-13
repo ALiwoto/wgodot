@@ -62,6 +62,24 @@ struct MemberCollection {
 	HashMap<StringName, Dictionary> sections[MEMBER_KIND_MAX];
 };
 
+enum ResolvedTypeKind {
+	RESOLVED_TYPE_NONE,
+	RESOLVED_TYPE_SCRIPT,
+	RESOLVED_TYPE_NATIVE,
+	RESOLVED_TYPE_BUILTIN,
+	RESOLVED_TYPE_NATIVE_ENUM,
+	RESOLVED_TYPE_BUILTIN_ENUM,
+	RESOLVED_TYPE_SCRIPT_ENUM,
+};
+
+struct ResolvedType {
+	ResolvedTypeKind kind = RESOLVED_TYPE_NONE;
+	Ref<Script> script;
+	StringName native_class;
+	Variant::Type builtin_type = Variant::NIL;
+	StringName enum_name;
+};
+
 Dictionary make_error(const String &p_error, const String &p_message) {
 	Dictionary response;
 	response["ok"] = false;
@@ -123,6 +141,63 @@ String get_script_display_name(const Ref<Script> &p_script) {
 	}
 #endif
 	return p_script->get_instance_base_type();
+}
+
+String get_script_declared_name(const Ref<Script> &p_script) {
+	if (p_script.is_null()) {
+		return String();
+	}
+	if (!p_script->get_global_name().is_empty()) {
+		return p_script->get_global_name();
+	}
+#ifdef MODULE_GDSCRIPT_ENABLED
+	GDScript *gdscript = Object::cast_to<GDScript>(p_script.ptr());
+	if (gdscript && !gdscript->get_local_name().is_empty()) {
+		return gdscript->get_local_name();
+	}
+#endif
+	return String();
+}
+
+String get_script_declaration(const Ref<Script> &p_script) {
+	const String declared_name = get_script_declared_name(p_script);
+	String declaration = p_script->get_global_name().is_empty() ? "class " + (declared_name.is_empty() ? "<not-named>" : declared_name) : "class_name " + declared_name;
+
+	String path = p_script->get_path();
+	const int subresource_separator = path.find("::");
+	if (subresource_separator >= 0) {
+		path = path.left(subresource_separator);
+	}
+	if (!path.is_empty()) {
+		declaration += ", file: " + path;
+	}
+
+	Ref<Script> base_script = p_script->get_base_script();
+	String base_name = get_script_declared_name(base_script);
+	if (base_name.is_empty()) {
+		base_name = p_script->get_instance_base_type();
+	}
+	if (!base_name.is_empty()) {
+		declaration += ", extends " + base_name;
+	}
+	return declaration;
+}
+
+String get_native_declaration(const StringName &p_class) {
+	String declaration = "class " + String(p_class);
+	const StringName parent = ClassDB::get_parent_class(p_class);
+	if (!parent.is_empty()) {
+		declaration += ", extends " + String(parent);
+	}
+	return declaration;
+}
+
+String get_object_declaration(Object *p_object) {
+	if (p_object == nullptr) {
+		return String();
+	}
+	Ref<Script> script = p_object->get_script();
+	return script.is_valid() ? get_script_declaration(script) : get_native_declaration(p_object->get_class_name());
 }
 
 String get_object_display_type(Object *p_object) {
@@ -250,6 +325,97 @@ void collect_native_class(const StringName &p_class, MemberCollection &r_collect
 	}
 }
 
+void collect_native_enum(const StringName &p_class, const StringName &p_enum, MemberCollection &r_collection) {
+	List<StringName> constants;
+	ClassDB::get_enum_constants(p_class, p_enum, &constants);
+	for (const StringName &constant : constants) {
+		bool valid = false;
+		const int64_t value = ClassDB::get_integer_constant(p_class, constant, &valid);
+		if (valid) {
+			add_member(r_collection, MEMBER_CONST, constant, "int", String(constant) + ": int = " + itos(value), String(), 1);
+		}
+	}
+}
+
+void collect_builtin_type(Variant::Type p_type, MemberCollection &r_collection) {
+	List<StringName> members;
+	Variant::get_member_list(p_type, &members);
+	for (const StringName &member : members) {
+		const String type = Variant::get_type_name(Variant::get_member_type(p_type, member));
+		add_member(r_collection, MEMBER_VAR, member, type, String(member) + ": " + type, String(), 1);
+	}
+
+	Variant value;
+	Callable::CallError call_error;
+	Variant::construct(p_type, value, nullptr, 0, call_error);
+	if (call_error.error == Callable::CallError::CALL_OK) {
+		List<MethodInfo> methods;
+		value.get_method_list(&methods);
+		collect_methods(methods, r_collection, false, 1);
+	}
+
+	HashSet<StringName> enum_constants;
+	List<StringName> enums;
+	Variant::get_enums_for_type(p_type, &enums);
+	for (const StringName &enum_name : enums) {
+		List<StringName> enumerations;
+		Variant::get_enumerations_for_enum(p_type, enum_name, &enumerations);
+		int count = 0;
+		for (const StringName &enumeration : enumerations) {
+			bool valid = false;
+			Variant::get_enum_value(p_type, enum_name, enumeration, &valid);
+			if (valid) {
+				enum_constants.insert(enumeration);
+				count++;
+			}
+		}
+		const String display = String(enum_name) + ": enum type, " + itos(count) + (count == 1 ? " member" : " members");
+		add_member(r_collection, MEMBER_ENUM, enum_name, "enum", display, "enum", 1);
+	}
+
+	List<StringName> constants;
+	Variant::get_constants_for_type(p_type, &constants);
+	for (const StringName &constant : constants) {
+		if (enum_constants.has(constant)) {
+			continue;
+		}
+		bool valid = false;
+		const Variant constant_value = Variant::get_constant_value(p_type, constant, &valid);
+		if (valid) {
+			const String type = Variant::get_type_name(constant_value.get_type());
+			add_member(r_collection, MEMBER_CONST, constant, type, String(constant) + ": " + type + " = " + format_value(constant_value), String(), 1);
+		}
+	}
+}
+
+void collect_builtin_enum(Variant::Type p_type, const StringName &p_enum, MemberCollection &r_collection) {
+	List<StringName> enumerations;
+	Variant::get_enumerations_for_enum(p_type, p_enum, &enumerations);
+	for (const StringName &enumeration : enumerations) {
+		bool valid = false;
+		const int value = Variant::get_enum_value(p_type, p_enum, enumeration, &valid);
+		if (valid) {
+			add_member(r_collection, MEMBER_CONST, enumeration, "int", String(enumeration) + ": int = " + itos(value), String(), 1);
+		}
+	}
+}
+
+void collect_script_enum(const Ref<Script> &p_script, const StringName &p_enum, MemberCollection &r_collection) {
+	HashMap<StringName, Variant> constants;
+	p_script->get_constants(&constants);
+	const Variant *enum_value = constants.getptr(p_enum);
+	if (enum_value == nullptr || enum_value->get_type() != Variant::DICTIONARY) {
+		return;
+	}
+	const Dictionary values = *enum_value;
+	const Array keys = values.keys();
+	for (const Variant &key : keys) {
+		const StringName name = key;
+		const Variant value = values[key];
+		add_member(r_collection, MEMBER_CONST, name, "int", String(name) + ": int = " + format_value(value), String(), 3);
+	}
+}
+
 #ifdef MODULE_GDSCRIPT_ENABLED
 HashSet<StringName> get_gdscript_enum_names(GDScript *p_script, const HashMap<StringName, Variant> &p_constants) {
 	HashSet<StringName> enum_names;
@@ -362,6 +528,68 @@ void collect_object(Object *p_object, MemberCollection &r_collection) {
 	}
 }
 
+void collect_resolved_type(const ResolvedType &p_type, MemberCollection &r_collection) {
+	switch (p_type.kind) {
+		case RESOLVED_TYPE_SCRIPT:
+			collect_native_class(p_type.script->get_instance_base_type(), r_collection, true);
+			collect_script(p_type.script, r_collection);
+			break;
+		case RESOLVED_TYPE_NATIVE:
+			collect_native_class(p_type.native_class, r_collection, true);
+			break;
+		case RESOLVED_TYPE_BUILTIN:
+			collect_builtin_type(p_type.builtin_type, r_collection);
+			break;
+		case RESOLVED_TYPE_NATIVE_ENUM:
+			collect_native_enum(p_type.native_class, p_type.enum_name, r_collection);
+			break;
+		case RESOLVED_TYPE_BUILTIN_ENUM:
+			collect_builtin_enum(p_type.builtin_type, p_type.enum_name, r_collection);
+			break;
+		case RESOLVED_TYPE_SCRIPT_ENUM:
+			collect_script_enum(p_type.script, p_type.enum_name, r_collection);
+			break;
+		default:
+			break;
+	}
+}
+
+String get_resolved_type_name(const ResolvedType &p_type) {
+	switch (p_type.kind) {
+		case RESOLVED_TYPE_SCRIPT:
+			return get_script_display_name(p_type.script);
+		case RESOLVED_TYPE_NATIVE:
+			return p_type.native_class;
+		case RESOLVED_TYPE_BUILTIN:
+			return Variant::get_type_name(p_type.builtin_type);
+		case RESOLVED_TYPE_NATIVE_ENUM:
+			return String(p_type.native_class) + "." + String(p_type.enum_name);
+		case RESOLVED_TYPE_BUILTIN_ENUM:
+			return Variant::get_type_name(p_type.builtin_type) + "." + String(p_type.enum_name);
+		case RESOLVED_TYPE_SCRIPT_ENUM:
+			return get_script_display_name(p_type.script) + "." + String(p_type.enum_name);
+		default:
+			return String();
+	}
+}
+
+String get_resolved_declaration(const ResolvedType &p_type) {
+	switch (p_type.kind) {
+		case RESOLVED_TYPE_SCRIPT:
+			return get_script_declaration(p_type.script);
+		case RESOLVED_TYPE_NATIVE:
+			return get_native_declaration(p_type.native_class);
+		case RESOLVED_TYPE_BUILTIN:
+			return "builtin " + Variant::get_type_name(p_type.builtin_type);
+		case RESOLVED_TYPE_NATIVE_ENUM:
+		case RESOLVED_TYPE_BUILTIN_ENUM:
+		case RESOLVED_TYPE_SCRIPT_ENUM:
+			return "enum " + get_resolved_type_name(p_type) + ", extends int";
+		default:
+			return String();
+	}
+}
+
 bool parse_member_path(const String &p_path, Vector<StringName> &r_segments) {
 	r_segments.clear();
 	const PackedStringArray segments = p_path.split(".");
@@ -385,6 +613,180 @@ bool load_named_class(const String &p_class_name, Ref<Script> &r_script, Diction
 	if (r_script.is_null() || !r_script->is_valid()) {
 		r_error = make_error("named_class_load_failed", "Could not load named script class " + p_class_name + " from: " + script_path);
 		return false;
+	}
+	return true;
+}
+
+bool enrich_native_property(const StringName &p_class, const StringName &p_name, PropertyInfo &r_property) {
+	if (!ClassDB::get_property_info(p_class, p_name, &r_property)) {
+		return false;
+	}
+	const StringName getter = ClassDB::get_property_getter(p_class, p_name);
+	MethodInfo getter_info;
+	if (!getter.is_empty() && ClassDB::get_method_info(p_class, getter, &getter_info)) {
+		const PropertyInfo &return_info = getter_info.return_val;
+		if (return_info.type == r_property.type && (!return_info.class_name.is_empty() || (return_info.usage & (PROPERTY_USAGE_CLASS_IS_ENUM | PROPERTY_USAGE_CLASS_IS_BITFIELD)))) {
+			const StringName property_name = r_property.name;
+			r_property = return_info;
+			r_property.name = property_name;
+		}
+	}
+	return true;
+}
+
+bool find_declared_property(const ResolvedType &p_owner, const StringName &p_name, PropertyInfo &r_property) {
+	if (p_owner.kind == RESOLVED_TYPE_SCRIPT) {
+		List<PropertyInfo> static_properties;
+		p_owner.script->get_property_list(&static_properties);
+		bool found_static = false;
+		for (const PropertyInfo &property : static_properties) {
+			if (property.name == p_name && (property.usage & PROPERTY_USAGE_SCRIPT_VARIABLE)) {
+				r_property = property;
+				found_static = true;
+			}
+		}
+		if (found_static) {
+			return true;
+		}
+
+		List<PropertyInfo> properties;
+		p_owner.script->get_script_property_list(&properties);
+		for (const PropertyInfo &property : properties) {
+			if (property.name == p_name && !should_skip_property(property)) {
+				r_property = property;
+				return true;
+			}
+		}
+		return enrich_native_property(p_owner.script->get_instance_base_type(), p_name, r_property);
+	}
+	if (p_owner.kind == RESOLVED_TYPE_NATIVE) {
+		return enrich_native_property(p_owner.native_class, p_name, r_property);
+	}
+	if (p_owner.kind == RESOLVED_TYPE_BUILTIN && Variant::has_member(p_owner.builtin_type, p_name)) {
+		r_property = PropertyInfo(Variant::get_member_type(p_owner.builtin_type, p_name), p_name);
+		return true;
+	}
+	return false;
+}
+
+bool resolve_enum_name(const StringName &p_qualified_name, const StringName &p_native_context, ResolvedType &r_type) {
+	String qualified_name = p_qualified_name;
+	if (qualified_name.begins_with("_")) {
+		qualified_name = qualified_name.substr(1);
+	}
+	String owner_name;
+	String enum_name;
+	const int separator = qualified_name.rfind(".");
+	if (separator >= 0) {
+		owner_name = qualified_name.left(separator);
+		enum_name = qualified_name.substr(separator + 1);
+	} else {
+		owner_name = p_native_context;
+		enum_name = qualified_name;
+	}
+
+	if (ClassDB::class_exists(owner_name) && ClassDB::has_enum(owner_name, enum_name)) {
+		r_type.kind = RESOLVED_TYPE_NATIVE_ENUM;
+		r_type.native_class = owner_name;
+		r_type.enum_name = enum_name;
+		return true;
+	}
+	if (ScriptServer::is_global_class(owner_name)) {
+		Dictionary load_error;
+		Ref<Script> script;
+		if (load_named_class(owner_name, script, load_error)) {
+			HashMap<StringName, Variant> constants;
+			script->get_constants(&constants);
+			if (constants.has(enum_name) && constants[enum_name].get_type() == Variant::DICTIONARY) {
+				r_type.kind = RESOLVED_TYPE_SCRIPT_ENUM;
+				r_type.script = script;
+				r_type.enum_name = enum_name;
+				return true;
+			}
+		}
+	}
+	const Variant::Type builtin_type = Variant::get_type_by_name(owner_name);
+	if (builtin_type < Variant::VARIANT_MAX && Variant::has_enum(builtin_type, enum_name)) {
+		r_type.kind = RESOLVED_TYPE_BUILTIN_ENUM;
+		r_type.builtin_type = builtin_type;
+		r_type.enum_name = enum_name;
+		return true;
+	}
+	return false;
+}
+
+bool resolve_property_type(const PropertyInfo &p_property, const StringName &p_native_context, ResolvedType &r_type) {
+	r_type = ResolvedType();
+	if (p_property.type == Variant::INT && (p_property.usage & (PROPERTY_USAGE_CLASS_IS_ENUM | PROPERTY_USAGE_CLASS_IS_BITFIELD)) && !p_property.class_name.is_empty()) {
+		if (resolve_enum_name(p_property.class_name, p_native_context, r_type)) {
+			return true;
+		}
+	}
+	if (p_property.type == Variant::OBJECT) {
+		StringName class_name = p_property.class_name;
+		if (class_name.is_empty() && p_property.hint == PROPERTY_HINT_RESOURCE_TYPE) {
+			class_name = p_property.hint_string.get_slice(",", 0);
+		}
+		if (ScriptServer::is_global_class(class_name)) {
+			Dictionary load_error;
+			if (!load_named_class(class_name, r_type.script, load_error)) {
+				return false;
+			}
+			r_type.kind = RESOLVED_TYPE_SCRIPT;
+			return true;
+		}
+		if (ClassDB::class_exists(class_name)) {
+			r_type.kind = RESOLVED_TYPE_NATIVE;
+			r_type.native_class = class_name;
+			return true;
+		}
+		return false;
+	}
+	if (p_property.type > Variant::NIL && p_property.type < Variant::VARIANT_MAX) {
+		r_type.kind = RESOLVED_TYPE_BUILTIN;
+		r_type.builtin_type = p_property.type;
+		return true;
+	}
+	return false;
+}
+
+bool resolve_metadata_target(const String &p_target, ResolvedType &r_type, Dictionary &r_error) {
+	const int separator = p_target.find_char('.');
+	if (separator <= 0 || separator == p_target.length() - 1) {
+		return false;
+	}
+	const String class_name = p_target.substr(0, separator);
+	if (!ScriptServer::is_global_class(class_name)) {
+		return false;
+	}
+
+	Dictionary load_error;
+	Ref<Script> script;
+	if (!load_named_class(class_name, script, load_error)) {
+		r_error = load_error;
+		return true;
+	}
+	r_type.kind = RESOLVED_TYPE_SCRIPT;
+	r_type.script = script;
+
+	Vector<StringName> member_path;
+	if (!parse_member_path(p_target.substr(separator + 1), member_path)) {
+		r_error = make_error("invalid_member_path", "Invalid nested list target: " + p_target);
+		return true;
+	}
+	for (const StringName &member : member_path) {
+		PropertyInfo property;
+		if (!find_declared_property(r_type, member, property)) {
+			r_error = make_error("member_type_not_found", "No declared type information was found for: " + p_target);
+			return true;
+		}
+		const StringName native_context = r_type.kind == RESOLVED_TYPE_SCRIPT ? r_type.script->get_instance_base_type() : r_type.native_class;
+		ResolvedType next_type;
+		if (!resolve_property_type(property, native_context, next_type)) {
+			r_error = make_error("member_type_unresolved", "The declared type could not be resolved for: " + p_target);
+			return true;
+		}
+		r_type = next_type;
 	}
 	return true;
 }
@@ -539,8 +941,13 @@ Dictionary execute(const Dictionary &p_options) {
 	MemberCollection collection;
 	String target_kind;
 	String target_type;
+	String declaration;
+	String resolution = "metadata";
 	Variant target_holder;
 	if (target_name.begins_with("/")) {
+		if ((bool)p_options.get("metadata_only", false)) {
+			return make_error("live_node_required", "A running game is required to list a runtime node path: " + target_name);
+		}
 		SceneTree *scene_tree = SceneTree::get_singleton();
 		Node *root = scene_tree ? scene_tree->get_root() : nullptr;
 		if (root == nullptr) {
@@ -552,6 +959,8 @@ Dictionary execute(const Dictionary &p_options) {
 		}
 		target_kind = "node";
 		target_type = get_object_display_type(node);
+		declaration = get_object_declaration(node);
+		resolution = "live";
 		collect_object(node, collection);
 	} else if (ScriptServer::is_global_class(target_name)) {
 		Ref<Script> script;
@@ -561,34 +970,55 @@ Dictionary execute(const Dictionary &p_options) {
 		}
 		target_kind = "class";
 		target_type = target_name;
+		declaration = get_script_declaration(script);
 		collect_native_class(script->get_instance_base_type(), collection, true);
 		collect_script(script, collection);
 	} else if (ClassDB::class_exists(target_name)) {
 		target_kind = "class";
 		target_type = target_name;
+		declaration = get_native_declaration(target_name);
 		collect_native_class(target_name, collection, true);
 	} else {
-		Object *nested_object = nullptr;
-		Dictionary nested_error;
-		if (!resolve_nested_target(target_name, target_holder, nested_object, nested_error)) {
-			return make_error("target_not_found", "No runtime node or named/native class was found: " + target_name);
-		}
-		if (!nested_error.is_empty()) {
-			return nested_error;
+		bool resolved = false;
+		Dictionary live_error;
+		if (!(bool)p_options.get("metadata_only", false)) {
+			Object *nested_object = nullptr;
+			if (resolve_nested_target(target_name, target_holder, nested_object, live_error) && live_error.is_empty()) {
+				Script *nested_script_object = Object::cast_to<Script>(nested_object);
+				if (nested_script_object) {
+					Ref<Script> nested_script(nested_script_object);
+					target_kind = "class";
+					target_type = get_script_display_name(nested_script);
+					declaration = get_script_declaration(nested_script);
+					collect_native_class(nested_script->get_instance_base_type(), collection, true);
+					collect_script(nested_script, collection);
+				} else {
+					Node *nested_node = Object::cast_to<Node>(nested_object);
+					target_kind = nested_node ? "node" : "object";
+					target_type = get_object_display_type(nested_object);
+					declaration = get_object_declaration(nested_object);
+					collect_object(nested_object, collection);
+				}
+				resolution = "live";
+				resolved = true;
+			}
 		}
 
-		Script *nested_script_object = Object::cast_to<Script>(nested_object);
-		if (nested_script_object) {
-			Ref<Script> nested_script(nested_script_object);
-			target_kind = "class";
-			target_type = get_script_display_name(nested_script);
-			collect_native_class(nested_script->get_instance_base_type(), collection, true);
-			collect_script(nested_script, collection);
-		} else {
-			Node *nested_node = Object::cast_to<Node>(nested_object);
-			target_kind = nested_node ? "node" : "object";
-			target_type = get_object_display_type(nested_object);
-			collect_object(nested_object, collection);
+		if (!resolved) {
+			ResolvedType metadata_type;
+			Dictionary metadata_error;
+			if (resolve_metadata_target(target_name, metadata_type, metadata_error) && metadata_error.is_empty()) {
+				target_kind = "type";
+				target_type = get_resolved_type_name(metadata_type);
+				declaration = get_resolved_declaration(metadata_type);
+				collect_resolved_type(metadata_type, collection);
+				resolved = true;
+			} else if (!metadata_error.is_empty()) {
+				return metadata_error;
+			}
+		}
+		if (!resolved) {
+			return live_error.is_empty() ? make_error("target_not_found", "No runtime node or named/native class was found: " + target_name) : live_error;
 		}
 	}
 
@@ -598,6 +1028,8 @@ Dictionary execute(const Dictionary &p_options) {
 	response["target"] = target_name;
 	response["target_kind"] = target_kind;
 	response["target_type"] = target_type;
+	response["declaration"] = declaration;
+	response["resolution"] = resolution;
 	response["sections"] = make_sections(collection, included_kinds, type_filter);
 	return response;
 }

@@ -6,6 +6,7 @@
 #include "wgodot_cli_editor_plugin.h"
 
 #include "../wgodot_cli.h"
+#include "../wgodot_member_list.h"
 #include "wgodot_cli_debugger_bridge.h"
 
 #include "core/crypto/crypto_core.h"
@@ -374,11 +375,23 @@ void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
 		Dictionary session_error;
 		const int session = get_automatic_session(request, session_error);
 		if (session < 0) {
+			if (command == "list" && String(session_error.get("error", String())) == "game_not_running") {
+				Dictionary metadata_options = options;
+				metadata_options["metadata_only"] = true;
+				finish_connection(p_connection, WGodotMemberList::execute(metadata_options));
+				return;
+			}
 			finish_connection(p_connection, session_error);
 			return;
 		}
 		const uint64_t game_request_id = next_game_request_id++;
 		if (debugger_bridge.is_null() || !debugger_bridge->send_request(session, game_request_id, command, options)) {
+			if (command == "list") {
+				Dictionary metadata_options = options;
+				metadata_options["metadata_only"] = true;
+				finish_connection(p_connection, WGodotMemberList::execute(metadata_options));
+				return;
+			}
 			finish_connection(p_connection, make_error_response("game_request_failed", "Could not send the request to the running game."));
 			return;
 		}

@@ -588,6 +588,10 @@ int print_command_response(const Dictionary &p_response, bool p_json_output) {
 		const Dictionary result = p_response.get("result", Dictionary());
 		print_line("Result: " + String(result.get("value", String())));
 	} else if (command == "list") {
+		const String declaration = p_response.get("declaration", String());
+		if (!declaration.is_empty()) {
+			print_line(declaration);
+		}
 		const Array sections = p_response.get("sections", Array());
 		if (sections.is_empty()) {
 			print_line("No matching members.");

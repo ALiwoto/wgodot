@@ -179,14 +179,22 @@ godot --wg list GameStatics
 godot --wg list Node2D
 ```
 
-Follow a registered class's static member and any further nested properties when the final value is a live Object:
+Follow a registered class's member and any further nested properties:
 
 ```powershell
 godot --wg list GameStatics.current_game_client
 godot --wg list GameStatics.current_game_client.player.inventory
 ```
 
-The first dotted segment must be a registered GDScript `class_name`. Each following segment is resolved as a static or ordinary property, matching the nesting behavior of `get_static`. The command reports an error when the final value is `null`, a built-in value, or a freed Object.
+The first dotted segment must be a registered GDScript `class_name`. Each following segment is resolved as a static or ordinary property, matching the nesting behavior of `get_static` when a live value exists.
+
+`list` prefers the live running game's value. If no game is running, or a nested value cannot be resolved live, it follows declared property types from script and native-class metadata instead. This allows type inspection without starting the game and allows instance-property targets such as:
+
+```powershell
+godot --wg list GameClient.auto_translate_mode
+```
+
+Metadata fallback can resolve script classes, native classes, built-in Variant types, and named enums. Runtime node paths such as `/root/Main` still require a running game because they identify instances rather than declared types.
 
 Restrict the result by declared type. Object types include members declared as an inheriting type, so `Node2D` also matches a variable declared as a named class that extends `Node2D`:
 
@@ -206,7 +214,7 @@ godot --wg list GameClient --member-type signal --member-type static_func
 
 For variables, `--filter` checks the declared value type. For functions it checks the return type, for constants it checks the stored value type, and for nested classes it checks the base type. Signals have the type `Signal`. Use `--member-type` instead when the goal is to select a category rather than a value type.
 
-The normal output combines inherited members rather than separating them by inheritance level or export group. It shows function and signal signatures, static and instance members in separate sections, constant values, enum member counts, and nested class base types. Empty sections are omitted. Nested classes and enums are summarized at one level; their inner contents are not recursively listed. Add `--json` for structured sections and member records.
+The first output line describes the resolved type, including its `class_name` or local-class status, script file, and direct base type when available. The remaining output combines inherited members rather than separating them by inheritance level or export group. It shows function and signal signatures, static and instance members in separate sections, constant values, enum member counts, and nested class base types. Empty sections are omitted. Nested classes and enums are summarized at one level; their inner contents are not recursively listed. Add `--json` for the declaration, `live` or `metadata` resolution source, structured sections, and member records.
 
 After resolving its target, `list` reads reflection metadata and does not read every property value or invoke methods. Resolving a dotted target reads that property chain and may therefore invoke getters on the chain. It works while the game is paused.
 
