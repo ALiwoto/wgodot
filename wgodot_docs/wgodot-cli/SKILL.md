@@ -114,6 +114,8 @@ Use breakpoint CRUD, hard debugger pausing, stepping, stack frames, scoped varia
 
 Each `debug locals`, `debug members`, `debug globals`, or `debug vars` invocation fetches a fresh paused-state snapshot. Re-run the relevant command after changing runtime state; no explicit refresh command is needed.
 
+Pass an optional dot-separated path to `debug members` to inspect a nested live object from the selected frame's `self`, such as `godot --wg debug members player_credits.wallet`. The explicit `self.` prefix is optional.
+
 ## Pause and step
 
 Pause scheduled process and physics work while keeping rendering and WGodot inspection commands available:

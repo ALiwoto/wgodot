@@ -233,6 +233,7 @@ void print_cli_help() {
 	print_line("    Control: state, pause, continue|resume, step_into, step_over, step_out, wait.");
 	print_line("    Inspect: stack, frame, locals, members, globals, vars.");
 	print_line("    --frame <index>                 Select a frame for a scoped-variable command.");
+	print_line("    members [nested.path]           Inspect self or a nested live Object.");
 	print_line("    members --all                   Include inherited script and native properties.");
 	print_line("    members --all --exclude-builtin Show all user-declared members only.");
 	print_line("  wait [--physics] [--count <n>]    Wait for running frames or ticks.");

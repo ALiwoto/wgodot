@@ -98,6 +98,23 @@ godot --wg debug vars --frame 2
 
 `debug members` shows members declared by the selected frame's script and uses their declared types even when their current value is `null`. Untyped members are displayed as `Variant`.
 
+Inspect the live object stored in a member, or continue through a dot-separated property path:
+
+```powershell
+godot --wg debug members player_credits
+godot --wg debug members player_credits.wallet.owner
+godot --wg debug members self.player_credits
+```
+
+The path is resolved from the selected frame's live `self`; the explicit `self.` prefix is optional. Every object hop and the final member list use fresh remote values. Resolving properties may invoke their getters. `--frame`, `--all`, and `--exclude-builtin` apply to the final object:
+
+```powershell
+godot --wg debug members player_credits --frame 2
+godot --wg debug members player_credits --all --exclude-builtin
+```
+
+The final target must be a live Object. If a segment is `null`, WGodot reports its declared type and suggests using `list <Type>` to inspect metadata without a live instance.
+
 Include inherited GDScript members and native properties from the paused `self` object with `--all`:
 
 ```powershell

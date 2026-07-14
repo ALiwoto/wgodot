@@ -107,6 +107,10 @@ void print_scope(const String &p_title, const Array &p_variables) {
 void print_frame_variables(const Dictionary &p_response) {
 	print_selected_frame(p_response);
 	const String action = p_response.get("action", String());
+	const Dictionary target = p_response.get("target", Dictionary());
+	if (!target.is_empty()) {
+		print_line(vformat("Target: %s [%s] %s", String(target.get("path", String())), String(target.get("type", "Object")), String(target.get("value", String()))));
+	}
 	if (action == "locals" || action == "vars") {
 		print_scope("Locals", p_response.get("locals", Array()));
 	}
@@ -233,6 +237,7 @@ int run_debug(const Vector<String> &p_arguments) {
 	int session = -1;
 	int frame = -1;
 	int timeout_seconds = 15;
+	String member_target;
 	Vector<String> operands;
 	for (int i = 0; i < p_arguments.size(); i++) {
 		const String &argument = p_arguments[i];
@@ -297,6 +302,15 @@ int run_debug(const Vector<String> &p_arguments) {
 		if (operands.size() == 2) {
 			frame = operands[1].to_int();
 		}
+	} else if (action == "members") {
+		if (operands.size() > 2) {
+			const Dictionary error = make_error("debug members accepts at most one nested member path.");
+			print_error(error, json_output);
+			return 2;
+		}
+		if (operands.size() == 2) {
+			member_target = operands[1];
+		}
 	} else if (operands.size() != 1) {
 		const Dictionary error = make_error("debug " + action + " does not accept operands.");
 		print_error(error, json_output);
@@ -321,6 +335,9 @@ int run_debug(const Vector<String> &p_arguments) {
 	}
 	options["all"] = all_members;
 	options["exclude_builtin"] = exclude_builtin;
+	if (!member_target.is_empty()) {
+		options["target"] = member_target;
+	}
 	Dictionary response;
 	const int result = send_request("debug", options, session, json_output, response);
 	if (result != 0) {

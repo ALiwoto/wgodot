@@ -37,6 +37,9 @@ struct FrameVariables {
 	Array globals;
 	Array all_members;
 	int64_t self_object_id = 0;
+	int64_t target_object_id = 0;
+	String target_path;
+	String target_type;
 	bool ready = false;
 	bool members_enriched = false;
 };
@@ -56,6 +59,12 @@ struct SessionState {
 	int received_variable_count = 0;
 	int pending_member_frame = -1;
 	int64_t pending_member_object_id = 0;
+	int64_t pending_member_request_id = 0;
+	PackedStringArray pending_member_segments;
+	int pending_member_segment = 0;
+	String pending_member_target_path;
+	String pending_member_target_type;
+	Dictionary pending_member_error;
 	uint64_t break_generation = 0;
 	uint64_t resume_generation = 0;
 	uint64_t variable_generation = 0;
@@ -65,6 +74,7 @@ struct SessionState {
 HashMap<int, BreakpointRecord> breakpoints;
 HashMap<int, SessionState> sessions;
 int next_breakpoint_id = 1;
+int64_t next_member_request_id = 0x4000000000000000LL;
 bool suppress_breakpoint_sync = false;
 
 Dictionary make_error(const String &p_command, const String &p_action, const String &p_error, const String &p_message) {
@@ -160,6 +170,12 @@ void clear_debug_cache(SessionState &p_state) {
 	p_state.received_variable_count = 0;
 	p_state.pending_member_frame = -1;
 	p_state.pending_member_object_id = 0;
+	p_state.pending_member_request_id = 0;
+	p_state.pending_member_segments.clear();
+	p_state.pending_member_segment = 0;
+	p_state.pending_member_target_path.clear();
+	p_state.pending_member_target_type.clear();
+	p_state.pending_member_error.clear();
 	p_state.variable_generation++;
 	p_state.member_generation++;
 }
@@ -304,6 +320,14 @@ Dictionary make_frame_response(int p_session, const Dictionary &p_options, const
 	Dictionary response = make_stack_response(p_session, action, p_state);
 	response.erase("frames");
 	const FrameVariables *variables = p_state.frame_variables.getptr(p_state.selected_frame);
+	if (variables && !variables->target_path.is_empty()) {
+		Dictionary target;
+		target["path"] = variables->target_path;
+		target["type"] = variables->target_type.is_empty() ? "Object" : variables->target_type;
+		target["object_id"] = variables->target_object_id;
+		target["value"] = vformat("<%s#%d>", String(target["type"]), variables->target_object_id);
+		response["target"] = target;
+	}
 	if (action == "locals" || action == "vars") {
 		response["locals"] = variables ? variables->locals : Array();
 	}
@@ -330,84 +354,66 @@ Dictionary make_frame_response(int p_session, const Dictionary &p_options, const
 	return response;
 }
 
-void enrich_frame_members(FrameVariables &p_variables, const Array &p_properties) {
-	HashMap<String, Dictionary> script_properties;
-	Array native_members;
-	for (const Variant &property_variant : p_properties) {
-		if (property_variant.get_type() != Variant::ARRAY) {
-			continue;
-		}
-		const Array property = property_variant;
-		if (property.size() != 6) {
-			continue;
-		}
-		String name = property[0];
-		const Variant::Type declared_type = static_cast<Variant::Type>((int)property[1]);
-		const PropertyHint hint = static_cast<PropertyHint>((int)property[2]);
-		const String hint_string = property[3];
-		const PropertyUsageFlags usage = static_cast<PropertyUsageFlags>((int)property[4]);
-		const Variant value = property[5];
-		if (usage & (PROPERTY_USAGE_GROUP | PROPERTY_USAGE_SUBGROUP | PROPERTY_USAGE_CATEGORY) || name.begins_with("Constants/")) {
-			continue;
-		}
-
-		bool builtin = true;
-		if (name.begins_with("Members/")) {
-			name = name.get_slicec('/', name.get_slice_count("/") - 1);
-			builtin = false;
-		} else if (usage & PROPERTY_USAGE_SCRIPT_VARIABLE) {
-			builtin = false;
-		} else if (name.contains("/")) {
-			continue;
-		}
-
-		Dictionary member;
-		member["name"] = name;
-		member["type"] = format_property_type(declared_type, hint, hint_string);
-		member["variant_type"] = Variant::get_type_name(value.get_type());
-		member["value"] = format_variable_value(value, declared_type, hint_string);
-		member["builtin"] = builtin;
-		const int64_t object_id = get_encoded_object_id(value);
-		if (object_id != 0) {
-			member["object_id"] = object_id;
-		}
-		if (builtin) {
-			native_members.push_back(member);
-		} else {
-			script_properties[name] = member;
-		}
+bool parse_member_target(const String &p_target, PackedStringArray &r_segments, String &r_error) {
+	r_segments.clear();
+	if (p_target.is_empty() || p_target == "self") {
+		return true;
 	}
+	const PackedStringArray segments = p_target.split(".", true);
+	for (int i = 0; i < segments.size(); i++) {
+		const String segment = segments[i].strip_edges();
+		if (segment.is_empty()) {
+			r_error = "Nested member paths cannot contain empty segments: " + p_target;
+			return false;
+		}
+		if (i == 0 && segment == "self") {
+			continue;
+		}
+		r_segments.push_back(segment);
+	}
+	return true;
+}
 
-	auto enrich_script_members = [&script_properties](Array &r_members) {
-		for (int i = 0; i < r_members.size(); i++) {
-			Dictionary member = r_members[i];
-			const String name = member.get("name", String());
-			const Dictionary *declared = script_properties.getptr(name);
-			const String current_type = member.get("type", "Variant");
-			if (declared != nullptr && (current_type.is_empty() || current_type == "Variant" || current_type == "Nil")) {
-				member["type"] = declared->get("type", "Variant");
+void request_debug_object(ScriptEditorDebugger *p_debugger, SessionState &p_state, int64_t p_object_id) {
+	Dictionary options;
+	options["object_id"] = p_object_id;
+	p_state.pending_member_request_id = next_member_request_id++;
+	p_debugger->send_message("wgodot:request", { p_state.pending_member_request_id, "debug_inspect", options });
+}
+
+void populate_inspected_members(FrameVariables &p_variables, const Array &p_inspected_members, const String &p_type) {
+	Array current_members;
+	Array user_members;
+	Array all_members;
+	for (const Variant &member_variant : p_inspected_members) {
+		if (member_variant.get_type() != Variant::DICTIONARY) {
+			continue;
+		}
+		const Dictionary member = member_variant;
+		all_members.push_back(member);
+		if (!(bool)member.get("builtin", true)) {
+			user_members.push_back(member);
+			if ((bool)member.get("current", false)) {
+				current_members.push_back(member);
 			}
-			member["builtin"] = false;
-			r_members[i] = member;
 		}
-	};
-	enrich_script_members(p_variables.members);
-	enrich_script_members(p_variables.user_members);
+	}
 
-	HashSet<String> names;
-	for (const Variant &member_variant : p_variables.user_members) {
-		const Dictionary member = member_variant;
-		names.insert(member.get("name", String()));
-	}
-	p_variables.all_members = p_variables.user_members.duplicate(true);
-	for (const Variant &member_variant : native_members) {
-		const Dictionary member = member_variant;
-		const String name = member.get("name", String());
-		if (!names.has(name)) {
-			p_variables.all_members.push_back(member);
-			names.insert(name);
-		}
-	}
+	Dictionary self;
+	self["name"] = "self";
+	self["type"] = p_type.is_empty() ? "Object" : p_type;
+	self["variant_type"] = "Object";
+	self["value"] = vformat("<%s#%d>", String(self["type"]), p_variables.target_object_id != 0 ? p_variables.target_object_id : p_variables.self_object_id);
+	self["object_id"] = p_variables.target_object_id != 0 ? p_variables.target_object_id : p_variables.self_object_id;
+	self["builtin"] = false;
+	self["current"] = true;
+
+	current_members.push_front(self);
+	user_members.push_front(self);
+	all_members.push_front(self);
+	p_variables.members = current_members;
+	p_variables.user_members = user_members;
+	p_variables.all_members = all_members;
 	p_variables.members_enriched = true;
 }
 
@@ -418,23 +424,31 @@ Dictionary prepare_member_metadata(int p_session, ScriptEditorDebugger *p_debugg
 	if (variables == nullptr || !variables->ready) {
 		return make_error("debug", action, "variables_unavailable", "Variables for the selected stack frame are not loaded.");
 	}
-	if (variables->members_enriched) {
-		return make_frame_response(p_session, p_options, state);
+	PackedStringArray segments;
+	String parse_error;
+	const String requested_target = p_options.get("target", String());
+	if (!parse_member_target(requested_target, segments, parse_error)) {
+		return make_error("debug", action, "invalid_member_target", parse_error);
 	}
-	if (variables->self_object_id == 0) {
-		variables->all_members = variables->user_members.duplicate(true);
-		variables->members_enriched = true;
-		return make_frame_response(p_session, p_options, state);
+
+	int64_t object_id = variables->self_object_id;
+	String target_type = "Object";
+	String target_path = segments.is_empty() ? String() : "self";
+	if (object_id == 0) {
+		return make_error("debug", action, "self_unavailable", "The selected frame has no live self object to inspect.");
 	}
 	if (state.pending_member_frame >= 0 && state.pending_member_frame != state.selected_frame) {
 		return make_error("debug", action, "member_request_busy", vformat("Stack frame %d member metadata is still being loaded.", state.pending_member_frame));
 	}
 	if (state.pending_member_frame < 0) {
 		state.pending_member_frame = state.selected_frame;
-		state.pending_member_object_id = variables->self_object_id;
-		TypedArray<uint64_t> object_ids;
-		object_ids.append(static_cast<uint64_t>(variables->self_object_id));
-		p_debugger->request_remote_objects(object_ids, false);
+		state.pending_member_object_id = object_id;
+		state.pending_member_segments = segments;
+		state.pending_member_segment = 0;
+		state.pending_member_target_path = target_path;
+		state.pending_member_target_type = target_type;
+		state.pending_member_error.clear();
+		request_debug_object(p_debugger, state, object_id);
 	}
 	r_wait_kind = WAIT_MEMBERS;
 	r_generation = state.member_generation;
@@ -488,6 +502,9 @@ Dictionary prepare_stack_action(int p_session, ScriptEditorDebugger *p_debugger,
 	variables.globals.clear();
 	variables.all_members.clear();
 	variables.self_object_id = 0;
+	variables.target_object_id = 0;
+	variables.target_path.clear();
+	variables.target_type.clear();
 	variables.ready = false;
 	variables.members_enriched = false;
 	state.pending_variable_frame = frame;
@@ -723,24 +740,77 @@ void capture_debugger_message(int p_session, const String &p_message, const Arra
 		}
 		return;
 	}
-	if (p_message == "scene:inspect_objects" && state.pending_member_frame >= 0) {
-		for (const Variant &object_variant : p_data) {
-			if (object_variant.get_type() != Variant::ARRAY) {
-				continue;
+	if (p_message == "wgodot:response" && state.pending_member_frame >= 0 && p_data.size() == 2 &&
+			p_data[0].get_type() == Variant::INT && (int64_t)p_data[0] == state.pending_member_request_id &&
+			p_data[1].get_type() == Variant::DICTIONARY) {
+		const Dictionary inspected = p_data[1];
+		if (!(bool)inspected.get("ok", false)) {
+			state.pending_member_error = make_error("debug", "members", inspected.get("error", "inspect_failed"), inspected.get("message", "The live object could not be inspected."));
+		} else {
+			const String inspected_type = inspected.get("type", "Object");
+			const Array inspected_members = inspected.get("members", Array());
+			if (state.pending_member_target_type == "Object" && !inspected_type.is_empty()) {
+				state.pending_member_target_type = inspected_type;
 			}
-			const Array object = object_variant;
-			if (object.size() < 3 || (int64_t)object[0] != state.pending_member_object_id || object[2].get_type() != Variant::ARRAY) {
-				continue;
+
+			if (state.pending_member_segment < state.pending_member_segments.size()) {
+				const String segment = state.pending_member_segments[state.pending_member_segment];
+				Dictionary member;
+				for (const Variant &member_variant : inspected_members) {
+					if (member_variant.get_type() != Variant::DICTIONARY) {
+						continue;
+					}
+					const Dictionary candidate = member_variant;
+					if (String(candidate.get("name", String())) == segment) {
+						member = candidate;
+						break;
+					}
+				}
+
+				const String path = state.pending_member_target_path + "." + segment;
+				if (member.is_empty()) {
+					state.pending_member_error = make_error("debug", "members", "member_target_not_found", "Nested member was not found: " + path);
+				} else {
+					const int64_t object_id = member.get("object_id", 0);
+					const String type = member.get("type", "Object");
+					if (object_id == 0) {
+						const String value = member.get("value", String());
+						const String message = value == "null" ? path + " is null; no live object can be inspected. Hint: godot --wg list " + type : path + " is not a live Object.";
+						state.pending_member_error = make_error("debug", "members", value == "null" ? "member_target_null" : "member_target_not_object", message);
+					} else {
+						state.pending_member_object_id = object_id;
+						state.pending_member_target_path = path;
+						state.pending_member_target_type = type;
+						state.pending_member_segment++;
+						ScriptEditorDebugger *debugger = get_debugger(p_session);
+						if (debugger != nullptr) {
+							request_debug_object(debugger, state, object_id);
+							return;
+						}
+						state.pending_member_error = make_error("debug", "members", "debugger_unavailable", "The debugger became unavailable while resolving nested members.");
+					}
+				}
+			} else {
+				FrameVariables *variables = state.frame_variables.getptr(state.pending_member_frame);
+				if (variables != nullptr && variables->ready) {
+					if (!state.pending_member_target_path.is_empty()) {
+						variables->target_object_id = state.pending_member_object_id;
+						variables->target_path = state.pending_member_target_path;
+						variables->target_type = inspected_type;
+					}
+					populate_inspected_members(*variables, inspected_members, inspected_type);
+				}
 			}
-			FrameVariables *variables = state.frame_variables.getptr(state.pending_member_frame);
-			if (variables != nullptr && variables->ready) {
-				enrich_frame_members(*variables, object[2]);
-			}
-			state.pending_member_frame = -1;
-			state.pending_member_object_id = 0;
-			state.member_generation++;
-			return;
 		}
+
+		state.pending_member_frame = -1;
+		state.pending_member_object_id = 0;
+		state.pending_member_request_id = 0;
+		state.pending_member_segments.clear();
+		state.pending_member_segment = 0;
+		state.pending_member_target_path.clear();
+		state.pending_member_target_type.clear();
+		state.member_generation++;
 		return;
 	}
 
@@ -928,11 +998,16 @@ bool poll_debug_wait(int p_session, const Dictionary &p_options, WaitKind &r_wai
 		}
 		if (state.member_generation > r_generation) {
 			const int frame = state.selected_frame;
-			const FrameVariables *variables = state.frame_variables.getptr(state.selected_frame);
-			if (variables == nullptr || !variables->ready || !variables->members_enriched) {
-				r_response = make_error("debug", action, "member_request_interrupted", "The member metadata request was interrupted by a debugger state change.");
+			if (!state.pending_member_error.is_empty()) {
+				r_response = state.pending_member_error;
+				state.pending_member_error.clear();
 			} else {
-				r_response = make_frame_response(p_session, p_options, state);
+				const FrameVariables *variables = state.frame_variables.getptr(state.selected_frame);
+				if (variables == nullptr || !variables->ready || !variables->members_enriched) {
+					r_response = make_error("debug", action, "member_request_interrupted", "The member metadata request was interrupted by a debugger state change.");
+				} else {
+					r_response = make_frame_response(p_session, p_options, state);
+				}
 			}
 			state.frame_variables.erase(frame);
 			return true;
@@ -968,6 +1043,12 @@ void cancel_debug_wait(int p_session, WaitKind p_wait_kind) {
 		const int frame = state->pending_member_frame;
 		state->pending_member_frame = -1;
 		state->pending_member_object_id = 0;
+		state->pending_member_request_id = 0;
+		state->pending_member_segments.clear();
+		state->pending_member_segment = 0;
+		state->pending_member_target_path.clear();
+		state->pending_member_target_type.clear();
+		state->pending_member_error.clear();
 		state->frame_variables.erase(frame);
 		state->member_generation++;
 	}

@@ -5,6 +5,8 @@
 
 #include "wgodot_game_bridge.h"
 
+#include "wgodot_debug_inspector.h"
+
 #include "wgodot_member_list.h"
 #include "wgodot_pause_controller.h"
 #include "wgodot_wait_controller.h"
@@ -952,6 +954,8 @@ Error parse_message(void *p_user, const String &p_message, const Array &p_argume
 		response = call_static_method(options);
 	} else if (command == "list") {
 		response = WGodotMemberList::execute(options);
+	} else if (command == "debug_inspect") {
+		response = WGodotDebugInspector::inspect_object(options);
 	} else if (command == "wait") {
 		const int count = options.get("count", 1);
 		const bool physics = options.get("physics", false);
