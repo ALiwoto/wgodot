@@ -112,10 +112,6 @@ godot --wg clear_logs --source debugger --session 1
 
 Use breakpoint CRUD, hard debugger pausing, stepping, stack frames, scoped variables, and wait commands as described in [references/debugging.md](references/debugging.md). Prefer `debug wait` over polling when waiting for a breakpoint.
 
-Each `debug locals`, `debug members`, `debug globals`, or `debug vars` invocation fetches a fresh paused-state snapshot. Re-run the relevant command after changing runtime state; no explicit refresh command is needed.
-
-Pass an optional dot-separated path to `debug members` to inspect a nested live object from the selected frame's `self`, such as `godot --wg debug members player_credits.wallet`. The explicit `self.` prefix is optional.
-
 ## Pause and step
 
 Pause scheduled process and physics work while keeping rendering and WGodot inspection commands available:
@@ -256,7 +252,7 @@ Without `--exclude-builtin`, class and Object listings include inherited native 
 Restrict the result by declared type. Object types include members declared as an inheriting type, so `Node2D` also matches a variable declared as a named class that extends `Node2D`:
 
 ```powershell
-godot --wg list GameClient --filter Node2D
+godot --wg list GameClient --filter-type Node2D
 ```
 
 Restrict the member categories with `--member-type`:
@@ -269,7 +265,7 @@ godot --wg list GameClient --member-type signal --member-type static_func
 
 `--member-type` is case-insensitive and repeatable, and accepts comma-separated values. Its primary values are `func`, `static_func`, `signal`, `var`, `static_var`, `const`, `enum`, and `class`. `function` aliases `func`; long forms such as `static_function`, `variable`, `static_variable`, `constant`, `enumeration`, and `nested_class` are also accepted.
 
-For variables, `--filter` checks the declared value type. For functions it checks the return type, for constants it checks the stored value type, and for nested classes it checks the base type. Signals have the type `Signal`. Use `--member-type` instead when the goal is to select a category rather than a value type.
+For variables, `--filter-type` checks the declared value type. For functions it checks the return type, for constants it checks the stored value type, and for nested classes it checks the base type. Signals have the type `Signal`. Use `--member-type` instead when the goal is to select a category rather than a value type.
 
 The first output line describes the resolved type, including its `class_name` or local-class status, script file, and direct base type when available. The remaining output combines inherited members rather than separating them by inheritance level or export group. It shows function and signal signatures, static and instance members in separate sections, constant values, enum member counts, and nested class base types. Empty sections are omitted. Nested classes and enums are summarized at one level; their inner contents are not recursively listed. Add `--json` for the declaration, `live` or `metadata` resolution source, structured sections, and member records.
 

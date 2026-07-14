@@ -5,6 +5,8 @@
 
 #include "wgodot_debug_service.h"
 
+#include "../wgodot_type_filter.h"
+
 #include "core/config/project_settings.h"
 #include "core/debugger/debugger_marshalls.h"
 #include "core/io/file_access.h"
@@ -335,13 +337,25 @@ Dictionary make_frame_response(int p_session, const Dictionary &p_options, const
 		Array members;
 		if (variables) {
 			members = action == "members" && (bool)p_options.get("all", false) ? variables->all_members : variables->members;
-			if ((bool)p_options.get("exclude_builtin", false)) {
+			const bool exclude_builtin = p_options.get("exclude_builtin", false);
+			const String filter_type = String(p_options.get("filter_type", String())).strip_edges();
+			const String filter_name = String(p_options.get("filter_name", String())).strip_edges();
+			if (exclude_builtin || !filter_type.is_empty() || !filter_name.is_empty()) {
 				Array filtered;
 				for (const Variant &member_variant : members) {
 					const Dictionary member = member_variant;
-					if (!(bool)member.get("builtin", false)) {
-						filtered.push_back(member);
+					if (exclude_builtin && (bool)member.get("builtin", false)) {
+						continue;
 					}
+					const String member_type = member.get("type", "Variant");
+					if (!filter_type.is_empty() && !WGodotTypeFilter::matches(member_type, filter_type)) {
+						continue;
+					}
+					const String member_name = member.get("name", String());
+					if (!filter_name.is_empty() && member_name.findn(filter_name) < 0) {
+						continue;
+					}
+					filtered.push_back(member);
 				}
 				members = filtered;
 			}
@@ -870,6 +884,12 @@ Dictionary execute_debug(int p_session, const Dictionary &p_options, WaitKind &r
 	r_wait_kind = WAIT_NONE;
 	r_generation = 0;
 	const String action = p_options.get("action", String());
+	if (action == "members") {
+		const String filter_type = String(p_options.get("filter_type", String())).strip_edges();
+		if (!WGodotTypeFilter::is_known(filter_type)) {
+			return make_error("debug", action, "invalid_type_filter", "Unknown type for --filter-type: " + filter_type);
+		}
+	}
 	if (action == "state") {
 		return get_state(p_session, action);
 	}

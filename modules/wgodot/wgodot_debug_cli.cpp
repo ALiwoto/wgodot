@@ -238,6 +238,8 @@ int run_debug(const Vector<String> &p_arguments) {
 	int frame = -1;
 	int timeout_seconds = 15;
 	String member_target;
+	String filter_type;
+	String filter_name;
 	Vector<String> operands;
 	for (int i = 0; i < p_arguments.size(); i++) {
 		const String &argument = p_arguments[i];
@@ -247,6 +249,30 @@ int run_debug(const Vector<String> &p_arguments) {
 			all_members = true;
 		} else if (argument == "--exclude-builtin") {
 			exclude_builtin = true;
+		} else if (argument == "--filter-type") {
+			if (i + 1 >= p_arguments.size() || p_arguments[i + 1].strip_edges().is_empty()) {
+				const Dictionary error = make_error("--filter-type requires a type name.");
+				print_error(error, json_output);
+				return 2;
+			}
+			if (!filter_type.is_empty()) {
+				const Dictionary error = make_error("--filter-type may only be specified once.");
+				print_error(error, json_output);
+				return 2;
+			}
+			filter_type = p_arguments[++i].strip_edges();
+		} else if (argument == "--filter-name") {
+			if (i + 1 >= p_arguments.size() || p_arguments[i + 1].strip_edges().is_empty()) {
+				const Dictionary error = make_error("--filter-name requires a field-name substring.");
+				print_error(error, json_output);
+				return 2;
+			}
+			if (!filter_name.is_empty()) {
+				const Dictionary error = make_error("--filter-name may only be specified once.");
+				print_error(error, json_output);
+				return 2;
+			}
+			filter_name = p_arguments[++i].strip_edges();
 		} else if (argument == "--session") {
 			if (i + 1 >= p_arguments.size() || !p_arguments[i + 1].is_valid_int() || p_arguments[i + 1].to_int() < 0) {
 				const Dictionary error = make_error("--session requires a non-negative integer session ID.");
@@ -326,6 +352,11 @@ int run_debug(const Vector<String> &p_arguments) {
 		print_error(error, json_output);
 		return 2;
 	}
+	if ((!filter_type.is_empty() || !filter_name.is_empty()) && action != "members") {
+		const Dictionary error = make_error("--filter-type and --filter-name are only valid with debug members.");
+		print_error(error, json_output);
+		return 2;
+	}
 
 	Dictionary options;
 	options["action"] = action;
@@ -335,6 +366,12 @@ int run_debug(const Vector<String> &p_arguments) {
 	}
 	options["all"] = all_members;
 	options["exclude_builtin"] = exclude_builtin;
+	if (!filter_type.is_empty()) {
+		options["filter_type"] = filter_type;
+	}
+	if (!filter_name.is_empty()) {
+		options["filter_name"] = filter_name;
+	}
 	if (!member_target.is_empty()) {
 		options["target"] = member_target;
 	}

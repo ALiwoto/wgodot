@@ -113,6 +113,14 @@ godot --wg debug members player_credits --frame 2
 godot --wg debug members player_credits --all --exclude-builtin
 ```
 
+Filter final-object fields by declared type, including named-class and native inheritance, or by a case-insensitive field-name substring. Both filters may be combined with each other and with `--all` or `--exclude-builtin`:
+
+```powershell
+godot --wg debug members current_screen --all --filter-type Node2D
+godot --wg debug members current_screen --all --exclude-builtin --filter-name _sandbox
+godot --wg debug members current_screen --filter-type Node2D --filter-name element
+```
+
 The final target must be a live Object. If a segment is `null`, WGodot reports its declared type and suggests using `list <Type>` to inspect metadata without a live instance.
 
 Include inherited GDScript members and native properties from the paused `self` object with `--all`:

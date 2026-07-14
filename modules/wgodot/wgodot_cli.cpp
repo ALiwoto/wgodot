@@ -218,6 +218,7 @@ void print_cli_help() {
 	print_line("  set_static <class.member> <value> Assign a named-class static member.");
 	print_line("  call_static <class.method> [...]  Call a named-class static method.");
 	print_line("  list <target> [options]           List node, class, script, type, or function metadata.");
+	print_line("    --filter-type <type>            Filter members by declared type and inheritance.");
 	print_line("    --exclude-builtin               Hide inherited native Godot members.");
 	print_line("  source_info <target> [--json]     Resolve a qualified symbol to its declaration.");
 	print_line("  rename <target> <new-name>        Semantically rename a GDScript symbol.");
@@ -236,6 +237,8 @@ void print_cli_help() {
 	print_line("    members [nested.path]           Inspect self or a nested live Object.");
 	print_line("    members --all                   Include inherited script and native properties.");
 	print_line("    members --all --exclude-builtin Show all user-declared members only.");
+	print_line("    members --filter-type <type>    Filter fields by declared type and inheritance.");
+	print_line("    members --filter-name <text>    Filter fields by a name substring.");
 	print_line("  wait [--physics] [--count <n>]    Wait for running frames or ticks.");
 	print_line("  pause                             Pause process and physics phases.");
 	print_line("  resume                            Resume a full game pause.");
@@ -959,13 +962,13 @@ int run_list_command(const Vector<String> &p_arguments) {
 				return 2;
 			}
 			session = p_arguments[++i].to_int();
-		} else if (!options_finished && argument == "--filter") {
+		} else if (!options_finished && argument == "--filter-type") {
 			if (i + 1 >= p_arguments.size() || p_arguments[i + 1].strip_edges().is_empty()) {
-				print_line("wgodot: --filter requires a type name.");
+				print_line("wgodot: --filter-type requires a type name.");
 				return 2;
 			}
 			if (!type_filter.is_empty()) {
-				print_line("wgodot: --filter may only be specified once.");
+				print_line("wgodot: --filter-type may only be specified once.");
 				return 2;
 			}
 			type_filter = p_arguments[++i].strip_edges();
@@ -1004,7 +1007,7 @@ int run_list_command(const Vector<String> &p_arguments) {
 	Dictionary options;
 	options["target"] = target;
 	if (!type_filter.is_empty()) {
-		options["filter"] = type_filter;
+		options["filter_type"] = type_filter;
 	}
 	if (!member_types.is_empty()) {
 		options["member_types"] = member_types;
