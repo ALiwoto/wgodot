@@ -639,10 +639,14 @@ void WGodotCLIEditorPlugin::poll_connections() {
 		if (connection.completed) {
 			connections.remove_at(i);
 		} else if (connection.tcp->get_status() != StreamPeerTCP::STATUS_CONNECTED) {
+			if (connection.wait_kind == PendingConnection::WAIT_DEBUG) {
+				WGodotDebugService::cancel_debug_wait(connection.game_session, static_cast<WGodotDebugService::WaitKind>(connection.debug_wait_kind));
+			}
 			connection.tcp->disconnect_from_host();
 			connections.remove_at(i);
 		} else if (now > connection.deadline_msec) {
 			if (connection.wait_kind == PendingConnection::WAIT_DEBUG) {
+				WGodotDebugService::cancel_debug_wait(connection.game_session, static_cast<WGodotDebugService::WaitKind>(connection.debug_wait_kind));
 				finish_connection(connection, make_error_response("debug_timeout", "Timed out while waiting for the debugger state transition."));
 			} else {
 				finish_connection(connection, make_error_response("timeout", "The WGodot command timed out."));

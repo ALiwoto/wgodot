@@ -112,6 +112,8 @@ godot --wg clear_logs --source debugger --session 1
 
 Use breakpoint CRUD, hard debugger pausing, stepping, stack frames, scoped variables, and wait commands as described in [references/debugging.md](references/debugging.md). Prefer `debug wait` over polling when waiting for a breakpoint.
 
+Each `debug locals`, `debug members`, `debug globals`, or `debug vars` invocation fetches a fresh paused-state snapshot. Re-run the relevant command after changing runtime state; no explicit refresh command is needed.
+
 ## Pause and step
 
 Pause scheduled process and physics work while keeping rendering and WGodot inspection commands available:

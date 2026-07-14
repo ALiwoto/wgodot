@@ -470,34 +470,33 @@ Dictionary prepare_stack_action(int p_session, ScriptEditorDebugger *p_debugger,
 		return make_frame_response(p_session, p_options, state);
 	}
 
-	if (state.pending_variable_frame >= 0 && state.pending_variable_frame != frame) {
+	if (state.pending_variable_frame >= 0) {
 		return make_error("debug", action, "variable_request_busy", vformat("Stack frame %d variables are still being loaded.", state.pending_variable_frame));
 	}
-	if (state.pending_member_frame >= 0 && state.pending_member_frame != frame) {
+	if (state.pending_member_frame >= 0) {
 		return make_error("debug", action, "member_request_busy", vformat("Stack frame %d member metadata is still being loaded.", state.pending_member_frame));
 	}
 	state.selected_frame = frame;
-	FrameVariables *cached = state.frame_variables.getptr(frame);
-	if (cached != nullptr && cached->ready) {
-		return prepare_ready_frame_action(p_session, p_debugger, p_options, r_wait_kind, r_generation);
+	if (action == "frame") {
+		return make_frame_response(p_session, p_options, state);
 	}
-	if (state.pending_variable_frame < 0) {
-		FrameVariables &variables = state.frame_variables[frame];
-		variables.locals.clear();
-		variables.members.clear();
-		variables.user_members.clear();
-		variables.globals.clear();
-		variables.all_members.clear();
-		variables.self_object_id = 0;
-		variables.ready = false;
-		variables.members_enriched = false;
-		state.pending_variable_frame = frame;
-		state.pending_variable_count = -1;
-		state.received_variable_count = 0;
-		if (!p_debugger->request_stack_dump(frame)) {
-			state.pending_variable_frame = -1;
-			return make_error("debug", action, "variable_request_failed", "Could not request variables for the selected stack frame.");
-		}
+
+	FrameVariables &variables = state.frame_variables[frame];
+	variables.locals.clear();
+	variables.members.clear();
+	variables.user_members.clear();
+	variables.globals.clear();
+	variables.all_members.clear();
+	variables.self_object_id = 0;
+	variables.ready = false;
+	variables.members_enriched = false;
+	state.pending_variable_frame = frame;
+	state.pending_variable_count = -1;
+	state.received_variable_count = 0;
+	if (!p_debugger->request_stack_dump(frame)) {
+		state.pending_variable_frame = -1;
+		state.frame_variables.erase(frame);
+		return make_error("debug", action, "variable_request_failed", "Could not request variables for the selected stack frame.");
 	}
 
 	r_wait_kind = WAIT_VARIABLES;
@@ -907,13 +906,18 @@ bool poll_debug_wait(int p_session, const Dictionary &p_options, WaitKind &r_wai
 			return true;
 		}
 		if (state.variable_generation > r_generation) {
+			const int frame = state.selected_frame;
 			const FrameVariables *variables = state.frame_variables.getptr(state.selected_frame);
 			if (variables == nullptr || !variables->ready) {
 				r_response = make_error("debug", action, "variable_request_interrupted", "The stack-variable request was interrupted by a debugger state change.");
 			} else {
 				r_response = prepare_ready_frame_action(p_session, debugger, p_options, r_wait_kind, r_generation);
 			}
-			return r_wait_kind != WAIT_MEMBERS || !r_response.is_empty();
+			const bool waiting_for_members = r_wait_kind == WAIT_MEMBERS && r_response.is_empty();
+			if (!waiting_for_members) {
+				state.frame_variables.erase(frame);
+			}
+			return !waiting_for_members;
 		}
 		return false;
 	}
@@ -923,12 +927,14 @@ bool poll_debug_wait(int p_session, const Dictionary &p_options, WaitKind &r_wai
 			return true;
 		}
 		if (state.member_generation > r_generation) {
+			const int frame = state.selected_frame;
 			const FrameVariables *variables = state.frame_variables.getptr(state.selected_frame);
 			if (variables == nullptr || !variables->ready || !variables->members_enriched) {
 				r_response = make_error("debug", action, "member_request_interrupted", "The member metadata request was interrupted by a debugger state change.");
 			} else {
 				r_response = make_frame_response(p_session, p_options, state);
 			}
+			state.frame_variables.erase(frame);
 			return true;
 		}
 		return false;
@@ -944,6 +950,27 @@ bool poll_debug_wait(int p_session, const Dictionary &p_options, WaitKind &r_wai
 		return true;
 	}
 	return false;
+}
+
+void cancel_debug_wait(int p_session, WaitKind p_wait_kind) {
+	SessionState *state = sessions.getptr(p_session);
+	if (state == nullptr) {
+		return;
+	}
+	if (p_wait_kind == WAIT_VARIABLES && state->pending_variable_frame >= 0) {
+		const int frame = state->pending_variable_frame;
+		state->pending_variable_frame = -1;
+		state->pending_variable_count = -1;
+		state->received_variable_count = 0;
+		state->frame_variables.erase(frame);
+		state->variable_generation++;
+	} else if (p_wait_kind == WAIT_MEMBERS && state->pending_member_frame >= 0) {
+		const int frame = state->pending_member_frame;
+		state->pending_member_frame = -1;
+		state->pending_member_object_id = 0;
+		state->frame_variables.erase(frame);
+		state->member_generation++;
+	}
 }
 
 } // namespace WGodotDebugService

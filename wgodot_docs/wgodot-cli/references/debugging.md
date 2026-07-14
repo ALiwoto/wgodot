@@ -112,6 +112,6 @@ godot --wg debug members --all --exclude-builtin
 
 `--exclude-builtin` removes properties declared by Godot's native classes. A user-declared field remains included even when its declared type, such as `String`, is built in. Therefore, `--all --exclude-builtin` shows members from the selected script and its GDScript base classes without native properties. Without `--all`, `--exclude-builtin` is allowed but has no additional effect because ordinary `debug members` is already limited to the selected script.
 
-Stacks and loaded frame variables are cached only for the current break. Continuing, stepping, stopping the game, or reaching a new break invalidates them, and a new break selects frame `0` again.
+The stack is cached only for the current break, and a new break selects frame `0` again. Scoped-variable commands request fresh values every time they run, including the remote values used by `members --all`; their temporary response snapshot is discarded after printing. This allows changes made while hard-paused to appear in the next inspection without command-specific cache invalidation.
 
 When the main game thread reaches a hard breakpoint, gameplay, physics, and rendering effectively stop. The debugger message loop remains responsive, which allows these commands to operate. Other game threads are not guaranteed to be suspended.
