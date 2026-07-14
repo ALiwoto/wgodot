@@ -24,6 +24,7 @@ class WGodotCLIEditorPlugin : public EditorPlugin {
 			WAIT_GAME_START,
 			WAIT_GAME_RESPONSE,
 			WAIT_DEBUG,
+			WAIT_EDITOR_REFRESH,
 		};
 
 		Ref<StreamPeerTCP> tcp;

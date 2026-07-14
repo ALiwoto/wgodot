@@ -12,7 +12,6 @@
 #include "core/io/file_access.h"
 #include "core/object/script_language.h"
 #include "core/os/os.h"
-#include "core/string/print_string.h"
 #include "core/string/ustring.h"
 #include "core/templates/list.h"
 #include "core/templates/vector.h"
@@ -37,13 +36,13 @@ String get_error_name(Error p_error) {
 	return itos(error_index);
 }
 
-void collect_script_paths(const String &p_root_dir, Vector<String> &r_paths, CheckStats &r_stats) {
+void collect_script_paths(const String &p_root_dir, Vector<String> &r_paths, CheckStats &r_stats, PackedStringArray &r_output) {
 	Error err;
 	Ref<DirAccess> dir = DirAccess::open(p_root_dir, &err);
 	if (err != OK || dir.is_null()) {
 		r_stats.error_count++;
 		r_stats.directory_error_count++;
-		print_line(vformat("%s: error: Unable to open directory (%s).", p_root_dir, get_error_name(err)));
+		r_output.push_back(vformat("%s: error: Unable to open directory (%s).", p_root_dir, get_error_name(err)));
 		return;
 	}
 
@@ -60,7 +59,7 @@ void collect_script_paths(const String &p_root_dir, Vector<String> &r_paths, Che
 		}
 
 		if (dir->current_is_dir()) {
-			collect_script_paths(p_root_dir.path_join(file_name), r_paths, r_stats);
+			collect_script_paths(p_root_dir.path_join(file_name), r_paths, r_stats, r_output);
 		} else if (file_name.ends_with(".gd")) {
 			r_paths.push_back(p_root_dir.path_join(file_name));
 		}
@@ -70,19 +69,19 @@ void collect_script_paths(const String &p_root_dir, Vector<String> &r_paths, Che
 	dir->list_dir_end();
 }
 
-void print_script_error(const ScriptLanguage::ScriptError &p_error, const String &p_fallback_path) {
+void append_script_error(const ScriptLanguage::ScriptError &p_error, const String &p_fallback_path, PackedStringArray &r_output) {
 	const String path = p_error.path.is_empty() ? p_fallback_path : p_error.path;
 	const int line = p_error.line > 0 ? p_error.line : 0;
 	const int column = p_error.column > 0 ? p_error.column : 0;
-	print_line(vformat("%s:%d:%d: error: %s", path, line, column, p_error.message));
+	r_output.push_back(vformat("%s:%d:%d: error: %s", path, line, column, p_error.message));
 }
 
-void print_script_warning(const ScriptLanguage::Warning &p_warning, const String &p_path) {
+void append_script_warning(const ScriptLanguage::Warning &p_warning, const String &p_path, PackedStringArray &r_output) {
 	const int line = p_warning.start_line > 0 ? p_warning.start_line : 0;
-	print_line(vformat("%s:%d: warning (%s): %s", p_path, line, p_warning.string_code, p_warning.message));
+	r_output.push_back(vformat("%s:%d: warning (%s): %s", p_path, line, p_warning.string_code, p_warning.message));
 }
 
-void check_script(const String &p_path, CheckStats &r_stats) {
+void check_script(const String &p_path, CheckStats &r_stats, PackedStringArray &r_output) {
 	r_stats.script_count++;
 
 	Error read_error;
@@ -90,7 +89,7 @@ void check_script(const String &p_path, CheckStats &r_stats) {
 	if (read_error != OK) {
 		r_stats.error_count++;
 		r_stats.read_error_count++;
-		print_line(vformat("%s: error: Unable to read script (%s).", p_path, get_error_name(read_error)));
+		r_output.push_back(vformat("%s: error: Unable to read script (%s).", p_path, get_error_name(read_error)));
 		return;
 	}
 
@@ -100,35 +99,41 @@ void check_script(const String &p_path, CheckStats &r_stats) {
 
 	for (const ScriptLanguage::ScriptError &error : errors) {
 		r_stats.error_count++;
-		print_script_error(error, p_path);
+		append_script_error(error, p_path, r_output);
 	}
 
 	for (const ScriptLanguage::Warning &warning : warnings) {
 		r_stats.warning_count++;
-		print_script_warning(warning, p_path);
+		append_script_warning(warning, p_path, r_output);
 	}
 }
 
 } // namespace
 
-int run_project_check() {
+Dictionary run_project_check_result() {
+	Dictionary result;
+	result["ok"] = true;
+	result["command"] = "check";
+	PackedStringArray output;
 	if (GDScriptLanguage::get_singleton() == nullptr) {
-		print_line("wgodot-check: error: GDScript language is not initialized.");
-		return 1;
+		output.push_back("wgodot-check: error: GDScript language is not initialized.");
+		result["output"] = output;
+		result["exit_code"] = 1;
+		return result;
 	}
 
 	CheckStats stats;
 	Vector<String> script_paths;
-	collect_script_paths("res://", script_paths, stats);
+	collect_script_paths("res://", script_paths, stats, output);
 	script_paths.sort();
 
 	const uint64_t start_usec = OS::get_singleton()->get_ticks_usec();
 	for (const String &path : script_paths) {
-		check_script(path, stats);
+		check_script(path, stats, output);
 	}
 	const uint64_t elapsed_msec = (OS::get_singleton()->get_ticks_usec() - start_usec) / 1000;
 
-	print_line(vformat("wgodot-check: scanned %d GDScript file(s), found %d error(s), %d warning(s), %d directory error(s), %d read error(s) in %d ms.",
+	output.push_back(vformat("wgodot-check: scanned %d GDScript file(s), found %d error(s), %d warning(s), %d directory error(s), %d read error(s) in %d ms.",
 			stats.script_count,
 			stats.error_count,
 			stats.warning_count,
@@ -136,7 +141,15 @@ int run_project_check() {
 			stats.read_error_count,
 			(int64_t)elapsed_msec));
 
-	return stats.error_count == 0 ? 0 : 1;
+	result["output"] = output;
+	result["exit_code"] = stats.error_count == 0 ? 0 : 1;
+	result["script_count"] = stats.script_count;
+	result["error_count"] = stats.error_count;
+	result["warning_count"] = stats.warning_count;
+	result["directory_error_count"] = stats.directory_error_count;
+	result["read_error_count"] = stats.read_error_count;
+	result["elapsed_msec"] = static_cast<int64_t>(elapsed_msec);
+	return result;
 }
 
 } // namespace WGodotGDScriptCheckCLI

@@ -14,6 +14,7 @@ namespace WGodotCLI {
 constexpr int PROTOCOL_VERSION = 1;
 
 bool extract_arguments(List<String> &r_arguments, String &r_project_path);
+bool is_command_requested();
 bool execute_if_requested(int &r_exit_code);
 
 int request_editor_command(const Dictionary &p_request, Dictionary &r_response);

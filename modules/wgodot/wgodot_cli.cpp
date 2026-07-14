@@ -19,7 +19,6 @@
 #include "core/string/print_string.h"
 #include "core/templates/vector.h"
 #include "editor/file_system/editor_paths.h"
-#include "modules/gdscript/wgodot_gd/gdscript_check_cli.h"
 
 namespace WGodotCLI {
 
@@ -246,7 +245,7 @@ void print_cli_help() {
 	print_line("  pause_physics                     Pause fixed physics ticks only.");
 	print_line("  resume_physics                    Resume physics-only pausing.");
 	print_line("  step_physics [--count <number>]   Advance paused physics ticks.");
-	print_line("  check                             Check all project GDScript files.");
+	print_line("  check                             Refresh editor assets, then check all GDScript files.");
 	print_line("  help                              Show this help.");
 }
 
@@ -691,6 +690,29 @@ int run_editor_command(const Dictionary &p_request, bool p_json_output) {
 		return discovery_result;
 	}
 	return print_command_response(response, p_json_output);
+}
+
+int run_check_command() {
+	Dictionary request;
+	request["protocol"] = PROTOCOL_VERSION;
+	request["command"] = "check";
+
+	Dictionary response;
+	const int discovery_result = request_editor(request, response);
+	if (discovery_result != 0) {
+		print_line("wgodot: " + String(response.get("message", "No matching editor was found.")));
+		return discovery_result;
+	}
+	if (!(bool)response.get("ok", false)) {
+		print_line("wgodot: " + String(response.get("message", "The editor could not refresh and check the project.")));
+		return 4;
+	}
+
+	const PackedStringArray output = response.get("output", PackedStringArray());
+	for (const String &line : output) {
+		print_line(line);
+	}
+	return response.get("exit_code", 1);
 }
 
 int run_game_query_command(const String &p_command, const Vector<String> &p_arguments) {
@@ -1194,6 +1216,10 @@ bool extract_arguments(List<String> &r_arguments, String &r_project_path) {
 	return true;
 }
 
+bool is_command_requested() {
+	return command_requested;
+}
+
 bool execute_if_requested(int &r_exit_code) {
 	if (!command_requested) {
 		return false;
@@ -1219,7 +1245,7 @@ bool execute_if_requested(int &r_exit_code) {
 			print_line("wgodot: no project.godot could be found.");
 			r_exit_code = 3;
 		} else {
-			r_exit_code = WGodotGDScriptCheckCLI::run_project_check();
+			r_exit_code = run_check_command();
 		}
 		return true;
 	}

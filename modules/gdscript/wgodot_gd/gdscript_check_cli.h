@@ -5,8 +5,10 @@
 
 #pragma once
 
+#include "core/variant/dictionary.h"
+
 namespace WGodotGDScriptCheckCLI {
 
-int run_project_check();
+Dictionary run_project_check_result();
 
 } // namespace WGodotGDScriptCheckCLI

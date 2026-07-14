@@ -2360,7 +2360,13 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 
 	if (main_args.is_empty() && String(GLOBAL_GET("application/run/main_scene")) == "") {
 #ifdef TOOLS_ENABLED
-		if (!editor && !project_manager) {
+		if (!editor && !project_manager
+				// wgodot-changes::begin
+#ifdef MODULE_WGODOT_ENABLED
+				&& !WGodotCLI::is_command_requested()
+#endif
+				// wgodot-changes::end
+		) {
 #endif
 			const String error_msg = "Error: Can't run project: no main scene defined in the project.\n";
 			OS::get_singleton()->print("%s", error_msg.utf8().get_data());

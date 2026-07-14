@@ -13,6 +13,8 @@
 #include "wgodot_project_info.h"
 #include "wgodot_source_info.h"
 
+#include "modules/gdscript/wgodot_gd/gdscript_check_cli.h"
+
 #include "core/crypto/crypto_core.h"
 #include "core/io/dir_access.h"
 #include "core/io/file_access.h"
@@ -22,6 +24,7 @@
 #include "core/os/time.h"
 #include "editor/debugger/editor_debugger_node.h"
 #include "editor/debugger/script_editor_debugger.h"
+#include "editor/file_system/editor_file_system.h"
 #include "editor/run/editor_run_bar.h"
 
 namespace {
@@ -29,6 +32,7 @@ namespace {
 constexpr uint64_t CONNECTION_TIMEOUT_MSEC = 5000;
 constexpr uint64_t ASYNC_TIMEOUT_MSEC = 15000;
 constexpr uint64_t WAIT_THROUGH_BREAKPOINT_TIMEOUT_MSEC = 60000;
+constexpr uint64_t CHECK_REFRESH_TIMEOUT_MSEC = 60000;
 constexpr int MAX_PACKET_SIZE = 4 * 1024 * 1024;
 constexpr const char *const FORWARDED_GAME_COMMANDS[] = {
 	"tree",
@@ -378,6 +382,17 @@ void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
 		finish_connection(p_connection, response);
 		return;
 	}
+	if (command == "check") {
+		EditorFileSystem *filesystem = EditorFileSystem::get_singleton();
+		if (filesystem == nullptr) {
+			finish_connection(p_connection, make_error_response("filesystem_unavailable", "The editor filesystem is unavailable."));
+			return;
+		}
+		filesystem->scan_changes();
+		p_connection.wait_kind = PendingConnection::WAIT_EDITOR_REFRESH;
+		p_connection.deadline_msec = OS::get_singleton()->get_ticks_msec() + CHECK_REFRESH_TIMEOUT_MSEC;
+		return;
+	}
 	if (command == "source_info") {
 		finish_connection(p_connection, WGodotSourceInfo::resolve(options));
 		return;
@@ -484,6 +499,17 @@ void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
 }
 
 void WGodotCLIEditorPlugin::poll_waiting_connection(PendingConnection &p_connection) {
+	if (p_connection.wait_kind == PendingConnection::WAIT_EDITOR_REFRESH) {
+		EditorFileSystem *filesystem = EditorFileSystem::get_singleton();
+		if (filesystem == nullptr) {
+			finish_connection(p_connection, make_error_response("filesystem_unavailable", "The editor filesystem became unavailable."));
+		} else if (!filesystem->is_scanning() && !filesystem->is_importing()) {
+			Dictionary response = WGodotGDScriptCheckCLI::run_project_check_result();
+			response["refreshed"] = true;
+			finish_connection(p_connection, response);
+		}
+		return;
+	}
 	if (p_connection.wait_kind == PendingConnection::WAIT_GAME_RESPONSE) {
 		if (p_connection.return_on_debug_break && p_connection.game_debug_break_observed) {
 			const Dictionary debug_state = WGodotDebugService::get_state(p_connection.game_session, p_connection.game_command);

@@ -486,9 +486,9 @@ After editing GDScript, scan all project `.gd` files for parser errors, analyzer
 godot --wg check
 ```
 
-The scan respects `.gdignore` directories. Treat a nonzero exit code as a failed check and address reported errors before continuing.
+Before validation, the matching editor scans for external filesystem changes and waits for discovery and imports to finish. This is the same editor filesystem path used after the window regains focus, so newly copied assets are imported, required `.uid` files are created, and GDScript class metadata is refreshed before checking.
 
-This command works without a running editor because it checks the project directly.
+The validation scan respects `.gdignore` directories. Treat a nonzero exit code as a failed check and address reported errors before continuing. The matching WGodot editor must be open; the game does not need to be running.
 
 ## Agent workflow
 
