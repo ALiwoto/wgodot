@@ -5,6 +5,8 @@
 
 #include "wgodot_debug_inspector.h"
 
+#include "wgodot_debug_value.h"
+
 #include "core/io/resource.h"
 #include "core/object/object.h"
 #include "core/object/script_language.h"
@@ -48,7 +50,7 @@ String format_type(const PropertyInfo &p_property, const Variant &p_value) {
 	return Variant::get_type_name(p_property.type);
 }
 
-String format_value(const Variant &p_value) {
+String format_value(const Variant &p_value, bool p_expand) {
 	if (p_value.get_type() == Variant::OBJECT) {
 		Ref<Resource> resource = p_value;
 		if (resource.is_valid() && !resource->get_path().is_empty()) {
@@ -61,6 +63,12 @@ String format_value(const Variant &p_value) {
 	}
 	if (p_value.get_type() == Variant::NIL) {
 		return "null";
+	}
+	if (!p_expand) {
+		String compact;
+		if (WGodotDebugValue::format_compact(p_value, compact)) {
+			return compact;
+		}
 	}
 	String text;
 	if (VariantWriter::write_to_string(p_value, text) != OK) {
@@ -84,6 +92,7 @@ Dictionary inspect_object(const Dictionary &p_options) {
 
 	HashSet<StringName> current_script_members;
 	HashSet<StringName> all_script_members;
+	const String expanded_member = p_options.get("expanded_member", String());
 	if (ScriptInstance *instance = object->get_script_instance()) {
 		Ref<Script> script = instance->get_script();
 		bool current = true;
@@ -130,7 +139,7 @@ Dictionary inspect_object(const Dictionary &p_options) {
 		member["name"] = String(name);
 		member["type"] = format_type(property, value);
 		member["variant_type"] = Variant::get_type_name(value.get_type());
-		member["value"] = format_value(value);
+		member["value"] = format_value(value, property.name == expanded_member);
 		member["builtin"] = !script_member;
 		member["current"] = script_member && current_script_members.has(name);
 		if (value.get_type() == Variant::OBJECT) {

@@ -114,7 +114,7 @@ void print_frame_variables(const Dictionary &p_response) {
 	if (action == "locals" || action == "vars") {
 		print_scope("Locals", p_response.get("locals", Array()));
 	}
-	if (action == "members" || action == "vars") {
+	if ((action == "members" || action == "vars") && !(bool)target.get("terminal", false)) {
 		print_scope("Members", p_response.get("members", Array()));
 	}
 	if (action == "globals" || action == "vars") {

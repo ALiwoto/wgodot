@@ -6,6 +6,7 @@
 #include "wgodot_debug_service.h"
 
 #include "../wgodot_type_filter.h"
+#include "../wgodot_debug_value.h"
 
 #include "core/config/project_settings.h"
 #include "core/debugger/debugger_marshalls.h"
@@ -42,6 +43,8 @@ struct FrameVariables {
 	int64_t target_object_id = 0;
 	String target_path;
 	String target_type;
+	String target_value;
+	bool target_terminal = false;
 	bool ready = false;
 	bool members_enriched = false;
 };
@@ -201,6 +204,10 @@ int64_t get_encoded_object_id(const Variant &p_value) {
 }
 
 String format_variable_value(const Variant &p_value, Variant::Type p_declared_type, const String &p_type_hint) {
+	String compact;
+	if (WGodotDebugValue::format_compact(p_value, compact)) {
+		return compact;
+	}
 	if (p_declared_type == Variant::OBJECT && p_value.get_type() == Variant::OBJECT) {
 		Object *object = p_value.get_validated_object();
 		if (EncodedObjectAsID *encoded = Object::cast_to<EncodedObjectAsID>(object)) {
@@ -326,8 +333,13 @@ Dictionary make_frame_response(int p_session, const Dictionary &p_options, const
 		Dictionary target;
 		target["path"] = variables->target_path;
 		target["type"] = variables->target_type.is_empty() ? "Object" : variables->target_type;
-		target["object_id"] = variables->target_object_id;
-		target["value"] = vformat("<%s#%d>", String(target["type"]), variables->target_object_id);
+		target["terminal"] = variables->target_terminal;
+		if (variables->target_terminal) {
+			target["value"] = variables->target_value;
+		} else {
+			target["object_id"] = variables->target_object_id;
+			target["value"] = vformat("<%s#%d>", String(target["type"]), variables->target_object_id);
+		}
 		response["target"] = target;
 	}
 	if (action == "locals" || action == "vars") {
@@ -391,11 +403,16 @@ bool parse_member_target(const String &p_target, PackedStringArray &r_segments, 
 void request_debug_object(ScriptEditorDebugger *p_debugger, SessionState &p_state, int64_t p_object_id) {
 	Dictionary options;
 	options["object_id"] = p_object_id;
+	if (!p_state.pending_member_segments.is_empty() && p_state.pending_member_segment == p_state.pending_member_segments.size() - 1) {
+		options["expanded_member"] = p_state.pending_member_segments[p_state.pending_member_segment];
+	}
 	p_state.pending_member_request_id = next_member_request_id++;
 	p_debugger->send_message("wgodot:request", { p_state.pending_member_request_id, "debug_inspect", options });
 }
 
 void populate_inspected_members(FrameVariables &p_variables, const Array &p_inspected_members, const String &p_type) {
+	p_variables.target_terminal = false;
+	p_variables.target_value.clear();
 	Array current_members;
 	Array user_members;
 	Array all_members;
@@ -519,6 +536,8 @@ Dictionary prepare_stack_action(int p_session, ScriptEditorDebugger *p_debugger,
 	variables.target_object_id = 0;
 	variables.target_path.clear();
 	variables.target_type.clear();
+	variables.target_value.clear();
+	variables.target_terminal = false;
 	variables.ready = false;
 	variables.members_enriched = false;
 	state.pending_variable_frame = frame;
@@ -789,8 +808,26 @@ void capture_debugger_message(int p_session, const String &p_message, const Arra
 					const String type = member.get("type", "Object");
 					if (object_id == 0) {
 						const String value = member.get("value", String());
-						const String message = value == "null" ? path + " is null; no live object can be inspected. Hint: godot --wg list " + type : path + " is not a live Object.";
-						state.pending_member_error = make_error("debug", "members", value == "null" ? "member_target_null" : "member_target_not_object", message);
+						const String variant_type = member.get("variant_type", String());
+						const bool final_segment = state.pending_member_segment == state.pending_member_segments.size() - 1;
+						const bool expandable_value = variant_type == "String" || variant_type == "Array" || (variant_type.begins_with("Packed") && variant_type.ends_with("Array"));
+						if (final_segment && expandable_value) {
+							FrameVariables *variables = state.frame_variables.getptr(state.pending_member_frame);
+							if (variables != nullptr && variables->ready) {
+								variables->target_object_id = 0;
+								variables->target_path = path;
+								variables->target_type = type;
+								variables->target_value = value;
+								variables->target_terminal = true;
+								variables->members.clear();
+								variables->user_members.clear();
+								variables->all_members.clear();
+								variables->members_enriched = true;
+							}
+						} else {
+							const String message = value == "null" ? path + " is null; no live object can be inspected. Hint: godot --wg list " + type : path + " is not a live Object.";
+							state.pending_member_error = make_error("debug", "members", value == "null" ? "member_target_null" : "member_target_not_object", message);
+						}
 					} else {
 						state.pending_member_object_id = object_id;
 						state.pending_member_target_path = path;

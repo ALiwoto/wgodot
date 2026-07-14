@@ -121,7 +121,16 @@ godot --wg debug members current_screen --all --exclude-builtin --filter-name _s
 godot --wg debug members current_screen --filter-type Node2D --filter-name element
 ```
 
-The final target must be a live Object. If a segment is `null`, WGodot reports its declared type and suggests using `list <Type>` to inspect metadata without a live instance.
+Normal scoped-variable output does not expand arrays. It displays `Array(size=N)` or the corresponding packed-array type and length. Strings longer than 128 characters are displayed as a quoted 64-character preview followed by `... (+N chars more)`.
+
+An explicitly targeted array or string is treated as a terminal value and printed in full instead of requiring an Object:
+
+```powershell
+godot --wg debug members current_screen.loading_light_points_particles
+godot --wg debug members current_screen.long_description
+```
+
+Other final targets must be live Objects. If a segment is `null`, WGodot reports its declared type and suggests using `list <Type>` to inspect metadata without a live instance.
 
 Include inherited GDScript members and native properties from the paused `self` object with `--all`:
 
