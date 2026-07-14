@@ -212,6 +212,8 @@ void print_cli_help() {
 	print_line("  get <node> <property...>           Read runtime properties.");
 	print_line("  set <node> <property> <value>     Assign a runtime property.");
 	print_line("  call <node> <method> [args...]    Call a runtime method.");
+	print_line("    --wait-through-breakpoint       Keep waiting when the call hard-breaks.");
+	print_line("    --detach                        Dispatch without waiting for a result.");
 	print_line("  get_static <class.member...>      Read named-class static members.");
 	print_line("  set_static <class.member> <value> Assign a named-class static member.");
 	print_line("  call_static <class.method> [...]  Call a named-class static method.");
@@ -610,8 +612,23 @@ int print_command_response(const Dictionary &p_response, bool p_json_output) {
 		const Dictionary result = p_response.get("result", Dictionary());
 		print_line(String(p_response.get("property", String())) + " = " + String(result.get("value", String())));
 	} else if (command == "call" || command == "call_static") {
-		const Dictionary result = p_response.get("result", Dictionary());
-		print_line("Result: " + String(result.get("value", String())));
+		if ((bool)p_response.get("detached", false)) {
+			print_line(vformat("Call dispatched (request %d).", (int64_t)p_response.get("request_id", 0)));
+		} else if (!(bool)p_response.get("completed", true) && String(p_response.get("state", String())) == "breaked") {
+			print_line("Call paused by a hard debugger break before completion.");
+			const String reason = p_response.get("reason", String());
+			if (!reason.is_empty()) {
+				print_line("Reason: " + reason);
+			}
+			const Dictionary frame = p_response.get("frame", Dictionary());
+			if (!frame.is_empty()) {
+				print_line(vformat("Frame #%d: %s:%d @ %s", (int)frame.get("index", 0), String(frame.get("file", String())), (int)frame.get("line", 0), String(frame.get("function", String()))));
+			}
+			print_line("The call will continue after: godot --wg debug resume");
+		} else {
+			const Dictionary result = p_response.get("result", Dictionary());
+			print_line("Result: " + String(result.get("value", String())));
+		}
 	} else if (command == "list") {
 		const String declaration = p_response.get("declaration", String());
 		if (!declaration.is_empty()) {
@@ -800,6 +817,8 @@ int run_input_command(const String &p_command, const Vector<String> &p_arguments
 
 struct RuntimeCommandOptions {
 	bool json_output = false;
+	bool wait_through_breakpoint = false;
+	bool detach = false;
 	int session = -1;
 	Vector<String> operands;
 };
@@ -812,6 +831,10 @@ bool parse_runtime_command_options(const String &p_command, const Vector<String>
 			options_finished = true;
 		} else if (!options_finished && argument == "--json") {
 			r_options.json_output = true;
+		} else if (!options_finished && (p_command == "call" || p_command == "call_static") && argument == "--wait-through-breakpoint") {
+			r_options.wait_through_breakpoint = true;
+		} else if (!options_finished && (p_command == "call" || p_command == "call_static") && argument == "--detach") {
+			r_options.detach = true;
 		} else if (!options_finished && argument == "--session") {
 			if (i + 1 >= p_arguments.size() || !p_arguments[i + 1].is_valid_int() || p_arguments[i + 1].to_int() < 0) {
 				print_line("wgodot: --session requires a non-negative integer session ID.");
@@ -824,6 +847,10 @@ bool parse_runtime_command_options(const String &p_command, const Vector<String>
 		} else {
 			r_options.operands.push_back(argument);
 		}
+	}
+	if (r_options.wait_through_breakpoint && r_options.detach) {
+		print_line("wgodot: --wait-through-breakpoint and --detach cannot be combined.");
+		return false;
 	}
 	return true;
 }
@@ -894,6 +921,10 @@ int run_runtime_command(const String &p_command, const Vector<String> &p_argumen
 			arguments.push_back(command_options.operands[i]);
 		}
 		options["arguments"] = arguments;
+	}
+	if (p_command == "call" || p_command == "call_static") {
+		options["wait_through_breakpoint"] = command_options.wait_through_breakpoint;
+		options["detach"] = command_options.detach;
 	}
 
 	Dictionary request;

@@ -34,8 +34,11 @@ class WGodotCLIEditorPlugin : public EditorPlugin {
 		uint64_t debug_generation = 0;
 		int game_session = -1;
 		int debug_wait_kind = 0;
+		String game_command;
 		Dictionary debug_options;
 		WaitKind wait_kind = WAIT_NONE;
+		bool return_on_debug_break = false;
+		bool game_debug_break_observed = false;
 		bool completed = false;
 	};
 

@@ -297,6 +297,20 @@ godot --wg call /root/Main spawn_enemy 3 "Vector2(250, 400)"
 godot --wg call /root/Main inventory.add_item potion 3
 ```
 
+Calls normally wait for either method completion or a hard debugger break. If the invoked code reaches a breakpoint, the command returns the paused frame immediately so the debugger can be inspected, while the method remains suspended until `godot --wg debug resume`.
+
+Keep the original CLI request blocked through debugger breaks when another terminal or user will resume execution:
+
+```powershell
+godot --wg call /root/Main restart_game --wait-through-breakpoint
+```
+
+Wait-through mode allows up to 60 seconds for completion. Dispatch without waiting for validation, errors, or a return value only when that tradeoff is intentional:
+
+```powershell
+godot --wg call /root/Main restart_game --detach
+```
+
 Values use Godot Variant syntax when valid, including `true`, `null`, numbers, arrays, dictionaries, `Vector2(...)`, `Color(...)`, and `NodePath(...)`. Otherwise, the argument is treated as a String. Quote an argument at the shell level when it contains spaces. To pass a String that itself looks like Variant syntax, preserve quotes inside the argument; in PowerShell, for example:
 
 ```powershell
@@ -320,6 +334,8 @@ godot --wg call_static GameStatics.spawn_enemy 3 "Vector2(250, 400)"
 Continue nesting after the static member as needed. For example, `GameStatics.current_moving_element.element_text` reads the ordinary `element_text` field from the object stored in the static `current_moving_element` variable. A nested call such as `GameStatics.current_moving_element.activate` calls the normal method on that resolved object.
 
 Use the same Variant value syntax, `--`, `--json`, and `--session` rules as `get`, `set`, and `call`. These commands also work while the game is paused.
+
+`call_static` supports the same breakpoint-aware default, `--wait-through-breakpoint`, and `--detach` modes as `call`.
 
 ## Screenshots
 

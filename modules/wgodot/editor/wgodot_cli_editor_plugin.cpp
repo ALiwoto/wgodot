@@ -28,6 +28,7 @@ namespace {
 
 constexpr uint64_t CONNECTION_TIMEOUT_MSEC = 5000;
 constexpr uint64_t ASYNC_TIMEOUT_MSEC = 15000;
+constexpr uint64_t WAIT_THROUGH_BREAKPOINT_TIMEOUT_MSEC = 60000;
 constexpr int MAX_PACKET_SIZE = 4 * 1024 * 1024;
 constexpr const char *const FORWARDED_GAME_COMMANDS[] = {
 	"tree",
@@ -457,10 +458,25 @@ void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
 			finish_connection(p_connection, make_error_response("game_request_failed", "Could not send the request to the running game."));
 			return;
 		}
+		const bool call_command = command == "call" || command == "call_static";
+		if (call_command && (bool)options.get("detach", false)) {
+			Dictionary response;
+			response["ok"] = true;
+			response["command"] = command;
+			response["completed"] = false;
+			response["detached"] = true;
+			response["state"] = "dispatched";
+			response["request_id"] = static_cast<int64_t>(game_request_id);
+			response["session"] = session;
+			finish_connection(p_connection, response);
+			return;
+		}
 		p_connection.game_request_id = game_request_id;
 		p_connection.game_session = session;
+		p_connection.game_command = command;
+		p_connection.return_on_debug_break = call_command && !(bool)options.get("wait_through_breakpoint", false);
 		p_connection.wait_kind = PendingConnection::WAIT_GAME_RESPONSE;
-		p_connection.deadline_msec = OS::get_singleton()->get_ticks_msec() + ASYNC_TIMEOUT_MSEC;
+		p_connection.deadline_msec = OS::get_singleton()->get_ticks_msec() + ((bool)options.get("wait_through_breakpoint", false) ? WAIT_THROUGH_BREAKPOINT_TIMEOUT_MSEC : ASYNC_TIMEOUT_MSEC);
 		return;
 	}
 
@@ -468,6 +484,25 @@ void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
 }
 
 void WGodotCLIEditorPlugin::poll_waiting_connection(PendingConnection &p_connection) {
+	if (p_connection.wait_kind == PendingConnection::WAIT_GAME_RESPONSE) {
+		if (p_connection.return_on_debug_break && p_connection.game_debug_break_observed) {
+			const Dictionary debug_state = WGodotDebugService::get_state(p_connection.game_session, p_connection.game_command);
+			if ((bool)debug_state.get("breaked", false) && (bool)debug_state.get("stack_ready", false)) {
+				Dictionary response;
+				response["ok"] = true;
+				response["command"] = p_connection.game_command;
+				response["completed"] = false;
+				response["detached"] = false;
+				response["state"] = "breaked";
+				response["request_id"] = static_cast<int64_t>(p_connection.game_request_id);
+				response["session"] = p_connection.game_session;
+				response["reason"] = debug_state.get("reason", String());
+				response["frame"] = debug_state.get("frame", Dictionary());
+				finish_connection(p_connection, response);
+			}
+		}
+		return;
+	}
 	if (p_connection.wait_kind == PendingConnection::WAIT_DEBUG) {
 		Dictionary response;
 		WGodotDebugService::WaitKind wait_kind = static_cast<WGodotDebugService::WaitKind>(p_connection.debug_wait_kind);
@@ -515,6 +550,10 @@ void WGodotCLIEditorPlugin::handle_game_response(int p_session, uint64_t p_reque
 		if (!connection.completed && connection.wait_kind == PendingConnection::WAIT_GAME_RESPONSE && connection.game_request_id == p_request_id && connection.game_session == p_session) {
 			Dictionary response = p_response;
 			response["session"] = p_session;
+			if (connection.game_command == "call" || connection.game_command == "call_static") {
+				response["completed"] = true;
+				response["detached"] = false;
+			}
 			finish_connection(connection, response);
 			return;
 		}
@@ -570,6 +609,13 @@ void WGodotCLIEditorPlugin::handle_debugger_stopped(int p_session) {
 
 void WGodotCLIEditorPlugin::handle_debugger_breaked(bool p_breaked, bool p_can_debug, const String &p_reason, bool p_has_stackdump, int p_session) {
 	WGodotDebugService::debugger_breaked(p_session, p_breaked, p_can_debug, p_reason, p_has_stackdump);
+	if (p_breaked) {
+		for (PendingConnection &connection : connections) {
+			if (!connection.completed && connection.wait_kind == PendingConnection::WAIT_GAME_RESPONSE && connection.game_session == p_session && connection.return_on_debug_break) {
+				connection.game_debug_break_observed = true;
+			}
+		}
+	}
 }
 
 void WGodotCLIEditorPlugin::handle_breakpoint_toggled(const String &p_path, int p_line, bool p_enabled) {

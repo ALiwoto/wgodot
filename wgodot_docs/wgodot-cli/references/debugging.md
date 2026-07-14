@@ -48,6 +48,12 @@ godot --wg debug step_out
 
 `debug resume` is an alias for `debug continue`. Both wait for confirmed resumption. Each step waits until the next debugger break and reports its new top frame. These commands fail if the game is not hard-paused or the current break cannot continue.
 
+## Calls that reach breakpoints
+
+`call` and `call_static` normally wait for completion but return early if the invoked execution reaches a hard debugger break. The response reports `completed: false`, the break reason, and the top frame. The method remains suspended and continues after `debug resume`; its eventual result is discarded because the original CLI request has already returned.
+
+Use `--wait-through-breakpoint` only when another terminal or user will control the debugger. It preserves the original request and eventual return value, with a 60-second completion window. Use `--detach` to return immediately after dispatch when method validation, call errors, and the return value are not needed. These two options cannot be combined.
+
 Wait for a running game to reach a breakpoint without polling:
 
 ```powershell

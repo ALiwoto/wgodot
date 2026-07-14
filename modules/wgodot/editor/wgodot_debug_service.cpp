@@ -790,6 +790,7 @@ Dictionary get_state(int p_session, const String &p_action) {
 	response["can_debug"] = breaked && debugger->is_debuggable();
 	response["state"] = !active ? "not_running" : (breaked ? "breaked" : "running");
 	response["reason"] = cached && breaked ? cached->reason : String();
+	response["stack_ready"] = cached && breaked && cached->stack_ready;
 	response["frame"] = cached && breaked ? get_frame(*cached, 0) : Dictionary();
 	response["selected_frame_index"] = cached && breaked ? cached->selected_frame : 0;
 	response["selected_frame"] = cached && breaked ? get_frame(*cached, cached->selected_frame) : Dictionary();
