@@ -187,6 +187,11 @@ bool GDScriptAnalyzer::wgodot_strict_type_checking_enabled() const {
 #ifndef TOOLS_ENABLED
 	return false;
 #else
+	if (GLOBAL_GET_CACHED(bool, "wgodot/gdscript/disable_strict_type_checking_for_addons") &&
+			parser->script_path.begins_with("res://addons/")) {
+		return false;
+	}
+
 	const char *setting = "wgodot/gdscript/strict_type_checking";
 	if (!ProjectSettings::get_singleton()->has_setting(setting)) {
 		return true;
