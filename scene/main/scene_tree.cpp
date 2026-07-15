@@ -698,6 +698,13 @@ bool SceneTree::process(double p_time) {
 	if (!WGodotPauseController::begin_process_frame()) {
 		return _quit;
 	}
+	if (WGodotPauseController::has_resumed_subtree() && !WGodotPauseController::is_process_step_active()) {
+		process_time = p_time;
+		_process(false);
+		flush_transform_notifications();
+		WGodotPauseController::end_process_frame();
+		return _quit;
+	}
 #endif
 	// wgodot-changes::end
 	// First pass of scene tree fixed timestep interpolation.

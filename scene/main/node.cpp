@@ -920,6 +920,12 @@ bool Node::_can_process(bool p_paused) const {
 #ifdef MODULE_WGODOT_ENABLED
 	if (p_paused && (WGodotPauseController::is_process_step_active() || WGodotPauseController::is_physics_step_active())) {
 		p_paused = false;
+	} else if (p_paused && WGodotPauseController::has_resumed_subtree()) {
+		if (WGodotPauseController::is_node_in_resumed_subtree(this)) {
+			p_paused = false;
+		} else {
+			return false;
+		}
 	}
 #endif
 	// wgodot-changes::end

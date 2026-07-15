@@ -121,6 +121,18 @@ godot --wg pause
 godot --wg resume
 ```
 
+Keep the full game pause active while resuming idle processing and input for one
+runtime node subtree:
+
+```powershell
+godot --wg resume /root/Main/InspectionCameraRig
+```
+
+The target and its descendants process as if the SceneTree were not paused, while
+all nodes outside that subtree remain paused. Physics simulation and fixed physics
+ticks stay paused. Running `pause` again clears the resumed subtree; running
+`resume` without a node path clears the full game pause.
+
 Advance normal process frames while the full game pause remains active:
 
 ```powershell
@@ -141,7 +153,7 @@ godot --wg resume_physics
 
 Step commands wait until the requested count has completed. Use a positive integer for `--count`; its default is `1`.
 
-`resume` clears the full game pause but preserves an explicit `pause_physics`. `resume_physics` clears only the explicit physics pause, so a full game pause still keeps physics stopped. These commands also accept `--json` and `--session <id>`.
+`resume` without a node path clears the full game pause but preserves an explicit `pause_physics`. `resume_physics` clears only the explicit physics pause, so a full game pause still keeps physics stopped. These commands also accept `--json` and `--session <id>`.
 
 Wait for naturally running process frames after an action:
 

@@ -28,6 +28,8 @@ See the [WGodot CLI skill](./wgodot-cli/SKILL.md) for agent-oriented usage, comm
 
 The `list` command accepts native Godot classes and built-in Variant types such as `Vector3` and `Quaternion`. The `source_info` command returns editor-help signatures, documentation, and status notes for built-in Godot API symbols when no project source declaration exists.
 
+While a WGodot full game pause is active, `godot --wg resume <node-path>` resumes idle processing and input only for the selected runtime node and its descendants. Fixed physics ticks and physics simulation remain paused. `godot --wg pause` clears the selected subtree, and `godot --wg resume` without a path resumes the full game.
+
 ## Export Protection
 
 10. De-const/de-enum: `wgodot/export/deconst_exports` removes exported constant and enum declarations, inlines their values where possible, folds constant indexed uses to the indexed value, keeps dynamic indexed containers as parenthesized literals, and converts stripped enum type hints to `int`.

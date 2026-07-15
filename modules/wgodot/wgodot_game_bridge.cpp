@@ -971,8 +971,24 @@ Error parse_message(void *p_user, const String &p_message, const Array &p_argume
 		WGodotPauseController::set_game_paused(true);
 		response = make_pause_response(command);
 	} else if (command == "resume") {
-		WGodotPauseController::set_game_paused(false);
-		response = make_pause_response(command);
+		const String target_path = options.get("target", String());
+		if (target_path.is_empty()) {
+			WGodotPauseController::set_game_paused(false);
+			response = make_pause_response(command);
+		} else {
+			Dictionary target_error;
+			Node *target = get_target_node(command, options, target_error);
+			if (target == nullptr) {
+				response = target_error;
+			} else {
+				Dictionary resume_error;
+				if (WGodotPauseController::resume_subtree(target, resume_error)) {
+					response = make_pause_response(command);
+				} else {
+					response = resume_error;
+				}
+			}
+		}
 	} else if (command == "pause_physics") {
 		WGodotWaitController::cancel_physics_wait("Physics was paused before the requested ticks completed.");
 		WGodotPauseController::set_physics_paused(true);

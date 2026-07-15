@@ -7,6 +7,8 @@
 
 #include "core/variant/dictionary.h"
 
+class Node;
+
 namespace WGodotPauseController {
 
 void initialize();
@@ -14,6 +16,10 @@ void deinitialize();
 
 void set_game_paused(bool p_paused);
 bool is_game_paused();
+
+bool resume_subtree(Node *p_root, Dictionary &r_error);
+bool has_resumed_subtree();
+bool is_node_in_resumed_subtree(const Node *p_node);
 
 void set_physics_paused(bool p_paused);
 bool is_physics_paused();

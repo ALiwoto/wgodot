@@ -240,7 +240,7 @@ void print_cli_help() {
 	print_line("    members --filter-name <text>    Filter fields by a name substring.");
 	print_line("  wait [--physics] [--count <n>]    Wait for running frames or ticks.");
 	print_line("  pause                             Pause process and physics phases.");
-	print_line("  resume                            Resume a full game pause.");
+	print_line("  resume [node-path]                Resume a full pause, or only one node subtree.");
 	print_line("  step [--count <number>]           Advance paused process frames.");
 	print_line("  pause_physics                     Pause fixed physics ticks only.");
 	print_line("  resume_physics                    Resume physics-only pausing.");
@@ -665,7 +665,12 @@ int print_command_response(const Dictionary &p_response, bool p_json_output) {
 	} else if (command == "pause") {
 		print_line("Game paused.");
 	} else if (command == "resume") {
-		print_line((bool)p_response.get("physics_effectively_paused", false) ? "Game process resumed; physics remains paused." : "Game resumed.");
+		const String resumed_subtree = p_response.get("resumed_subtree", String());
+		if (!resumed_subtree.is_empty()) {
+			print_line("Resumed node subtree while the game remains paused: " + resumed_subtree);
+		} else {
+			print_line((bool)p_response.get("physics_effectively_paused", false) ? "Game process resumed; physics remains paused." : "Game resumed.");
+		}
 	} else if (command == "pause_physics") {
 		print_line("Physics paused.");
 	} else if (command == "resume_physics") {
@@ -1094,7 +1099,9 @@ int run_pause_command(const String &p_command, const Vector<String> &p_arguments
 	bool json_output = false;
 	int session = -1;
 	int count = 1;
+	String target;
 	const bool allow_count = p_command == "step" || p_command == "step_physics";
+	const bool allow_target = p_command == "resume";
 	for (int i = 0; i < p_arguments.size(); i++) {
 		const String &argument = p_arguments[i];
 		if (argument == "--json") {
@@ -1111,6 +1118,8 @@ int run_pause_command(const String &p_command, const Vector<String> &p_arguments
 				return 2;
 			}
 			count = p_arguments[++i].to_int();
+		} else if (allow_target && !argument.begins_with("-") && target.is_empty()) {
+			target = argument;
 		} else {
 			print_line("wgodot: unknown " + p_command + " argument: " + argument);
 			return 2;
@@ -1120,6 +1129,9 @@ int run_pause_command(const String &p_command, const Vector<String> &p_arguments
 	Dictionary options;
 	if (allow_count) {
 		options["count"] = count;
+	}
+	if (!target.is_empty()) {
+		options["target"] = target;
 	}
 	Dictionary request;
 	request["protocol"] = PROTOCOL_VERSION;

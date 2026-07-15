@@ -6,6 +6,8 @@
 #include "wgodot_pause_controller.h"
 
 #include "core/debugger/engine_debugger.h"
+#include "core/object/object.h"
+#include "scene/main/node.h"
 #include "scene/main/scene_tree.h"
 
 #ifndef PHYSICS_2D_DISABLED
@@ -39,6 +41,7 @@ struct PendingStepRequest {
 bool game_paused = false;
 bool physics_paused = false;
 bool scene_tree_was_paused = false;
+ObjectID resumed_subtree_root_id;
 bool process_step_active = false;
 bool physics_step_active = false;
 PendingStepRequest process_step_request;
@@ -95,12 +98,29 @@ void cancel_step_request(PendingStepRequest &r_request, const String &p_command,
 	send_response(request_id, make_error(p_command, "step_canceled", p_message));
 }
 
+Node *get_resumed_subtree_root() {
+	if (!resumed_subtree_root_id.is_valid()) {
+		return nullptr;
+	}
+	Node *root = ObjectDB::get_instance<Node>(resumed_subtree_root_id);
+	if (root == nullptr || !root->is_inside_tree()) {
+		resumed_subtree_root_id = ObjectID();
+		return nullptr;
+	}
+	return root;
+}
+
+void clear_resumed_subtree() {
+	resumed_subtree_root_id = ObjectID();
+}
+
 } // namespace
 
 void initialize() {
 	game_paused = false;
 	physics_paused = false;
 	scene_tree_was_paused = false;
+	clear_resumed_subtree();
 	process_step_active = false;
 	physics_step_active = false;
 	process_step_request.clear();
@@ -114,10 +134,14 @@ void deinitialize() {
 	physics_step_active = false;
 	game_paused = false;
 	physics_paused = false;
+	clear_resumed_subtree();
 }
 
 void set_game_paused(bool p_paused) {
 	if (game_paused == p_paused) {
+		if (p_paused) {
+			clear_resumed_subtree();
+		}
 		return;
 	}
 
@@ -131,6 +155,7 @@ void set_game_paused(bool p_paused) {
 	} else {
 		cancel_step_request(process_step_request, "step", "The game was resumed before the requested process steps completed.");
 		game_paused = false;
+		clear_resumed_subtree();
 		if (scene_tree && !scene_tree_was_paused && scene_tree->is_paused()) {
 			scene_tree->set_pause(false);
 		}
@@ -144,6 +169,31 @@ void set_game_paused(bool p_paused) {
 
 bool is_game_paused() {
 	return game_paused;
+}
+
+bool resume_subtree(Node *p_root, Dictionary &r_error) {
+	if (!game_paused) {
+		r_error = make_error("resume", "game_not_paused", "Pause the game before resuming a node subtree.");
+		return false;
+	}
+	if (p_root == nullptr || !p_root->is_inside_tree()) {
+		r_error = make_error("resume", "node_not_in_tree", "The node subtree root must be inside the running SceneTree.");
+		return false;
+	}
+	resumed_subtree_root_id = p_root->get_instance_id();
+	return true;
+}
+
+bool has_resumed_subtree() {
+	return game_paused && get_resumed_subtree_root() != nullptr;
+}
+
+bool is_node_in_resumed_subtree(const Node *p_node) {
+	if (!game_paused || p_node == nullptr) {
+		return false;
+	}
+	Node *root = get_resumed_subtree_root();
+	return root != nullptr && (root == p_node || root->is_ancestor_of(p_node));
 }
 
 void set_physics_paused(bool p_paused) {
@@ -210,11 +260,11 @@ bool begin_process_frame() {
 	if (!game_paused) {
 		return true;
 	}
-	if (!process_step_request.is_pending()) {
-		return false;
+	if (process_step_request.is_pending()) {
+		process_step_active = true;
+		return true;
 	}
-	process_step_active = true;
-	return true;
+	return has_resumed_subtree();
 }
 
 void end_process_frame() {
@@ -268,6 +318,8 @@ Dictionary get_state() {
 	state["physics_effectively_paused"] = is_physics_effectively_paused();
 	state["process_step_pending"] = process_step_request.is_pending();
 	state["physics_step_pending"] = physics_step_request.is_pending();
+	Node *resumed_subtree_root = get_resumed_subtree_root();
+	state["resumed_subtree"] = resumed_subtree_root != nullptr ? String(resumed_subtree_root->get_path()) : String();
 	return state;
 }
 
