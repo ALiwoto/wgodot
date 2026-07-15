@@ -35,6 +35,8 @@ $sconsArgs = @(
 $shouldRunTests = $PSBoundParameters.ContainsKey("RunTest")
 
 if (!$SkipBuild) {
+	# open processes of godot will prevent us from building the binary
+	Get-Process "*godot*" | Stop-Process -Force
 	& scons @sconsArgs
 	if ($LASTEXITCODE -ne 0) {
 		exit $LASTEXITCODE

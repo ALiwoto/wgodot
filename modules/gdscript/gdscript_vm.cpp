@@ -36,6 +36,13 @@
 #include "core/os/os.h"
 #include "core/profiling/profiling.h"
 
+// wgodot-changes::begin
+#include "modules/modules_enabled.gen.h"
+#ifdef MODULE_WGODOT_ENABLED
+#include "modules/wgodot/wgodot_conditional_breakpoint_evaluator.h"
+#endif
+// wgodot-changes::end
+
 #ifdef DEBUG_ENABLED
 
 static bool _profile_count_as_native(const Object *p_base_obj, const StringName &p_methodname) {
@@ -3981,7 +3988,15 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 					}
 
 					if (EngineDebugger::get_script_debugger()->is_breakpoint(line, source)) {
-						do_break = true;
+						// wgodot-changes::begin
+						bool breakpoint_should_stop = true;
+#ifdef MODULE_WGODOT_ENABLED
+						breakpoint_should_stop = WGodotConditionalBreakpointEvaluator::evaluate_breakpoint(source, line, GDScriptLanguage::get_singleton()) != WGodotConditionalBreakpointEvaluator::BREAK_SKIP;
+#endif
+						if (breakpoint_should_stop) {
+							do_break = true;
+						}
+						// wgodot-changes::end
 					}
 
 					if (unlikely(do_break)) {

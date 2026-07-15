@@ -883,9 +883,9 @@ Dictionary make_pause_response(const String &p_command) {
 }
 
 Error parse_message(void *p_user, const String &p_message, const Array &p_arguments, bool &r_captured) {
-	if (p_message == "conditional_breakpoint_evaluate") {
+	if (p_message == "conditional_breakpoints_sync") {
 		r_captured = true;
-		return WGodotConditionalBreakpointEvaluator::evaluate(p_arguments);
+		return WGodotConditionalBreakpointEvaluator::sync_breakpoints(p_arguments);
 	}
 	r_captured = p_message == "request";
 	if (!r_captured) {
@@ -1030,6 +1030,7 @@ Error parse_message(void *p_user, const String &p_message, const Array &p_argume
 
 void initialize() {
 #ifdef DEBUG_ENABLED
+	WGodotConditionalBreakpointEvaluator::reset();
 	if (EngineDebugger::is_active() && !EngineDebugger::has_capture(SNAME("wgodot"))) {
 		EngineDebugger::register_message_capture(SNAME("wgodot"), EngineDebugger::Capture(nullptr, parse_message));
 		capture_registered = true;
@@ -1043,6 +1044,7 @@ void deinitialize() {
 		EngineDebugger::unregister_message_capture(SNAME("wgodot"));
 	}
 	capture_registered = false;
+	WGodotConditionalBreakpointEvaluator::reset();
 #endif
 }
 

@@ -44,6 +44,13 @@
 #include "core/os/os.h"
 #include "servers/display/display_server.h"
 
+// wgodot-changes::begin
+#include "modules/modules_enabled.gen.h"
+#ifdef MODULE_WGODOT_ENABLED
+#include "modules/wgodot/wgodot_conditional_breakpoint_evaluator.h"
+#endif
+// wgodot-changes::end
+
 class RemoteDebugger::PerformanceProfiler : public EngineProfiler {
 	Object *performance = nullptr;
 	int last_perf_time = 0;
@@ -424,22 +431,28 @@ void RemoteDebugger::debug(bool p_can_continue, bool p_is_error_breakpoint) {
 		script_lang && (script_lang->debug_get_stack_level_count() > 0),
 		Thread::get_caller_id()
 	};
-	if (allow_focus_steal_fn) {
+	// wgodot-changes::begin
+	bool suppress_break_presentation = false;
+#ifdef MODULE_WGODOT_ENABLED
+	suppress_break_presentation = WGodotConditionalBreakpointEvaluator::consume_break_presentation_suppressed();
+#endif
+	if (!suppress_break_presentation && allow_focus_steal_fn) {
 		allow_focus_steal_fn();
 	}
 	send_message("debug_enter", msg);
 
 	Input::MouseMode mouse_mode = Input::MouseMode::MOUSE_MODE_VISIBLE;
 
-	if (Thread::is_main_thread()) {
+	if (Thread::is_main_thread() && !suppress_break_presentation) {
 		mouse_mode = Input::get_singleton()->get_mouse_mode();
 		if (mouse_mode != Input::MouseMode::MOUSE_MODE_VISIBLE) {
 			Input::get_singleton()->set_mouse_mode(Input::MouseMode::MOUSE_MODE_VISIBLE);
 		}
-	} else {
+	} else if (!Thread::is_main_thread()) {
 		MutexLock mutex_lock(mutex);
 		messages.insert(Thread::get_caller_id(), List<Message>());
 	}
+	// wgodot-changes::end
 
 	while (is_peer_connected()) {
 		flush_output();
@@ -634,9 +647,11 @@ void RemoteDebugger::debug(bool p_can_continue, bool p_is_error_breakpoint) {
 
 	send_message("debug_exit", Array());
 
-	if (Thread::is_main_thread() && mouse_mode != Input::MouseMode::MOUSE_MODE_VISIBLE) {
+	// wgodot-changes::begin
+	if (Thread::is_main_thread() && !suppress_break_presentation && mouse_mode != Input::MouseMode::MOUSE_MODE_VISIBLE) {
 		Input::get_singleton()->set_mouse_mode(mouse_mode);
 	}
+	// wgodot-changes::end
 
 	{
 		MutexLock mutex_lock(mutex);

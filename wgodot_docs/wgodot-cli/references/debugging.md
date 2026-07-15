@@ -43,11 +43,14 @@ though Godot removes the physical breakpoint when no enabled logical record
 remains at that location.
 
 When a physical line is reached, WGodot evaluates every enabled logical record
-at that location against paused frame `0`. Conditions can read its locals,
+at that location against the live GDScript frame before entering Godot's hard-break loop. Conditions can read its locals,
 globals, and `self` members and must return `bool`. WGodot exposes the debugger
 break if any record matches, reports all matching IDs and names, and removes only
 the matching `--one-shot` records. The pause retains those match details after
-one-shot removal. If no record matches, execution continues automatically.
+one-shot removal. If no record matches, the hard break is skipped entirely; this
+also prevents false conditions on hot lines from repeatedly focusing windows or
+changing captured mouse mode. A matching logical breakpoint or condition error
+also leaves window focus and mouse mode unchanged while exposing the debugger stop.
 Condition parse, evaluation, and non-boolean-result errors expose the pause and
 are reported by `godot --wg debug state` instead of being treated as false.
 
