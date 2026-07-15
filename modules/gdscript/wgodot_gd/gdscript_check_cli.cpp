@@ -6,6 +6,7 @@
 #include "gdscript_check_cli.h"
 
 #include "modules/gdscript/gdscript.h"
+#include "modules/gdscript/gdscript_cache.h"
 
 #include "core/error/error_list.h"
 #include "core/io/dir_access.h"
@@ -126,6 +127,14 @@ Dictionary run_project_check_result() {
 	Vector<String> script_paths;
 	collect_script_paths("res://", script_paths, stats, output);
 	script_paths.sort();
+
+	// The editor filesystem updates ScriptServer's global-class registry, but
+	// dependency analysis is served by a separate parser cache. Invalidate every
+	// project parser so changed class interfaces and all transitive dependents are
+	// rebuilt from disk during this check.
+	for (const String &path : script_paths) {
+		GDScriptCache::remove_parser(path);
+	}
 
 	const uint64_t start_usec = OS::get_singleton()->get_ticks_usec();
 	for (const String &path : script_paths) {

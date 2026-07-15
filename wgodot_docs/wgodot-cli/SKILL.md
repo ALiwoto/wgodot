@@ -490,7 +490,7 @@ After editing GDScript, scan all project `.gd` files for parser errors, analyzer
 godot --wg check
 ```
 
-Before validation, the matching editor scans for external filesystem changes and waits for discovery and imports to finish. This is the same editor filesystem path used after the window regains focus, so newly copied assets are imported, required `.uid` files are created, and GDScript class metadata is refreshed before checking.
+Before validation, the matching editor scans for external filesystem changes and waits for discovery and imports to finish. This is the same editor filesystem path used after the window regains focus, so newly copied assets are imported, required `.uid` files are created, and GDScript class metadata is refreshed before checking. When there are no unsaved editor buffers, externally changed open scripts are then reloaded. Cached project parsers are always invalidated so changed inheritance/member APIs and transitive dependents are analyzed from current disk sources.
 
 The validation scan respects `.gdignore` directories. Treat a nonzero exit code as a failed check and address reported errors before continuing. The matching WGodot editor must be open; the game does not need to be running.
 

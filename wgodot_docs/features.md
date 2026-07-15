@@ -20,7 +20,7 @@ This file tracks user-facing wgodot features. It intentionally avoids internal e
 
 8. Embedded GDScript blocking: `wgodot/gdscript/disable_embedded_gdscript` prevents exported resources from carrying embedded script source.
 
-9. Project GDScript CLI check: `godot --wg check` first asks the matching editor to scan external filesystem changes and finish imports, including required `.uid` creation and script-class metadata updates. It then scans all project `.gd` files under `res://`, respecting `.gdignore` directories, and prints parse errors, analyzer errors, and active GDScript warnings. The editor must be open, but the game need not be running. WGodot CLI searches upward from the current directory for `project.godot`; normal Godot options such as `--path` can be placed before `--wg`.
+9. Project GDScript CLI check: `godot --wg check` first asks the matching editor to scan external filesystem changes and finish imports, including required `.uid` creation and script-class metadata updates. When the editor has no unsaved buffers, it reloads externally changed open scripts. It always invalidates cached project parsers so changed class APIs and their transitive dependents are analyzed from current disk sources. It then scans all project `.gd` files under `res://`, respecting `.gdignore` directories, and prints parse errors, analyzer errors, and active GDScript warnings. The editor must be open, but the game need not be running. WGodot CLI searches upward from the current directory for `project.godot`; normal Godot options such as `--path` can be placed before `--wg`.
 
 ## Agent CLI
 

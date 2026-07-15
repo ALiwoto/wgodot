@@ -504,6 +504,13 @@ void WGodotCLIEditorPlugin::poll_waiting_connection(PendingConnection &p_connect
 		if (filesystem == nullptr) {
 			finish_connection(p_connection, make_error_response("filesystem_unavailable", "The editor filesystem became unavailable."));
 		} else if (!filesystem->is_scanning() && !filesystem->is_importing()) {
+			// EditorFileSystem intentionally leaves open scripts to ScriptEditor.
+			// Reload them now, when doing so cannot overwrite an unsaved editor
+			// buffer, so external class API changes reach metadata commands too.
+			ScriptEditor *script_editor = ScriptEditor::get_singleton();
+			if (script_editor != nullptr && script_editor->get_unsaved_files().is_empty()) {
+				script_editor->reload_scripts();
+			}
 			Dictionary response = WGodotGDScriptCheckCLI::run_project_check_result();
 			response["refreshed"] = true;
 			finish_connection(p_connection, response);
