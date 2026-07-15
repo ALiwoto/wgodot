@@ -425,6 +425,12 @@ void RemoteDebugger::debug(bool p_can_continue, bool p_is_error_breakpoint) {
 	}
 
 	ScriptLanguage *script_lang = script_debugger->get_break_language();
+	// wgodot-changes::begin
+	Dictionary wgodot_breakpoint_hit;
+#ifdef MODULE_WGODOT_ENABLED
+	wgodot_breakpoint_hit = WGodotConditionalBreakpointEvaluator::consume_breakpoint_hit();
+#endif
+	// wgodot-changes::end
 	Array msg = {
 		p_can_continue,
 		script_lang ? script_lang->debug_get_error() : String(),
@@ -432,6 +438,9 @@ void RemoteDebugger::debug(bool p_can_continue, bool p_is_error_breakpoint) {
 		Thread::get_caller_id()
 	};
 	// wgodot-changes::begin
+	if (!wgodot_breakpoint_hit.is_empty()) {
+		msg.push_back(wgodot_breakpoint_hit);
+	}
 	bool suppress_break_presentation = false;
 #ifdef MODULE_WGODOT_ENABLED
 	suppress_break_presentation = WGodotConditionalBreakpointEvaluator::consume_break_presentation_suppressed();

@@ -6,7 +6,6 @@
 #include "wgodot_conditional_breakpoint_evaluator.h"
 
 #include "core/config/engine.h"
-#include "core/debugger/engine_debugger.h"
 #include "core/io/resource_loader.h"
 #include "core/math/expression.h"
 #include "core/object/class_db.h"
@@ -39,6 +38,7 @@ HashSet<String> managed_locations;
 Mutex breakpoint_mutex;
 int64_t sync_generation = 0;
 thread_local bool suppress_break_presentation = false;
+thread_local Dictionary pending_breakpoint_hit;
 
 String location_key(const String &p_path, int p_line) {
 	return p_path.replace_char('\\', '/').simplify_path() + ":" + itos(p_line);
@@ -227,9 +227,15 @@ BreakDecision evaluate_breakpoint(const String &p_path, int p_line, GDScriptFunc
 	hit["path"] = p_path;
 	hit["line"] = p_line;
 	hit["sync_generation"] = evaluation_generation;
-	EngineDebugger::get_singleton()->send_message("wgodot:conditional_breakpoint_hit", { hit });
+	pending_breakpoint_hit = hit;
 	suppress_break_presentation = true;
 	return BREAK_STOP;
+}
+
+Dictionary consume_breakpoint_hit() {
+	const Dictionary hit = pending_breakpoint_hit;
+	pending_breakpoint_hit.clear();
+	return hit;
 }
 
 bool consume_break_presentation_suppressed() {
@@ -244,6 +250,7 @@ void reset() {
 	managed_locations.clear();
 	sync_generation = 0;
 	suppress_break_presentation = false;
+	pending_breakpoint_hit.clear();
 }
 
 } // namespace WGodotConditionalBreakpointEvaluator

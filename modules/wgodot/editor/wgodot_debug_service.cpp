@@ -1067,15 +1067,13 @@ void debugger_breaked(int p_session, bool p_breaked, bool p_can_debug, const Str
 
 void capture_debugger_message(int p_session, const String &p_message, const Array &p_data) {
 	SessionState &state = get_session_state(p_session);
-	if (p_message == "wgodot:conditional_breakpoint_hit") {
-		if (p_data.size() == 1 && p_data[0].get_type() == Variant::DICTIONARY) {
-			state.pending_breakpoint_hit = p_data[0];
-			ScriptEditorDebugger *debugger = get_debugger(p_session);
-			if (debugger != nullptr) {
-				debugger->wgodot_suppress_break_presentation();
-			}
+	const bool embedded_breakpoint_hit = p_message == "debug_enter" && p_data.size() == 5 && p_data[4].get_type() == Variant::DICTIONARY;
+	if (embedded_breakpoint_hit) {
+		state.pending_breakpoint_hit = p_data[4];
+		ScriptEditorDebugger *debugger = get_debugger(p_session);
+		if (debugger != nullptr) {
+			debugger->wgodot_suppress_break_presentation();
 		}
-		return;
 	}
 	if (p_message == "stack_dump") {
 		DebuggerMarshalls::ScriptStackDump stack;

@@ -360,8 +360,8 @@ void ScriptEditorDebugger::_select_thread(int p_index) {
 }
 
 void ScriptEditorDebugger::_msg_debug_enter(uint64_t p_thread_id, const Array &p_data) {
-	ERR_FAIL_COND(p_data.size() != 4);
 	// wgodot-changes::begin
+	ERR_FAIL_COND(p_data.size() != 4 && p_data.size() != 5);
 	const bool suppress_break_presentation = wgodot_suppress_next_break_presentation;
 	wgodot_suppress_next_break_presentation = false;
 	// wgodot-changes::end

@@ -7,6 +7,7 @@
 
 #include "core/error/error_list.h"
 #include "core/variant/array.h"
+#include "core/variant/dictionary.h"
 
 class GDScriptFunction;
 class GDScriptInstance;
@@ -22,6 +23,7 @@ enum BreakDecision {
 
 Error sync_breakpoints(const Array &p_arguments);
 BreakDecision evaluate_breakpoint(const String &p_path, int p_line, GDScriptFunction *p_function, GDScriptInstance *p_instance, Variant *p_stack);
+Dictionary consume_breakpoint_hit();
 bool consume_break_presentation_suppressed();
 void reset();
 
