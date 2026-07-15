@@ -345,7 +345,7 @@ void clear_breakpoint_hit_state(SessionState &p_state) {
 
 void expose_pending_breakpoint_hit(SessionState &p_state) {
 	const Dictionary hit = p_state.pending_breakpoint_hit;
-	p_state.pending_breakpoint_hit.clear();
+	p_state.pending_breakpoint_hit = Dictionary();
 	const Array incoming_matches = hit.get("matched_breakpoints", Array());
 	const Array incoming_errors = hit.get("breakpoint_condition_errors", Array());
 	const int64_t hit_generation = hit.get("sync_generation", -1);

@@ -234,7 +234,7 @@ BreakDecision evaluate_breakpoint(const String &p_path, int p_line, GDScriptFunc
 
 Dictionary consume_breakpoint_hit() {
 	const Dictionary hit = pending_breakpoint_hit;
-	pending_breakpoint_hit.clear();
+	pending_breakpoint_hit = Dictionary();
 	return hit;
 }
 
