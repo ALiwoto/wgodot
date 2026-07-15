@@ -175,6 +175,11 @@ void GDScriptAnalyzer::wgodot_validate_override_annotation(GDScriptParser::Funct
 }
 
 bool GDScriptAnalyzer::wgodot_strict_override_checking_enabled() const {
+	if (GLOBAL_GET_CACHED(bool, "wgodot/gdscript/disable_strict_override_checking_for_addons") &&
+			parser->script_path.begins_with("res://addons/")) {
+		return false;
+	}
+
 	const char *setting = "wgodot/gdscript/strict_override_checking";
 	if (!ProjectSettings::get_singleton()->has_setting(setting)) {
 		return true;

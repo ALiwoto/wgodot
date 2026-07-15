@@ -4,7 +4,7 @@ This file tracks user-facing wgodot features. It intentionally avoids internal e
 
 ## GDScript Safety
 
-1. `@override`: marks a method as intentionally overriding a parent method. When `wgodot/gdscript/strict_override_checking` is enabled, overrides must use it.
+1. `@override`: marks a method as intentionally overriding a parent method. When `wgodot/gdscript/strict_override_checking` is enabled, overrides must use it. `wgodot/gdscript/disable_strict_override_checking_for_addons` defaults to `true` and disables this requirement for every script under `res://addons/`.
 
 2. `@private`: limits a variable or function to the current class/file.
 
