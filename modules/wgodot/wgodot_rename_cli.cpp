@@ -81,6 +81,40 @@ Dictionary make_argument_error(const String &p_message) {
 	return response;
 }
 
+String doc_text_for_terminal(const String &p_text) {
+	String result;
+	int offset = 0;
+	while (offset < p_text.length()) {
+		const int tag_start = p_text.find_char('[', offset);
+		if (tag_start < 0) {
+			result += p_text.substr(offset);
+			break;
+		}
+		result += p_text.substr(offset, tag_start - offset);
+		const int tag_end = p_text.find_char(']', tag_start + 1);
+		if (tag_end < 0) {
+			result += p_text.substr(tag_start);
+			break;
+		}
+
+		const String tag = p_text.substr(tag_start + 1, tag_end - tag_start - 1);
+		const String tag_name = tag.get_slice(" ", 0).get_slice("=", 0).to_lower();
+		if (tag_name == "br") {
+			result += "\n";
+		} else if (tag_name == "lb") {
+			result += "[";
+		} else if (tag_name == "rb") {
+			result += "]";
+		} else if (!tag.begins_with("/") && tag.find_char(' ') >= 0 && tag_name != "code" && tag_name != "codeblock") {
+			result += tag.substr(tag.find_char(' ') + 1);
+		} else if (!tag.begins_with("/") && tag.find_char('=') < 0 && tag_name != "b" && tag_name != "i" && tag_name != "u" && tag_name != "s" && tag_name != "code" && tag_name != "codeblock" && tag_name != "kbd" && tag_name != "center" && tag_name != "indent") {
+			result += tag;
+		}
+		offset = tag_end + 1;
+	}
+	return result.strip_edges();
+}
+
 } // namespace
 
 int run_source_info(const Vector<String> &p_arguments) {
@@ -112,6 +146,24 @@ int run_source_info(const Vector<String> &p_arguments) {
 	}
 	if (json_output) {
 		print_line(JSON::stringify(response, "", true));
+	} else if ((bool)response.get("builtin", false)) {
+		print_line(String(response.get("summary", String())));
+		const String deprecated = doc_text_for_terminal(String(response.get("deprecated", String())));
+		if (!deprecated.is_empty()) {
+			print_line("Deprecated: " + deprecated);
+		}
+		const String experimental = doc_text_for_terminal(String(response.get("experimental", String())));
+		if (!experimental.is_empty()) {
+			print_line("Experimental: " + experimental);
+		}
+		const String brief_description = doc_text_for_terminal(String(response.get("brief_description", String())));
+		const String description = doc_text_for_terminal(String(response.get("description", String())));
+		if (!brief_description.is_empty()) {
+			print_line(brief_description);
+		}
+		if (!description.is_empty() && description != brief_description) {
+			print_line(description);
+		}
 	} else {
 		print_line(vformat("%s [%s] -> %s:%d:%d", String(response.get("name", String())), String(response.get("kind", String())), String(response.get("path", String())), (int)response.get("display_line", 0), (int)response.get("display_column", 0)));
 	}

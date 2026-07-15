@@ -9,6 +9,7 @@
 #include "core/io/file_access.h"
 #include "core/io/resource_loader.h"
 #include "core/object/script_language.h"
+#include "editor/doc/editor_help.h"
 #include "editor/file_system/editor_file_system.h"
 #include "editor/script/script_editor_plugin.h"
 #include "editor/settings/editor_settings.h"
@@ -31,6 +32,147 @@ Dictionary make_error(const String &p_error, const String &p_message) {
 	response["error"] = p_error;
 	response["message"] = p_message;
 	return response;
+}
+
+void add_builtin_doc_status(Dictionary &r_response, bool p_is_deprecated, const String &p_deprecated_message, bool p_is_experimental, const String &p_experimental_message) {
+	if (p_is_deprecated) {
+		r_response["deprecated"] = p_deprecated_message.is_empty() ? DTR("This symbol may be changed or removed in future versions.") : DTR(p_deprecated_message).strip_edges();
+	}
+	if (p_is_experimental) {
+		r_response["experimental"] = p_experimental_message.is_empty() ? DTR("This symbol may be changed or removed in future versions.") : DTR(p_experimental_message).strip_edges();
+	}
+}
+
+String format_builtin_method_signature(const DocData::MethodDoc &p_method, bool p_signal = false) {
+	String signature = p_method.name + "(";
+	for (int i = 0; i < p_method.arguments.size(); i++) {
+		if (i > 0) {
+			signature += ", ";
+		}
+		const DocData::ArgumentDoc &argument = p_method.arguments[i];
+		signature += argument.name;
+		if (!argument.type.is_empty()) {
+			signature += ": " + argument.type;
+		}
+		if (!argument.default_value.is_empty()) {
+			signature += " = " + argument.default_value;
+		}
+	}
+	if (!p_method.rest_argument.name.is_empty()) {
+		if (!p_method.arguments.is_empty()) {
+			signature += ", ";
+		}
+		signature += "..." + p_method.rest_argument.name;
+	}
+	signature += ")";
+	if (!p_signal) {
+		signature += " -> " + (p_method.return_type.is_empty() ? String("Variant") : p_method.return_type);
+	}
+	return signature;
+}
+
+Dictionary make_builtin_doc_result(const String &p_target, const String &p_name, const String &p_kind, const String &p_declaring_class, const String &p_summary, const String &p_description) {
+	Dictionary response;
+	response["ok"] = true;
+	response["command"] = "source_info";
+	response["target"] = p_target;
+	response["name"] = p_name;
+	response["kind"] = p_kind;
+	response["builtin"] = true;
+	response["declaring_class"] = p_declaring_class;
+	response["summary"] = p_summary;
+	response["description"] = DTR(p_description).strip_edges();
+	return response;
+}
+
+Dictionary resolve_builtin_target(const String &p_target) {
+	const int separator = p_target.find_char('.');
+	const String class_name = separator < 0 ? p_target : p_target.left(separator);
+	const String member_name = separator < 0 ? String() : p_target.substr(separator + 1);
+	const DocData::ClassDoc *class_doc = EditorHelp::get_doc(class_name);
+	if (class_doc == nullptr || class_doc->is_script_doc) {
+		return Dictionary();
+	}
+
+	if (member_name.is_empty()) {
+		Dictionary response = make_builtin_doc_result(p_target, class_name, "builtin_class", class_name, "builtin class " + class_name, class_doc->description);
+		response["brief_description"] = DTR(class_doc->brief_description).strip_edges();
+		if (!class_doc->inherits.is_empty()) {
+			response["inherits"] = class_doc->inherits;
+		}
+		add_builtin_doc_status(response, class_doc->is_deprecated, class_doc->deprecated_message, class_doc->is_experimental, class_doc->experimental_message);
+		return response;
+	}
+
+	const DocData::ClassDoc *owner_doc = class_doc;
+	while (owner_doc != nullptr) {
+		for (const DocData::MethodDoc &method : owner_doc->methods) {
+			if (method.name == member_name) {
+				const String signature = format_builtin_method_signature(method);
+				String summary = "builtin func " + signature;
+				if (!method.qualifiers.is_empty()) {
+					summary += " [" + method.qualifiers + "]";
+				}
+				Dictionary response = make_builtin_doc_result(p_target, method.name, "builtin_func", owner_doc->name, summary, method.description);
+				response["signature"] = signature;
+				response["qualifiers"] = method.qualifiers;
+				if (!method.errors_returned.is_empty()) {
+					Array errors;
+					for (int error : method.errors_returned) {
+						errors.push_back(error);
+					}
+					response["errors_returned"] = errors;
+				}
+				add_builtin_doc_status(response, method.is_deprecated, method.deprecated_message, method.is_experimental, method.experimental_message);
+				return response;
+			}
+		}
+		for (const DocData::MethodDoc &signal : owner_doc->signals) {
+			if (signal.name == member_name) {
+				const String signature = format_builtin_method_signature(signal, true);
+				Dictionary response = make_builtin_doc_result(p_target, signal.name, "builtin_signal", owner_doc->name, "builtin signal " + signature, signal.description);
+				response["signature"] = signature;
+				add_builtin_doc_status(response, signal.is_deprecated, signal.deprecated_message, signal.is_experimental, signal.experimental_message);
+				return response;
+			}
+		}
+		for (const DocData::PropertyDoc &property : owner_doc->properties) {
+			if (property.name == member_name) {
+				String signature = property.name + ": " + property.type;
+				if (!property.default_value.is_empty()) {
+					signature += " = " + property.default_value;
+				}
+				Dictionary response = make_builtin_doc_result(p_target, property.name, "builtin_var", owner_doc->name, "builtin var " + signature, property.description);
+				response["signature"] = signature;
+				add_builtin_doc_status(response, property.is_deprecated, property.deprecated_message, property.is_experimental, property.experimental_message);
+				return response;
+			}
+		}
+		for (const DocData::ConstantDoc &constant : owner_doc->constants) {
+			if (constant.name == member_name) {
+				String signature = constant.name;
+				if (!constant.type.is_empty()) {
+					signature += ": " + constant.type;
+				}
+				if (constant.is_value_valid) {
+					signature += " = " + constant.value;
+				}
+				Dictionary response = make_builtin_doc_result(p_target, constant.name, "builtin_const", owner_doc->name, "builtin const " + signature, constant.description);
+				response["signature"] = signature;
+				add_builtin_doc_status(response, constant.is_deprecated, constant.deprecated_message, constant.is_experimental, constant.experimental_message);
+				return response;
+			}
+		}
+		const DocData::EnumDoc *enum_doc = owner_doc->enums.getptr(member_name);
+		if (enum_doc != nullptr) {
+			Dictionary response = make_builtin_doc_result(p_target, member_name, "builtin_enum", owner_doc->name, "builtin enum " + member_name, enum_doc->description);
+			add_builtin_doc_status(response, enum_doc->is_deprecated, enum_doc->deprecated_message, enum_doc->is_experimental, enum_doc->experimental_message);
+			return response;
+		}
+		owner_doc = owner_doc->inherits.is_empty() ? nullptr : EditorHelp::get_doc(owner_doc->inherits);
+	}
+
+	return make_error("builtin_member_not_found", "Built-in Godot member was not found: " + p_target);
 }
 
 #ifdef MODULE_GDSCRIPT_ENABLED
@@ -286,13 +428,22 @@ void add_lsp_endpoint(Dictionary &r_response) {
 } // namespace
 
 Dictionary resolve(const Dictionary &p_options) {
-#ifndef MODULE_GDSCRIPT_ENABLED
-	return make_error("gdscript_unavailable", "This editor was built without the GDScript module.");
-#else
 	const String target = String(p_options.get("target", String())).strip_edges();
 	if (target.is_empty()) {
 		return make_error("invalid_target", "source_info requires a target.");
 	}
+	if (!target.begins_with("res://") && !target.begins_with("user://")) {
+		const String class_name = target.get_slice(".", 0);
+		if (!ScriptServer::is_global_class(class_name)) {
+			const Dictionary builtin_result = resolve_builtin_target(target);
+			if (!builtin_result.is_empty()) {
+				return builtin_result;
+			}
+		}
+	}
+#ifndef MODULE_GDSCRIPT_ENABLED
+	return make_error("gdscript_unavailable", "This editor was built without the GDScript module.");
+#else
 	return resolve_target(target);
 #endif
 }

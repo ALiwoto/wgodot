@@ -26,6 +26,8 @@ This file tracks user-facing wgodot features. It intentionally avoids internal e
 
 See the [WGodot CLI skill](./wgodot-cli/SKILL.md) for agent-oriented usage, commands, and workflow guidance.
 
+The `list` command accepts native Godot classes and built-in Variant types such as `Vector3` and `Quaternion`. The `source_info` command returns editor-help signatures, documentation, and status notes for built-in Godot API symbols when no project source declaration exists.
+
 ## Export Protection
 
 10. De-const/de-enum: `wgodot/export/deconst_exports` removes exported constant and enum declarations, inlines their values where possible, folds constant indexed uses to the indexed value, keeps dynamic indexed containers as parenthesized literals, and converts stripped enum type hints to `int`.

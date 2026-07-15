@@ -219,7 +219,7 @@ void print_cli_help() {
 	print_line("  list <target> [options]           List node, class, script, type, or function metadata.");
 	print_line("    --filter-type <type>            Filter members by declared type and inheritance.");
 	print_line("    --exclude-builtin               Hide inherited native Godot members.");
-	print_line("  source_info <target> [--json]     Resolve a qualified symbol to its declaration.");
+	print_line("  source_info <target> [--json]     Resolve a declaration or show built-in Godot API docs.");
 	print_line("  rename <target> <new-name>        Semantically rename a GDScript symbol.");
 	print_line("    --at <file>:<line>:<column>     Rename the symbol at a one-based source position.");
 	print_line("    --dry-run                       Validate and preview the rename without writing files.");

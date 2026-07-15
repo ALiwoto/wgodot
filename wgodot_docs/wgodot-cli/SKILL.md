@@ -205,6 +205,8 @@ List the members of an exact runtime node, a registered GDScript `class_name`, o
 godot --wg list /root/Main/UI/PlayButton
 godot --wg list GameStatics
 godot --wg list Node2D
+godot --wg list Vector3
+godot --wg list Quaternion
 ```
 
 Inspect a script directly even when it has no registered `class_name`:
@@ -435,15 +437,17 @@ These commands queue native Godot input but do not wait for a later rendered fra
 
 ## Source declarations and semantic rename
 
-Resolve a registered class or qualified member to its declaration:
+Resolve a registered class or qualified member to its declaration. Native Godot classes and built-in Variant types return their editor-help documentation instead of a source path:
 
 ```powershell
 godot --wg source_info GameClient
 godot --wg source_info GameStatics.current_game_client
 godot --wg source_info res://src/client/game_client.gd::restart_game
+godot --wg source_info SkeletonModifier3D.get_skeleton
+godot --wg source_info Vector3.normalized
 ```
 
-The result contains the exact script path and one-based line and column. Use `--json` when those coordinates will feed another tool.
+Script results contain the exact path and one-based line and column. Built-in results contain a signature, qualifiers, documentation, and deprecation or experimental notes when present. Use `--json` for structured source coordinates or documentation fields.
 
 Rename a GDScript declaration and all semantically resolved GDScript usages across the project:
 

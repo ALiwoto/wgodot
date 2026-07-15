@@ -1140,6 +1140,14 @@ Dictionary execute(const Dictionary &p_options) {
 		if (!exclude_builtin) {
 			collect_native_class(target_name, collection, true);
 		}
+	} else if (Variant::get_type_by_name(target_name) < Variant::VARIANT_MAX) {
+		const Variant::Type builtin_type = Variant::get_type_by_name(target_name);
+		target_kind = "type";
+		target_type = target_name;
+		declaration = "builtin " + target_name;
+		if (!exclude_builtin) {
+			collect_builtin_type(builtin_type, collection);
+		}
 	} else {
 		bool resolved = false;
 		Dictionary live_error;
