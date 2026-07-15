@@ -532,6 +532,8 @@ void WGodotCLIEditorPlugin::poll_waiting_connection(PendingConnection &p_connect
 				response["session"] = p_connection.game_session;
 				response["reason"] = debug_state.get("reason", String());
 				response["frame"] = debug_state.get("frame", Dictionary());
+				response["matched_breakpoints"] = debug_state.get("matched_breakpoints", Array());
+				response["breakpoint_condition_errors"] = debug_state.get("breakpoint_condition_errors", Array());
 				finish_connection(p_connection, response);
 			}
 		}

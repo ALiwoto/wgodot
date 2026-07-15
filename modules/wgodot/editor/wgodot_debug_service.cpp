@@ -21,6 +21,7 @@
 #include "editor/debugger/editor_debugger_node.h"
 #include "editor/debugger/script_editor_debugger.h"
 #include "editor/script/script_editor_plugin.h"
+#include "editor/settings/editor_settings.h"
 
 namespace WGodotDebugService {
 
@@ -30,7 +31,10 @@ struct BreakpointRecord {
 	int id = 0;
 	String path;
 	int line = 0;
+	String name;
+	String condition;
 	bool enabled = true;
+	bool one_shot = false;
 };
 
 struct FrameVariables {
@@ -55,8 +59,15 @@ struct SessionState {
 	bool can_debug = false;
 	bool has_stackdump = false;
 	bool stack_ready = false;
+	bool break_exposed = false;
+	bool breakpoint_evaluation_pending = false;
 	String reason;
 	Array frames;
+	Array matched_breakpoints;
+	Array breakpoint_condition_errors;
+	Vector<int> pending_breakpoint_ids;
+	int pending_breakpoint_index = 0;
+	int64_t pending_condition_request_id = 0;
 	HashMap<int, FrameVariables> frame_variables;
 	int selected_frame = 0;
 	int pending_variable_frame = -1;
@@ -80,7 +91,11 @@ HashMap<int, BreakpointRecord> breakpoints;
 HashMap<int, SessionState> sessions;
 int next_breakpoint_id = 1;
 int64_t next_member_request_id = 0x4000000000000000LL;
+int64_t next_condition_request_id = 0x5000000000000000LL;
 bool suppress_breakpoint_sync = false;
+
+constexpr const char *BREAKPOINT_METADATA_SECTION = "wgodot";
+constexpr const char *BREAKPOINT_METADATA_KEY = "logical_breakpoints";
 
 Dictionary make_error(const String &p_command, const String &p_action, const String &p_error, const String &p_message) {
 	Dictionary response;
@@ -92,13 +107,95 @@ Dictionary make_error(const String &p_command, const String &p_action, const Str
 	return response;
 }
 
-BreakpointRecord *find_breakpoint(const String &p_path, int p_line) {
+BreakpointRecord *find_plain_breakpoint(const String &p_path, int p_line) {
 	for (KeyValue<int, BreakpointRecord> &entry : breakpoints) {
-		if (entry.value.path == p_path && entry.value.line == p_line) {
+		if (entry.value.path == p_path && entry.value.line == p_line && entry.value.name.is_empty() && entry.value.condition.is_empty() && !entry.value.one_shot) {
 			return &entry.value;
 		}
 	}
 	return nullptr;
+}
+
+BreakpointRecord *find_breakpoint_by_name(const String &p_name) {
+	for (KeyValue<int, BreakpointRecord> &entry : breakpoints) {
+		if (entry.value.name == p_name) {
+			return &entry.value;
+		}
+	}
+	return nullptr;
+}
+
+Dictionary breakpoint_info(const BreakpointRecord &p_breakpoint, bool p_one_shot_removed = false) {
+	Dictionary breakpoint;
+	breakpoint["id"] = p_breakpoint.id;
+	breakpoint["path"] = p_breakpoint.path;
+	breakpoint["line"] = p_breakpoint.line;
+	breakpoint["name"] = p_breakpoint.name;
+	breakpoint["condition"] = p_breakpoint.condition;
+	breakpoint["enabled"] = p_breakpoint.enabled;
+	breakpoint["one_shot"] = p_breakpoint.one_shot;
+	breakpoint["one_shot_removed"] = p_one_shot_removed;
+	return breakpoint;
+}
+
+String normalize_script_path(const String &p_path);
+
+void persist_breakpoints() {
+	EditorSettings *settings = EditorSettings::get_singleton();
+	if (settings == nullptr) {
+		return;
+	}
+	Vector<int> ids;
+	for (const KeyValue<int, BreakpointRecord> &entry : breakpoints) {
+		ids.push_back(entry.key);
+	}
+	ids.sort();
+	Array records;
+	for (int id : ids) {
+		records.push_back(breakpoint_info(breakpoints[id]));
+	}
+	Dictionary metadata;
+	metadata["version"] = 1;
+	metadata["records"] = records;
+	settings->set_project_metadata(BREAKPOINT_METADATA_SECTION, BREAKPOINT_METADATA_KEY, metadata);
+	settings->save_project_metadata();
+}
+
+bool restore_persisted_breakpoints() {
+	EditorSettings *settings = EditorSettings::get_singleton();
+	if (settings == nullptr) {
+		return false;
+	}
+	const Variant stored = settings->get_project_metadata(BREAKPOINT_METADATA_SECTION, BREAKPOINT_METADATA_KEY, Variant());
+	if (stored.get_type() != Variant::DICTIONARY) {
+		return false;
+	}
+	const Dictionary metadata = stored;
+	const Variant stored_records = metadata.get("records", Variant());
+	if ((int)metadata.get("version", 0) != 1 || stored_records.get_type() != Variant::ARRAY) {
+		return false;
+	}
+	const Array records = stored_records;
+	for (const Variant &record_variant : records) {
+		if (record_variant.get_type() != Variant::DICTIONARY) {
+			continue;
+		}
+		const Dictionary stored_record = record_variant;
+		BreakpointRecord record;
+		record.id = stored_record.get("id", 0);
+		record.path = normalize_script_path(stored_record.get("path", String()));
+		record.line = stored_record.get("line", 0);
+		record.name = stored_record.get("name", String());
+		record.condition = stored_record.get("condition", String());
+		record.enabled = stored_record.get("enabled", true);
+		record.one_shot = stored_record.get("one_shot", false);
+		if (record.id <= 0 || record.path.is_empty() || record.line <= 0 || breakpoints.has(record.id) || (!record.name.is_empty() && find_breakpoint_by_name(record.name) != nullptr)) {
+			continue;
+		}
+		breakpoints[record.id] = record;
+		next_breakpoint_id = MAX(next_breakpoint_id, record.id + 1);
+	}
+	return true;
 }
 
 String normalize_script_path(const String &p_path) {
@@ -129,18 +226,31 @@ bool validate_breakpoint_location(const String &p_path, int p_line, String &r_pa
 	return true;
 }
 
-void apply_breakpoint(const BreakpointRecord &p_breakpoint, bool p_enabled) {
+void apply_physical_breakpoint(const String &p_path, int p_line, bool p_enabled) {
 	EditorDebuggerNode *debugger_node = EditorDebuggerNode::get_singleton();
 	if (debugger_node == nullptr) {
 		return;
 	}
 	suppress_breakpoint_sync = true;
-	debugger_node->set_breakpoint(p_breakpoint.path, p_breakpoint.line, p_enabled);
-	Ref<Script> script = ResourceLoader::load(p_breakpoint.path, "Script");
+	debugger_node->set_breakpoint(p_path, p_line, p_enabled);
+	Ref<Script> script = ResourceLoader::load(p_path, "Script");
 	if (script.is_valid()) {
-		debugger_node->emit_signal("breakpoint_set_in_tree", script, p_breakpoint.line - 1, p_enabled);
+		debugger_node->emit_signal("breakpoint_set_in_tree", script, p_line - 1, p_enabled);
 	}
 	suppress_breakpoint_sync = false;
+}
+
+bool has_enabled_breakpoint_at(const String &p_path, int p_line) {
+	for (const KeyValue<int, BreakpointRecord> &entry : breakpoints) {
+		if (entry.value.path == p_path && entry.value.line == p_line && entry.value.enabled) {
+			return true;
+		}
+	}
+	return false;
+}
+
+void refresh_physical_breakpoint(const String &p_path, int p_line) {
+	apply_physical_breakpoint(p_path, p_line, has_enabled_breakpoint_at(p_path, p_line));
 }
 
 Dictionary breakpoint_result(const String &p_action, const BreakpointRecord &p_breakpoint) {
@@ -148,12 +258,7 @@ Dictionary breakpoint_result(const String &p_action, const BreakpointRecord &p_b
 	response["ok"] = true;
 	response["command"] = "breakpoint";
 	response["action"] = p_action;
-	Dictionary breakpoint;
-	breakpoint["id"] = p_breakpoint.id;
-	breakpoint["path"] = p_breakpoint.path;
-	breakpoint["line"] = p_breakpoint.line;
-	breakpoint["enabled"] = p_breakpoint.enabled;
-	response["breakpoint"] = breakpoint;
+	response["breakpoint"] = breakpoint_info(p_breakpoint);
 	return response;
 }
 
@@ -164,6 +269,122 @@ ScriptEditorDebugger *get_debugger(int p_session) {
 
 SessionState &get_session_state(int p_session) {
 	return sessions[p_session];
+}
+
+void clear_breakpoint_hit_state(SessionState &p_state) {
+	p_state.break_exposed = false;
+	p_state.breakpoint_evaluation_pending = false;
+	p_state.matched_breakpoints.clear();
+	p_state.breakpoint_condition_errors.clear();
+	p_state.pending_breakpoint_ids.clear();
+	p_state.pending_breakpoint_index = 0;
+	p_state.pending_condition_request_id = 0;
+}
+
+Vector<int> get_enabled_breakpoints_at(const String &p_path, int p_line) {
+	Vector<int> ids;
+	for (const KeyValue<int, BreakpointRecord> &entry : breakpoints) {
+		if (entry.value.enabled && entry.value.path == p_path && entry.value.line == p_line) {
+			ids.push_back(entry.key);
+		}
+	}
+	ids.sort();
+	return ids;
+}
+
+void finish_breakpoint_evaluation(int p_session, SessionState &p_state) {
+	p_state.breakpoint_evaluation_pending = false;
+	p_state.pending_condition_request_id = 0;
+
+	bool matched_condition = false;
+	bool matched_name = false;
+	bool removed_one_shot = false;
+	for (int i = 0; i < p_state.matched_breakpoints.size(); i++) {
+		Dictionary match = p_state.matched_breakpoints[i];
+		matched_condition = matched_condition || !String(match.get("condition", String())).is_empty();
+		matched_name = matched_name || !String(match.get("name", String())).is_empty();
+		const int id = match.get("id", 0);
+		BreakpointRecord *record = breakpoints.getptr(id);
+		if (record == nullptr || !record->one_shot) {
+			continue;
+		}
+		const BreakpointRecord snapshot = *record;
+		breakpoints.erase(id);
+		refresh_physical_breakpoint(snapshot.path, snapshot.line);
+		removed_one_shot = true;
+		match["one_shot_removed"] = true;
+		p_state.matched_breakpoints[i] = match;
+	}
+	if (removed_one_shot) {
+		persist_breakpoints();
+	}
+
+	if (!p_state.breakpoint_condition_errors.is_empty()) {
+		p_state.break_exposed = true;
+		p_state.reason = "Conditional breakpoint condition error";
+		return;
+	}
+	if (!p_state.matched_breakpoints.is_empty()) {
+		p_state.break_exposed = true;
+		p_state.reason = matched_condition ? "Conditional breakpoint" : (matched_name ? "Named breakpoint" : "Breakpoint");
+		return;
+	}
+
+	p_state.break_exposed = false;
+	ScriptEditorDebugger *debugger = get_debugger(p_session);
+	if (debugger != nullptr && debugger->is_breaked() && debugger->is_debuggable()) {
+		debugger->debug_continue();
+	}
+}
+
+void advance_breakpoint_evaluation(int p_session, SessionState &p_state) {
+	while (p_state.pending_breakpoint_index < p_state.pending_breakpoint_ids.size()) {
+		const int id = p_state.pending_breakpoint_ids[p_state.pending_breakpoint_index];
+		BreakpointRecord *record = breakpoints.getptr(id);
+		if (record == nullptr || !record->enabled) {
+			p_state.pending_breakpoint_index++;
+			continue;
+		}
+		if (record->condition.is_empty()) {
+			p_state.matched_breakpoints.push_back(breakpoint_info(*record));
+			p_state.pending_breakpoint_index++;
+			continue;
+		}
+
+		ScriptEditorDebugger *debugger = get_debugger(p_session);
+		if (debugger == nullptr || !debugger->is_breaked()) {
+			Dictionary condition_error = breakpoint_info(*record);
+			condition_error["error"] = "The debugger resumed before the condition could be evaluated.";
+			p_state.breakpoint_condition_errors.push_back(condition_error);
+			p_state.pending_breakpoint_index++;
+			continue;
+		}
+		p_state.pending_condition_request_id = next_condition_request_id++;
+		debugger->wgodot_send_debug_message("wgodot:conditional_breakpoint_evaluate", { p_state.pending_condition_request_id, record->condition, 0 });
+		return;
+	}
+
+	finish_breakpoint_evaluation(p_session, p_state);
+}
+
+void begin_breakpoint_evaluation(int p_session, SessionState &p_state) {
+	if (p_state.frames.is_empty()) {
+		p_state.breakpoint_evaluation_pending = false;
+		p_state.break_exposed = true;
+		return;
+	}
+	const Dictionary frame = p_state.frames[0];
+	const String path = normalize_script_path(frame.get("file", String()));
+	const int line = frame.get("line", 0);
+	p_state.pending_breakpoint_ids = get_enabled_breakpoints_at(path, line);
+	p_state.pending_breakpoint_index = 0;
+	if (p_state.pending_breakpoint_ids.is_empty()) {
+		p_state.breakpoint_evaluation_pending = false;
+		p_state.break_exposed = true;
+		return;
+	}
+	p_state.breakpoint_evaluation_pending = true;
+	advance_breakpoint_evaluation(p_session, p_state);
 }
 
 void clear_debug_cache(SessionState &p_state) {
@@ -560,9 +781,16 @@ void initialize() {
 	breakpoints.clear();
 	sessions.clear();
 	next_breakpoint_id = 1;
+	next_condition_request_id = 0x5000000000000000LL;
 	suppress_breakpoint_sync = false;
 
 	if (ScriptEditor::get_singleton() == nullptr) {
+		return;
+	}
+	if (restore_persisted_breakpoints()) {
+		for (const KeyValue<int, BreakpointRecord> &entry : breakpoints) {
+			refresh_physical_breakpoint(entry.value.path, entry.value.line);
+		}
 		return;
 	}
 	List<String> existing;
@@ -583,12 +811,14 @@ void initialize() {
 		record.enabled = true;
 		breakpoints[record.id] = record;
 	}
+	persist_breakpoints();
 }
 
 void reset() {
 	breakpoints.clear();
 	sessions.clear();
 	next_breakpoint_id = 1;
+	next_condition_request_id = 0x5000000000000000LL;
 	suppress_breakpoint_sync = false;
 }
 
@@ -597,10 +827,14 @@ void sync_breakpoint(const String &p_path, int p_line, bool p_enabled) {
 		return;
 	}
 	const String path = normalize_script_path(p_path);
-	BreakpointRecord *record = find_breakpoint(path, p_line);
-	if (record != nullptr) {
-		record->enabled = p_enabled;
-	} else if (p_enabled) {
+	bool found = false;
+	for (KeyValue<int, BreakpointRecord> &entry : breakpoints) {
+		if (entry.value.path == path && entry.value.line == p_line) {
+			entry.value.enabled = p_enabled;
+			found = true;
+		}
+	}
+	if (!found && p_enabled) {
 		BreakpointRecord new_record;
 		new_record.id = next_breakpoint_id++;
 		new_record.path = path;
@@ -608,6 +842,7 @@ void sync_breakpoint(const String &p_path, int p_line, bool p_enabled) {
 		new_record.enabled = true;
 		breakpoints[new_record.id] = new_record;
 	}
+	persist_breakpoints();
 }
 
 Dictionary execute_breakpoint(const Dictionary &p_options) {
@@ -619,19 +854,40 @@ Dictionary execute_breakpoint(const Dictionary &p_options) {
 		if (!validate_breakpoint_location(String(p_options.get("path", String())), line, path, error)) {
 			return make_error("breakpoint", action, "invalid_breakpoint", error);
 		}
-		BreakpointRecord *existing = find_breakpoint(path, line);
+		const String name = String(p_options.get("name", String())).strip_edges();
+		const String condition = String(p_options.get("condition", String())).strip_edges();
+		const bool one_shot = p_options.get("one_shot", false);
+		if (p_options.has("name") && name.is_empty()) {
+			return make_error("breakpoint", action, "invalid_breakpoint_name", "Breakpoint names cannot be empty.");
+		}
+		if (!name.is_empty() && name.is_valid_int()) {
+			return make_error("breakpoint", action, "invalid_breakpoint_name", "Breakpoint names cannot be integers because integer selectors refer to breakpoint IDs.");
+		}
+		if (!name.is_empty() && find_breakpoint_by_name(name) != nullptr) {
+			return make_error("breakpoint", action, "duplicate_breakpoint_name", "Breakpoint names must be unique: " + name);
+		}
+		if (p_options.has("condition") && condition.is_empty()) {
+			return make_error("breakpoint", action, "invalid_breakpoint_condition", "Breakpoint conditions cannot be empty.");
+		}
+
+		BreakpointRecord *existing = name.is_empty() && condition.is_empty() && !one_shot ? find_plain_breakpoint(path, line) : nullptr;
 		if (existing != nullptr) {
 			existing->enabled = true;
-			apply_breakpoint(*existing, true);
+			refresh_physical_breakpoint(path, line);
+			persist_breakpoints();
 			return breakpoint_result(action, *existing);
 		}
 		BreakpointRecord record;
 		record.id = next_breakpoint_id++;
 		record.path = path;
 		record.line = line;
+		record.name = name;
+		record.condition = condition;
 		record.enabled = true;
+		record.one_shot = one_shot;
 		breakpoints[record.id] = record;
-		apply_breakpoint(record, true);
+		refresh_physical_breakpoint(path, line);
+		persist_breakpoints();
 		return breakpoint_result(action, record);
 	}
 
@@ -644,12 +900,7 @@ Dictionary execute_breakpoint(const Dictionary &p_options) {
 		Array result;
 		for (int id : ids) {
 			const BreakpointRecord &record = breakpoints[id];
-			Dictionary breakpoint;
-			breakpoint["id"] = record.id;
-			breakpoint["path"] = record.path;
-			breakpoint["line"] = record.line;
-			breakpoint["enabled"] = record.enabled;
-			result.push_back(breakpoint);
+			result.push_back(breakpoint_info(record));
 		}
 		Dictionary response;
 		response["ok"] = true;
@@ -667,8 +918,9 @@ Dictionary execute_breakpoint(const Dictionary &p_options) {
 		}
 		breakpoints.clear();
 		for (const BreakpointRecord &record : removed) {
-			apply_breakpoint(record, false);
+			apply_physical_breakpoint(record.path, record.line, false);
 		}
+		persist_breakpoints();
 		Dictionary response;
 		response["ok"] = true;
 		response["command"] = "breakpoint";
@@ -679,19 +931,23 @@ Dictionary execute_breakpoint(const Dictionary &p_options) {
 
 	if (action == "remove" || action == "enable" || action == "disable") {
 		const int id = p_options.get("id", 0);
-		BreakpointRecord *record = breakpoints.getptr(id);
+		const String name = String(p_options.get("name", String())).strip_edges();
+		BreakpointRecord *record = id > 0 ? breakpoints.getptr(id) : find_breakpoint_by_name(name);
 		if (record == nullptr) {
-			return make_error("breakpoint", action, "breakpoint_not_found", "Breakpoint ID was not found: " + itos(id));
+			const String selector = id > 0 ? "ID " + itos(id) : "name " + name;
+			return make_error("breakpoint", action, "breakpoint_not_found", "Breakpoint was not found by " + selector + ".");
 		}
 		const BreakpointRecord snapshot = *record;
 		if (action == "remove") {
-			breakpoints.erase(id);
-			apply_breakpoint(snapshot, false);
+			breakpoints.erase(snapshot.id);
+			refresh_physical_breakpoint(snapshot.path, snapshot.line);
+			persist_breakpoints();
 			return breakpoint_result(action, snapshot);
 		}
 		record->enabled = action == "enable";
 		const BreakpointRecord result = *record;
-		apply_breakpoint(result, result.enabled);
+		refresh_physical_breakpoint(result.path, result.line);
+		persist_breakpoints();
 		return breakpoint_result(action, result);
 	}
 
@@ -705,6 +961,7 @@ void debugger_started(int p_session) {
 	state.can_debug = false;
 	state.stack_ready = false;
 	state.reason.clear();
+	clear_breakpoint_hit_state(state);
 	clear_debug_cache(state);
 }
 
@@ -715,6 +972,7 @@ void debugger_stopped(int p_session) {
 	state.can_debug = false;
 	state.stack_ready = false;
 	state.reason.clear();
+	clear_breakpoint_hit_state(state);
 	clear_debug_cache(state);
 	state.resume_generation++;
 }
@@ -726,8 +984,11 @@ void debugger_breaked(int p_session, bool p_breaked, bool p_can_debug, const Str
 	state.can_debug = p_can_debug;
 	state.reason = p_breaked ? p_reason : String();
 	state.has_stackdump = p_has_stackdump;
+	clear_breakpoint_hit_state(state);
 	clear_debug_cache(state);
 	if (p_breaked) {
+		state.breakpoint_evaluation_pending = p_reason == "Breakpoint" && p_has_stackdump;
+		state.break_exposed = !state.breakpoint_evaluation_pending;
 		state.break_generation++;
 		state.stack_ready = !p_has_stackdump;
 	} else {
@@ -738,6 +999,28 @@ void debugger_breaked(int p_session, bool p_breaked, bool p_can_debug, const Str
 
 void capture_debugger_message(int p_session, const String &p_message, const Array &p_data) {
 	SessionState &state = get_session_state(p_session);
+	if (p_message == "wgodot:conditional_breakpoint_result") {
+		if (!state.breakpoint_evaluation_pending || p_data.size() != 4 || p_data[0].get_type() != Variant::INT || p_data[1].get_type() != Variant::BOOL || p_data[2].get_type() != Variant::BOOL || p_data[3].get_type() != Variant::STRING || (int64_t)p_data[0] != state.pending_condition_request_id || state.pending_breakpoint_index >= state.pending_breakpoint_ids.size()) {
+			return;
+		}
+		const int id = state.pending_breakpoint_ids[state.pending_breakpoint_index];
+		BreakpointRecord *record = breakpoints.getptr(id);
+		if (record != nullptr && record->enabled) {
+			const bool evaluation_ok = p_data[1];
+			const bool matched = p_data[2];
+			if (!evaluation_ok) {
+				Dictionary condition_error = breakpoint_info(*record);
+				condition_error["error"] = p_data[3];
+				state.breakpoint_condition_errors.push_back(condition_error);
+			} else if (matched) {
+				state.matched_breakpoints.push_back(breakpoint_info(*record));
+			}
+		}
+		state.pending_condition_request_id = 0;
+		state.pending_breakpoint_index++;
+		advance_breakpoint_evaluation(p_session, state);
+		return;
+	}
 	if (p_message == "stack_dump") {
 		DebuggerMarshalls::ScriptStackDump stack;
 		if (!stack.deserialize(p_data)) {
@@ -754,6 +1037,9 @@ void capture_debugger_message(int p_session, const String &p_message, const Arra
 			state.frames.push_back(frame_info);
 		}
 		state.stack_ready = true;
+		if (state.breakpoint_evaluation_pending) {
+			begin_breakpoint_evaluation(p_session, state);
+		}
 		return;
 	}
 
@@ -897,8 +1183,10 @@ void capture_debugger_message(int p_session, const String &p_message, const Arra
 Dictionary get_state(int p_session, const String &p_action) {
 	ScriptEditorDebugger *debugger = get_debugger(p_session);
 	const bool active = debugger != nullptr && debugger->is_session_active();
-	const bool breaked = active && debugger->is_breaked();
+	const bool physical_breaked = active && debugger->is_breaked();
 	SessionState *cached = sessions.getptr(p_session);
+	const bool evaluating_breakpoint = physical_breaked && cached && cached->breakpoint_evaluation_pending;
+	const bool breaked = physical_breaked && (!cached || cached->break_exposed);
 
 	Dictionary response;
 	response["ok"] = true;
@@ -908,12 +1196,15 @@ Dictionary get_state(int p_session, const String &p_action) {
 	response["active"] = active;
 	response["breaked"] = breaked;
 	response["can_debug"] = breaked && debugger->is_debuggable();
-	response["state"] = !active ? "not_running" : (breaked ? "breaked" : "running");
+	response["state"] = !active ? "not_running" : (evaluating_breakpoint ? "evaluating_breakpoint" : (breaked ? "breaked" : "running"));
+	response["breakpoint_evaluating"] = evaluating_breakpoint;
 	response["reason"] = cached && breaked ? cached->reason : String();
 	response["stack_ready"] = cached && breaked && cached->stack_ready;
 	response["frame"] = cached && breaked ? get_frame(*cached, 0) : Dictionary();
 	response["selected_frame_index"] = cached && breaked ? cached->selected_frame : 0;
 	response["selected_frame"] = cached && breaked ? get_frame(*cached, cached->selected_frame) : Dictionary();
+	response["matched_breakpoints"] = cached && breaked ? cached->matched_breakpoints : Array();
+	response["breakpoint_condition_errors"] = cached && breaked ? cached->breakpoint_condition_errors : Array();
 	return response;
 }
 
@@ -940,7 +1231,7 @@ Dictionary execute_debug(int p_session, const Dictionary &p_options, WaitKind &r
 
 	if (action == "wait") {
 		if (debugger->is_breaked()) {
-			if (state.stack_ready) {
+			if (state.break_exposed && state.stack_ready) {
 				return get_state(p_session, action);
 			}
 			r_wait_kind = WAIT_CURRENT_BREAK;
@@ -953,7 +1244,7 @@ Dictionary execute_debug(int p_session, const Dictionary &p_options, WaitKind &r
 
 	if (action == "pause") {
 		if (debugger->is_breaked()) {
-			if (state.stack_ready) {
+			if (state.break_exposed && state.stack_ready) {
 				return get_state(p_session, action);
 			}
 			r_wait_kind = WAIT_CURRENT_BREAK;
@@ -967,6 +1258,9 @@ Dictionary execute_debug(int p_session, const Dictionary &p_options, WaitKind &r
 
 	if (!debugger->is_breaked()) {
 		return make_error("debug", action, "debugger_not_breaked", "The game must be stopped at a debugger break before using this action.");
+	}
+	if (!state.break_exposed) {
+		return make_error("debug", action, "breakpoint_evaluation_pending", "WGodot is still evaluating logical breakpoint conditions.");
 	}
 
 	if (action == "stack" || is_frame_action(action)) {
@@ -1073,7 +1367,7 @@ bool poll_debug_wait(int p_session, const Dictionary &p_options, WaitKind &r_wai
 	}
 
 	const bool generation_ready = r_wait_kind == WAIT_CURRENT_BREAK ? state.break_generation >= r_generation : state.break_generation > r_generation;
-	if (generation_ready && debugger->is_breaked() && state.stack_ready) {
+	if (generation_ready && debugger->is_breaked() && state.break_exposed && state.stack_ready) {
 		if (action == "stack" || is_frame_action(action)) {
 			r_response = prepare_stack_action(p_session, debugger, p_options, r_wait_kind, r_generation);
 			return (r_wait_kind != WAIT_VARIABLES && r_wait_kind != WAIT_MEMBERS) || !r_response.is_empty();

@@ -2101,6 +2101,12 @@ void ScriptEditorDebugger::send_message(const String &p_message, const Array &p_
 	_put_msg(p_message, p_args);
 }
 
+// wgodot-changes::begin
+void ScriptEditorDebugger::wgodot_send_debug_message(const String &p_message, const Array &p_args) {
+	_put_msg(p_message, p_args, debugging_thread_id != Thread::UNASSIGNED_ID ? debugging_thread_id : Thread::MAIN_ID);
+}
+// wgodot-changes::end
+
 void ScriptEditorDebugger::toggle_profiler(const String &p_profiler, bool p_enable, const Array &p_data) {
 	Array msg_data = { p_enable, p_data };
 	_put_msg("profiler:" + p_profiler, msg_data);

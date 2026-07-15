@@ -5,6 +5,7 @@
 
 #include "wgodot_game_bridge.h"
 
+#include "wgodot_conditional_breakpoint_evaluator.h"
 #include "wgodot_debug_inspector.h"
 
 #include "wgodot_member_list.h"
@@ -882,6 +883,10 @@ Dictionary make_pause_response(const String &p_command) {
 }
 
 Error parse_message(void *p_user, const String &p_message, const Array &p_arguments, bool &r_captured) {
+	if (p_message == "conditional_breakpoint_evaluate") {
+		r_captured = true;
+		return WGodotConditionalBreakpointEvaluator::evaluate(p_arguments);
+	}
 	r_captured = p_message == "request";
 	if (!r_captured) {
 		return OK;

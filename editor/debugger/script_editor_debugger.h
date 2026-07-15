@@ -349,6 +349,7 @@ public:
 	int get_warning_count() const { return warning_count; }
 	// wgodot-changes::begin
 	void wgodot_clear_errors() { _clear_errors_list(); }
+	void wgodot_send_debug_message(const String &p_message, const Array &p_args);
 	// wgodot-changes::end
 	String get_stack_script_file() const;
 	int get_stack_script_line() const;

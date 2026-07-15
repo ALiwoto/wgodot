@@ -61,7 +61,22 @@ bool parse_breakpoint_location(const String &p_location, String &r_path, int &r_
 }
 
 void print_breakpoint(const Dictionary &p_breakpoint) {
-	print_line(vformat("#%d %s:%d [%s]", (int)p_breakpoint.get("id", 0), String(p_breakpoint.get("path", String())), (int)p_breakpoint.get("line", 0), (bool)p_breakpoint.get("enabled", false) ? "enabled" : "disabled"));
+	const int id = p_breakpoint.get("id", 0);
+	const String name = p_breakpoint.get("name", String());
+	String flags = (bool)p_breakpoint.get("enabled", false) ? "enabled" : "disabled";
+	if ((bool)p_breakpoint.get("one_shot", false)) {
+		flags += ", one-shot";
+	}
+	print_line(vformat("#%d%s %s:%d [%s]", id, name.is_empty() ? String() : " " + name, String(p_breakpoint.get("path", String())), (int)p_breakpoint.get("line", 0), flags));
+	const String condition = p_breakpoint.get("condition", String());
+	if (!condition.is_empty()) {
+		print_line("  Condition: " + condition);
+	}
+}
+
+String breakpoint_label(const Dictionary &p_breakpoint) {
+	const String name = p_breakpoint.get("name", String());
+	return name.is_empty() ? vformat("#%d", (int)p_breakpoint.get("id", 0)) : vformat("%s (#%d)", name, (int)p_breakpoint.get("id", 0));
 }
 
 String frame_text(const Dictionary &p_frame) {
@@ -144,6 +159,28 @@ void print_debug_state(const Dictionary &p_response) {
 	if (!reason.is_empty()) {
 		print_line("Reason: " + reason);
 	}
+	const Array matched_breakpoints = p_response.get("matched_breakpoints", Array());
+	for (const Variant &match_variant : matched_breakpoints) {
+		const Dictionary match = match_variant;
+		const String name = match.get("name", String());
+		const int id = match.get("id", 0);
+		const bool one_shot_removed = match.get("one_shot_removed", false);
+		const String label = name.is_empty() ? vformat("#%d%s", id, one_shot_removed ? " (one-shot removed)" : "") : vformat("%s (#%d%s)", name, id, one_shot_removed ? ", one-shot removed" : "");
+		print_line("Matched: " + label);
+		const String condition = match.get("condition", String());
+		if (!condition.is_empty()) {
+			print_line("Condition: " + condition);
+		}
+	}
+	const Array condition_errors = p_response.get("breakpoint_condition_errors", Array());
+	for (const Variant &error_variant : condition_errors) {
+		const Dictionary condition_error = error_variant;
+		print_line("Condition error: " + breakpoint_label(condition_error) + ": " + String(condition_error.get("error", String())));
+		const String condition = condition_error.get("condition", String());
+		if (!condition.is_empty()) {
+			print_line("Condition: " + condition);
+		}
+	}
 	const Dictionary frame = p_response.get("selected_frame", Dictionary());
 	if (!frame.is_empty()) {
 		print_line(frame_text(frame));
@@ -154,10 +191,34 @@ void print_debug_state(const Dictionary &p_response) {
 
 int run_breakpoint(const Vector<String> &p_arguments) {
 	bool json_output = false;
+	bool name_specified = false;
+	bool condition_specified = false;
+	bool one_shot = false;
+	String name;
+	String condition;
 	Vector<String> operands;
-	for (const String &argument : p_arguments) {
+	for (int i = 0; i < p_arguments.size(); i++) {
+		const String &argument = p_arguments[i];
 		if (argument == "--json") {
 			json_output = true;
+		} else if (argument == "--name") {
+			if (name_specified || i + 1 >= p_arguments.size() || p_arguments[i + 1].strip_edges().is_empty()) {
+				const Dictionary error = make_error("--name requires one non-empty unique breakpoint name and may only be specified once.");
+				print_error(error, json_output);
+				return 2;
+			}
+			name_specified = true;
+			name = p_arguments[++i].strip_edges();
+		} else if (argument == "--condition") {
+			if (condition_specified || i + 1 >= p_arguments.size() || p_arguments[i + 1].strip_edges().is_empty()) {
+				const Dictionary error = make_error("--condition requires one non-empty expression and may only be specified once.");
+				print_error(error, json_output);
+				return 2;
+			}
+			condition_specified = true;
+			condition = p_arguments[++i].strip_edges();
+		} else if (argument == "--one-shot") {
+			one_shot = true;
 		} else {
 			operands.push_back(argument);
 		}
@@ -169,6 +230,11 @@ int run_breakpoint(const Vector<String> &p_arguments) {
 	}
 
 	const String action = operands[0].to_lower();
+	if (action != "add" && (name_specified || condition_specified || one_shot)) {
+		const Dictionary error = make_error("--name, --condition, and --one-shot are only valid with breakpoint add.");
+		print_error(error, json_output);
+		return 2;
+	}
 	Dictionary options;
 	options["action"] = action;
 	if (action == "add") {
@@ -186,13 +252,29 @@ int run_breakpoint(const Vector<String> &p_arguments) {
 		}
 		options["path"] = path;
 		options["line"] = line;
+		if (name_specified) {
+			options["name"] = name;
+		}
+		if (condition_specified) {
+			options["condition"] = condition;
+		}
+		options["one_shot"] = one_shot;
 	} else if (action == "remove" || action == "enable" || action == "disable") {
-		if (operands.size() != 2 || !operands[1].is_valid_int() || operands[1].to_int() <= 0) {
-			const Dictionary error = make_error("breakpoint " + action + " requires a positive breakpoint ID.");
+		if (operands.size() != 2 || operands[1].strip_edges().is_empty()) {
+			const Dictionary error = make_error("breakpoint " + action + " requires a breakpoint ID or name.");
 			print_error(error, json_output);
 			return 2;
 		}
-		options["id"] = operands[1].to_int();
+		if (operands[1].is_valid_int()) {
+			if (operands[1].to_int() <= 0) {
+				const Dictionary error = make_error("Breakpoint IDs must be positive integers.");
+				print_error(error, json_output);
+				return 2;
+			}
+			options["id"] = operands[1].to_int();
+		} else {
+			options["name"] = operands[1];
+		}
 	} else if (action == "list" || action == "clear") {
 		if (operands.size() != 1) {
 			const Dictionary error = make_error("breakpoint " + action + " does not accept operands.");

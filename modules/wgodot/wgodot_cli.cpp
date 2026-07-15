@@ -229,6 +229,11 @@ void print_cli_help() {
 	print_line("    --tail <number>                 Return the newest entries per source (default: 100).");
 	print_line("  clear_logs [options]              Clear Output and Debugger error buffers.");
 	print_line("  breakpoint|bp <action> [...]      Add, list, remove, enable, disable, or clear breakpoints.");
+	print_line("    add <file>:<line> [options]     Add a logical breakpoint; several may share one line.");
+	print_line("    --name <name>                   Assign a unique breakpoint name.");
+	print_line("    --condition <expression>        Stop only when the expression returns true.");
+	print_line("    --one-shot                      Remove this logical breakpoint after it matches.");
+	print_line("    remove|enable|disable <id|name> Select a breakpoint by ID or name.");
 	print_line("  debug <action> [options]          Inspect or control a hard debugger pause.");
 	print_line("    Control: state, pause, continue|resume, step_into, step_over, step_out, wait.");
 	print_line("    Inspect: stack, frame, locals, members, globals, vars.");
@@ -622,6 +627,26 @@ int print_command_response(const Dictionary &p_response, bool p_json_output) {
 			const String reason = p_response.get("reason", String());
 			if (!reason.is_empty()) {
 				print_line("Reason: " + reason);
+			}
+			const Array matched_breakpoints = p_response.get("matched_breakpoints", Array());
+			for (const Variant &match_variant : matched_breakpoints) {
+				const Dictionary match = match_variant;
+				const String name = match.get("name", String());
+				const int id = match.get("id", 0);
+				const bool one_shot_removed = match.get("one_shot_removed", false);
+				const String matched = name.is_empty() ? vformat("#%d%s", id, one_shot_removed ? " (one-shot removed)" : "") : vformat("%s (#%d%s)", name, id, one_shot_removed ? ", one-shot removed" : "");
+				print_line("Matched: " + matched);
+				const String condition = match.get("condition", String());
+				if (!condition.is_empty()) {
+					print_line("Condition: " + condition);
+				}
+			}
+			const Array condition_errors = p_response.get("breakpoint_condition_errors", Array());
+			for (const Variant &error_variant : condition_errors) {
+				const Dictionary condition_error = error_variant;
+				const String name = condition_error.get("name", String());
+				const String label = name.is_empty() ? vformat("#%d", (int)condition_error.get("id", 0)) : vformat("%s (#%d)", name, (int)condition_error.get("id", 0));
+				print_line("Condition error: " + label + ": " + String(condition_error.get("error", String())));
 			}
 			const Dictionary frame = p_response.get("frame", Dictionary());
 			if (!frame.is_empty()) {

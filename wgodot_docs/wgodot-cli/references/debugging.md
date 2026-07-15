@@ -13,9 +13,47 @@ godot --wg breakpoint remove 1
 godot --wg breakpoint clear
 ```
 
+Add several named logical breakpoints at the same physical source line, with
+optional conditions and one-shot removal:
+
+```powershell
+godot --wg breakpoint add res://src/arms_folded_pose_applicator.gd:125 --condition "fold_progress >= 0.45 and fold_progress < 0.47" --name fold45 --one-shot
+godot --wg breakpoint add res://src/arms_folded_pose_applicator.gd:125 --condition "fold_progress >= 0.60 and fold_progress < 0.62" --name fold60 --one-shot
+godot --wg breakpoint add res://src/arms_folded_pose_applicator.gd:125 --condition "fold_progress >= 0.70 and fold_progress < 0.72" --name fold70 --one-shot
+```
+
+Names must be unique and cannot be integers. Select a breakpoint by either its
+name or positive ID:
+
+```powershell
+godot --wg breakpoint disable fold60
+godot --wg breakpoint enable fold60
+godot --wg breakpoint remove fold45
+```
+
 Use `bp` as a shorter alias for `breakpoint`; for example, `godot --wg bp list` and `godot --wg bp add res://src/player.gd:42`.
 
-`breakpoint add` prints the breakpoint ID. Adding the same location again returns its existing ID and enables it. IDs remain stable while that editor is open. Disabled breakpoints remain in WGodot's list even though Godot removes them from the active debugger internally.
+`breakpoint add` prints the breakpoint ID. Adding the same plain breakpoint
+location again returns its existing ID and enables it. An add with `--name`,
+`--condition`, or `--one-shot` creates a separate logical breakpoint, allowing
+several records to share the same line. IDs and logical metadata are stored in
+the project's editor metadata and survive editor restarts. Disabled breakpoints
+remain in WGodot's list even
+though Godot removes the physical breakpoint when no enabled logical record
+remains at that location.
+
+When a physical line is reached, WGodot evaluates every enabled logical record
+at that location against paused frame `0`. Conditions can read its locals,
+globals, and `self` members and must return `bool`. WGodot exposes the debugger
+break if any record matches, reports all matching IDs and names, and removes only
+the matching `--one-shot` records. The pause retains those match details after
+one-shot removal. If no record matches, execution continues automatically.
+Condition parse, evaluation, and non-boolean-result errors expose the pause and
+are reported by `godot --wg debug state` instead of being treated as false.
+
+For thresholds that a frame may skip over, prefer a crossing condition such as
+`--condition "not _is_releasing and fold_progress >= 0.45"` with `--one-shot`
+instead of a narrow range.
 
 Breakpoints can be configured before running the game and are sent to later debugger sessions. They are mirrored into Godot's script-editor and debugger UI. A breakpoint on a comment, blank line, or other non-executable line may never trigger.
 

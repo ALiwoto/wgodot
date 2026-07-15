@@ -30,6 +30,8 @@ The `list` command accepts native Godot classes and built-in Variant types such 
 
 While a WGodot full game pause is active, `godot --wg resume <node-path>` resumes idle processing and input only for the selected runtime node and its descendants. Fixed physics ticks and physics simulation remain paused. `godot --wg pause` clears the selected subtree, and `godot --wg resume` without a path resumes the full game.
 
+WGodot breakpoints support unique names, paused-frame conditions, and one-shot removal. Multiple logical breakpoints may share one physical source line; WGodot evaluates every enabled condition at a hit, exposes all matching names and IDs, removes only matching one-shot records, automatically continues when none match, and pauses with explicit details when condition evaluation fails. Breakpoint remove, enable, and disable actions accept either an ID or name.
+
 ## Export Protection
 
 10. De-const/de-enum: `wgodot/export/deconst_exports` removes exported constant and enum declarations, inlines their values where possible, folds constant indexed uses to the indexed value, keeps dynamic indexed containers as parenthesized literals, and converts stripped enum type hints to `int`.
