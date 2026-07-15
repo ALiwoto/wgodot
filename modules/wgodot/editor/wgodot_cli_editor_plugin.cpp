@@ -26,6 +26,7 @@
 #include "editor/debugger/script_editor_debugger.h"
 #include "editor/file_system/editor_file_system.h"
 #include "editor/run/editor_run_bar.h"
+#include "editor/script/script_editor_plugin.h"
 
 namespace {
 
