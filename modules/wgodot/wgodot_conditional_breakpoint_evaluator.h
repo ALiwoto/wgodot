@@ -8,7 +8,9 @@
 #include "core/error/error_list.h"
 #include "core/variant/array.h"
 
-class ScriptLanguage;
+class GDScriptFunction;
+class GDScriptInstance;
+class Variant;
 
 namespace WGodotConditionalBreakpointEvaluator {
 
@@ -19,7 +21,7 @@ enum BreakDecision {
 };
 
 Error sync_breakpoints(const Array &p_arguments);
-BreakDecision evaluate_breakpoint(const String &p_path, int p_line, ScriptLanguage *p_script_language);
+BreakDecision evaluate_breakpoint(const String &p_path, int p_line, GDScriptFunction *p_function, GDScriptInstance *p_instance, Variant *p_stack);
 bool consume_break_presentation_suppressed();
 void reset();
 

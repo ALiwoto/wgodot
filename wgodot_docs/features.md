@@ -30,7 +30,7 @@ The `list` command accepts native Godot classes and built-in Variant types such 
 
 While a WGodot full game pause is active, `godot --wg resume <node-path>` resumes idle processing and input only for the selected runtime node and its descendants. Fixed physics ticks and physics simulation remain paused. `godot --wg pause` clears the selected subtree, and `godot --wg resume` without a path resumes the full game.
 
-WGodot breakpoints support unique names, live-frame conditions, and one-shot removal. Multiple logical breakpoints may share one physical source line; WGodot evaluates every enabled condition before entering Godot's hard-break loop, exposes all matching names and IDs, removes only matching one-shot records, skips the hard break entirely when none match, and pauses with explicit details when condition evaluation fails. Managed logical-breakpoint stops do not focus the game/editor or change the game's mouse mode. Breakpoint remove, enable, and disable actions accept either an ID or name.
+WGodot breakpoints support unique names, live-frame conditions, and one-shot removal. Multiple logical breakpoints may share one physical source line; WGodot evaluates every enabled condition directly from the executing GDScript VM frame before entering Godot's hard-break loop, without requesting debugger/DAP scopes. It exposes all matching names and IDs, removes only matching one-shot records, skips the hard break entirely when none match, and pauses with explicit details when condition evaluation fails. Managed logical-breakpoint stops do not focus the game/editor or change the game's mouse mode. Breakpoint remove, enable, and disable actions accept either an ID or name.
 
 ## Export Protection
 

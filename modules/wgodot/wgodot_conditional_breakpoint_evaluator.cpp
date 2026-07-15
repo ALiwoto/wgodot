@@ -17,6 +17,8 @@
 #include "core/templates/list.h"
 #include "core/templates/local_vector.h"
 #include "core/templates/vector.h"
+#include "modules/gdscript/gdscript.h"
+#include "modules/gdscript/gdscript_function.h"
 
 namespace WGodotConditionalBreakpointEvaluator {
 
@@ -55,32 +57,28 @@ Dictionary breakpoint_info(const BreakpointRecord &p_breakpoint) {
 	return info;
 }
 
-bool evaluate_condition(ScriptLanguage *p_script_language, const String &p_condition, bool &r_matched, String &r_error) {
+bool evaluate_condition(GDScriptFunction *p_function, GDScriptInstance *p_instance, Variant *p_stack, int p_line, const String &p_condition, bool &r_matched, String &r_error) {
 	r_matched = false;
-	if (p_script_language == nullptr || p_script_language->debug_get_stack_level_count() <= 0) {
+	if (p_function == nullptr || p_stack == nullptr) {
 		r_error = "The live GDScript stack frame is not available.";
 		return false;
 	}
 
 	PackedStringArray input_names;
 	Array input_values;
-	List<String> locals;
-	List<Variant> local_values;
-	p_script_language->debug_get_stack_level_locals(0, &locals, &local_values);
-	if (locals.size() != local_values.size()) {
-		r_error = "The debugger returned mismatched local variable names and values.";
-		return false;
-	}
-	for (const String &local : locals) {
-		input_names.push_back(local);
-	}
-	for (const Variant &value : local_values) {
-		input_values.push_back(value);
+	List<Pair<StringName, int>> locals;
+	p_function->debug_get_stack_member_state(p_line, &locals);
+	for (const Pair<StringName, int> &local : locals) {
+		if (local.second < 0 || local.second >= p_function->get_max_stack_size()) {
+			continue;
+		}
+		input_names.push_back(local.first);
+		input_values.push_back(p_stack[local.second]);
 	}
 
 	List<String> globals;
 	List<Variant> global_values;
-	p_script_language->debug_get_globals(&globals, &global_values);
+	GDScriptLanguage::get_singleton()->debug_get_globals(&globals, &global_values);
 	if (globals.size() != global_values.size()) {
 		r_error = "The debugger returned mismatched global variable names and values.";
 		return false;
@@ -118,8 +116,7 @@ bool evaluate_condition(ScriptLanguage *p_script_language, const String &p_condi
 		r_error = "Parse error: " + expression.get_error_text();
 		return false;
 	}
-	ScriptInstance *instance = p_script_language->debug_get_stack_level_instance(0);
-	Object *base = instance ? instance->get_owner() : nullptr;
+	Object *base = p_instance ? p_instance->get_owner() : nullptr;
 	const Variant value = expression.execute(input_values, base, false);
 	if (expression.has_execute_failed()) {
 		r_error = "Evaluation error: " + expression.get_error_text();
@@ -176,9 +173,10 @@ Error sync_breakpoints(const Array &p_arguments) {
 	return OK;
 }
 
-BreakDecision evaluate_breakpoint(const String &p_path, int p_line, ScriptLanguage *p_script_language) {
+BreakDecision evaluate_breakpoint(const String &p_path, int p_line, GDScriptFunction *p_function, GDScriptInstance *p_instance, Variant *p_stack) {
 	const String key = location_key(p_path, p_line);
 	Vector<BreakpointRecord> records;
+	int64_t evaluation_generation = 0;
 	{
 		MutexLock lock(breakpoint_mutex);
 		if (!managed_locations.has(key)) {
@@ -189,6 +187,7 @@ BreakDecision evaluate_breakpoint(const String &p_path, int p_line, ScriptLangua
 			return BREAK_SKIP;
 		}
 		records = *stored_records;
+		evaluation_generation = sync_generation;
 	}
 	Array matches;
 	Array condition_errors;
@@ -202,7 +201,7 @@ BreakDecision evaluate_breakpoint(const String &p_path, int p_line, ScriptLangua
 		}
 		bool matched = false;
 		String error;
-		if (!evaluate_condition(p_script_language, record.condition, matched, error)) {
+		if (!evaluate_condition(p_function, p_instance, p_stack, p_line, record.condition, matched, error)) {
 			Dictionary condition_error = breakpoint_info(record);
 			condition_error["error"] = error;
 			condition_errors.push_back(condition_error);
@@ -227,6 +226,7 @@ BreakDecision evaluate_breakpoint(const String &p_path, int p_line, ScriptLangua
 	hit["breakpoint_condition_errors"] = condition_errors;
 	hit["path"] = p_path;
 	hit["line"] = p_line;
+	hit["sync_generation"] = evaluation_generation;
 	EngineDebugger::get_singleton()->send_message("wgodot:conditional_breakpoint_hit", { hit });
 	suppress_break_presentation = true;
 	return BREAK_STOP;

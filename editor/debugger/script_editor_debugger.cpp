@@ -361,6 +361,10 @@ void ScriptEditorDebugger::_select_thread(int p_index) {
 
 void ScriptEditorDebugger::_msg_debug_enter(uint64_t p_thread_id, const Array &p_data) {
 	ERR_FAIL_COND(p_data.size() != 4);
+	// wgodot-changes::begin
+	const bool suppress_break_presentation = wgodot_suppress_next_break_presentation;
+	wgodot_suppress_next_break_presentation = false;
+	// wgodot-changes::end
 
 	const Thread::ID caller_id = p_data[3];
 
@@ -380,9 +384,11 @@ void ScriptEditorDebugger::_msg_debug_enter(uint64_t p_thread_id, const Array &p
 		debugging_thread_id = p_thread_id;
 		_thread_debug_enter(p_thread_id);
 		can_request_idle_draw = true;
-		if (is_move_to_foreground()) {
+		// wgodot-changes::begin
+		if (!suppress_break_presentation && is_move_to_foreground()) {
 			DisplayServer::get_singleton()->window_move_to_foreground();
 		}
+		// wgodot-changes::end
 		profiler->set_enabled(false, false);
 		visual_profiler->set_enabled(false);
 	}

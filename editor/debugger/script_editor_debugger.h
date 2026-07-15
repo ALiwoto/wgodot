@@ -167,6 +167,9 @@ private:
 	ProcessID remote_pid = 0;
 	bool move_to_foreground = true;
 	bool can_request_idle_draw = false;
+	// wgodot-changes::begin
+	bool wgodot_suppress_next_break_presentation = false;
+	// wgodot-changes::end
 
 	bool live_debug = true;
 
@@ -350,6 +353,7 @@ public:
 	// wgodot-changes::begin
 	void wgodot_clear_errors() { _clear_errors_list(); }
 	void wgodot_send_debug_message(const String &p_message, const Array &p_args);
+	void wgodot_suppress_break_presentation() { wgodot_suppress_next_break_presentation = true; }
 	// wgodot-changes::end
 	String get_stack_script_file() const;
 	int get_stack_script_line() const;

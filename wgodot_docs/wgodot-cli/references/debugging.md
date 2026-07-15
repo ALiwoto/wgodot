@@ -43,7 +43,7 @@ though Godot removes the physical breakpoint when no enabled logical record
 remains at that location.
 
 When a physical line is reached, WGodot evaluates every enabled logical record
-at that location against the live GDScript frame before entering Godot's hard-break loop. Conditions can read its locals,
+directly against the executing GDScript VM frame before entering Godot's hard-break loop. This does not request or initialize editor/DAP scopes. Conditions can read its locals,
 globals, and `self` members and must return `bool`. WGodot exposes the debugger
 break if any record matches, reports all matching IDs and names, and removes only
 the matching `--one-shot` records. The pause retains those match details after

@@ -3991,7 +3991,7 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 						// wgodot-changes::begin
 						bool breakpoint_should_stop = true;
 #ifdef MODULE_WGODOT_ENABLED
-						breakpoint_should_stop = WGodotConditionalBreakpointEvaluator::evaluate_breakpoint(source, line, GDScriptLanguage::get_singleton()) != WGodotConditionalBreakpointEvaluator::BREAK_SKIP;
+						breakpoint_should_stop = WGodotConditionalBreakpointEvaluator::evaluate_breakpoint(source, line, this, p_instance, stack) != WGodotConditionalBreakpointEvaluator::BREAK_SKIP;
 #endif
 						if (breakpoint_should_stop) {
 							do_break = true;

@@ -708,6 +708,7 @@ void WGodotCLIEditorPlugin::_notification(int p_what) {
 			}
 		} break;
 		case NOTIFICATION_PROCESS: {
+			WGodotDebugService::process();
 			accept_connections();
 			poll_connections();
 		} break;

@@ -20,6 +20,7 @@ enum WaitKind {
 
 void initialize();
 void reset();
+void process();
 
 void sync_breakpoint(const String &p_path, int p_line, bool p_enabled);
 Dictionary execute_breakpoint(const Dictionary &p_options);
