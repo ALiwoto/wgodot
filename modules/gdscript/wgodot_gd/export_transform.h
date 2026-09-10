@@ -34,6 +34,7 @@ struct TransformOptions {
 	bool timing_verbose_logs_enabled = false;
 	int min_in_class_dead_code_injection = 0;
 	int max_in_class_dead_code_injection = 0;
+	int max_dead_code_gaps_per_file = 5;
 	int timing_slow_threshold_msec = 250;
 	ObfuscationStrategy obfuscation_strategy = OBFUSCATION_STRATEGY_SHORT;
 	ObfuscationStrategy file_path_obfuscation_strategy = OBFUSCATION_STRATEGY_SHORT;

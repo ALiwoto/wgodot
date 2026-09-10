@@ -223,24 +223,6 @@ bool constant_to_reference_source(WGodotGDScriptExportTransform::RewriteContext 
 	return !r_text.is_empty();
 }
 
-bool constant_to_indexable_source(WGodotGDScriptExportTransform::RewriteContext *p_context, const GDScriptParser::ConstantNode *p_constant, String &r_text) {
-	ERR_FAIL_NULL_V(p_constant, false);
-	ERR_FAIL_NULL_V(p_constant->initializer, false);
-
-	const Variant value = p_constant->initializer->reduced_value;
-	if (!is_array_source_type(value.get_type()) && value.get_type() != Variant::DICTIONARY) {
-		return false;
-	}
-
-	String text;
-	if (!variant_to_untyped_container_source(p_context, value, text) || text.is_empty()) {
-		return false;
-	}
-
-	r_text = "(" + text + ")";
-	return true;
-}
-
 bool should_mangle_constant(const GDScriptParser::ConstantNode *p_constant) {
 	return p_constant != nullptr && !p_constant->wgodot_no_mangle;
 }
@@ -348,7 +330,7 @@ bool add_constant_indexed_reference_replacement(RewriteContext &r_context, const
 	}
 
 	String base_text;
-	if (!constant_to_indexable_source(&r_context, constant, base_text)) {
+	if (!constant_to_reference_source(&r_context, constant, base_text)) {
 		return false;
 	}
 

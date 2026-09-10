@@ -10,6 +10,7 @@
 #include "string_obfuscation.h"
 
 #include "../gdscript_utility_functions.h"
+#include "../wgodot_stdlib.h"
 
 #include "core/config/project_settings.h"
 #include "core/object/class_db.h"
@@ -491,6 +492,7 @@ void ExportContext::reset() {
 	reserve_registered_global_class_names();
 	reserve_builtin_class_names();
 	reserve_builtin_function_names();
+	reserve_builtin_interface_methods();
 	obfuscation_random.randomize();
 }
 
@@ -642,9 +644,29 @@ void ExportContext::reserve_builtin_function_names() {
 	}
 }
 
+void ExportContext::reserve_builtin_interface_methods() {
+	// These declarations live in the engine, outside the project's export transform.
+	// Keep implementations and typed calls consistent with that fixed interface.
+	for (int i = 0; i < WGodotGDScriptStdLib::get_builtin_interface_count(); i++) {
+		GDScriptParser parser;
+		const String path = WGodotGDScriptStdLib::get_builtin_interface_path(i);
+		ERR_FAIL_COND(parser.parse(WGodotGDScriptStdLib::get_builtin_interface_source(i), path, false) != OK);
+		for (const GDScriptParser::ClassNode::Member &member : parser.get_tree()->members) {
+			if (member.type == GDScriptParser::ClassNode::Member::FUNCTION) {
+				const StringName name = member.function->identifier->name;
+				interface_method_aliases[name] = name;
+				reserve_member_name(name);
+			}
+		}
+	}
+}
+
 void ExportContext::seed_reserved_obfuscated_names(HashSet<StringName> &r_reserved_names) const {
 	for (const StringName &global_class : reserved_global_class_names) {
 		r_reserved_names.insert(global_class);
+	}
+	for (const StringName &member_name : reserved_member_names) {
+		r_reserved_names.insert(member_name);
 	}
 }
 

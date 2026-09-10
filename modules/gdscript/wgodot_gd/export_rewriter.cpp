@@ -188,7 +188,7 @@ void collect_expression_replacements(RewriteContext &r_context, const GDScriptPa
 			} else {
 				add_builtin_class_alias_reference_replacement(r_context, identifier);
 				add_global_class_name_reference_replacement(r_context, identifier);
-				add_member_name_reference_replacement(r_context, identifier);
+				add_member_name_reference_replacement(r_context, identifier, r_context.current_class);
 				if (!p_no_mangle_scope) {
 					add_local_name_reference_replacement(r_context, identifier);
 				}
@@ -559,6 +559,10 @@ void collect_export_replacements(RewriteContext &r_context, const GDScriptParser
 
 	phase_start_usec = r_timing != nullptr ? export_timing_get_ticks_usec() : 0;
 	collect_member_names(r_context, tree, false);
+	// Local names must not shadow the member names generated above.
+	if (r_context.export_context != nullptr) {
+		r_context.export_context->seed_reserved_obfuscated_names(r_context.reserved_obfuscated_names);
+	}
 	if (r_timing != nullptr) {
 		r_timing->member_names_usec = export_timing_get_ticks_usec() - phase_start_usec;
 	}

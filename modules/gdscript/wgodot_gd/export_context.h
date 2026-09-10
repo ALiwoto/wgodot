@@ -43,6 +43,7 @@ class ExportContext {
 	void reserve_registered_global_class_names();
 	void reserve_builtin_class_names();
 	void reserve_builtin_function_names();
+	void reserve_builtin_interface_methods();
 
 public:
 	void reset();
