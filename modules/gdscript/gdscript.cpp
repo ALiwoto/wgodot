@@ -38,7 +38,7 @@
 #include "gdscript_tokenizer_buffer.h"
 #include "gdscript_warning.h"
 // wgodot-changes::begin
-#include "wgodot_gd/export_transform.h"
+#include "wgodot_gd/project_settings.h"
 #include "wgodot_stdlib.h"
 // wgodot-changes::end
 
@@ -2992,7 +2992,7 @@ GDScriptLanguage::GDScriptLanguage() {
 	track_locals = GLOBAL_DEF_RST("debug/settings/gdscript/always_track_local_variables", false);
 
 	// wgodot-changes::begin
-	WGodotGDScriptExportTransform::register_project_settings();
+	WGodotGDScript::register_project_settings();
 	// wgodot-changes::end
 
 #ifdef DEBUG_ENABLED

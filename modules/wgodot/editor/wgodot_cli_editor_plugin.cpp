@@ -13,7 +13,7 @@
 #include "wgodot_project_info.h"
 #include "wgodot_source_info.h"
 
-#include "modules/gdscript/wgodot_gd/gdscript_check_cli.h"
+#include "modules/gdscript/wgodot_gd/editor/gdscript_check_cli.h"
 
 #include "core/crypto/crypto_core.h"
 #include "core/io/dir_access.h"

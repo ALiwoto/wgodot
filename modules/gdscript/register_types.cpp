@@ -38,8 +38,10 @@
 #include "gdscript_utility_functions.h"
 // wgodot-changes::begin
 #include "wgodot_gd/builtin_class_aliases.h"
-#include "wgodot_gd/export_pipeline.h"
-#include "wgodot_gd/export_transform.h"
+#ifdef TOOLS_ENABLED
+#include "wgodot_gd/editor/export/export_pipeline.h"
+#include "wgodot_gd/editor/export/export_maps.h"
+#endif
 #include "wgodot_gd/interface_method_aliases.h"
 #include "wgodot_gd/string_obfuscation.h"
 // wgodot-changes::end

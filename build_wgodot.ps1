@@ -1,3 +1,4 @@
+# wgodot-changes::file
 # my own personal script for building wgodot on my own local machine.
 
 param(
@@ -56,7 +57,7 @@ if ($shouldRunTests) {
 	}
 
 	$testProjectPath = Join-Path $PSScriptRoot "modules\gdscript\tests\scripts"
-	$deadcodeDir = Join-Path $PSScriptRoot "modules\gdscript\wgodot_gd\deadcode\in_class"
+	$deadcodeDir = Join-Path $PSScriptRoot "modules\gdscript\wgodot_gd\editor\export\deadcode\in_class"
 
 	foreach ($testName in $testsToRun) {
 		switch ($testName) {

@@ -4,27 +4,29 @@ from misc.utility.scons_hints import *
 Import("env")
 Import("env_modules")
 
-# wgodot-changes::begin
-import wgodot_gd.deadcode_builders as wgodot_deadcode_builders
-# wgodot-changes::end
-
 env_gdscript = env_modules.Clone()
-
-# wgodot-changes::begin
-wgodot_deadcode_header = env_gdscript.CommandNoCache(
-    "wgodot_gd/deadcode.gen.h",
-    Glob("wgodot_gd/deadcode/in_class/deadcode*.txt") + Glob("wgodot_gd/deadcode/in_class/static_deadcode*.txt"),
-    env.Run(wgodot_deadcode_builders.make_deadcode_header),
-)
-# wgodot-changes::end
 
 env_gdscript.add_source_files(env.modules_sources, "*.cpp")
 # wgodot-changes::begin
 env_gdscript.add_source_files(env.modules_sources, "./wgodot_gd/*.cpp")
-env_gdscript.Depends(env.modules_sources, wgodot_deadcode_header)
 # wgodot-changes::end
 
 if env.editor_build:
+    # wgodot-changes::begin
+    import wgodot_gd.editor.export.deadcode_builders as wgodot_deadcode_builders
+
+    wgodot_deadcode_header = env_gdscript.CommandNoCache(
+        "wgodot_gd/editor/export/deadcode.gen.h",
+        Glob("wgodot_gd/editor/export/deadcode/in_class/deadcode*.txt")
+        + Glob("wgodot_gd/editor/export/deadcode/in_class/static_deadcode*.txt"),
+        env.Run(wgodot_deadcode_builders.make_deadcode_header),
+    )
+    wgodot_editor_sources = []
+    env_gdscript.add_source_files(wgodot_editor_sources, "./wgodot_gd/editor/*.cpp")
+    env_gdscript.add_source_files(wgodot_editor_sources, "./wgodot_gd/editor/export/*.cpp")
+    env_gdscript.Depends(wgodot_editor_sources, wgodot_deadcode_header)
+    env.modules_sources += wgodot_editor_sources
+    # wgodot-changes::end
     env_gdscript.add_source_files(env.modules_sources, "./editor/*.cpp")
 
     SConscript("editor/script_templates/SCsub")

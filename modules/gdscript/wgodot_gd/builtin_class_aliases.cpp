@@ -5,13 +5,14 @@
 
 #include "builtin_class_aliases.h"
 
-#include "export_context.h"
-#include "export_analysis.h"
-#include "obfuscation_names.h"
+#include "obfuscation_format.h"
 #include "resource_map_codec.h"
+#ifdef TOOLS_ENABLED
+#include "script_resolution.h"
+#endif
 
-#include "../gdscript_utility_functions.h"
 #include "../gdscript_parser.h"
+#include "../gdscript_utility_functions.h"
 
 #include "core/config/engine.h"
 #include "core/error/error_macros.h"
@@ -22,7 +23,8 @@
 
 namespace {
 
-constexpr const char *ALIAS_MAP_PATH = "res://.godot/wgbca.a";
+constexpr const char *ALIAS_MAP_PATH = WGodotGDScriptFormat::BUILTIN_ALIAS_MAP_PATH;
+using WGodotGDScriptFormat::AliasRecordKind;
 
 HashMap<StringName, StringName> alias_to_native;
 HashMap<StringName, StringName> alias_to_function;
@@ -30,20 +32,7 @@ HashMap<StringName, StringName> instance_method_aliases;
 HashMap<StringName, StringName> static_method_aliases;
 HashMap<StringName, StringName> instance_property_aliases;
 HashMap<StringName, StringName> static_property_aliases;
-HashMap<StringName, StringName> instance_method_targets_by_unqualified_alias;
-HashMap<StringName, StringName> static_method_targets_by_unqualified_alias;
-HashMap<StringName, StringName> instance_property_targets_by_unqualified_alias;
-HashMap<StringName, StringName> static_property_targets_by_unqualified_alias;
 bool aliases_loaded = false;
-
-enum class AliasRecordKind : uint8_t {
-	NATIVE_TYPE = 1,
-	BUILTIN_FUNCTION = 2,
-	INSTANCE_METHOD = 3,
-	STATIC_METHOD = 4,
-	INSTANCE_PROPERTY = 5,
-	STATIC_PROPERTY = 6,
-};
 
 bool is_supported_builtin_alias_target(const StringName &p_name) {
 	if (p_name.is_empty()) {
@@ -59,14 +48,6 @@ bool is_supported_builtin_alias_target(const StringName &p_name) {
 
 bool is_supported_builtin_function_alias_target(const StringName &p_name) {
 	return !p_name.is_empty() && (Variant::has_utility_function(p_name) || GDScriptUtilityFunctions::function_exists(p_name));
-}
-
-StringName make_member_key(const StringName &p_owner, const StringName &p_name) {
-	if (p_owner.is_empty() || p_name.is_empty()) {
-		return StringName();
-	}
-
-	return StringName(String(p_owner) + "::" + String(p_name));
 }
 
 bool split_qualified_member(const StringName &p_qualified_name, StringName *r_owner, StringName *r_name) {
@@ -96,21 +77,7 @@ bool is_supported_builtin_member_alias_target(const StringName &p_owner, const S
 				return Variant::has_constant(builtin_type, p_name) || Variant::has_enum(builtin_type, p_name) || Variant::get_enum_for_enumeration(builtin_type, p_name) != StringName();
 			}
 
-			Callable::CallError err;
-			Variant dummy;
-			Variant::construct(builtin_type, dummy, nullptr, 0, err);
-			if (err.error != Callable::CallError::CALL_OK) {
-				return false;
-			}
-
-			List<PropertyInfo> properties;
-			dummy.get_property_list(&properties);
-			for (const PropertyInfo &property : properties) {
-				if (property.name == p_name) {
-					return true;
-				}
-			}
-			return false;
+			return Variant::has_member(builtin_type, p_name);
 		}
 
 		return Variant::has_builtin_method(builtin_type, p_name);
@@ -142,45 +109,6 @@ bool is_supported_builtin_member_alias_target(const StringName &p_owner, const S
 	return p_static == ((method_info.flags & METHOD_FLAG_STATIC) != 0 || Engine::get_singleton()->has_singleton(p_owner));
 }
 
-bool read_record_string(const Vector<uint8_t> &p_data, int &r_offset, String *r_string) {
-	ERR_FAIL_NULL_V(r_string, false);
-
-	Vector<uint8_t> string_bytes;
-	while (r_offset < p_data.size()) {
-		const uint8_t byte = p_data[r_offset++];
-		if (byte == 0) {
-			*r_string = string_bytes.is_empty() ? String() : String::utf8(reinterpret_cast<const char *>(string_bytes.ptr()), string_bytes.size());
-			return true;
-		}
-		string_bytes.push_back(byte);
-	}
-
-	return false;
-}
-
-void append_alias_record(Vector<uint8_t> &r_output, AliasRecordKind p_kind, const StringName &p_target, const StringName &p_alias) {
-	if (p_target.is_empty() || p_alias.is_empty()) {
-		return;
-	}
-
-	r_output.push_back(static_cast<uint8_t>(p_kind));
-	r_output.push_back(0);
-	const Vector<uint8_t> alias = WGodotGDScriptExportTransform::unwrap_binary_identifier_escape(String(p_alias)).to_utf8_buffer();
-	for (uint8_t byte : alias) {
-		if (byte != 0) {
-			r_output.push_back(byte);
-		}
-	}
-	r_output.push_back(0);
-	const Vector<uint8_t> target = String(p_target).to_utf8_buffer();
-	for (uint8_t byte : target) {
-		if (byte != 0) {
-			r_output.push_back(byte);
-		}
-	}
-	r_output.push_back(0);
-}
-
 void read_member_alias_record(const StringName &p_alias, const StringName &p_target, bool p_static, bool p_property) {
 	StringName owner;
 	StringName member;
@@ -188,14 +116,9 @@ void read_member_alias_record(const StringName &p_alias, const StringName &p_tar
 		return;
 	}
 
-	HashMap<StringName, StringName> &aliases = p_property ? 
-		(p_static ? static_property_aliases : instance_property_aliases) :
-		(p_static ? static_method_aliases : instance_method_aliases);
-	HashMap<StringName, StringName> &targets_by_unqualified_alias = p_property ? 
-		(p_static ? static_property_targets_by_unqualified_alias : instance_property_targets_by_unqualified_alias) :
-		(p_static ? static_method_targets_by_unqualified_alias : instance_method_targets_by_unqualified_alias);
-	aliases[make_member_key(owner, p_alias)] = member;
-	targets_by_unqualified_alias[p_alias] = member;
+	HashMap<StringName, StringName> &aliases = p_property ? (p_static ? static_property_aliases : instance_property_aliases) : (p_static ? static_method_aliases : instance_method_aliases);
+	// Aliases are globally unique across owners in the exporter.
+	aliases[p_alias] = member;
 }
 
 void load_aliases() {
@@ -226,7 +149,7 @@ void load_aliases() {
 		}
 		String alias_string;
 		String target_string;
-		if (!read_record_string(data, offset, &alias_string) || !read_record_string(data, offset, &target_string)) {
+		if (!WGodotGDScriptFormat::read_string(data, offset, alias_string) || !WGodotGDScriptFormat::read_string(data, offset, target_string)) {
 			break;
 		}
 
@@ -260,34 +183,13 @@ String get_alias_map_path() {
 	return ALIAS_MAP_PATH;
 }
 
-Vector<uint8_t> serialize_alias_map(const WGodotGDScriptExportTransform::ExportContext &p_context) {
-	Vector<uint8_t> output;
-	for (const KeyValue<StringName, StringName> &native_alias : p_context.get_builtin_class_aliases()) {
-		append_alias_record(output, AliasRecordKind::NATIVE_TYPE, native_alias.key, native_alias.value);
-	}
-	for (const KeyValue<StringName, StringName> &function_alias : p_context.get_builtin_function_aliases()) {
-		append_alias_record(output, AliasRecordKind::BUILTIN_FUNCTION, function_alias.key, function_alias.value);
-	}
-	for (const KeyValue<StringName, StringName> &method_alias : p_context.get_builtin_instance_method_aliases()) {
-		append_alias_record(output, AliasRecordKind::INSTANCE_METHOD, method_alias.key, method_alias.value);
-	}
-	for (const KeyValue<StringName, StringName> &method_alias : p_context.get_builtin_static_method_aliases()) {
-		append_alias_record(output, AliasRecordKind::STATIC_METHOD, method_alias.key, method_alias.value);
-	}
-	for (const KeyValue<StringName, StringName> &property_alias : p_context.get_builtin_instance_property_aliases()) {
-		append_alias_record(output, AliasRecordKind::INSTANCE_PROPERTY, property_alias.key, property_alias.value);
-	}
-	for (const KeyValue<StringName, StringName> &property_alias : p_context.get_builtin_static_property_aliases()) {
-		append_alias_record(output, AliasRecordKind::STATIC_PROPERTY, property_alias.key, property_alias.value);
-	}
-
-	return WGodotGDScriptResourceMapCodec::encode_resource_map(ALIAS_MAP_PATH, output);
-}
-
 StringName resolve_alias(const StringName &p_name) {
-	if (auto *analysis = WGodotGDScriptExportTransform::ExportAnalysis::get_active()) {
-		return analysis->resolve_native_alias(p_name);
+#ifdef TOOLS_ENABLED
+	StringName overridden;
+	if (WGodotGDScriptResolution::resolve_native_alias_override(p_name, overridden)) {
+		return overridden;
 	}
+#endif
 
 	if (p_name.is_empty()) {
 		return StringName();
@@ -299,9 +201,12 @@ StringName resolve_alias(const StringName &p_name) {
 }
 
 StringName resolve_function_alias(const StringName &p_name) {
-	if (auto *analysis = WGodotGDScriptExportTransform::ExportAnalysis::get_active()) {
-		return analysis->resolve_function_alias(p_name);
+#ifdef TOOLS_ENABLED
+	StringName overridden;
+	if (WGodotGDScriptResolution::resolve_function_alias_override(p_name, overridden)) {
+		return overridden;
 	}
+#endif
 
 	if (p_name.is_empty()) {
 		return StringName();
@@ -312,10 +217,13 @@ StringName resolve_function_alias(const StringName &p_name) {
 	return function != nullptr ? *function : StringName();
 }
 
-StringName resolve_member_alias(const StringName &p_owner, const StringName &p_name, bool p_static, bool p_property) {
-	if (auto *analysis = WGodotGDScriptExportTransform::ExportAnalysis::get_active()) {
-		return analysis->resolve_member_alias(p_name, p_static, p_property);
+StringName resolve_member_alias(const StringName &p_name, bool p_static, bool p_property) {
+#ifdef TOOLS_ENABLED
+	StringName overridden;
+	if (WGodotGDScriptResolution::resolve_member_alias_override(p_name, p_static, p_property, overridden)) {
+		return overridden;
 	}
+#endif
 
 	if (p_name.is_empty()) {
 		return StringName();
@@ -323,11 +231,7 @@ StringName resolve_member_alias(const StringName &p_owner, const StringName &p_n
 
 	load_aliases();
 	const HashMap<StringName, StringName> &aliases = p_property ? (p_static ? static_property_aliases : instance_property_aliases) : (p_static ? static_method_aliases : instance_method_aliases);
-	const StringName *member = p_owner.is_empty() ? nullptr : aliases.getptr(make_member_key(p_owner, p_name));
-	if (member == nullptr) {
-		const HashMap<StringName, StringName> &targets_by_unqualified_alias = p_property ? (p_static ? static_property_targets_by_unqualified_alias : instance_property_targets_by_unqualified_alias) : (p_static ? static_method_targets_by_unqualified_alias : instance_method_targets_by_unqualified_alias);
-		member = targets_by_unqualified_alias.getptr(p_name);
-	}
+	const StringName *member = aliases.getptr(p_name);
 	return member != nullptr ? *member : StringName();
 }
 
@@ -346,10 +250,6 @@ void clear_runtime_cache() {
 	static_method_aliases.clear();
 	instance_property_aliases.clear();
 	static_property_aliases.clear();
-	instance_method_targets_by_unqualified_alias.clear();
-	static_method_targets_by_unqualified_alias.clear();
-	instance_property_targets_by_unqualified_alias.clear();
-	static_property_targets_by_unqualified_alias.clear();
 	aliases_loaded = false;
 }
 

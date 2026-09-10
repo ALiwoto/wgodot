@@ -30,7 +30,7 @@
 
 #include "gdscript_parser.h"
 // wgodot-changes::begin
-#include "wgodot_gd/export_analysis.h"
+#include "wgodot_gd/script_resolution.h"
 // wgodot-changes::end
 
 #include "gdscript.h"
@@ -4740,7 +4740,7 @@ static StringName _find_narrowest_native_or_global_class(const GDScriptParser::D
 				script = p_type.script_type;
 			} else {
 				// wgodot-changes::begin
-				script = WGodotGDScriptExportTransform::ExportAnalysis::load_script(p_type.script_path, SNAME("Script"));
+				script = WGodotGDScriptResolution::load_script(p_type.script_path, SNAME("Script"));
 				// wgodot-changes::end
 			}
 
@@ -4850,10 +4850,10 @@ bool GDScriptParser::export_annotations(AnnotationNode *p_annotation, Node *p_ta
 		} else if (p_annotation->name == SNAME("@export_node_path")) {
 			String native_class = arg_string;
 			// wgodot-changes::begin
-			if (WGodotGDScriptExportTransform::ExportAnalysis::is_global_class(arg_string)) {
+			if (WGodotGDScriptResolution::is_global_class(arg_string)) {
 			// wgodot-changes::end
 				// wgodot-changes::begin
-				native_class = WGodotGDScriptExportTransform::ExportAnalysis::get_global_class_native_base(arg_string);
+				native_class = WGodotGDScriptResolution::get_global_class_native_base(arg_string);
 				// wgodot-changes::end
 			}
 			if (!ClassDB::class_exists(native_class) || !ClassDB::is_class_exposed(native_class)) {

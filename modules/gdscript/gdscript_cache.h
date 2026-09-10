@@ -62,8 +62,10 @@ private:
 	bool clearing = false;
 	bool abandoned = false;
 	// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
 	bool export_source = false;
 	String export_source_text;
+#endif
 	// wgodot-changes::end
 
 	friend class GDScriptCache;
@@ -77,7 +79,9 @@ public:
 	GDScriptAnalyzer *get_analyzer();
 	Error raise_status(Status p_new_status);
 	// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
 	void initialize_export_source(const String &p_path, const String &p_source);
+#endif
 	// wgodot-changes::end
 	void clear();
 

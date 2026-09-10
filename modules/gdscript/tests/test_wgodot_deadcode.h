@@ -7,7 +7,7 @@
 
 #include "../gdscript_analyzer.h"
 #include "../gdscript_parser.h"
-#include "../wgodot_gd/deadcode.gen.h"
+#include "../wgodot_gd/editor/export/deadcode.gen.h"
 
 #include "tests/test_macros.h"
 

@@ -1,0 +1,73 @@
+// wgodot-changes::file
+
+#pragma once
+
+#include "core/variant/variant.h"
+
+namespace WGodotGDScriptStringFormat {
+
+inline constexpr char32_t BASE52_ALPHABET[] = {
+	0x0009,
+	0x000A,
+	0x000D,
+	0x001B,
+	0x00A0,
+	0x00AD,
+	0x034F,
+	0x061C,
+	0x070F,
+	0x115F,
+	0x1160,
+	0x180E,
+	0x200B,
+	0x200C,
+	0x200D,
+	0x200E,
+	0x200F,
+	0x2028,
+	0x2029,
+	0x202A,
+	0x202B,
+	0x202C,
+	0x202D,
+	0x202E,
+	0x202F,
+	0x2060,
+	0x2061,
+	0x2062,
+	0x2063,
+	0x2064,
+	0x2066,
+	0x2067,
+	0x2068,
+	0x2069,
+	0x206A,
+	0x206B,
+	0x206C,
+	0x206D,
+	0x206E,
+	0x206F,
+	0x2800,
+	0x3164,
+	0xFE00,
+	0xFE0E,
+	0xFE0F,
+	0xFEFF,
+	0x3042,
+	0x3044,
+	0x3046,
+	0x3048,
+	0x304A,
+	0x304B,
+};
+
+constexpr int BASE52_SIZE = sizeof(BASE52_ALPHABET) / sizeof(BASE52_ALPHABET[0]);
+static_assert(BASE52_SIZE == 52);
+
+inline bool is_supported_literal_type(Variant::Type p_type) {
+	return p_type == Variant::STRING || p_type == Variant::STRING_NAME || p_type == Variant::NODE_PATH;
+}
+
+String decode_fragment_text(const String &p_text);
+
+} // namespace WGodotGDScriptStringFormat

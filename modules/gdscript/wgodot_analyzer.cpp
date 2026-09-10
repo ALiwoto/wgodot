@@ -7,7 +7,7 @@
 /*                        https://godotengine.org                         */
 /**************************************************************************/
 
-#include "wgodot_gd/export_analysis.h"
+#include "wgodot_gd/script_resolution.h"
 #include "gdscript_analyzer.h"
 
 #include "gdscript.h"
@@ -1085,8 +1085,8 @@ GDScriptParser::ClassNode *GDScriptAnalyzer::wgodot_resolve_interface_reference(
 				push_error(vformat(R"(Could not resolve built-in interface "%s".)", interface_name), source);
 				return nullptr;
 			}
-		} else if (WGodotGDScriptExportTransform::ExportAnalysis::is_global_class(interface_name)) {
-			String interface_path = WGodotGDScriptExportTransform::ExportAnalysis::get_global_class_path(interface_name);
+		} else if (WGodotGDScriptResolution::is_global_class(interface_name)) {
+			String interface_path = WGodotGDScriptResolution::get_global_class_path(interface_name);
 			if (GDScript::is_canonically_equal_paths(interface_path, parser->script_path)) {
 				interface_class = parser->head;
 			} else {

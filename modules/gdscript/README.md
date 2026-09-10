@@ -73,9 +73,9 @@ To understand classes and inheritance without introducing cyclic dependency prob
 This is done through `resolve_class_interface()`, which populates `ClassNode`'s `Datatype` with that information. It first checks for superclass information with `resolve_class_inheritance()`, then populates its member information by calling `resolve_class_member()` on each member. Since this step is only about the class _interface_, methods are resolved with `resolve_function_signature()`, which gets all relevant typing information without resolving the function body!
 The remaining steps of resolution, including member variable initialization code, method code, etc, can happen at a later time.
 
-In fully untyped code, very little static analysis is possible. For example, the analyzer cannot know whether `my_var.some_member` exists when it does not know the type of `my_var`. Therefore, it cannot emit a warning or error because `some_member` _could_ exist - or it could not. The analyzer must trust the programmer. If an error does occur, it will be at runtime.
-However, GDScript is gradually typed, so all of these analyses must work when parts of the code are typed and others untyped. Static analysis in a gradually typed language is a best-effort situation: suppose there is a typed variable `var x : int`, and an untyped `var y = "some string"`. We can obviously tell this isn't going to work, but the analyzer will accept the assignment `x = y` without warnings or errors: it only knows that `y` is untyped and can therefore be anything, including the `int` that `x` expects. It must once again trust the programmer to have written code that works. In this instance, the code will error at runtime.
-In both these cases, the analyzer handles the uncertainty of untyped code by calling `mark_node_unsafe()` on the respective AST node. This means it didn't have enough information to know whether the code was fully safe or necessarily wrong. Lines with unsafe AST nodes are represented by gray line numbers in the GDScript editor. Green line numbers indicate a line of code without any unsafe nodes.
+<!-- wgodot-changes::begin -->
+When strict type checking is disabled, GDScript permits mixing typed and untyped code. Static analysis cannot prove every dynamic access safe; `mark_node_unsafe()` marks operations whose safety depends on runtime values, and some can produce warnings. Invalid operations that pass analysis fail at runtime. WGodot's strict checking instead rejects insufficiently typed declarations and unresolved dynamic access during tooling analysis.
+<!-- wgodot-changes::end -->
 
 This analysis step is also where dependencies are introduced and that information stored for use later. If class `A` extends class `B` or contains a member with type `B` from some other script file, then the analyzer will attempt to load that second script. If `B` contains references to `A`, then a _cyclic_ dependency is introduced. This is OK in many cases, but impossible to resolve in others.
 
@@ -112,7 +112,9 @@ Typed code is safer code and faster code!
 
 ## Loading scripts
 
-GDScripts can be loaded in a couple of different ways. The main method, used almost everywhere in the engine, is to load scripts through the `ResourceLoader` singleton. In this way, GDScripts are resources like any others: `ResourceLoader::load()` will simply reroute to `ResourceFormatLoaderGDScript::load()`, found in `gdscript.h/cpp`(gdscript.h). This generates a GDScript object which is compiled and ready to use.
+<!-- wgodot-changes::begin -->
+Normal script loading uses `ResourceLoader::load()`, which delegates to `ResourceFormatLoaderGDScript::load()` in [`gdscript_resource_format.cpp`](gdscript_resource_format.cpp) and returns a compiled `GDScript` resource.
+<!-- wgodot-changes::end -->
 
 The other method is to manually load the source code, then pass it to a parser, then to an analyzer and then to a compiler. The previous approach does this behind the scenes, alongside some smart caching of scripts and other functionalities. It is used in the [GDScript test runner infrastructure](tests/gdscript_test_runner.h).
 
@@ -126,6 +128,15 @@ Shallow, or "just parsed" scripts, provide information such as defined classes, 
 The distinction between full and shallow scripts is very important, as shallow scripts cannot create cyclic dependency problems, whereas full scripts can. The analyzer, for example, never asks for full scripts. Choosing when to request a shallow vs a full script is an important but subtle decision.
 
 In practice, full scripts are simply scripts where `GDScript::reload()` has been called. This critical function is the primary way in which scripts get compiled in Godot, and essentially does all the compilation steps covered so far in order. Whenever a script is loaded, or updated and reloaded in Godot, it will end up going through `GDScript::reload()`, except in very rare circumstances like the test runner. It is an excellent place to start reading and understanding the GDScript module!
+
+
+<!-- wgodot-changes::begin -->
+### WGodot export analysis
+
+[`ExportPipeline`](wgodot_gd/editor/export/export_pipeline.cpp) runs enabled passes through a read-only prescan of original source, then sequential analysis and transformation of the current project revision. Each transformation emits edits against the exact revision analyzed; applying them creates the next revision. `ExportAnalysis` owns parsers and shallow scripts for one revision. Scoped lookups use that state without populating the editor's normal cache.
+
+Exporter implementations and map writers under `wgodot_gd/editor/export/` compile only into the editor. Templates retain the shared readers in `wgodot_gd/` needed to load exported scripts.
+<!-- wgodot-changes::end -->
 
 
 ## Special types of scripts
