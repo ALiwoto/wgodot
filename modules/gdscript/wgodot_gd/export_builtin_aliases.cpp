@@ -3,9 +3,8 @@
 /*  export_builtin_aliases.cpp                                            */
 /**************************************************************************/
 
-#include "export_transform_internal.h"
-
 #include "../gdscript_utility_functions.h"
+#include "export_transform_internal.h"
 
 #include "core/config/engine.h"
 #include "core/object/class_db.h"
@@ -39,6 +38,10 @@ void get_or_create_builtin_class_alias(ExportContext *p_context, const StringNam
 }
 
 bool is_supported_builtin_function_alias_target(const StringName &p_name) {
+	// The analyzer and compiler recognize range() by name for typed, allocation-free loops.
+	if (p_name == SNAME("range")) {
+		return false;
+	}
 	return !p_name.is_empty() && (Variant::has_utility_function(p_name) || GDScriptUtilityFunctions::function_exists(p_name));
 }
 

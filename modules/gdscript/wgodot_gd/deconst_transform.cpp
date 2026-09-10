@@ -245,12 +245,37 @@ bool should_mangle_constant(const GDScriptParser::ConstantNode *p_constant) {
 	return p_constant != nullptr && !p_constant->wgodot_no_mangle;
 }
 
+bool contains_object(const Variant &p_value) {
+	if (p_value.get_type() == Variant::OBJECT) {
+		return true;
+	}
+	if (p_value.get_type() == Variant::ARRAY) {
+		const Array array = p_value;
+		for (int i = 0; i < array.size(); i++) {
+			if (contains_object(array[i])) {
+				return true;
+			}
+		}
+	} else if (p_value.get_type() == Variant::DICTIONARY) {
+		const Dictionary dictionary = p_value;
+		for (const KeyValue<Variant, Variant> &entry : dictionary) {
+			if (contains_object(entry.key) || contains_object(entry.value)) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
 } // namespace
 
 namespace WGodotGDScriptExportTransform {
 
 bool should_deconst_constant(const RewriteContext &p_context, const GDScriptParser::ConstantNode *p_constant) {
-	return p_context.options.deconst_exports && should_mangle_constant(p_constant);
+	// Resource/script constants must keep their declarations and preload semantics.
+	// VariantWriter's Resource(...) representation is not a GDScript constructor.
+	return p_context.options.deconst_exports && should_mangle_constant(p_constant) &&
+			p_constant->initializer != nullptr && !contains_object(p_constant->initializer->reduced_value);
 }
 
 bool is_declared_constant_identifier(const RewriteContext &p_context, const GDScriptParser::IdentifierNode *p_identifier) {
