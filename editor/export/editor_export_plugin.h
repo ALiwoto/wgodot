@@ -54,6 +54,9 @@ class EditorExportPlugin : public RefCounted {
 	};
 	Vector<ExtraFile> extra_files;
 	bool skipped = false;
+	// wgodot-changes::begin
+	Error export_error = OK;
+	// wgodot-changes::end
 
 	Vector<String> apple_embedded_platform_frameworks;
 	Vector<String> apple_embedded_platform_embedded_frameworks;
@@ -72,6 +75,10 @@ class EditorExportPlugin : public RefCounted {
 	}
 
 	_FORCE_INLINE_ void _export_end_clear() {
+		// wgodot-changes::begin
+		export_error = OK;
+		_clear();
+		// wgodot-changes::end
 		apple_embedded_platform_frameworks.clear();
 		apple_embedded_platform_embedded_frameworks.clear();
 		apple_embedded_platform_bundle_files.clear();
@@ -113,8 +120,10 @@ protected:
 	virtual void _export_file(const String &p_path, const String &p_type, const HashSet<String> &p_features);
 	virtual void _export_begin(const HashSet<String> &p_features, bool p_debug, const String &p_path, int p_flags);
 	// wgodot-changes::begin
+	void set_export_error(Error p_error, const String &p_message);
 	virtual void _export_paths_ready(const HashSet<String> &p_paths);
 	virtual void _export_global_class_list(Array &r_global_class_list);
+	virtual Error _export_completed() { return OK; }
 	// wgodot-changes::end
 	virtual void _export_end();
 	virtual void _end_generate_apple_embedded_project(const String &p_path, bool p_will_build_archive);

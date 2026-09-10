@@ -2458,7 +2458,9 @@ Error EditorExportPlatformMacOS::export_project(const Ref<EditorExportPreset> &p
 		}
 	}
 
-	return err;
+	// wgodot-changes::begin
+	return notifier.finish(err);
+	// wgodot-changes::end
 }
 
 bool EditorExportPlatformMacOS::has_valid_export_configuration(const Ref<EditorExportPreset> &p_preset, String &r_error, bool &r_missing_templates, bool p_debug) const {

@@ -13,11 +13,7 @@
 
 namespace {
 
-struct DeadCodeInsertion {
-	int offset = 0;
-	String indent;
-	bool static_class = false;
-};
+using DeadCodeInsertion = WGodotGDScriptDeadCodeInjection::Insertion;
 
 struct InsertionSort {
 	bool operator()(const DeadCodeInsertion &p_left, const DeadCodeInsertion &p_right) const {
@@ -175,7 +171,7 @@ String make_dead_code_block(RandomPCG &r_random, const String &p_indent, uint64_
 	return "\n" + indent_snippet(snippet, p_indent) + "\n";
 }
 
-void add_dead_code_insertion(int p_offset, const String &p_indent, bool p_static_class, LocalVector<DeadCodeInsertion> &r_insertions) {
+void add_dead_code_insertion(int p_offset, const String &p_indent, bool p_static_class, Vector<DeadCodeInsertion> &r_insertions) {
 	if (p_offset < 0) {
 		return;
 	}
@@ -208,7 +204,7 @@ int get_empty_class_insertion_offset(const String &p_source, const Vector<int> &
 	return offset >= 0 ? offset : p_source.length();
 }
 
-void collect_class_insertions(const String &p_source, const Vector<int> &p_line_offsets, const GDScriptParser::ClassNode *p_class, bool p_no_mangle_scope, LocalVector<DeadCodeInsertion> &r_insertions) {
+void collect_class_insertions(const String &p_source, const Vector<int> &p_line_offsets, const GDScriptParser::ClassNode *p_class, bool p_no_mangle_scope, Vector<DeadCodeInsertion> &r_insertions) {
 	if (p_class == nullptr) {
 		return;
 	}
@@ -263,64 +259,49 @@ void collect_class_insertions(const String &p_source, const Vector<int> &p_line_
 
 namespace WGodotGDScriptDeadCodeInjection {
 
-String inject_in_class_dead_code(const String &p_source, const String &p_path, const WGodotGDScriptExportTransform::TransformOptions &p_options, bool *r_changed) {
-	if (r_changed != nullptr) {
-		*r_changed = false;
-	}
-
-	if (!p_options.dead_code_injection_enabled ||
-			p_options.max_dead_code_gaps_per_file <= 0 ||
-			MAX(p_options.min_in_class_dead_code_injection, p_options.max_in_class_dead_code_injection) <= 0 ||
-			(WGodotGDScriptDeadCodeTemplates::IN_CLASS_DEAD_CODE_TEMPLATE_COUNT <= 0 &&
-					WGodotGDScriptDeadCodeTemplates::STATIC_IN_CLASS_DEAD_CODE_TEMPLATE_COUNT <= 0)) {
-		return p_source;
-	}
-
-	GDScriptParser parser;
-	if (parser.parse(p_source, p_path, false) != OK) {
-		return p_source;
-	}
-
+void analyze_in_class_dead_code(const String &p_source, const GDScriptParser::ClassNode *p_tree, Vector<Insertion> &r_insertions) {
 	Vector<int> line_offsets;
 	build_line_offsets(p_source, line_offsets);
+	r_insertions.clear();
+	collect_class_insertions(p_source, line_offsets, p_tree, false, r_insertions);
+}
 
+void make_in_class_dead_code_edits(const String &p_source, const String &p_path, const WGodotGDScriptExportTransform::TransformOptions &p_options, const Vector<Insertion> &p_insertions, Vector<WGodotGDScriptExportTransform::SourceEdit> &r_edits) {
+	if (p_insertions.is_empty()) {
+		return;
+	}
 	RandomPCG random;
 	random.seed(make_seed(p_source, p_path, p_options));
-
-	LocalVector<DeadCodeInsertion> insertions;
-	collect_class_insertions(p_source, line_offsets, parser.get_tree(), false, insertions);
-	if (insertions.is_empty()) {
-		return p_source;
-	}
-
-	// Select distinct gaps across the whole file, including nested classes.
-	const uint32_t gap_count = MIN(insertions.size(), static_cast<uint32_t>(MIN(p_options.max_dead_code_gaps_per_file, 5)));
-	for (uint32_t i = 0; i < gap_count; i++) {
-		const uint32_t selected = i + random.rand(insertions.size() - i);
-		SWAP(insertions[i], insertions[selected]);
+	Vector<Insertion> insertions = p_insertions;
+	const int gap_count = MIN(insertions.size(), MIN(p_options.max_dead_code_gaps_per_file, 5));
+	for (int i = 0; i < gap_count; i++) {
+		const int selected = i + random.rand(insertions.size() - i);
+		SWAP(insertions.write[i], insertions.write[selected]);
 	}
 	insertions.resize(gap_count);
 	insertions.sort_custom<InsertionSort>();
 	uint64_t unique_id = 1;
-	String result = p_source;
 	for (int i = insertions.size() - 1; i >= 0; i--) {
-		const DeadCodeInsertion &insertion = insertions[i];
-		if (insertion.offset < 0 || insertion.offset > result.length()) {
-			continue;
-		}
+		const Insertion &insertion = insertions[i];
 		const DeadCodeTemplatePool template_pool = get_template_pool(insertion.static_class);
 		const int injection_count = get_random_injection_count(random, p_options.min_in_class_dead_code_injection, p_options.max_in_class_dead_code_injection);
 		String block;
 		for (int j = 0; j < injection_count; j++) {
 			block += make_dead_code_block(random, insertion.indent, unique_id, template_pool);
 		}
-		result = result.substr(0, insertion.offset) + block + result.substr(insertion.offset);
+		if (block.is_empty()) {
+			continue;
+		}
+		if (!r_edits.is_empty() && r_edits[r_edits.size() - 1].start == insertion.offset) {
+			r_edits.write[r_edits.size() - 1].text = block + r_edits[r_edits.size() - 1].text;
+		} else {
+			WGodotGDScriptExportTransform::SourceEdit edit;
+			edit.start = insertion.offset;
+			edit.end = insertion.offset;
+			edit.text = block;
+			r_edits.push_back(edit);
+		}
 	}
-
-	if (result != p_source && r_changed != nullptr) {
-		*r_changed = true;
-	}
-	return result;
 }
 
 } // namespace WGodotGDScriptDeadCodeInjection

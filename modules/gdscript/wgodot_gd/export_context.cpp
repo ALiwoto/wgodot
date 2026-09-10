@@ -472,8 +472,10 @@ void index_class(WGodotGDScriptExportTransform::ExportContext &r_context, const 
 namespace WGodotGDScriptExportTransform {
 
 void ExportContext::reset() {
+	diagnostics.reset();
 	member_renames.clear();
 	interface_method_aliases.clear();
+	builtin_interface_aliases.clear();
 	global_class_renames.clear();
 	global_class_renames_by_path.clear();
 	builtin_class_aliases.clear();
@@ -651,10 +653,12 @@ void ExportContext::reserve_builtin_interface_methods() {
 		GDScriptParser parser;
 		const String path = WGodotGDScriptStdLib::get_builtin_interface_path(i);
 		ERR_FAIL_COND(parser.parse(WGodotGDScriptStdLib::get_builtin_interface_source(i), path, false) != OK);
-		for (const GDScriptParser::ClassNode::Member &member : parser.get_tree()->members) {
+		for (int method_index = 0; method_index < parser.get_tree()->members.size(); method_index++) {
+			const GDScriptParser::ClassNode::Member &member = parser.get_tree()->members[method_index];
 			if (member.type == GDScriptParser::ClassNode::Member::FUNCTION) {
 				const StringName name = member.function->identifier->name;
 				interface_method_aliases[name] = name;
+				builtin_interface_aliases[(static_cast<uint64_t>(i) << 32) | method_index] = name;
 				reserve_member_name(name);
 			}
 		}

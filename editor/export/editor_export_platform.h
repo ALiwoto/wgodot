@@ -174,6 +174,9 @@ private:
 protected:
 	struct ExportNotifier {
 		bool enabled = true;
+		// wgodot-changes::begin
+		Error finish(Error p_result);
+		// wgodot-changes::end
 
 		ExportNotifier(EditorExportPlatform &p_platform, const Ref<EditorExportPreset> &p_preset, bool p_debug, const String &p_path, BitField<EditorExportPlatform::DebugFlags> p_flags, bool p_enabled = true);
 		~ExportNotifier();

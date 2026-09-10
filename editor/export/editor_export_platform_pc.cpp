@@ -149,7 +149,9 @@ Error EditorExportPlatformPC::export_project(const Ref<EditorExportPreset> &p_pr
 		err = export_project_data(p_preset, p_debug, p_path, p_flags);
 	}
 
-	return err;
+	// wgodot-changes::begin
+	return notifier.finish(err);
+	// wgodot-changes::end
 }
 
 Error EditorExportPlatformPC::prepare_template(const Ref<EditorExportPreset> &p_preset, bool p_debug, const String &p_path, BitField<EditorExportPlatform::DebugFlags> p_flags) {

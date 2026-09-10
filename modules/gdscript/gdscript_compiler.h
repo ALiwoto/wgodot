@@ -184,7 +184,9 @@ class GDScriptCompiler {
 
 public:
 	static void convert_to_initializer_type(Variant &p_variant, const GDScriptParser::VariableNode *p_node);
-	static void make_scripts(GDScript *p_script, const GDScriptParser::ClassNode *p_class, bool p_keep_state);
+	// wgodot-changes::begin
+	static void make_scripts(GDScript *p_script, const GDScriptParser::ClassNode *p_class, bool p_keep_state, bool p_use_orphan_subclasses = true);
+	// wgodot-changes::end
 	Error compile(const GDScriptParser *p_parser, GDScript *p_script, bool p_keep_state = false);
 
 	String get_error() const;

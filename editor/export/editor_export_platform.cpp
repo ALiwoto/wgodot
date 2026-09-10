@@ -817,6 +817,27 @@ EditorExportPlatform::ExportNotifier::ExportNotifier(EditorExportPlatform &p_pla
 	}
 }
 
+// wgodot-changes::begin
+Error EditorExportPlatform::ExportNotifier::finish(Error p_result) {
+	if (!enabled || p_result != OK) {
+		return p_result;
+	}
+	const Vector<Ref<EditorExportPlugin>> plugins = EditorExport::get_singleton()->get_export_plugins();
+	for (const Ref<EditorExportPlugin> &plugin : plugins) {
+		if (plugin->export_error != OK) {
+			return plugin->export_error;
+		}
+	}
+	for (const Ref<EditorExportPlugin> &plugin : plugins) {
+		const Error error = plugin->_export_completed();
+		if (error != OK) {
+			return error;
+		}
+	}
+	return OK;
+}
+// wgodot-changes::end
+
 EditorExportPlatform::ExportNotifier::~ExportNotifier() {
 	if (!enabled) {
 		return;
@@ -1447,6 +1468,9 @@ Error EditorExportPlatform::export_project_files(const Ref<EditorExportPreset> &
 	// filters and EditorFileSystem ignore rules, instead of rescanning `res://`.
 	for (int i = 0; i < export_plugins.size(); i++) {
 		export_plugins.write[i]->_export_paths_ready(paths);
+		if (export_plugins[i]->export_error != OK) {
+			return export_plugins[i]->export_error;
+		}
 	}
 	// wgodot-changes::end
 
@@ -1556,6 +1580,11 @@ Error EditorExportPlatform::export_project_files(const Ref<EditorExportPreset> &
 			} else {
 				export_plugins.write[i]->_export_file(path, type, features);
 			}
+			// wgodot-changes::begin
+			if (export_plugins[i]->export_error != OK) {
+				return export_plugins[i]->export_error;
+			}
+			// wgodot-changes::end
 			if (p_so_func) {
 				for (int j = 0; j < export_plugins[i]->shared_objects.size(); j++) {
 					err = p_so_func(p_preset, p_udata, export_plugins[i]->shared_objects[j]);
@@ -2484,12 +2513,16 @@ Error EditorExportPlatform::save_zip_patch(const Ref<EditorExportPreset> &p_pres
 
 Error EditorExportPlatform::export_pack(const Ref<EditorExportPreset> &p_preset, bool p_debug, const String &p_path, BitField<EditorExportPlatform::DebugFlags> p_flags) {
 	ExportNotifier notifier(*this, p_preset, p_debug, p_path, p_flags);
-	return save_pack(p_preset, p_debug, p_path);
+	// wgodot-changes::begin
+	return notifier.finish(save_pack(p_preset, p_debug, p_path));
+	// wgodot-changes::end
 }
 
 Error EditorExportPlatform::export_zip(const Ref<EditorExportPreset> &p_preset, bool p_debug, const String &p_path, BitField<EditorExportPlatform::DebugFlags> p_flags) {
 	ExportNotifier notifier(*this, p_preset, p_debug, p_path, p_flags);
-	return save_zip(p_preset, p_debug, p_path);
+	// wgodot-changes::begin
+	return notifier.finish(save_zip(p_preset, p_debug, p_path));
+	// wgodot-changes::end
 }
 
 Error EditorExportPlatform::export_pack_patch(const Ref<EditorExportPreset> &p_preset, bool p_debug, const String &p_path, const Vector<String> &p_patches, BitField<EditorExportPlatform::DebugFlags> p_flags) {
@@ -2500,7 +2533,9 @@ Error EditorExportPlatform::export_pack_patch(const Ref<EditorExportPreset> &p_p
 	}
 	err = save_pack_patch(p_preset, p_debug, p_path);
 	_unload_patches();
-	return err;
+	// wgodot-changes::begin
+	return notifier.finish(err);
+	// wgodot-changes::end
 }
 
 Error EditorExportPlatform::export_zip_patch(const Ref<EditorExportPreset> &p_preset, bool p_debug, const String &p_path, const Vector<String> &p_patches, BitField<EditorExportPlatform::DebugFlags> p_flags) {
@@ -2511,7 +2546,9 @@ Error EditorExportPlatform::export_zip_patch(const Ref<EditorExportPreset> &p_pr
 	}
 	err = save_zip_patch(p_preset, p_debug, p_path);
 	_unload_patches();
-	return err;
+	// wgodot-changes::begin
+	return notifier.finish(err);
+	// wgodot-changes::end
 }
 
 Vector<String> EditorExportPlatform::gen_export_flags(BitField<EditorExportPlatform::DebugFlags> p_flags) {

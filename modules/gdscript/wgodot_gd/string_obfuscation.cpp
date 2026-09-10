@@ -6,6 +6,7 @@
 #include "string_obfuscation.h"
 
 #include "export_context.h"
+#include "export_analysis.h"
 #include "resource_map_codec.h"
 
 #include "core/error/error_macros.h"
@@ -228,7 +229,10 @@ bool decode_marker(const String &p_marker, String *r_decoded) {
 		return false;
 	}
 
-	ensure_string_resources_loaded();
+	auto *analysis = WGodotGDScriptExportTransform::ExportAnalysis::get_active();
+	if (analysis == nullptr) {
+		ensure_string_resources_loaded();
+	}
 
 	const String payload = p_marker.substr(2, p_marker.length() - 4);
 	const Vector<String> ids = payload.split("\\", false);
@@ -243,11 +247,11 @@ bool decode_marker(const String &p_marker, String *r_decoded) {
 			return false;
 		}
 
-		const String *fragment = string_resources.getptr(id);
+		const String *fragment = analysis != nullptr ? analysis->get_artifacts().get_string_resources().getptr(id) : string_resources.getptr(id);
 		if (fragment == nullptr) {
 			return false;
 		}
-		decoded += *fragment;
+		decoded += analysis != nullptr ? decode_fragment_text(*fragment) : *fragment;
 	}
 
 	*r_decoded = decoded;

@@ -38,7 +38,7 @@
 #include "gdscript_utility_functions.h"
 // wgodot-changes::begin
 #include "wgodot_gd/builtin_class_aliases.h"
-#include "wgodot_gd/export_context.h"
+#include "wgodot_gd/export_pipeline.h"
 #include "wgodot_gd/export_transform.h"
 #include "wgodot_gd/interface_method_aliases.h"
 #include "wgodot_gd/string_obfuscation.h"
@@ -93,14 +93,16 @@ class EditorExportGDScript : public EditorExportPlugin {
 	static constexpr EditorExportPreset::ScriptExportMode DEFAULT_SCRIPT_MODE = EditorExportPreset::MODE_SCRIPT_BINARY_TOKENS_COMPRESSED;
 	EditorExportPreset::ScriptExportMode script_mode = DEFAULT_SCRIPT_MODE;
 	// wgodot-changes::begin
-	WGodotGDScriptExportTransform::ExportContext transform_context;
+	WGodotGDScriptExportTransform::ExportPipeline pipeline;
+	WGodotGDScriptExportTransform::TransformOptions transform_options;
+	String diagnostic_map_path;
 	// wgodot-changes::end
 
 protected:
 	virtual void _export_begin(const HashSet<String> &p_features, bool p_debug, const String &p_path, int p_flags) override {
 		script_mode = DEFAULT_SCRIPT_MODE;
 		// wgodot-changes::begin
-		transform_context.reset();
+		pipeline.reset();
 		// wgodot-changes::end
 
 		const Ref<EditorExportPreset> &preset = get_export_preset();
@@ -109,74 +111,95 @@ protected:
 		}
 		// wgodot-changes::begin
 		WGodotGDScriptExportTransform::TransformOptions options = WGodotGDScriptExportTransform::setup_params();
+		options.redact_diagnostics = options.redact_diagnostics && !p_debug;
 		options.binary_tokens_export = script_mode != EditorExportPreset::MODE_SCRIPT_TEXT;
-		transform_context.set_options(options);
+		transform_options = options;
+		diagnostic_map_path = p_path.get_basename() + ".diagnostics.json";
 		// wgodot-changes::end
 	}
 
 	// wgodot-changes::begin
 	virtual void _export_paths_ready(const HashSet<String> &p_paths) override {
-		WGodotGDScriptExportTransform::prescan_project_scripts(&transform_context, p_paths);
-		const Vector<uint8_t> builtin_class_aliases = WGodotGDScriptBuiltinClassAliases::serialize_alias_map(transform_context);
+		String details;
+		Error error = pipeline.prepare(p_paths, transform_options, details);
+		if (error != OK) {
+			set_export_error(error, details);
+			return;
+		}
+		const auto &artifacts = pipeline.get_artifacts();
+		const Vector<uint8_t> builtin_class_aliases = WGodotGDScriptBuiltinClassAliases::serialize_alias_map(artifacts);
 		if (!builtin_class_aliases.is_empty()) {
 			add_file(WGodotGDScriptBuiltinClassAliases::get_alias_map_path(), builtin_class_aliases, false);
 		}
-		const Vector<uint8_t> interface_method_aliases = WGodotGDScriptInterfaceMethodAliases::serialize_alias_map(transform_context);
+		const Vector<uint8_t> interface_method_aliases = WGodotGDScriptInterfaceMethodAliases::serialize_alias_map(artifacts);
 		if (!interface_method_aliases.is_empty()) {
 			add_file(WGodotGDScriptInterfaceMethodAliases::get_alias_map_path(), interface_method_aliases, false);
 		}
-		const Vector<uint8_t> string_map = WGodotGDScriptStringObfuscation::serialize_string_map(transform_context);
+		const Vector<uint8_t> string_map = WGodotGDScriptStringObfuscation::serialize_string_map(artifacts);
 		if (!string_map.is_empty()) {
 			add_file(WGodotGDScriptStringObfuscation::get_string_map_path(), string_map, false);
 		}
 	}
 
 	virtual void _export_global_class_list(Array &r_global_class_list) override {
-		WGodotGDScriptExportTransform::transform_global_class_list(&transform_context, &r_global_class_list);
+		WGodotGDScriptExportTransform::transform_global_class_list(&pipeline.get_artifacts(), &r_global_class_list);
+	}
+
+	virtual Error _export_completed() override {
+		if (transform_options.redact_diagnostics) {
+			const Error error = pipeline.get_artifacts().get_diagnostics().save_map(diagnostic_map_path);
+			if (error != OK) {
+				set_export_error(error, "Cannot write diagnostic map: " + diagnostic_map_path);
+				return error;
+			}
+		}
+		return OK;
+	}
+
+	virtual void _export_end() override {
+		pipeline.reset();
 	}
 	// wgodot-changes::end
 
 	virtual void _export_file(const String &p_path, const String &p_type, const HashSet<String> &p_features) override {
 		// wgodot-changes::begin
-		// Text-mode `.gd` exports still need to pass through the de-const sanitizer.
-		// Do not return early for MODE_SCRIPT_TEXT here; text mode is handled below
-		// after the sanitizer gets a chance to replace constants in exported source.
+		// Private maps from earlier exports must not enter a later package through
+		// resource include filters, even when redaction is currently disabled.
+		if (p_path.ends_with(".diagnostics.json")) {
+			skip();
+			return;
+		}
 		if (p_path.get_extension() != "gd") {
 			return;
 		}
-		// wgodot-changes::end
-
-		Vector<uint8_t> file = FileAccess::get_file_as_bytes(p_path);
-		if (file.is_empty()) {
+		const auto *prepared = pipeline.get_source(p_path);
+		if (prepared == nullptr) {
+			set_export_error(ERR_INVALID_DATA, "Missing prepared GDScript export: " + p_path);
 			return;
 		}
-
-		String source = String::utf8(reinterpret_cast<const char *>(file.ptr()), file.size());
-		// wgodot-changes::begin
-		bool source_changed = false;
-		source = WGodotGDScriptExportTransform::transform_source(source, p_path, &transform_context, &source_changed);
-		const String obfuscated_script_path = transform_context.get_exported_script_path(p_path);
+		const String &source = prepared->get_text();
+		const auto &artifacts = pipeline.get_artifacts();
+		const String obfuscated_script_path = artifacts.get_exported_script_path(p_path);
 		const bool script_path_changed = !obfuscated_script_path.is_empty();
 		if (script_mode == EditorExportPreset::MODE_SCRIPT_TEXT) {
-			// Text replacement adds a `.gd` file directly, so skip() is needed to stop
-			// the normal exporter from also writing the original source. Binary export
-			// below normally adds `.gdc` with remap=true; path-obfuscated scripts use an
-			// obfuscated `.gd` remap instead and also need skip().
-			if (source_changed || script_path_changed) {
-				add_file(script_path_changed ? obfuscated_script_path : p_path, source.to_utf8_buffer(), false);
-				skip();
-			}
+			add_file(script_path_changed ? obfuscated_script_path : p_path, source.to_utf8_buffer(), false);
+			skip();
 			return;
 		}
 		// wgodot-changes::end
 		GDScriptTokenizerBuffer::CompressMode compress_mode = script_mode == EditorExportPreset::MODE_SCRIPT_BINARY_TOKENS_COMPRESSED ? GDScriptTokenizerBuffer::COMPRESS_ZSTD : GDScriptTokenizerBuffer::COMPRESS_NONE;
-		file = GDScriptTokenizerBuffer::parse_code_string(source, compress_mode);
+		// wgodot-changes::begin
+		Vector<uint8_t> file = GDScriptTokenizerBuffer::parse_code_string(source, compress_mode);
+		// wgodot-changes::end
 		if (file.is_empty()) {
+			// wgodot-changes::begin
+			set_export_error(ERR_PARSE_ERROR, "Cannot tokenize prepared GDScript export: " + p_path);
+			// wgodot-changes::end
 			return;
 		}
 
 		if (script_path_changed) {
-			const String obfuscated_binary_script_path = transform_context.get_exported_binary_script_path(p_path);
+			const String obfuscated_binary_script_path = artifacts.get_exported_binary_script_path(p_path);
 			const String remap_source = "[remap]\n\npath=\"" + obfuscated_binary_script_path.c_escape() + "\"\n";
 			add_file(obfuscated_binary_script_path, file, false);
 			add_file(obfuscated_script_path + ".remap", remap_source.to_utf8_buffer(), false);

@@ -3,15 +3,11 @@
 /*  export_text_rewrite.cpp                                               */
 /**************************************************************************/
 
+#include "../gdscript_tokenizer.h"
 #include "export_transform_internal.h"
-
-#include "export_timing.h"
 #include "string_obfuscation.h"
 
-#include "../gdscript_tokenizer.h"
-
 #include "core/error/error_macros.h"
-#include "core/string/char_utils.h"
 #include "core/variant/variant_parser.h"
 
 namespace WGodotGDScriptExportTransform {
@@ -73,21 +69,14 @@ void add_string_literal_replacement(RewriteContext &r_context, const GDScriptPar
 		return;
 	}
 
-	const uint64_t string_start_usec = r_context.timing_enabled ? export_timing_get_ticks_usec() : 0;
-	if (r_context.timing_enabled) {
-		r_context.string_literal_replacement_calls++;
-	}
-	const String text = get_export_string_literal_replacement(r_context, p_literal->value.get_type(), value);
-	if (r_context.timing_enabled) {
-		r_context.string_literal_replacement_usec += export_timing_get_ticks_usec() - string_start_usec;
-	}
-	if (text.is_empty()) {
-		return;
-	}
-
 	const int start = get_offset(r_context, p_literal->start_line, p_literal->start_column);
 	const int end = get_offset(r_context, p_literal->end_line, p_literal->end_column);
 	if (start < 0 || end < start || overlaps_existing_replacement(r_context, start, end)) {
+		return;
+	}
+
+	const String text = get_export_string_literal_replacement(r_context, p_literal->value.get_type(), value);
+	if (text.is_empty()) {
 		return;
 	}
 
@@ -118,21 +107,14 @@ bool add_string_concat_replacement(RewriteContext &r_context, const GDScriptPars
 		}
 	}
 
-	const uint64_t string_start_usec = r_context.timing_enabled ? export_timing_get_ticks_usec() : 0;
-	if (r_context.timing_enabled) {
-		r_context.string_concat_replacement_calls++;
-	}
-	const String text = r_context.export_context->get_or_create_obfuscated_string_literal(Variant::STRING, value);
-	if (r_context.timing_enabled) {
-		r_context.string_concat_replacement_usec += export_timing_get_ticks_usec() - string_start_usec;
-	}
-	if (text.is_empty()) {
-		return false;
-	}
-
 	const int start = get_offset(r_context, p_binary->start_line, p_binary->start_column);
 	const int end = get_offset(r_context, p_binary->end_line, p_binary->end_column);
 	if (start < 0 || end < start || overlaps_existing_replacement(r_context, start, end)) {
+		return false;
+	}
+
+	const String text = r_context.export_context->get_or_create_obfuscated_string_literal(Variant::STRING, value);
+	if (text.is_empty()) {
 		return false;
 	}
 
@@ -199,25 +181,12 @@ void add_annotation_strip_replacement(RewriteContext &r_context, const GDScriptP
 }
 
 bool overlaps_existing_replacement(RewriteContext &r_context, int p_start, int p_end) {
-	const uint64_t start_usec = r_context.timing_enabled ? export_timing_get_ticks_usec() : 0;
-	if (r_context.timing_enabled) {
-		r_context.overlap_check_count++;
-	}
 	for (const Replacement &replacement : r_context.replacements) {
-		if (r_context.timing_enabled) {
-			r_context.overlap_scanned_replacements++;
-		}
 		if (p_start < replacement.end && p_end > replacement.start) {
-			if (r_context.timing_enabled) {
-				r_context.overlap_check_usec += export_timing_get_ticks_usec() - start_usec;
-			}
 			return true;
 		}
 	}
 
-	if (r_context.timing_enabled) {
-		r_context.overlap_check_usec += export_timing_get_ticks_usec() - start_usec;
-	}
 	return false;
 }
 
@@ -235,81 +204,19 @@ bool is_whitespace_only_line(const String &p_source, int p_start, int p_end) {
 	return true;
 }
 
-bool can_be_raw_string_prefix(const String &p_source, int p_quote_index) {
-	if (p_quote_index <= 0 || p_source[p_quote_index - 1] != 'r') {
-		return false;
-	}
-
-	if (p_quote_index <= 1) {
-		return true;
-	}
-
-	const char32_t previous = p_source[p_quote_index - 2];
-	return !is_unicode_identifier_continue(previous);
-}
-
 void collect_string_literal_lines(const String &p_source, HashSet<int> &r_string_lines) {
-	bool in_string = false;
-	bool is_raw = false;
-	bool is_multiline = false;
-	char32_t quote_char = 0;
-	int line = 1;
-
-	for (int i = 0; i < p_source.length(); i++) {
-		const char32_t ch = p_source[i];
-		if (in_string) {
+	GDScriptTokenizerText tokenizer;
+	tokenizer.set_source_code(p_source);
+	for (auto token = tokenizer.scan(); token.type != GDScriptTokenizer::Token::TK_EOF; token = tokenizer.scan()) {
+		if (token.type != GDScriptTokenizer::Token::LITERAL) {
+			continue;
+		}
+		const Variant::Type type = token.literal.get_type();
+		if (type != Variant::STRING && type != Variant::STRING_NAME && type != Variant::NODE_PATH) {
+			continue;
+		}
+		for (int line = token.start_line; line <= token.end_line; line++) {
 			r_string_lines.insert(line);
-
-			if (ch == '\\') {
-				if (is_raw) {
-					if (i + 1 < p_source.length() && (p_source[i + 1] == quote_char || p_source[i + 1] == '\\')) {
-						i++;
-					}
-				} else if (i + 1 < p_source.length()) {
-					i++;
-					if (p_source[i] == '\n') {
-						line++;
-					}
-				}
-				continue;
-			}
-
-			if (ch == quote_char) {
-				if (is_multiline) {
-					if (i + 2 < p_source.length() && p_source[i + 1] == quote_char && p_source[i + 2] == quote_char) {
-						i += 2;
-						in_string = false;
-					}
-				} else {
-					in_string = false;
-				}
-			} else if (ch == '\n') {
-				line++;
-			}
-			continue;
-		}
-
-		if (ch == '#') {
-			while (i + 1 < p_source.length() && p_source[i + 1] != '\n') {
-				i++;
-			}
-			continue;
-		}
-
-		if (ch == '"' || ch == '\'') {
-			in_string = true;
-			is_raw = can_be_raw_string_prefix(p_source, i);
-			is_multiline = i + 2 < p_source.length() && p_source[i + 1] == ch && p_source[i + 2] == ch;
-			quote_char = ch;
-			r_string_lines.insert(line);
-			if (is_multiline) {
-				i += 2;
-			}
-			continue;
-		}
-
-		if (ch == '\n') {
-			line++;
 		}
 	}
 }

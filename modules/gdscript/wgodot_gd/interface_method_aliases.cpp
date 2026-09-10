@@ -6,11 +6,10 @@
 #include "interface_method_aliases.h"
 
 #include "export_context.h"
+#include "export_analysis.h"
 #include "obfuscation_names.h"
 #include "resource_map_codec.h"
 
-#include "../gdscript_parser.h"
-#include "../wgodot_stdlib.h"
 
 #include "core/error/error_macros.h"
 #include "core/io/file_access.h"
@@ -97,35 +96,20 @@ String get_alias_map_path() {
 
 Vector<uint8_t> serialize_alias_map(const WGodotGDScriptExportTransform::ExportContext &p_context) {
 	Vector<uint8_t> output;
-	for (int interface_index = 0; interface_index < WGodotGDScriptStdLib::get_builtin_interface_count(); interface_index++) {
-		GDScriptParser parser;
-		const String interface_path = WGodotGDScriptStdLib::get_builtin_interface_path(interface_index);
-		if (parser.parse(WGodotGDScriptStdLib::get_builtin_interface_source(interface_index), interface_path, false) != OK) {
-			continue;
-		}
-
-		const GDScriptParser::ClassNode *interface_class = parser.get_tree();
-		if (interface_class == nullptr) {
-			continue;
-		}
-		for (int method_index = 0; method_index < interface_class->members.size(); method_index++) {
-			const GDScriptParser::ClassNode::Member &member = interface_class->members[method_index];
-			if (member.type != GDScriptParser::ClassNode::Member::FUNCTION || member.function == nullptr || member.function->identifier == nullptr) {
-				continue;
-			}
-			const StringName *alias = p_context.get_interface_method_alias(member.function->identifier->name);
-			if (alias == nullptr) {
-				continue;
-			}
-			append_u32(output, interface_index);
-			append_u32(output, method_index);
-			append_alias(output, WGodotGDScriptExportTransform::unwrap_binary_identifier_escape(String(*alias)));
-		}
+	for (const KeyValue<uint64_t, StringName> &entry : p_context.get_builtin_interface_aliases()) {
+		append_u32(output, entry.key >> 32);
+		append_u32(output, entry.key & 0xffffffff);
+		append_alias(output, WGodotGDScriptExportTransform::unwrap_binary_identifier_escape(entry.value));
 	}
 	return WGodotGDScriptResourceMapCodec::encode_resource_map(ALIAS_MAP_PATH, output);
 }
 
 StringName resolve_builtin_alias(int p_interface_index, int p_method_index) {
+	if (auto *analysis = WGodotGDScriptExportTransform::ExportAnalysis::get_active()) {
+		const StringName *alias = analysis->get_artifacts().get_builtin_interface_aliases().getptr(make_slot_key(p_interface_index, p_method_index));
+		return alias != nullptr ? *alias : StringName();
+	}
+
 	if (p_interface_index < 0 || p_method_index < 0) {
 		return StringName();
 	}

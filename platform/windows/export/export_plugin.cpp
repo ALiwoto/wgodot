@@ -306,9 +306,13 @@ Error EditorExportPlatformWindows::export_project(const Ref<EditorExportPreset> 
 		pck_path = pck_path.get_basename() + ".tmp";
 	}
 
-	ExportNotifier notifier(*this, p_preset, p_debug, p_path, p_flags, export_as_zip);
+	// wgodot-changes::begin
+	ExportNotifier notifier(*this, p_preset, p_debug, p_path, p_flags, p_notify);
+	// wgodot-changes::end
 
-	Error err = EditorExportPlatformPC::export_project(p_preset, p_debug, pck_path, p_flags, !export_as_zip);
+	// wgodot-changes::begin
+	Error err = EditorExportPlatformPC::export_project(p_preset, p_debug, pck_path, p_flags, false);
+	// wgodot-changes::end
 	if (err != OK) {
 		// Message is supplied by the subroutine method.
 		return err;
@@ -368,7 +372,9 @@ Error EditorExportPlatformWindows::export_project(const Ref<EditorExportPreset> 
 #endif
 	}
 
-	return err;
+	// wgodot-changes::begin
+	return notifier.finish(err);
+	// wgodot-changes::end
 }
 
 String EditorExportPlatformWindows::get_template_file_name(const String &p_target, const String &p_arch) const {

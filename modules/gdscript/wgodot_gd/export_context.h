@@ -5,9 +5,9 @@
 
 #pragma once
 
-#include "export_transform.h"
-
 #include "../gdscript_parser.h"
+#include "export_diagnostics.h"
+#include "export_transform.h"
 
 #include "core/math/random_pcg.h"
 #include "core/string/string_name.h"
@@ -21,6 +21,7 @@ namespace WGodotGDScriptExportTransform {
 
 class ExportContext {
 	TransformOptions options;
+	DiagnosticExport diagnostics;
 	HashMap<String, String> member_renames;
 	HashMap<StringName, StringName> global_class_renames;
 	HashMap<String, StringName> global_class_renames_by_path;
@@ -35,6 +36,7 @@ class ExportContext {
 	HashMap<String, String> obfuscated_string_literals;
 	HashSet<StringName> reserved_member_names;
 	HashMap<StringName, StringName> interface_method_aliases;
+	HashMap<uint64_t, StringName> builtin_interface_aliases;
 	HashSet<StringName> reserved_global_class_names;
 	HashSet<String> reserved_script_paths;
 	uint64_t next_string_resource_id = 1;
@@ -49,11 +51,14 @@ public:
 	void reset();
 	void set_options(const TransformOptions &p_options);
 	const TransformOptions &get_options() const;
+	DiagnosticExport &get_diagnostics() { return diagnostics; }
+	const DiagnosticExport &get_diagnostics() const { return diagnostics; }
 	void reserve_member_name(const StringName &p_name);
 	void reserve_script_member_names(const GDScriptParser::ClassNode *p_class);
 	void index_interface_methods(const GDScriptParser::ClassNode *p_class);
 	const StringName *get_interface_method_alias(const StringName &p_name) const;
 	const HashMap<StringName, StringName> &get_interface_method_aliases() const;
+	const HashMap<uint64_t, StringName> &get_builtin_interface_aliases() const { return builtin_interface_aliases; }
 	void reserve_global_class_name(const StringName &p_name);
 	void reserve_script_path(const String &p_path);
 	void reserve_script_global_class_name(const GDScriptParser::ClassNode *p_class);

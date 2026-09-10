@@ -2113,7 +2113,9 @@ Error EditorExportPlatformAppleEmbedded::_export_project_helper(const Ref<Editor
 	}
 
 	if (export_project_only) {
-		return OK;
+		// wgodot-changes::begin
+		return notifier.finish(OK);
+		// wgodot-changes::end
 	}
 
 	if (ep.step("Making .xcarchive", 3)) {
@@ -2196,7 +2198,9 @@ Error EditorExportPlatformAppleEmbedded::_export_project_helper(const Ref<Editor
 	add_message(EXPORT_MESSAGE_WARNING, TTR("Xcode Build"), TTR(".ipa can only be built on macOS. Leaving Xcode project without building the package."));
 #endif
 
-	return OK;
+	// wgodot-changes::begin
+	return notifier.finish(OK);
+	// wgodot-changes::end
 }
 
 bool EditorExportPlatformAppleEmbedded::has_valid_export_configuration(const Ref<EditorExportPreset> &p_preset, String &r_error, bool &r_missing_templates, bool p_debug) const {

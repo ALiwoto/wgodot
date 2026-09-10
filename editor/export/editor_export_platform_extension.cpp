@@ -285,7 +285,9 @@ Error EditorExportPlatformExtension::export_project(const Ref<EditorExportPreset
 
 	Error ret = FAILED;
 	GDVIRTUAL_CALL(_export_project, p_preset, p_debug, p_path, p_flags, ret);
-	return ret;
+	// wgodot-changes::begin
+	return notifier.finish(ret);
+	// wgodot-changes::end
 }
 
 Error EditorExportPlatformExtension::export_pack(const Ref<EditorExportPreset> &p_preset, bool p_debug, const String &p_path, BitField<EditorExportPlatform::DebugFlags> p_flags) {
@@ -293,9 +295,13 @@ Error EditorExportPlatformExtension::export_pack(const Ref<EditorExportPreset> &
 
 	Error ret = FAILED;
 	if (GDVIRTUAL_CALL(_export_pack, p_preset, p_debug, p_path, p_flags, ret)) {
-		return ret;
+		// wgodot-changes::begin
+		return notifier.finish(ret);
+		// wgodot-changes::end
 	}
-	return save_pack(p_preset, p_debug, p_path);
+	// wgodot-changes::begin
+	return notifier.finish(save_pack(p_preset, p_debug, p_path));
+	// wgodot-changes::end
 }
 
 Error EditorExportPlatformExtension::export_zip(const Ref<EditorExportPreset> &p_preset, bool p_debug, const String &p_path, BitField<EditorExportPlatform::DebugFlags> p_flags) {
@@ -303,9 +309,13 @@ Error EditorExportPlatformExtension::export_zip(const Ref<EditorExportPreset> &p
 
 	Error ret = FAILED;
 	if (GDVIRTUAL_CALL(_export_zip, p_preset, p_debug, p_path, p_flags, ret)) {
-		return ret;
+		// wgodot-changes::begin
+		return notifier.finish(ret);
+		// wgodot-changes::end
 	}
-	return save_zip(p_preset, p_debug, p_path);
+	// wgodot-changes::begin
+	return notifier.finish(save_zip(p_preset, p_debug, p_path));
+	// wgodot-changes::end
 }
 
 Error EditorExportPlatformExtension::export_pack_patch(const Ref<EditorExportPreset> &p_preset, bool p_debug, const String &p_path, const Vector<String> &p_patches, BitField<EditorExportPlatform::DebugFlags> p_flags) {
@@ -319,12 +329,16 @@ Error EditorExportPlatformExtension::export_pack_patch(const Ref<EditorExportPre
 	Error ret = FAILED;
 	if (GDVIRTUAL_CALL(_export_pack_patch, p_preset, p_debug, p_path, p_patches, p_flags, ret)) {
 		_unload_patches();
-		return ret;
+		// wgodot-changes::begin
+		return notifier.finish(ret);
+		// wgodot-changes::end
 	}
 
 	err = save_pack_patch(p_preset, p_debug, p_path);
 	_unload_patches();
-	return err;
+	// wgodot-changes::begin
+	return notifier.finish(err);
+	// wgodot-changes::end
 }
 
 Error EditorExportPlatformExtension::export_zip_patch(const Ref<EditorExportPreset> &p_preset, bool p_debug, const String &p_path, const Vector<String> &p_patches, BitField<EditorExportPlatform::DebugFlags> p_flags) {
@@ -338,12 +352,16 @@ Error EditorExportPlatformExtension::export_zip_patch(const Ref<EditorExportPres
 	Error ret = FAILED;
 	if (GDVIRTUAL_CALL(_export_zip_patch, p_preset, p_debug, p_path, p_patches, p_flags, ret)) {
 		_unload_patches();
-		return ret;
+		// wgodot-changes::begin
+		return notifier.finish(ret);
+		// wgodot-changes::end
 	}
 
 	err = save_zip_patch(p_preset, p_debug, p_path);
 	_unload_patches();
-	return err;
+	// wgodot-changes::begin
+	return notifier.finish(err);
+	// wgodot-changes::end
 }
 
 void EditorExportPlatformExtension::get_platform_features(List<String> *r_features) const {

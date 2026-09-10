@@ -111,9 +111,13 @@ Error EditorExportPlatformLinuxBSD::export_project(const Ref<EditorExportPreset>
 		path = tmp_dir_path.path_join(p_path.get_file().get_basename());
 	}
 
-	ExportNotifier notifier(*this, p_preset, p_debug, p_path, p_flags, export_as_zip);
+	// wgodot-changes::begin
+	ExportNotifier notifier(*this, p_preset, p_debug, p_path, p_flags, p_notify);
+	// wgodot-changes::end
 	// Export project.
-	Error err = EditorExportPlatformPC::export_project(p_preset, p_debug, path, p_flags, !export_as_zip);
+	// wgodot-changes::begin
+	Error err = EditorExportPlatformPC::export_project(p_preset, p_debug, path, p_flags, false);
+	// wgodot-changes::end
 	if (err != OK) {
 		// Message is supplied by the subroutine method.
 		return err;
@@ -151,7 +155,9 @@ Error EditorExportPlatformLinuxBSD::export_project(const Ref<EditorExportPreset>
 		}
 	}
 
-	return err;
+	// wgodot-changes::begin
+	return notifier.finish(err);
+	// wgodot-changes::end
 }
 
 String EditorExportPlatformLinuxBSD::get_template_file_name(const String &p_target, const String &p_arch) const {

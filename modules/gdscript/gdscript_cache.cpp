@@ -36,6 +36,7 @@
 #include "gdscript_parser.h"
 // wgodot-changes::begin
 #include "wgodot_stdlib.h"
+#include "wgodot_gd/export_analysis.h"
 // wgodot-changes::end
 
 #include "core/io/file_access.h"
@@ -68,6 +69,15 @@ GDScriptAnalyzer *GDScriptParserRef::get_analyzer() {
 	return analyzer;
 }
 
+// wgodot-changes::begin
+void GDScriptParserRef::initialize_export_source(const String &p_path, const String &p_source) {
+	path = p_path;
+	export_source = true;
+	export_source_text = p_source;
+	abandoned = true; // This reference never belongs to the editor parser cache.
+}
+// wgodot-changes::end
+
 Error GDScriptParserRef::raise_status(Status p_new_status) {
 	ERR_FAIL_COND_V(clearing, ERR_BUG);
 	ERR_FAIL_COND_V(parser == nullptr && status != EMPTY, ERR_BUG);
@@ -83,6 +93,13 @@ Error GDScriptParserRef::raise_status(Status p_new_status) {
 				// It's ok if its the first thing done here.
 				get_parser()->clear();
 				status = PARSED;
+				// wgodot-changes::begin
+				if (export_source) {
+					source_hash = export_source_text.hash();
+					result = get_parser()->parse(export_source_text, path, false);
+					break;
+				}
+				// wgodot-changes::end
 				String remapped_path = ResourceLoader::path_remap(path);
 				if (remapped_path.has_extension("gdc")) {
 					Vector<uint8_t> tokens = GDScriptCache::get_binary_tokens(remapped_path);
@@ -218,6 +235,11 @@ void GDScriptCache::remove_script(const String &p_path) {
 }
 
 Ref<GDScriptParserRef> GDScriptCache::get_parser(const String &p_path, GDScriptParserRef::Status p_status, Error &r_error, const String &p_owner) {
+	// wgodot-changes::begin
+	if (auto *analysis = WGodotGDScriptExportTransform::ExportAnalysis::get_active()) {
+		return analysis->get_parser(p_path, p_status, r_error);
+	}
+	// wgodot-changes::end
 	MutexLock lock(singleton->mutex);
 	Ref<GDScriptParserRef> ref;
 	if (!p_owner.is_empty() && p_path != p_owner) {
@@ -248,6 +270,11 @@ Ref<GDScriptParserRef> GDScriptCache::get_parser(const String &p_path, GDScriptP
 }
 
 bool GDScriptCache::has_parser(const String &p_path) {
+	// wgodot-changes::begin
+	if (auto *analysis = WGodotGDScriptExportTransform::ExportAnalysis::get_active()) {
+		return analysis->get_source(p_path) != nullptr;
+	}
+	// wgodot-changes::end
 	MutexLock lock(singleton->mutex);
 	return singleton->parser_map.has(p_path);
 }
@@ -312,6 +339,11 @@ Vector<uint8_t> GDScriptCache::get_binary_tokens(const String &p_path) {
 }
 
 Ref<GDScript> GDScriptCache::get_shallow_script(const String &p_path, Error &r_error, const String &p_owner) {
+	// wgodot-changes::begin
+	if (auto *analysis = WGodotGDScriptExportTransform::ExportAnalysis::get_active()) {
+		return analysis->get_shallow_script(p_path, r_error);
+	}
+	// wgodot-changes::end
 	MutexLock lock(singleton->mutex);
 
 	if (!p_owner.is_empty() && p_path != p_owner) {

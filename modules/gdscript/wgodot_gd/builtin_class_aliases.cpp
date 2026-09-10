@@ -6,6 +6,7 @@
 #include "builtin_class_aliases.h"
 
 #include "export_context.h"
+#include "export_analysis.h"
 #include "obfuscation_names.h"
 #include "resource_map_codec.h"
 
@@ -284,6 +285,10 @@ Vector<uint8_t> serialize_alias_map(const WGodotGDScriptExportTransform::ExportC
 }
 
 StringName resolve_alias(const StringName &p_name) {
+	if (auto *analysis = WGodotGDScriptExportTransform::ExportAnalysis::get_active()) {
+		return analysis->resolve_native_alias(p_name);
+	}
+
 	if (p_name.is_empty()) {
 		return StringName();
 	}
@@ -294,6 +299,10 @@ StringName resolve_alias(const StringName &p_name) {
 }
 
 StringName resolve_function_alias(const StringName &p_name) {
+	if (auto *analysis = WGodotGDScriptExportTransform::ExportAnalysis::get_active()) {
+		return analysis->resolve_function_alias(p_name);
+	}
+
 	if (p_name.is_empty()) {
 		return StringName();
 	}
@@ -304,6 +313,10 @@ StringName resolve_function_alias(const StringName &p_name) {
 }
 
 StringName resolve_member_alias(const StringName &p_owner, const StringName &p_name, bool p_static, bool p_property) {
+	if (auto *analysis = WGodotGDScriptExportTransform::ExportAnalysis::get_active()) {
+		return analysis->resolve_member_alias(p_name, p_static, p_property);
+	}
+
 	if (p_name.is_empty()) {
 		return StringName();
 	}

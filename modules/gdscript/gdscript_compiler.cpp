@@ -3291,7 +3291,9 @@ void GDScriptCompiler::convert_to_initializer_type(Variant &p_variant, const GDS
 	}
 }
 
-void GDScriptCompiler::make_scripts(GDScript *p_script, const GDScriptParser::ClassNode *p_class, bool p_keep_state) {
+// wgodot-changes::begin
+void GDScriptCompiler::make_scripts(GDScript *p_script, const GDScriptParser::ClassNode *p_class, bool p_keep_state, bool p_use_orphan_subclasses) {
+// wgodot-changes::end
 	p_script->fully_qualified_name = p_class->fqcn;
 	p_script->local_name = p_class->identifier ? p_class->identifier->name : StringName();
 	p_script->global_name = p_class->get_global_name();
@@ -3316,7 +3318,9 @@ void GDScriptCompiler::make_scripts(GDScript *p_script, const GDScriptParser::Cl
 
 		if (old_subclasses.has(name)) {
 			subclass = old_subclasses[name];
-		} else {
+		// wgodot-changes::begin
+		} else if (p_use_orphan_subclasses) {
+		// wgodot-changes::end
 			subclass = GDScriptLanguage::get_singleton()->get_orphan_subclass(inner_class->fqcn);
 		}
 
@@ -3328,7 +3332,9 @@ void GDScriptCompiler::make_scripts(GDScript *p_script, const GDScriptParser::Cl
 		subclass->path = p_script->path;
 		p_script->subclasses.insert(name, subclass);
 
-		make_scripts(subclass.ptr(), inner_class, p_keep_state);
+		// wgodot-changes::begin
+		make_scripts(subclass.ptr(), inner_class, p_keep_state, p_use_orphan_subclasses);
+		// wgodot-changes::end
 	}
 }
 

@@ -613,7 +613,9 @@ Error EditorExportPlatformWeb::export_project(const Ref<EditorExportPreset> &p_p
 		}
 	}
 
-	return OK;
+	// wgodot-changes::begin
+	return notifier.finish(OK);
+	// wgodot-changes::end
 }
 
 bool EditorExportPlatformWeb::poll_export() {

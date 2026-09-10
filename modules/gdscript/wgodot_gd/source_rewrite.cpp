@@ -6,22 +6,6 @@
 #include "source_rewrite.h"
 
 #include "core/error/error_macros.h"
-#include "core/math/math_funcs.h"
-#include "core/string/string_buffer.h"
-#include "core/templates/local_vector.h"
-
-namespace {
-
-struct ReplacementSort {
-	bool operator()(const WGodotGDScriptExportTransform::Replacement &p_left, const WGodotGDScriptExportTransform::Replacement &p_right) const {
-		if (p_left.start == p_right.start) {
-			return p_left.end > p_right.end;
-		}
-		return p_left.start < p_right.start;
-	}
-};
-
-} // namespace
 
 namespace WGodotGDScriptExportTransform {
 
@@ -63,7 +47,7 @@ int get_offset(const RewriteContext &p_context, int p_line, int p_column) {
 		return -1;
 	}
 
-	return CLAMP(line_start + MAX(p_column - 1, 0), 0, p_context.source.length());
+	return p_column > 0 ? line_start + p_column - 1 : -1;
 }
 
 void add_replacement(RewriteContext &r_context, const GDScriptParser::Node *p_node, const String &p_text) {
@@ -71,64 +55,11 @@ void add_replacement(RewriteContext &r_context, const GDScriptParser::Node *p_no
 
 	const int start = get_offset(r_context, p_node->start_line, p_node->start_column);
 	const int end = get_offset(r_context, p_node->end_line, p_node->end_column);
-	if (start < 0 || end < start) {
-		return;
-	}
-
 	Replacement replacement;
 	replacement.start = start;
 	replacement.end = end;
 	replacement.text = p_text;
 	r_context.replacements.push_back(replacement);
-}
-
-String apply_replacements(RewriteContext &r_context) {
-	r_context.replacements.sort_custom<ReplacementSort>();
-
-	const int source_length = r_context.source.length();
-	LocalVector<int> accepted_replacements;
-	accepted_replacements.reserve(r_context.replacements.size());
-	int last_start = source_length + 1;
-	for (int i = r_context.replacements.size() - 1; i >= 0; i--) {
-		const Replacement &replacement = r_context.replacements[i];
-		if (replacement.start < 0 || replacement.end < replacement.start || replacement.end > source_length) {
-			continue;
-		}
-		if (replacement.end > last_start) {
-			continue;
-		}
-
-		accepted_replacements.push_back(i);
-		last_start = replacement.start;
-	}
-
-	if (accepted_replacements.is_empty()) {
-		return r_context.source;
-	}
-
-	int final_length = source_length;
-	for (uint32_t i = 0; i < accepted_replacements.size(); i++) {
-		const Replacement &replacement = r_context.replacements[accepted_replacements[i]];
-		final_length += replacement.text.length() - (replacement.end - replacement.start);
-	}
-
-	StringBuffer<1024> result;
-	result.reserve(final_length + 1);
-	const char32_t *source_chars = r_context.source.get_data();
-	int cursor = 0;
-	for (int i = accepted_replacements.size() - 1; i >= 0; i--) {
-		const Replacement &replacement = r_context.replacements[accepted_replacements[i]];
-		if (replacement.start > cursor) {
-			result.append(source_chars + cursor, replacement.start - cursor);
-		}
-		result.append(replacement.text);
-		cursor = replacement.end;
-	}
-	if (cursor < source_length) {
-		result.append(source_chars + cursor, source_length - cursor);
-	}
-
-	return result.as_string();
 }
 
 } // namespace WGodotGDScriptExportTransform

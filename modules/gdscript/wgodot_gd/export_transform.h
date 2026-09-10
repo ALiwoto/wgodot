@@ -26,6 +26,7 @@ struct TransformOptions {
 	bool obfuscate_builtin_names = true;
 	bool obfuscate_file_paths = false;
 	bool obfuscate_strings = false;
+	bool redact_diagnostics = false;
 	bool dead_code_injection_enabled = false;
 	bool strip_comments = true;
 	bool strip_empty_lines = true;
@@ -42,10 +43,6 @@ struct TransformOptions {
 
 void register_project_settings();
 TransformOptions setup_params();
-void prescan_project_scripts(ExportContext *p_context, const HashSet<String> &p_paths);
-void transform_global_class_list(ExportContext *p_context, Array *r_global_class_list);
-String transform_source(const String &p_source, const String &p_path, bool *r_changed = nullptr);
-String transform_source(const String &p_source, const String &p_path, ExportContext *p_context, bool *r_changed = nullptr);
-String transform_source(const String &p_source, const String &p_path, const TransformOptions &p_options, bool *r_changed = nullptr);
+void transform_global_class_list(const ExportContext *p_context, Array *r_global_class_list);
 
 } // namespace WGodotGDScriptExportTransform

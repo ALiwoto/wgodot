@@ -6,21 +6,7 @@ We may implement smaller unrelated features between these items as needed.
 WGodot strictness features should default to enabled. This fork is meant for projects
 that want stricter correctness and a clearer path toward native-friendly code.
 
-## 1. Strict Type Checking
-
-Add strict typing mode for projects that want native-friendly GDScript. It should default
-to enabled in WGodot, with project settings for migration or compatibility if needed.
-
-Initial goals:
-
-- Reject untyped variables, parameters, and return values.
-- Reject dynamic member access where the analyzer cannot prove the target.
-- Reject unsafe Variant-heavy code in strict mode.
-- Keep this standalone; strict signal checking and interfaces should be useful without requiring strict typing.
-
-This mode is a foundation for future native compilation.
-
-## 2. `@native`
+## `@native`
 
 Add a small, practical first version of `@native`.
 

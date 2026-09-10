@@ -24,7 +24,9 @@ To access Godot's internal classes, GDScript uses [`ClassDB`](/core/object/class
 
 ## Compilation
 
-Scripts can be at different stages of compilation. The process isn't entirely linear, but consists of this general order: tokenizing, parsing, analyzing, and finally compiling. This process is the same for scripts in the editor and scripts in an exported game. Scripts are stored as text files in both cases, and the compilation process must happen in full before the bytecode can be passed to the virtual machine and run.
+<!-- wgodot-changes::begin -->
+Scripts can be at different stages of compilation. The process isn't entirely linear, but consists of this general order: tokenizing, parsing, analyzing, and finally compiling. Exports can store scripts as text or binary token buffers. Binary tokens skip source tokenization when loaded, but still require parsing, analysis, and compilation before the virtual machine can run the resulting bytecode.
+<!-- wgodot-changes::end -->
 
 The main class of the GDScript module is the [`GDScript`](gdscript.h) class, which represents a class defined in GDScript. Each `.gd` file is called a _class file_ because it implicitly defines a class in GDScript, and thus results in an associated `GDScript` object. However, GDScript classes may define [_inner classes_](https://docs.godotengine.org/en/stable/tutorials/scripting/gdscript/gdscript_basics.html#inner-classes), and those are also represented by further `GDScript` objects, even though they are not in files of their own.
 
@@ -40,12 +42,16 @@ This mostly happens by calling `GDScript::load_source_code()` on a `GDScript` ob
 
 ### Tokenizing (see [`GDScriptTokenizer`](gdscript_tokenizer.h))
 
-Tokenizing is the process of converting the source code `String` into a sequence of tokens, which represent language constructs (such as `for` or `if`), identifiers, literals, etc. This happens almost exclusively during the parsing process, which asks for the next token in order to make sense of the source code. The tokenizer is only used outside of the parsing process in very rare exceptions.
+<!-- wgodot-changes::begin -->
+Tokenizing is the process of converting the source code `String` into a sequence of tokens, which represent language constructs (such as `for` or `if`), identifiers, literals, etc. The parser requests tokens on demand as it reads source. Export transforms and binary-token generation also use the tokenizer independently.
+<!-- wgodot-changes::end -->
 
 
 ### Parsing (see [`GDScriptParser`](gdscript_parser.h))
 
-The parser takes a sequence of tokens and builds [the abstract syntax tree (AST)](https://en.wikipedia.org/wiki/Abstract_syntax_tree) of the GDScript program. The AST is used in the analyzing and compilation steps, and the source code `String` and sequence of tokens are discarded. The AST-building process finds syntax errors in a GDScript program and reports them to the user.
+<!-- wgodot-changes::begin -->
+The parser takes a sequence of tokens and builds [the abstract syntax tree (AST)](https://en.wikipedia.org/wiki/Abstract_syntax_tree) of the GDScript program. The AST is used in the analyzing and compilation steps. The AST-building process finds syntax errors in a GDScript program and reports them to the user.
+<!-- wgodot-changes::end -->
 
 The parser class also defines all the possible nodes of the AST as subtypes of `GDScriptParser::Node`, not to be confused with Godot's scene tree `Node`. For example, `GDScriptParser::IfNode` has two children nodes, one for the code in the `if` block, and one for the code in the `else` block. A `GDScriptParser::FunctionNode` contains children nodes for its name, parameters, return type, body, etc. The parser also defines typechecking data structures like `GDScriptParser::Datatype`.
 
@@ -91,7 +97,9 @@ A fundamental cyclic dependency problem occurs when the types of two different m
 
 ### Compiling (see [`GDScriptCompiler`](gdscript_compiler.h))
 
-Compiling is the final step in making a GDScript executable in the [virtual machine](gdscript_vm.h) (VM). The compiler takes a `GDScript` object and an AST, and uses another class, [`GDScriptByteCodeGenerator`](gdscript_byte_codegen.h), to generate bytecode corresponding to the class. In doing this, it creates the objects that the VM understands how to run, like [`GDScriptFunction`](gdscript_function.h), and completes a few extra tasks needed for compilation, such as populating runtime class member information.
+<!-- wgodot-changes::begin -->
+Compiling is the final step in making a GDScript executable in the [virtual machine](gdscript_vm.cpp) (VM). The compiler takes a `GDScript` object and an AST, and uses another class, [`GDScriptByteCodeGenerator`](gdscript_byte_codegen.h), to generate bytecode corresponding to the class. In doing this, it creates the objects that the VM understands how to run, like [`GDScriptFunction`](gdscript_function.h), and completes a few extra tasks needed for compilation, such as populating runtime class member information.
+<!-- wgodot-changes::end -->
 
 Importantly, the compilation process of a class, specifically the `GDScriptCompiler::_compile_class()` method, _cannot_ depend on information obtained by calling `GDScriptCompiler::_compile_class()` on another class, for the same cyclic dependency reasons explained in the previous section.
 Any information that can only be obtained or populated during the compilation step, when `GDScript` objects become available, must be handled before `GDScriptCompiler::_compile_class()` is called. This process is centralized in `GDScriptCompiler::_prepare_compilation()` which works as the compile-time equivalent of `GDScriptAnalyzer::resolve_class_interface()`: it populates a `GDScript`'s "interface" exclusively with information from the analysis step, and without processing other external classes. This information may then be referenced by other classes without introducing problematic cycles.
@@ -135,5 +143,5 @@ There are many other classes in the GDScript module. Here is a brief overview of
 - [`GDScriptFunction`](gdscript_function.h), which represents an executable GDScript function. The relevant file contains both static as well as runtime information.
 - The [virtual machine](gdscript_vm.cpp) is essentially defined as calling `GDScriptFunction::call()`.
 - Editor-related functions can be found in parts of `GDScriptLanguage`, originally declared in [`gdscript.h`](gdscript.h) but defined in [`gdscript_editor.cpp`](gdscript_editor.cpp). Code highlighting can be found in [`GDScriptSyntaxHighlighter`](editor/gdscript_highlighter.h).
-- GDScript decompilation is found in [`gdscript_disassembler.cpp`](gdscript_disassembler.h), defined as `GDScriptFunction::disassemble()`.
+- GDScript decompilation is found in <!-- wgodot-changes::begin -->[`gdscript_disassembler.cpp`](gdscript_disassembler.cpp)<!-- wgodot-changes::end -->, defined as `GDScriptFunction::disassemble()`.
 - Documentation generation from GDScript comments in [`GDScriptDocGen`](editor/gdscript_docgen.h)

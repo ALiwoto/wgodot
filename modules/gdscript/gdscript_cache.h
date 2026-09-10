@@ -61,6 +61,10 @@ private:
 	uint32_t source_hash = 0;
 	bool clearing = false;
 	bool abandoned = false;
+	// wgodot-changes::begin
+	bool export_source = false;
+	String export_source_text;
+	// wgodot-changes::end
 
 	friend class GDScriptCache;
 	friend class GDScript;
@@ -72,6 +76,9 @@ public:
 	GDScriptParser *get_parser();
 	GDScriptAnalyzer *get_analyzer();
 	Error raise_status(Status p_new_status);
+	// wgodot-changes::begin
+	void initialize_export_source(const String &p_path, const String &p_source);
+	// wgodot-changes::end
 	void clear();
 
 	GDScriptParserRef() {}

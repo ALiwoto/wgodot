@@ -29,6 +29,9 @@
 /**************************************************************************/
 
 #include "gdscript_analyzer.h"
+// wgodot-changes::begin
+#include "wgodot_gd/export_analysis.h"
+// wgodot-changes::end
 
 #include "gdscript.h"
 #include "gdscript_utility_callable.h"
@@ -405,7 +408,9 @@ Error GDScriptAnalyzer::resolve_class_inheritance(GDScriptParser::ClassNode *p_c
 			push_error(vformat(R"(Class "%s" hides a built-in type.)", class_name), p_class->identifier);
 		} else if (class_exists(class_name)) {
 			push_error(vformat(R"(Class "%s" hides a native class.)", class_name), p_class->identifier);
-		} else if (ScriptServer::is_global_class(class_name) && (!GDScript::is_canonically_equal_paths(ScriptServer::get_global_class_path(class_name), parser->script_path) || p_class != parser->head)) {
+		// wgodot-changes::begin
+		} else if (WGodotGDScriptExportTransform::ExportAnalysis::is_global_class(class_name) && (!GDScript::is_canonically_equal_paths(WGodotGDScriptExportTransform::ExportAnalysis::get_global_class_path(class_name), parser->script_path) || p_class != parser->head)) {
+		// wgodot-changes::end
 			push_error(vformat(R"(Class "%s" hides a global script class.)", class_name), p_class->identifier);
 		} else if (ProjectSettings::get_singleton()->has_autoload(class_name) && ProjectSettings::get_singleton()->get_autoload(class_name).is_singleton) {
 			push_error(vformat(R"(Class "%s" hides an autoload singleton.)", class_name), p_class->identifier);
@@ -475,8 +480,12 @@ Error GDScriptAnalyzer::resolve_class_inheritance(GDScriptParser::ClassNode *p_c
 			// wgodot-changes::end
 			base.type_source = GDScriptParser::DataType::ANNOTATED_EXPLICIT;
 
-			if (ScriptServer::is_global_class(name)) {
-				String base_path = ScriptServer::get_global_class_path(name);
+			// wgodot-changes::begin
+			if (WGodotGDScriptExportTransform::ExportAnalysis::is_global_class(name)) {
+			// wgodot-changes::end
+				// wgodot-changes::begin
+				String base_path = WGodotGDScriptExportTransform::ExportAnalysis::get_global_class_path(name);
+				// wgodot-changes::end
 
 				if (GDScript::is_canonically_equal_paths(base_path, parser->script_path)) {
 					base = parser->head->get_datatype();
@@ -806,27 +815,39 @@ GDScriptParser::DataType GDScriptAnalyzer::resolve_datatype(GDScriptParser::Type
 				return bad_type;
 			}
 		// wgodot-changes::end
-		} else if (ScriptServer::is_global_class(first)) {
-			if (GDScript::is_canonically_equal_paths(parser->script_path, ScriptServer::get_global_class_path(first))) {
+		// wgodot-changes::begin
+		} else if (WGodotGDScriptExportTransform::ExportAnalysis::is_global_class(first)) {
+		// wgodot-changes::end
+			// wgodot-changes::begin
+			if (GDScript::is_canonically_equal_paths(parser->script_path, WGodotGDScriptExportTransform::ExportAnalysis::get_global_class_path(first))) {
+			// wgodot-changes::end
 				result = parser->head->get_datatype();
 			} else {
-				String path = ScriptServer::get_global_class_path(first);
+				// wgodot-changes::begin
+				String path = WGodotGDScriptExportTransform::ExportAnalysis::get_global_class_path(first);
+				// wgodot-changes::end
 				String ext = path.get_extension();
 				if (ext == GDScriptLanguage::get_singleton()->get_extension()) {
 					Ref<GDScriptParserRef> ref = parser->get_depended_parser_for(path);
 					if (ref.is_null() || ref->raise_status(GDScriptParserRef::INHERITANCE_SOLVED) != OK) {
-						push_error(vformat(R"(Could not parse global class "%s" from "%s".)", first, ScriptServer::get_global_class_path(first)), p_type);
+						// wgodot-changes::begin
+						push_error(vformat(R"(Could not parse global class "%s" from "%s".)", first, WGodotGDScriptExportTransform::ExportAnalysis::get_global_class_path(first)), p_type);
+						// wgodot-changes::end
 						return bad_type;
 					}
 					result = ref->get_parser()->head->get_datatype();
 				} else {
-					result = make_script_meta_type(ResourceLoader::load(path, "Script"));
+					// wgodot-changes::begin
+					result = make_script_meta_type(WGodotGDScriptExportTransform::ExportAnalysis::load_script(path, "Script"));
+					// wgodot-changes::end
 				}
 			}
 		} else if (ProjectSettings::get_singleton()->has_autoload(first) && ProjectSettings::get_singleton()->get_autoload(first).is_singleton) {
 			const ProjectSettings::AutoloadInfo &autoload = ProjectSettings::get_singleton()->get_autoload(first);
 			String script_path;
-			if (ResourceLoader::get_resource_type(autoload.path) == "PackedScene") {
+			// wgodot-changes::begin
+			if (WGodotGDScriptExportTransform::ExportAnalysis::get_resource_type(autoload.path) == "PackedScene") {
+			// wgodot-changes::end
 				// Try to get script from scene if possible.
 				if (GDScriptLanguage::get_singleton()->has_any_global_constant(autoload.name)) {
 					Variant constant = GDScriptLanguage::get_singleton()->get_any_global_constant(autoload.name);
@@ -838,7 +859,9 @@ GDScriptParser::DataType GDScriptAnalyzer::resolve_datatype(GDScriptParser::Type
 						}
 					}
 				}
-			} else if (ResourceLoader::get_resource_type(autoload.path) == "GDScript") {
+			// wgodot-changes::begin
+			} else if (WGodotGDScriptExportTransform::ExportAnalysis::get_resource_type(autoload.path) == "GDScript") {
+			// wgodot-changes::end
 				script_path = autoload.path;
 			}
 			if (script_path.is_empty()) {
@@ -4066,7 +4089,9 @@ void GDScriptAnalyzer::reduce_get_node(GDScriptParser::GetNodeNode *p_get_node) 
 GDScriptParser::DataType GDScriptAnalyzer::make_global_class_meta_type(const StringName &p_class_name, const GDScriptParser::Node *p_source) {
 	GDScriptParser::DataType type;
 
-	String path = ScriptServer::get_global_class_path(p_class_name);
+	// wgodot-changes::begin
+	String path = WGodotGDScriptExportTransform::ExportAnalysis::get_global_class_path(p_class_name);
+	// wgodot-changes::end
 	String ext = path.get_extension();
 	if (ext == GDScriptLanguage::get_singleton()->get_extension()) {
 		Ref<GDScriptParserRef> ref = parser->get_depended_parser_for(path);
@@ -4087,7 +4112,9 @@ GDScriptParser::DataType GDScriptAnalyzer::make_global_class_meta_type(const Str
 
 		return ref->get_parser()->head->get_datatype();
 	} else {
-		return make_script_meta_type(ResourceLoader::load(path, "Script"));
+		// wgodot-changes::begin
+		return make_script_meta_type(WGodotGDScriptExportTransform::ExportAnalysis::load_script(path, "Script"));
+		// wgodot-changes::end
 	}
 }
 
@@ -4774,7 +4801,9 @@ void GDScriptAnalyzer::reduce_identifier(GDScriptParser::IdentifierNode *p_ident
 		return;
 	}
 
-	if (ScriptServer::is_global_class(name)) {
+	// wgodot-changes::begin
+	if (WGodotGDScriptExportTransform::ExportAnalysis::is_global_class(name)) {
+	// wgodot-changes::end
 		p_identifier->set_datatype(make_global_class_meta_type(name, p_identifier));
 		return;
 	}
@@ -4790,7 +4819,9 @@ void GDScriptAnalyzer::reduce_identifier(GDScriptParser::IdentifierNode *p_ident
 			result.kind = GDScriptParser::DataType::NATIVE;
 			result.builtin_type = Variant::OBJECT;
 			result.native_type = SNAME("Node");
-			if (ResourceLoader::get_resource_type(autoload.path) == "GDScript") {
+			// wgodot-changes::begin
+			if (WGodotGDScriptExportTransform::ExportAnalysis::get_resource_type(autoload.path) == "GDScript") {
+			// wgodot-changes::end
 				Ref<GDScriptParserRef> single_parser = parser->get_depended_parser_for(autoload.path);
 				if (single_parser.is_valid()) {
 					Error err = single_parser->raise_status(GDScriptParserRef::INHERITANCE_SOLVED);
@@ -4798,7 +4829,9 @@ void GDScriptAnalyzer::reduce_identifier(GDScriptParser::IdentifierNode *p_ident
 						result = type_from_metatype(single_parser->get_parser()->head->get_datatype());
 					}
 				}
-			} else if (ResourceLoader::get_resource_type(autoload.path) == "PackedScene") {
+			// wgodot-changes::begin
+			} else if (WGodotGDScriptExportTransform::ExportAnalysis::get_resource_type(autoload.path) == "PackedScene") {
+			// wgodot-changes::end
 				if (GDScriptLanguage::get_singleton()->has_any_global_constant(name)) {
 					Variant constant = GDScriptLanguage::get_singleton()->get_any_global_constant(name);
 					Node *node = Object::cast_to<Node>(constant);
@@ -4948,7 +4981,9 @@ void GDScriptAnalyzer::reduce_preload(GDScriptParser::PreloadNode *p_preload) {
 			p_preload->resolved_path = parser->script_path.get_base_dir().path_join(p_preload->resolved_path);
 		}
 		p_preload->resolved_path = p_preload->resolved_path.simplify_path();
-		if (!ResourceLoader::exists(p_preload->resolved_path)) {
+		// wgodot-changes::begin
+		if (!WGodotGDScriptExportTransform::ExportAnalysis::resource_exists(p_preload->resolved_path)) {
+		// wgodot-changes::end
 			Ref<FileAccess> file_check = FileAccess::create(FileAccess::ACCESS_RESOURCES);
 
 			if (file_check->file_exists(p_preload->resolved_path)) {
@@ -4961,7 +4996,9 @@ void GDScriptAnalyzer::reduce_preload(GDScriptParser::PreloadNode *p_preload) {
 
 			// Must load GDScript separately to permit cyclic references
 			// as ResourceLoader::load() detects and rejects those.
-			const String &res_type = ResourceLoader::get_resource_type(p_preload->resolved_path);
+			// wgodot-changes::begin
+			const String &res_type = WGodotGDScriptExportTransform::ExportAnalysis::get_resource_type(p_preload->resolved_path);
+			// wgodot-changes::end
 			if (res_type == "GDScript") {
 				Error err = OK;
 				Ref<GDScript> res = get_depended_shallow_script(p_preload->resolved_path, err);
@@ -5945,7 +5982,11 @@ GDScriptParser::DataType GDScriptAnalyzer::type_from_script(const Ref<Script> &p
 		Error err = ref->raise_status(GDScriptParserRef::INHERITANCE_SOLVED);
 		GDScriptParser::ClassNode *found = nullptr;
 		if (err == OK) {
-			found = ref->get_parser()->find_class(gds->fully_qualified_name);
+			// wgodot-changes::begin
+			// Resource preloads may carry a root script with its original class name.
+			// Its path identifies the root of the current export revision.
+			found = WGodotGDScriptExportTransform::ExportAnalysis::get_active() != nullptr && gds->is_root_script() ? ref->get_parser()->get_tree() : ref->get_parser()->find_class(gds->fully_qualified_name);
+			// wgodot-changes::end
 			if (found != nullptr) {
 				err = resolve_class_inheritance(found, p_source);
 			}
@@ -6051,6 +6092,18 @@ GDScriptParser::DataType GDScriptAnalyzer::type_from_property_hint_string(const 
 	GDScriptParser::DataType result;
 	result.type_source = GDScriptParser::DataType::ANNOTATED_EXPLICIT;
 	result.is_constant = false;
+	// wgodot-changes::begin
+	if (auto *analysis = WGodotGDScriptExportTransform::ExportAnalysis::get_active()) {
+		const String path = WGodotGDScriptExportTransform::ExportAnalysis::get_global_class_path(p_type_name);
+		if (analysis->get_source(path) != nullptr) {
+			Error error = OK;
+			Ref<GDScriptParserRef> ref = analysis->get_parser(path, GDScriptParserRef::INHERITANCE_SOLVED, error);
+			if (error == OK) {
+				return type_from_metatype(ref->get_parser()->get_tree()->get_datatype());
+			}
+		}
+	}
+	// wgodot-changes::end
 
 	const Variant::Type builtin_type = GDScriptParser::get_builtin_type(p_type_name);
 	if (builtin_type < Variant::VARIANT_MAX) {
@@ -6061,9 +6114,13 @@ GDScriptParser::DataType GDScriptAnalyzer::type_from_property_hint_string(const 
 		result.kind = GDScriptParser::DataType::NATIVE;
 		result.builtin_type = Variant::OBJECT;
 		result.native_type = p_type_name;
-	} else if (ScriptServer::is_global_class(p_type_name)) {
+	// wgodot-changes::begin
+	} else if (WGodotGDScriptExportTransform::ExportAnalysis::is_global_class(p_type_name)) {
+	// wgodot-changes::end
 		// Just load this as it shouldn't be a GDScript.
-		Ref<Script> script = ResourceLoader::load(ScriptServer::get_global_class_path(p_type_name));
+		// wgodot-changes::begin
+		Ref<Script> script = WGodotGDScriptExportTransform::ExportAnalysis::load_script(WGodotGDScriptExportTransform::ExportAnalysis::get_global_class_path(p_type_name));
+		// wgodot-changes::end
 		result.kind = GDScriptParser::DataType::SCRIPT;
 		result.builtin_type = Variant::OBJECT;
 		result.native_type = script->get_instance_base_type();
@@ -6089,12 +6146,34 @@ GDScriptParser::DataType GDScriptAnalyzer::type_from_property(const PropertyInfo
 	}
 	result.builtin_type = p_property.type;
 	if (p_property.type == Variant::OBJECT) {
-		if (ScriptServer::is_global_class(p_property.class_name)) {
+		// wgodot-changes::begin
+		if (auto *analysis = WGodotGDScriptExportTransform::ExportAnalysis::get_active()) {
+			const String path = WGodotGDScriptExportTransform::ExportAnalysis::get_global_class_path(p_property.class_name);
+			if (analysis->get_source(path) != nullptr) {
+				Error error = OK;
+				Ref<GDScriptParserRef> ref = analysis->get_parser(path, GDScriptParserRef::INHERITANCE_SOLVED, error);
+				if (error == OK) {
+					result = type_from_metatype(ref->get_parser()->get_tree()->get_datatype());
+					result.is_read_only = p_is_readonly;
+					return result;
+				}
+			}
+		}
+		// wgodot-changes::end
+		// wgodot-changes::begin
+		if (WGodotGDScriptExportTransform::ExportAnalysis::is_global_class(p_property.class_name)) {
+		// wgodot-changes::end
 			result.kind = GDScriptParser::DataType::SCRIPT;
-			result.script_path = ScriptServer::get_global_class_path(p_property.class_name);
-			result.native_type = ScriptServer::get_global_class_native_base(p_property.class_name);
+			// wgodot-changes::begin
+			result.script_path = WGodotGDScriptExportTransform::ExportAnalysis::get_global_class_path(p_property.class_name);
+			// wgodot-changes::end
+			// wgodot-changes::begin
+			result.native_type = WGodotGDScriptExportTransform::ExportAnalysis::get_global_class_native_base(p_property.class_name);
+			// wgodot-changes::end
 
-			Ref<Script> scr = ResourceLoader::load(ScriptServer::get_global_class_path(p_property.class_name));
+			// wgodot-changes::begin
+			Ref<Script> scr = WGodotGDScriptExportTransform::ExportAnalysis::load_script(WGodotGDScriptExportTransform::ExportAnalysis::get_global_class_path(p_property.class_name));
+			// wgodot-changes::end
 			if (scr.is_valid()) {
 				result.script_type = scr;
 			}
@@ -6397,8 +6476,12 @@ void GDScriptAnalyzer::is_shadowing(GDScriptParser::IdentifierNode *p_identifier
 		} else if (class_exists(name)) {
 			parser->push_warning(p_identifier, GDScriptWarning::SHADOWED_GLOBAL_IDENTIFIER, p_context, name, "native class");
 			return;
-		} else if (ScriptServer::is_global_class(name)) {
-			String class_path = ScriptServer::get_global_class_path(name).get_file();
+		// wgodot-changes::begin
+		} else if (WGodotGDScriptExportTransform::ExportAnalysis::is_global_class(name)) {
+		// wgodot-changes::end
+			// wgodot-changes::begin
+			String class_path = WGodotGDScriptExportTransform::ExportAnalysis::get_global_class_path(name).get_file();
+			// wgodot-changes::end
 			parser->push_warning(p_identifier, GDScriptWarning::SHADOWED_GLOBAL_IDENTIFIER, p_context, name, vformat(R"(global class defined in "%s")", class_path));
 			return;
 		} else if (GDScriptParser::get_builtin_type(name) < Variant::VARIANT_MAX) {

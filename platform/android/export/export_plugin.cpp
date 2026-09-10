@@ -4089,7 +4089,9 @@ Error EditorExportPlatformAndroid::export_project_helper(const Ref<EditorExportP
 
 		print_verbose("Successfully completed Android gradle build.");
 #endif
-		return OK;
+		// wgodot-changes::begin
+		return notifier.finish(OK);
+		// wgodot-changes::end
 	}
 	// This is the start of the Legacy build system
 	print_verbose("Starting legacy build system...");
@@ -4470,7 +4472,9 @@ Error EditorExportPlatformAndroid::export_project_helper(const Ref<EditorExportP
 		}
 	}
 
-	CLEANUP_AND_RETURN(OK);
+	// wgodot-changes::begin
+	CLEANUP_AND_RETURN(notifier.finish(OK));
+	// wgodot-changes::end
 }
 
 void EditorExportPlatformAndroid::get_platform_features(List<String> *r_features) const {

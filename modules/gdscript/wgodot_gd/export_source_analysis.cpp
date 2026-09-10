@@ -5,8 +5,6 @@
 
 #include "export_transform_internal.h"
 
-#include "../gdscript_analyzer.h"
-#include "../gdscript_cache.h"
 #include "../gdscript_parser.h"
 
 namespace WGodotGDScriptExportTransform {
@@ -73,67 +71,6 @@ String get_parser_errors_with_source_text(const GDScriptParser &p_parser, const 
 	}
 
 	return details;
-}
-
-bool parse_only(const String &p_source, const String &p_path, String *r_error_details) {
-	GDScriptParser parser;
-	if (parser.parse(p_source, p_path, false) != OK) {
-		if (r_error_details != nullptr) {
-			*r_error_details = get_parser_errors_with_source_text(parser, p_source);
-		}
-		return false;
-	}
-
-	return true;
-}
-
-bool AnalyzedSource::load(const String &p_source, const String &p_path, String *r_error_details) {
-	if (load_from_cache(p_source, p_path)) {
-		return true;
-	}
-
-	return load_local(p_source, p_path, r_error_details);
-}
-
-bool AnalyzedSource::load_from_cache(const String &p_source, const String &p_path) {
-	if (!GDScriptCache::has_parser(p_path)) {
-		return false;
-	}
-
-	Error err = OK;
-	cached_parser_ref = GDScriptCache::get_parser(p_path, GDScriptParserRef::FULLY_SOLVED, err);
-	if (err != OK || cached_parser_ref.is_null()) {
-		cached_parser_ref.unref();
-		return false;
-	}
-
-	if (cached_parser_ref->get_source_hash() != p_source.hash()) {
-		cached_parser_ref.unref();
-		return false;
-	}
-
-	parser = cached_parser_ref->get_parser();
-	return parser != nullptr;
-}
-
-bool AnalyzedSource::load_local(const String &p_source, const String &p_path, String *r_error_details) {
-	if (local_parser.parse(p_source, p_path, false) != OK) {
-		if (r_error_details != nullptr) {
-			*r_error_details = get_parser_errors_with_source_text(local_parser, p_source);
-		}
-		return false;
-	}
-
-	GDScriptAnalyzer analyzer(&local_parser);
-	if (analyzer.analyze() != OK) {
-		if (r_error_details != nullptr) {
-			*r_error_details = get_parser_errors_with_source_text(local_parser, p_source);
-		}
-		return false;
-	}
-
-	parser = &local_parser;
-	return true;
 }
 
 } // namespace WGodotGDScriptExportTransform
