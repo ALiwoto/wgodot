@@ -52,13 +52,11 @@ void ElementBehavior::notification(int p_what) {
 		case Control::NOTIFICATION_MOUSE_EXIT: {
 			hovering = p_what == Control::NOTIFICATION_MOUSE_ENTER;
 			control->emit_signal(hovering ? "mouse_enter" : "mouse_leave", control, control->get_global_transform_with_canvas().xform(control->get_local_mouse_position()));
-			if (hover_effect && control->is_inside_tree()) {
-				if (hover_tween.is_valid()) {
-					hover_tween->kill();
-				}
-				control->set_pivot_offset(control->get_size() * 0.5);
-				hover_tween = control->create_tween();
-				hover_tween->tween_property(control, NodePath("scale"), hovering && is_enabled() ? Vector2(1.06, 1.06) : Vector2(1, 1), 0.12);
+			update_hover_effect();
+		} break;
+		case CanvasItem::NOTIFICATION_VISIBILITY_CHANGED: {
+			if (!control->is_visible_in_tree()) {
+				update_hover_effect(false);
 			}
 		} break;
 		case CanvasItem::NOTIFICATION_DRAW: {
@@ -81,6 +79,7 @@ void ElementBehavior::notification(int p_what) {
 		case Node::NOTIFICATION_WM_WINDOW_FOCUS_OUT: {
 			pointer_index = -2;
 			dragging = false;
+			update_hover_effect(false);
 		} break;
 	}
 }
@@ -94,6 +93,7 @@ void ElementBehavior::update_input() {
 		pointer_index = -2;
 		dragging = false;
 	}
+	update_hover_effect();
 }
 
 void ElementBehavior::set_enabled(bool p_enabled) {
@@ -127,18 +127,43 @@ void ElementBehavior::set_input_disabled(bool p_disabled) {
 void ElementBehavior::set_movements(int p_movements) {
 	ERR_FAIL_COND(p_movements < 0 || p_movements > 3);
 	movements = p_movements;
-	if (movements != 0) {
+	if (movements != 0 && control->get_mouse_filter() == Control::MOUSE_FILTER_IGNORE) {
 		control->set_mouse_filter(Control::MOUSE_FILTER_PASS);
 	}
 }
 
-void ElementBehavior::set_hover_effect(bool p_enabled) {
-	hover_effect = p_enabled;
+void ElementBehavior::update_hover_effect(bool p_animate) {
 	if (!hover_effect) {
-		if (hover_tween.is_valid()) {
-			hover_tween->kill();
-		}
-		control->set_scale(Vector2(1, 1));
+		return;
+	}
+	if (hover_tween.is_valid()) {
+		hover_tween->kill();
+		hover_tween.unref();
+	}
+	if (!p_animate || !control->is_inside_tree()) {
+		control->set_offset_transform_scale(hover_offset_scale);
+		return;
+	}
+	// Animate the native offset transform without overwriting layout scale or pivot.
+	const bool grow = hovering && is_enabled() && !input_disabled && control->is_visible_in_tree();
+	hover_tween = control->create_tween();
+	hover_tween->tween_property(control, NodePath("offset_transform_scale"), hover_offset_scale * (grow ? 1.06 : 1.0), 0.12);
+}
+
+void ElementBehavior::set_hover_effect(bool p_enabled) {
+	if (hover_effect == p_enabled) {
+		return;
+	}
+	if (p_enabled) {
+		hover_offset_enabled = control->is_offset_transform_enabled();
+		hover_offset_scale = control->get_offset_transform_scale();
+		hover_effect = true;
+		control->set_offset_transform_enabled(true);
+		update_hover_effect();
+	} else {
+		update_hover_effect(false);
+		hover_effect = false;
+		control->set_offset_transform_enabled(hover_offset_enabled);
 	}
 }
 
@@ -175,12 +200,14 @@ void ElementBehavior::gui_input(const Ref<InputEvent> &p_event) {
 		return;
 	}
 	pointer_position = control->get_global_transform_with_canvas().xform(local);
+	// A child Control can consume the release before it reaches this element.
+	const bool mouse_released = motion.is_valid() && !motion->get_button_mask().has_flag(MouseButtonMask::LEFT);
 	if (primary && pressed && pointer_index == -2) {
 		pointer_index = index;
 		drag_origin = pointer_position;
 		control_origin = control->get_position();
 		control->emit_signal("left_down", control, pointer_position);
-	} else if (primary && !pressed && pointer_index == index) {
+	} else if (((primary && !pressed) || mouse_released) && pointer_index == index) {
 		pointer_index = -2;
 		dragging = false;
 		control->emit_signal("left_up", control, pointer_position);

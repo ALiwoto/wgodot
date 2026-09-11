@@ -173,8 +173,8 @@ void SmoothScrollElement::gui_input(const Ref<InputEvent> &p_event) {
 			}
 			active_axis = -1;
 			begin_scrolling();
-			accept_event();
 		}
+		// Ancestors that received the press must also receive the release.
 	} else if ((motion.is_valid() || drag.is_valid()) && pointer_index == index) {
 		if (motion.is_valid() && !motion->get_button_mask().has_flag(MouseButtonMask::LEFT)) {
 			stop_scrolling();

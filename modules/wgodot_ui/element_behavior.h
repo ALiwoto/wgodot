@@ -24,6 +24,8 @@ class ElementBehavior {
 	bool input_disabled = false;
 	bool hovering = false;
 	bool hover_effect = false;
+	bool hover_offset_enabled = false;
+	Vector2 hover_offset_scale = Vector2(1, 1);
 	int text_alignment = 5;
 	Color back_color = Color(0, 0, 0, 0);
 	Color fore_color = Color(1, 1, 1);
@@ -36,6 +38,7 @@ class ElementBehavior {
 	Ref<Tween> hover_tween;
 	void update_input();
 	void update_label_alignment();
+	void update_hover_effect(bool p_animate = true);
 
 public:
 	explicit ElementBehavior(Control *p_control);
