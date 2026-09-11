@@ -115,10 +115,10 @@ protected:
 		ClassDB::add_signal(class_name, MethodInfo("left_up", PropertyInfo(Variant::OBJECT, "element", PROPERTY_HINT_RESOURCE_TYPE, "ElementBase"), PropertyInfo(Variant::VECTOR2, "position")));
 		ClassDB::add_signal(class_name, MethodInfo("left_click", PropertyInfo(Variant::OBJECT, "element", PROPERTY_HINT_RESOURCE_TYPE, "ElementBase"), PropertyInfo(Variant::VECTOR2, "position")));
 		ClassDB::add_signal(class_name, MethodInfo("clicked", PropertyInfo(Variant::OBJECT, "element", PROPERTY_HINT_RESOURCE_TYPE, "ElementBase"), PropertyInfo(Variant::VECTOR2, "position")));
-		ClassDB::add_signal(class_name, MethodInfo("on_element_moving_finished", PropertyInfo(Variant::OBJECT, "element", PROPERTY_HINT_RESOURCE_TYPE, "ElementBase")));
-		ClassDB::add_signal(class_name, MethodInfo("on_element_fading_finished", PropertyInfo(Variant::OBJECT, "element", PROPERTY_HINT_RESOURCE_TYPE, "ElementBase")));
-		ClassDB::add_signal(class_name, MethodInfo("on_element_moving_stopped", PropertyInfo(Variant::OBJECT, "element", PROPERTY_HINT_RESOURCE_TYPE, "ElementBase")));
-		ClassDB::add_signal(class_name, MethodInfo("on_element_fading_stopped", PropertyInfo(Variant::OBJECT, "element", PROPERTY_HINT_RESOURCE_TYPE, "ElementBase")));
+		ClassDB::add_signal(class_name, MethodInfo("element_moving_finished", PropertyInfo(Variant::OBJECT, "element", PROPERTY_HINT_RESOURCE_TYPE, "ElementBase")));
+		ClassDB::add_signal(class_name, MethodInfo("element_fading_finished", PropertyInfo(Variant::OBJECT, "element", PROPERTY_HINT_RESOURCE_TYPE, "ElementBase")));
+		ClassDB::add_signal(class_name, MethodInfo("element_moving_stopped", PropertyInfo(Variant::OBJECT, "element", PROPERTY_HINT_RESOURCE_TYPE, "ElementBase")));
+		ClassDB::add_signal(class_name, MethodInfo("element_fading_stopped", PropertyInfo(Variant::OBJECT, "element", PROPERTY_HINT_RESOURCE_TYPE, "ElementBase")));
 		ClassDB::add_signal(class_name, MethodInfo("position_changed", PropertyInfo(Variant::OBJECT, "element", PROPERTY_HINT_RESOURCE_TYPE, "ElementBase"), PropertyInfo(Variant::VECTOR2, "new_position")));
 		ClassDB::add_signal(class_name, MethodInfo("size_changed", PropertyInfo(Variant::OBJECT, "element", PROPERTY_HINT_RESOURCE_TYPE, "ElementBase"), PropertyInfo(Variant::VECTOR2, "new_size")));
 		ClassDB::bind_integer_constant(class_name, "MovementMode", "NoMovements", 0);

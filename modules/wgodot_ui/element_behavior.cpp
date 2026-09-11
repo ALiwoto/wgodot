@@ -432,7 +432,7 @@ void ElementBehavior::fade_to(double p_alpha, double p_duration, double p_delay,
 }
 
 void ElementBehavior::animation_finished(bool p_moving) {
-	control->emit_signal(p_moving ? "on_element_moving_finished" : "on_element_fading_finished", control);
+	control->emit_signal(p_moving ? "element_moving_finished" : "element_fading_finished", control);
 }
 
 bool ElementBehavior::is_moving() const {
@@ -446,13 +446,13 @@ bool ElementBehavior::is_fading() const {
 void ElementBehavior::stop_moving() {
 	if (is_moving()) {
 		moving_tween->kill();
-		control->emit_signal("on_element_moving_stopped", control);
+		control->emit_signal("element_moving_stopped", control);
 	}
 }
 
 void ElementBehavior::stop_fading() {
 	if (is_fading()) {
 		fading_tween->kill();
-		control->emit_signal("on_element_fading_stopped", control);
+		control->emit_signal("element_fading_stopped", control);
 	}
 }
