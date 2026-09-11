@@ -38,7 +38,7 @@ ExportAnalysis::ExportAnalysis(const ExportProject &p_project, const ExportConte
 		GDScriptTokenizerText tokenizer;
 		tokenizer.set_source_code(project.get_source(path)->get_text());
 		for (GDScriptTokenizer::Token token = tokenizer.scan(); token.type != GDScriptTokenizer::Token::TK_EOF; token = tokenizer.scan()) {
-			if (token.type == GDScriptTokenizer::Token::CLASS_NAME) {
+			if (token.type == GDScriptTokenizer::Token::CLASS_NAME || token.type == GDScriptTokenizer::Token::INTERFACE_NAME) {
 				const GDScriptTokenizer::Token name = tokenizer.scan();
 				if (name.type == GDScriptTokenizer::Token::IDENTIFIER) {
 					global_classes[StringName(name.literal)] = path;

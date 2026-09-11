@@ -40,6 +40,10 @@ void GDScriptAnalyzer::wgodot_resolve_implemented_interfaces(ClassNode *p_class)
 		} else {
 			direct.push_back(p_class->base_type.class_type);
 		}
+	} else if (p_class->base_type.kind == DataType::CLASS) {
+		ClassNode *base = p_class->base_type.class_type;
+		resolve_class_interface(base, p_class);
+		direct.append_array(base->wgodot_resolved_interfaces);
 	}
 	for (const ClassNode::WGodotInterfaceReference &reference : p_class->wgodot_implements) {
 		ClassNode *contract = wgodot_resolve_interface_reference(p_class, reference);

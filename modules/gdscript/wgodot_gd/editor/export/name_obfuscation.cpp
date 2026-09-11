@@ -14,12 +14,12 @@
 
 namespace {
 
-String make_obfuscated_local_name(WGodotGDScriptExportTransform::RewriteContext &r_context) {
+String make_obfuscated_local_name(WGodotGDScriptExportTransform::RewriteContext &r_context, bool p_keep_unused_prefix = false) {
 	String obfuscated_name;
 	if (r_context.export_context != nullptr) {
-		obfuscated_name = r_context.export_context->make_obfuscated_name_from_reserved_names(r_context.reserved_obfuscated_names, "local variable");
+		obfuscated_name = r_context.export_context->make_obfuscated_name_from_reserved_names(r_context.reserved_obfuscated_names, "local variable", p_keep_unused_prefix);
 	} else {
-		obfuscated_name = WGodotGDScriptExportTransform::make_obfuscated_name(r_context.options.obfuscation_strategy, r_context.obfuscation_random, r_context.reserved_obfuscated_names, "local variable", r_context.options.binary_tokens_export);
+		obfuscated_name = WGodotGDScriptExportTransform::make_obfuscated_name(r_context.options.obfuscation_strategy, r_context.obfuscation_random, r_context.reserved_obfuscated_names, "local variable", r_context.options.binary_tokens_export, p_keep_unused_prefix);
 	}
 	return obfuscated_name;
 }
@@ -767,7 +767,7 @@ void add_signal_parameter_name_replacements(RewriteContext &r_context, const GDS
 			continue;
 		}
 
-		const String obfuscated_name = make_obfuscated_local_name(r_context);
+		const String obfuscated_name = make_obfuscated_local_name(r_context, String(parameter->identifier->name).begins_with("_"));
 		add_replacement(r_context, parameter->identifier, obfuscated_name);
 	}
 }
@@ -798,7 +798,7 @@ void collect_suite_local_name_obfuscation(RewriteContext &r_context, const GDScr
 			continue;
 		}
 
-		const String obfuscated_name = make_obfuscated_local_name(r_context);
+		const String obfuscated_name = make_obfuscated_local_name(r_context, String(identifier->name).begins_with("_"));
 		r_context.obfuscated_local_names[declaration] = obfuscated_name;
 		add_replacement(r_context, identifier, obfuscated_name);
 	}

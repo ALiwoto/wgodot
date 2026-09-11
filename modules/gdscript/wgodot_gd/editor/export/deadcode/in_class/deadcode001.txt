@@ -1,5 +1,7 @@
+@warning_ignore("unused_private_class_variable")
 var _wgdc_window_seed: int = 173
 
+@warning_ignore("unused_private_class_variable")
 var _wgdc_window_profile: PackedInt32Array = PackedInt32Array([3, 7, 11, 19])
 
 static func _wgdc_reconcile_window(_wgdc_tick: int, _wgdc_mask: int = 91) -> int:

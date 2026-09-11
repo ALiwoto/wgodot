@@ -1,5 +1,6 @@
 const _wgdc_SCORE_SCHEMA_VERSION: int = 41
 
+@warning_ignore("unused_private_class_variable")
 var _wgdc_shadow_profile: Dictionary[String, String] = {
 	"player_score": "0",
 	"player_hp": "100",

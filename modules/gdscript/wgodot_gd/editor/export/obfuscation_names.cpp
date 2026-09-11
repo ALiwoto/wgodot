@@ -79,7 +79,7 @@ String make_random_binary_obfuscated_name(RandomPCG &r_random) {
 	}
 }
 
-String make_obfuscated_name(ObfuscationStrategy p_strategy, RandomPCG &r_random, HashSet<StringName> &r_reserved_names, const String &p_warning_context, bool p_binary_tokens_export) {
+String make_obfuscated_name(ObfuscationStrategy p_strategy, RandomPCG &r_random, HashSet<StringName> &r_reserved_names, const String &p_warning_context, bool p_binary_tokens_export, bool p_keep_unused_prefix) {
 	if (p_strategy != OBFUSCATION_STRATEGY_SHORT) {
 		WARN_PRINT_ONCE(String("WGodot ") + p_warning_context + " obfuscation currently only supports the 'short' strategy. Falling back to 'short'.");
 	}
@@ -95,6 +95,9 @@ String make_obfuscated_name(ObfuscationStrategy p_strategy, RandomPCG &r_random,
 			candidate = make_short_obfuscated_name(fallback_counter++);
 		} else {
 			fallback_counter++;
+		}
+		if (p_keep_unused_prefix && !candidate.begins_with("_")) {
+			candidate = "_" + candidate;
 		}
 		const String source_candidate = p_binary_tokens_export ? wrap_binary_identifier_escape(candidate) : candidate;
 		const StringName candidate_name(candidate);

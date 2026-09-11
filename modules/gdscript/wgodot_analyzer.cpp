@@ -677,7 +677,9 @@ void GDScriptAnalyzer::wgodot_validate_interface_class(GDScriptParser::ClassNode
 			case GDScriptParser::ClassNode::Member::GROUP:
 				break;
 			default:
-				push_error("Interfaces declare methods, properties, signals, constants and enums.", member.get_source_node());
+				if (member.type != GDScriptParser::ClassNode::Member::CLASS || !member.m_class->wgodot_is_interface) {
+					push_error("Interfaces declare methods, properties, signals, constants, enums and nested interfaces.", member.get_source_node());
+				}
 				break;
 		}
 	}
@@ -694,7 +696,7 @@ void GDScriptAnalyzer::wgodot_validate_implemented_interfaces(GDScriptParser::Cl
 	}
 	HashSet<StringName> conflicts = wgodot_validate_implemented_interface_conflicts(p_class, contracts);
 	for (GDScriptParser::ClassNode *contract : contracts) {
-		const int builtin_index = WGodotGDScriptStdLib::get_builtin_interface_index(contract->wgodot_interface_name);
+		const int builtin_index = WGodotGDScriptStdLib::has_script_path(contract->self_type.script_path) ? WGodotGDScriptStdLib::get_builtin_interface_index(contract->wgodot_interface_name) : -1;
 		for (uint32_t index = 0; index < contract->members.size(); index++) {
 			const Member &required = contract->members[index];
 			if (required.type != Member::FUNCTION && required.type != Member::VARIABLE && required.type != Member::SIGNAL) {

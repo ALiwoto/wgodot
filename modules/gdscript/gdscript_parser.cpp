@@ -807,6 +807,10 @@ void GDScriptParser::parse_program() {
 			// wgodot-changes::begin
 			case GDScriptTokenizer::Token::INTERFACE:
 			case GDScriptTokenizer::Token::INTERFACE_NAME: {
+				if (current.type == GDScriptTokenizer::Token::INTERFACE && (head->identifier != nullptr || head->wgodot_is_interface)) {
+					can_have_class_or_extends = false;
+					break;
+				}
 				PUSH_PENDING_ANNOTATIONS_TO_HEAD;
 				const bool global_name = current.type == GDScriptTokenizer::Token::INTERFACE_NAME;
 				advance();
@@ -976,6 +980,10 @@ bool GDScriptParser::has_class(const GDScriptParser::ClassNode *p_class) const {
 
 GDScriptParser::ClassNode *GDScriptParser::parse_class(bool p_is_static) {
 	ClassNode *n_class = alloc_node<ClassNode>();
+	// wgodot-changes::begin
+	n_class->wgodot_is_interface = previous.type == GDScriptTokenizer::Token::INTERFACE;
+	n_class->is_abstract = n_class->wgodot_is_interface;
+	// wgodot-changes::end
 
 	make_completion_context(COMPLETION_DECLARATION, n_class);
 
@@ -985,6 +993,11 @@ GDScriptParser::ClassNode *GDScriptParser::parse_class(bool p_is_static) {
 
 	if (consume(GDScriptTokenizer::Token::IDENTIFIER, R"(Expected identifier for the class name after "class".)")) {
 		n_class->identifier = parse_identifier();
+		// wgodot-changes::begin
+		if (n_class->wgodot_is_interface) {
+			n_class->wgodot_interface_name = n_class->identifier->name;
+		}
+		// wgodot-changes::end
 		if (n_class->outer) {
 			String fqcn = n_class->outer->fqcn;
 			if (fqcn.is_empty()) {
@@ -1203,6 +1216,11 @@ void GDScriptParser::parse_class_body(bool p_is_multiline) {
 			case GDScriptTokenizer::Token::CLASS:
 				parse_class_member(&GDScriptParser::parse_class, AnnotationInfo::CLASS, "class");
 				break;
+			// wgodot-changes::begin
+			case GDScriptTokenizer::Token::INTERFACE:
+				parse_class_member(&GDScriptParser::parse_class, AnnotationInfo::CLASS, "interface");
+				break;
+			// wgodot-changes::end
 			case GDScriptTokenizer::Token::ENUM:
 				// wgodot-changes::begin
 				parse_class_member(&GDScriptParser::parse_enum, AnnotationInfo::ENUM, "enum");

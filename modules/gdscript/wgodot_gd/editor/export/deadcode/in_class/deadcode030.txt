@@ -1,3 +1,4 @@
+@warning_ignore("unused_signal")
 signal _wgdc_shadow_packet_ready(_wgdc_code: int)
 
 var _wgdc_signal_probe_names: Array[StringName] = [&"ready", &"timeout", &"tree_exiting"]

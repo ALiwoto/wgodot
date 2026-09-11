@@ -10,6 +10,7 @@ static func _wgdc_rank_save_slot(_wgdc_state: int, _wgdc_score: int, _wgdc_hp: i
 		_wgdc_SaveSlotState.EMPTY:
 			return -1
 		_wgdc_SaveSlotState.DIRTY:
+			@warning_ignore("integer_division")
 			return _wgdc_score / 2 + _wgdc_hp
 		_wgdc_SaveSlotState.SEALED:
 			return _wgdc_score + _wgdc_hp * 3

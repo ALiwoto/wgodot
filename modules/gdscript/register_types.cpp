@@ -124,25 +124,7 @@ protected:
 
 	// wgodot-changes::begin
 	virtual void _export_paths_ready(const HashSet<String> &p_paths) override {
-		String details;
-		Error error = pipeline.prepare(p_paths, transform_options, details);
-		if (error != OK) {
-			set_export_error(error, details);
-			return;
-		}
-		const auto &artifacts = pipeline.get_artifacts();
-		const Vector<uint8_t> builtin_class_aliases = WGodotGDScriptBuiltinClassAliases::serialize_alias_map(artifacts);
-		if (!builtin_class_aliases.is_empty()) {
-			add_file(WGodotGDScriptBuiltinClassAliases::get_alias_map_path(), builtin_class_aliases, false);
-		}
-		const Vector<uint8_t> interface_method_aliases = WGodotGDScriptInterfaceMethodAliases::serialize_alias_map(artifacts);
-		if (!interface_method_aliases.is_empty()) {
-			add_file(WGodotGDScriptInterfaceMethodAliases::get_alias_map_path(), interface_method_aliases, false);
-		}
-		const Vector<uint8_t> string_map = WGodotGDScriptStringObfuscation::serialize_string_map(artifacts);
-		if (!string_map.is_empty()) {
-			add_file(WGodotGDScriptStringObfuscation::get_string_map_path(), string_map, false);
-		}
+		pipeline.prepare_export(this, p_paths, transform_options);
 	}
 
 	virtual void _export_global_class_list(Array &r_global_class_list) override {
@@ -150,14 +132,7 @@ protected:
 	}
 
 	virtual Error _export_completed() override {
-		if (transform_options.redact_diagnostics) {
-			const Error error = pipeline.get_artifacts().get_diagnostics().save_map(diagnostic_map_path);
-			if (error != OK) {
-				set_export_error(error, "Cannot write diagnostic map: " + diagnostic_map_path);
-				return error;
-			}
-		}
-		return OK;
+		return pipeline.complete_export(this, transform_options.redact_diagnostics, diagnostic_map_path);
 	}
 
 	virtual void _export_end() override {
@@ -167,50 +142,8 @@ protected:
 
 	virtual void _export_file(const String &p_path, const String &p_type, const HashSet<String> &p_features) override {
 		// wgodot-changes::begin
-		// Private maps from earlier exports must not enter a later package through
-		// resource include filters, even when redaction is currently disabled.
-		if (p_path.ends_with(".diagnostics.json")) {
-			skip();
-			return;
-		}
-		if (p_path.get_extension() != "gd") {
-			return;
-		}
-		const auto *prepared = pipeline.get_source(p_path);
-		if (prepared == nullptr) {
-			set_export_error(ERR_INVALID_DATA, "Missing prepared GDScript export: " + p_path);
-			return;
-		}
-		const String &source = prepared->get_text();
-		const auto &artifacts = pipeline.get_artifacts();
-		const String obfuscated_script_path = artifacts.get_exported_script_path(p_path);
-		const bool script_path_changed = !obfuscated_script_path.is_empty();
-		if (script_mode == EditorExportPreset::MODE_SCRIPT_TEXT) {
-			add_file(script_path_changed ? obfuscated_script_path : p_path, source.to_utf8_buffer(), false);
-			skip();
-			return;
-		}
+		pipeline.export_file(this, p_path, script_mode);
 		// wgodot-changes::end
-		GDScriptTokenizerBuffer::CompressMode compress_mode = script_mode == EditorExportPreset::MODE_SCRIPT_BINARY_TOKENS_COMPRESSED ? GDScriptTokenizerBuffer::COMPRESS_ZSTD : GDScriptTokenizerBuffer::COMPRESS_NONE;
-		// wgodot-changes::begin
-		Vector<uint8_t> file = GDScriptTokenizerBuffer::parse_code_string(source, compress_mode);
-		// wgodot-changes::end
-		if (file.is_empty()) {
-			// wgodot-changes::begin
-			set_export_error(ERR_PARSE_ERROR, "Cannot tokenize prepared GDScript export: " + p_path);
-			// wgodot-changes::end
-			return;
-		}
-
-		if (script_path_changed) {
-			const String obfuscated_binary_script_path = artifacts.get_exported_binary_script_path(p_path);
-			const String remap_source = "[remap]\n\npath=\"" + obfuscated_binary_script_path.c_escape() + "\"\n";
-			add_file(obfuscated_binary_script_path, file, false);
-			add_file(obfuscated_script_path + ".remap", remap_source.to_utf8_buffer(), false);
-			skip();
-		} else {
-			add_file(p_path.get_basename() + ".gdc", file, true);
-		}
 	}
 
 public:
@@ -295,6 +228,9 @@ void uninitialize_gdscript_module(ModuleInitializationLevel p_level) {
 		GDScriptParser::cleanup();
 		// wgodot-changes::begin
 		WGodotGDScriptStdLib::clear_module_interfaces();
+		WGodotGDScriptBuiltinClassAliases::clear_runtime_cache();
+		WGodotGDScriptInterfaceMethodAliases::clear_runtime_cache();
+		WGodotGDScriptStringObfuscation::clear_runtime_cache();
 		// wgodot-changes::end
 		GDScriptUtilityFunctions::unregister_functions();
 	}

@@ -13,6 +13,7 @@ var _wgdc_latency_baseline: Dictionary[String, float] = {
 	"drift": 0.0,
 }
 
+@warning_ignore("unused_private_class_variable")
 var _wgdc_has_cheated: bool:
 	get:
 		if !_wgdc_local_cheating_dict.has("player_cheated"):
@@ -29,6 +30,7 @@ func _wgdc_ready_player(_wgdc_hp: int) -> void:
 func _wgdc_tick_check_player_cheating_score(_wgdc_weight: int, _wgdc_recommended_score: int = 50) -> int:
 	var _wgdc_score: int = _wgdc_recommended_score
 	if _wgdc_score >= 100:
+		@warning_ignore("integer_division")
 		_wgdc_score = _wgdc_score / 2
 	_wgdc_score -= _wgdc_weight
 	if _wgdc_local_cheating_dict.has("packet_replay"):

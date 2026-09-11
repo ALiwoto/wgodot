@@ -675,8 +675,8 @@ String ExportContext::make_obfuscated_name(HashSet<StringName> &r_reserved_names
 	return make_obfuscated_name_from_reserved_names(r_reserved_names, p_warning_context);
 }
 
-String ExportContext::make_obfuscated_name_from_reserved_names(HashSet<StringName> &r_reserved_names, const String &p_warning_context) {
-	return WGodotGDScriptExportTransform::make_obfuscated_name(options.obfuscation_strategy, obfuscation_random, r_reserved_names, p_warning_context, options.binary_tokens_export);
+String ExportContext::make_obfuscated_name_from_reserved_names(HashSet<StringName> &r_reserved_names, const String &p_warning_context, bool p_keep_unused_prefix) {
+	return WGodotGDScriptExportTransform::make_obfuscated_name(options.obfuscation_strategy, obfuscation_random, r_reserved_names, p_warning_context, options.binary_tokens_export, p_keep_unused_prefix);
 }
 
 String ExportContext::make_member_key(const String &p_class_key, const StringName &p_member_name) {

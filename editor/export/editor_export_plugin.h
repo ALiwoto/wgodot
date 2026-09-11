@@ -36,12 +36,21 @@
 #include "editor/export/editor_export_preset.h"
 #include "scene/main/node.h"
 
+// wgodot-changes::begin
+namespace WGodotGDScriptExportTransform {
+class ExportPipeline;
+}
+// wgodot-changes::end
+
 class EditorExportPlugin : public RefCounted {
 	GDCLASS(EditorExportPlugin, RefCounted);
 
 	friend class EditorExport;
 	friend class EditorExportPlatform;
 	friend class EditorExportPreset;
+	// wgodot-changes::begin
+	friend class WGodotGDScriptExportTransform::ExportPipeline;
+	// wgodot-changes::end
 
 public:
 	// Data for an SPM dependency, collected via add_apple_embedded_platform_spm_package() during export

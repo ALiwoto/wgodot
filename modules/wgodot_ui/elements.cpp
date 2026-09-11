@@ -1,8 +1,6 @@
 // wgodot-changes::file
 #include "elements.h"
 
-#include "scene/resources/style_box.h"
-
 int ButtonElement::get_current_button_state() const {
 	if (is_disabled()) {
 		return 2;
@@ -23,11 +21,4 @@ ButtonElement::ButtonElement() {
 	set_clip_text(true);
 	set_expand_icon(true);
 	set_mouse_filter(MOUSE_FILTER_PASS);
-	// Unskinned elements are suitable for custom-drawn game controls. Focus keeps
-	// the native theme indicator; a project theme supplies the other states.
-	Ref<StyleBoxEmpty> empty;
-	empty.instantiate();
-	for (const char *state : { "normal", "hover", "pressed", "hover_pressed", "disabled" }) {
-		add_theme_style_override(state, empty);
-	}
 }
