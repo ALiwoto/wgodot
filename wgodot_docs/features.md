@@ -30,6 +30,8 @@ This file tracks user-facing wgodot features. It intentionally avoids internal e
 
 The default-enabled `wgodot_ui` module provides `FlatElement : Label`, `SurfaceElement : Control`, `ButtonElement : Button`, `TextBoxElement : LineEdit` and `SmoothScrollElement : ScrollContainer`. They implement the shared `ElementBase` interface and use native layout, themes, GUI input, focus and accessibility. Custom behavior includes drag movement, tween helpers, scroll momentum/overscroll and texture drawing helpers. Game assets, skins and screen policies remain in the project. Build with `module_wgodot_ui_enabled=no` to omit the module.
 
+`SmoothScrollElement` supports an optional uniform virtual grid: logical extent, buffered view recycling, keyboard navigation, and accessible offscreen items. Games supply create/bind/unbind callbacks and keep selection and item identity in their data model. One column provides a virtual list.
+
 ## Agent CLI
 
 See the [WGodot CLI skill](./wgodot-cli/SKILL.md) for agent-oriented usage, commands, and workflow guidance.

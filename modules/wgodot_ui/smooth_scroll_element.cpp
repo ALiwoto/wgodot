@@ -27,12 +27,14 @@ void SmoothScrollElement::apply_scroll_position(const Vector2 &p_position) {
 	get_v_scroll_bar()->set_value(p_position.y);
 	updating_bars = false;
 	queue_sort();
+	queue_virtual_update();
 }
 
 void SmoothScrollElement::bar_changed(double p_value, int p_axis) {
 	if (!updating_bars) {
 		scroll_position[p_axis] = p_value;
 		velocity[p_axis] = 0;
+		queue_virtual_update();
 	}
 }
 
@@ -95,6 +97,7 @@ void SmoothScrollElement::process_motion(double p_delta) {
 
 void SmoothScrollElement::_notification(int p_what) {
 	element_notification(p_what);
+	virtual_notification(p_what);
 	switch (p_what) {
 		case NOTIFICATION_INTERNAL_PROCESS:
 			process_motion(get_process_delta_time());
@@ -112,6 +115,9 @@ void SmoothScrollElement::_notification(int p_what) {
 }
 
 void SmoothScrollElement::gui_input(const Ref<InputEvent> &p_event) {
+	if (virtual_gui_input(p_event)) {
+		return;
+	}
 	Ref<InputEventMouseButton> button = p_event;
 	Ref<InputEventMouseMotion> motion = p_event;
 	Ref<InputEventScreenTouch> touch = p_event;
@@ -269,6 +275,7 @@ SmoothScrollElement::SmoothScrollElement() {
 
 void SmoothScrollElement::_bind_methods() {
 	bind_element_methods<SmoothScrollElement>();
+	bind_virtual_methods();
 	ClassDB::bind_method(D_METHOD("change_content_element", "content"), &SmoothScrollElement::change_content_element);
 	ClassDB::bind_method(D_METHOD("set_scroll_position", "position"), &SmoothScrollElement::set_scroll_position);
 	ClassDB::bind_method(D_METHOD("get_scroll_position"), &SmoothScrollElement::get_scroll_position);

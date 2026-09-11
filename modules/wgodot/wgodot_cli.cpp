@@ -205,6 +205,7 @@ void print_cli_help() {
 	print_line("  ss [-o <path>] [--json]           Capture the running game viewport.");
 	print_line("  observe [options]                 Capture a screenshot and scene tree together.");
 	print_line("  click <node-path>|<x> <y>         Click a Control or viewport position.");
+	print_line("  mouse <move|down|up|wheel> <node-path>|<x> <y> [--button left|right|middle] [--delta amount]");
 	print_line("  type <text>                       Type text into the running game.");
 	print_line("  key <key> [--down|--up]           Send a logical key event.");
 	print_line("  action <name> [--down|--up]       Send an InputMap action event.");
@@ -604,6 +605,8 @@ int print_command_response(const Dictionary &p_response, bool p_json_output) {
 			const String location = target.is_empty() ? vformat("(%s, %s)", p_response.get("x", 0.0), p_response.get("y", 0.0)) : target;
 			print_line(vformat("Clicked %s with %s.", location, String(p_response.get("button", "left"))));
 		}
+	} else if (command == "mouse") {
+		print_line(vformat("Mouse %s at (%s, %s).", p_response.get("operation", String()), p_response.get("x", 0.0), p_response.get("y", 0.0)));
 	} else if (command == "type") {
 		print_line(vformat("Typed %d characters.", (int)p_response.get("characters", 0)));
 	} else if (command == "key") {
@@ -765,6 +768,7 @@ struct InputCommandOptions {
 	bool double_click = false;
 	int session = -1;
 	double strength = 1.0;
+	double delta = 1.0;
 	String button = "left";
 	String state = "tap";
 	Vector<String> operands;
@@ -797,7 +801,7 @@ bool parse_input_command_options(const String &p_command, const Vector<String> &
 				print_line("wgodot: --strength requires a number from 0 to 1.");
 				return false;
 			}
-		} else if (p_command == "click" && argument == "--button") {
+		} else if ((p_command == "click" || p_command == "mouse") && argument == "--button") {
 			if (i + 1 >= p_arguments.size()) {
 				print_line("wgodot: --button requires left, right, or middle.");
 				return false;
@@ -805,6 +809,16 @@ bool parse_input_command_options(const String &p_command, const Vector<String> &
 			r_options.button = p_arguments[++i].to_lower();
 			if (r_options.button != "left" && r_options.button != "right" && r_options.button != "middle") {
 				print_line("wgodot: --button requires left, right, or middle.");
+				return false;
+			}
+		} else if (p_command == "mouse" && argument == "--delta") {
+			if (i + 1 >= p_arguments.size() || !p_arguments[i + 1].is_valid_float()) {
+				print_line("wgodot: --delta requires a nonzero number; positive scrolls down.");
+				return false;
+			}
+			r_options.delta = p_arguments[++i].to_float();
+			if (!Math::is_finite(r_options.delta) || r_options.delta == 0) {
+				print_line("wgodot: --delta must be finite and nonzero.");
 				return false;
 			}
 		} else if (p_command == "click" && argument == "--double") {
@@ -826,14 +840,28 @@ int run_input_command(const String &p_command, const Vector<String> &p_arguments
 	}
 
 	Dictionary options;
-	if (p_command == "click") {
+	if (p_command == "mouse") {
+		if (command_options.operands.is_empty()) {
+			print_line("wgodot: mouse requires move, down, up, or wheel and a target.");
+			return 2;
+		}
+		const String operation = command_options.operands[0];
+		if (operation != "move" && operation != "down" && operation != "up" && operation != "wheel") {
+			print_line("wgodot: mouse operation must be move, down, up, or wheel.");
+			return 2;
+		}
+		options["operation"] = operation;
+		options["delta"] = command_options.delta;
+		command_options.operands.remove_at(0);
+	}
+	if (p_command == "click" || p_command == "mouse") {
 		if (command_options.operands.size() == 1) {
 			options["target"] = command_options.operands[0];
 		} else if (command_options.operands.size() == 2 && command_options.operands[0].is_valid_float() && command_options.operands[1].is_valid_float()) {
 			options["x"] = command_options.operands[0].to_float();
 			options["y"] = command_options.operands[1].to_float();
 		} else {
-			print_line("wgodot: click requires one node path or two numeric coordinates.");
+			print_line("wgodot: " + p_command + " requires one node path or two numeric coordinates.");
 			return 2;
 		}
 		options["button"] = command_options.button;
@@ -1303,7 +1331,7 @@ bool execute_if_requested(int &r_exit_code) {
 		r_exit_code = run_game_query_command(command == "screenshot" ? "ss" : command, arguments);
 		return true;
 	}
-	if (command == "click" || command == "type" || command == "key" || command == "action") {
+	if (command == "click" || command == "mouse" || command == "type" || command == "key" || command == "action") {
 		r_exit_code = run_input_command(command, arguments);
 		return true;
 	}

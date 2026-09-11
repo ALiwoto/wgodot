@@ -778,65 +778,76 @@ void send_mouse_button_event(const Vector2 &p_position, MouseButton p_button, bo
 	Input::get_singleton()->parse_input_event(event);
 }
 
-Dictionary click(const Dictionary &p_options) {
+Dictionary pointer_input(const String &p_command, const Dictionary &p_options) {
 	SceneTree *scene_tree = SceneTree::get_singleton();
 	Window *window = scene_tree ? scene_tree->get_root() : nullptr;
 	if (window == nullptr) {
-		return make_error("click", "window_unavailable", "The running game has no window available for mouse input.");
+		return make_error(p_command, "window_unavailable", "The running game has no window available for mouse input.");
 	}
 
+	const String operation = p_command == "click" ? String("click") : String(p_options.get("operation", String()));
+	if (operation != "click" && operation != "move" && operation != "down" && operation != "up" && operation != "wheel") {
+		return make_error(p_command, "invalid_operation", "Mouse operation must be move, down, up, or wheel.");
+	}
+	const double delta = p_options.get("delta", 1.0);
+	if (operation == "wheel" && (!Math::is_finite(delta) || delta == 0.0)) {
+		return make_error(p_command, "invalid_delta", "Wheel delta must be a finite, nonzero number (positive scrolls down).");
+	}
 	Vector2 position;
 	String target_path;
 	if (p_options.has("target")) {
 		target_path = p_options.get("target", String());
 		Node *node = window->get_node_or_null(NodePath(target_path));
 		if (node == nullptr) {
-			return make_error("click", "node_not_found", "Click target was not found: " + target_path);
+			return make_error(p_command, "node_not_found", "Mouse target was not found: " + target_path);
 		}
 		Control *control = Object::cast_to<Control>(node);
 		if (control == nullptr) {
+			if (p_command != "click") {
+				return make_error(p_command, "target_not_control", "Mouse commands require a Control target: " + target_path);
+			}
 			if (!node->has_method(SNAME("simulate_click"))) {
-				return make_error("click", "target_not_clickable", "Click target is not a Control and does not implement simulate_click(): " + target_path);
+				return make_error(p_command, "target_not_clickable", "Mouse target is not a Control and does not implement simulate_click(): " + target_path);
 			}
 			Callable::CallError call_error;
 			node->callp(SNAME("simulate_click"), nullptr, 0, call_error);
 			if (call_error.error != Callable::CallError::CALL_OK) {
-				return make_error("click", "simulate_click_failed", "simulate_click() could not be called without arguments on: " + target_path);
+				return make_error(p_command, "simulate_click_failed", "simulate_click() could not be called without arguments on: " + target_path);
 			}
 
 			Dictionary response;
 			response["ok"] = true;
-			response["command"] = "click";
+			response["command"] = p_command;
 			response["target"] = target_path;
 			response["mode"] = "method";
 			response["method"] = "simulate_click";
 			return response;
 		}
 		if (!control->is_visible_in_tree()) {
-			return make_error("click", "target_not_visible", "Click target is not visible: " + target_path);
+			return make_error(p_command, "target_not_visible", "Mouse target is not visible: " + target_path);
 		}
-		if (control->get_mouse_filter_with_override() == Control::MOUSE_FILTER_IGNORE) {
-			return make_error("click", "target_ignores_mouse", "Click target ignores mouse input: " + target_path);
+		if (p_command == "click" && control->get_mouse_filter_with_override() == Control::MOUSE_FILTER_IGNORE) {
+			return make_error(p_command, "target_ignores_mouse", "Mouse target ignores mouse input: " + target_path);
 		}
 		if (control->get_size().x <= 0.0f || control->get_size().y <= 0.0f) {
-			return make_error("click", "target_has_no_area", "Click target has no clickable area: " + target_path);
+			return make_error(p_command, "target_has_no_area", "Mouse target has no clickable area: " + target_path);
 		}
 		position = control->get_viewport()->get_screen_transform().xform(control->get_global_transform_with_canvas().xform(control->get_size() * 0.5f));
 		window = control->get_window();
 		if (window == nullptr) {
-			return make_error("click", "window_unavailable", "Click target has no window: " + target_path);
+			return make_error(p_command, "window_unavailable", "Mouse target has no window: " + target_path);
 		}
 	} else {
 		position.x = p_options.get("x", 0.0);
 		position.y = p_options.get("y", 0.0);
 		if (!Math::is_finite(position.x) || !Math::is_finite(position.y)) {
-			return make_error("click", "invalid_position", "Click coordinates must be finite numbers.");
+			return make_error(p_command, "invalid_position", "Mouse coordinates must be finite numbers.");
 		}
 	}
 
 	const String button_name = p_options.get("button", "left");
 	if (button_name != "left" && button_name != "right" && button_name != "middle") {
-		return make_error("click", "invalid_mouse_button", "Mouse button must be left, right, or middle.");
+		return make_error(p_command, "invalid_mouse_button", "Mouse button must be left, right, or middle.");
 	}
 	const MouseButton button = get_mouse_button(button_name);
 	const MouseButtonMask button_flag = mouse_button_to_mask(button);
@@ -856,22 +867,43 @@ Dictionary click(const Dictionary &p_options) {
 	motion->set_window_id(window->get_window_id());
 	Input::get_singleton()->parse_input_event(motion);
 
-	send_mouse_button_event(position, button, true, false, window->get_window_id(), pressed_mask);
-	send_mouse_button_event(position, button, false, false, window->get_window_id(), released_mask);
-	if ((bool)p_options.get("double", false)) {
+	if (operation == "click" || operation == "down") {
+		send_mouse_button_event(position, button, true, false, window->get_window_id(), pressed_mask);
+	}
+	if (operation == "click" || operation == "up") {
+		send_mouse_button_event(position, button, false, false, window->get_window_id(), released_mask);
+	}
+	if (operation == "click" && (bool)p_options.get("double", false)) {
 		send_mouse_button_event(position, button, true, true, window->get_window_id(), pressed_mask);
 		send_mouse_button_event(position, button, false, true, window->get_window_id(), released_mask);
+	}
+	if (operation == "wheel") {
+		Ref<InputEventMouseButton> wheel;
+		wheel.instantiate();
+		wheel->set_position(position);
+		wheel->set_global_position(position);
+		wheel->set_button_index(delta > 0 ? MouseButton::WHEEL_DOWN : MouseButton::WHEEL_UP);
+		wheel->set_factor(Math::abs(delta));
+		wheel->set_button_mask(initial_mask);
+		wheel->set_window_id(window->get_window_id());
+		wheel->set_pressed(true);
+		Input::get_singleton()->parse_input_event(wheel);
+		wheel = wheel->duplicate();
+		wheel->set_pressed(false);
+		Input::get_singleton()->parse_input_event(wheel);
 	}
 
 	Dictionary response;
 	response["ok"] = true;
-	response["command"] = "click";
+	response["command"] = p_command;
 	response["target"] = target_path;
 	response["x"] = position.x;
 	response["y"] = position.y;
 	response["button"] = button_name;
 	response["double"] = (bool)p_options.get("double", false);
 	response["mode"] = "input";
+	response["operation"] = operation;
+	response["delta"] = delta;
 	return response;
 }
 
@@ -937,8 +969,8 @@ Error parse_message(void *p_user, const String &p_message, const Array &p_argume
 				response["screenshot"] = screenshot;
 			}
 		}
-	} else if (command == "click") {
-		response = click(options);
+	} else if (command == "click" || command == "mouse") {
+		response = pointer_input(command, options);
 	} else if (command == "type") {
 		response = type_text(options);
 	} else if (command == "key") {

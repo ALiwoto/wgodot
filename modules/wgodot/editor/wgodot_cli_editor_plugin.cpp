@@ -40,6 +40,7 @@ constexpr const char *const FORWARDED_GAME_COMMANDS[] = {
 	"ss",
 	"observe",
 	"click",
+	"mouse",
 	"type",
 	"key",
 	"action",

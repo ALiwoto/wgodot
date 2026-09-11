@@ -412,6 +412,17 @@ func simulate_click() -> void:
 
 Use this method as the compatibility hook for custom clickable `Node2D` or other non-`Control` objects. The click command reports an error when a non-`Control` target does not implement it. `--button` and `--double` are not passed to `simulate_click()`.
 
+Move, hold, release, or scroll the game pointer without moving the OS cursor:
+
+```powershell
+godot --wg mouse down /root/Main/UI/Scroll
+godot --wg mouse move 640 240
+godot --wg mouse up 640 240
+godot --wg mouse wheel /root/Main/UI/Scroll --delta 3
+```
+
+`mouse` accepts a Control path or window coordinates. Down/up accept `--button`. Wheel `--delta` defaults to 1; positive scrolls down, negative scrolls up. Button state persists between commands; always release held buttons. Use `wait` between motions when testing a drag over multiple frames.
+
 Prefer node paths because they avoid guessed coordinates.
 
 Type text through native key events. Click or otherwise focus the intended text control first:
