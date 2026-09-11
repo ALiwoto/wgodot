@@ -343,18 +343,6 @@ void EditorExportPlugin::_export_file(const String &p_path, const String &p_type
 void EditorExportPlugin::_export_begin(const HashSet<String> &p_features, bool p_debug, const String &p_path, int p_flags) {
 }
 
-// wgodot-changes::begin
-void EditorExportPlugin::set_export_error(Error p_error, const String &p_message) {
-	export_error = p_error;
-	get_export_platform()->add_message(EditorExportPlatform::EXPORT_MESSAGE_ERROR, get_name(), p_message);
-}
-
-void EditorExportPlugin::_export_paths_ready(const HashSet<String> &p_paths) {
-}
-
-void EditorExportPlugin::_export_global_class_list(Array &r_global_class_list) {
-}
-// wgodot-changes::end
 
 void EditorExportPlugin::_export_end() {}
 

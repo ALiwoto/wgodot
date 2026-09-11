@@ -28,6 +28,10 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
+// wgodot-changes::begin
+#include "editor/wgodot_script_interfaces.h"
+// wgodot-changes::end
+
 #include "editor_node.h"
 
 #include "core/config/engine.h"
@@ -5986,6 +5990,12 @@ Ref<Texture2D> EditorNode::get_class_icon(const String &p_class, const String &p
 
 bool EditorNode::is_object_of_custom_type(const Object *p_object, const StringName &p_class) {
 	ERR_FAIL_NULL_V(p_object, false);
+
+	// wgodot-changes::begin
+	if (WGodotEditorInterfaces::accepts_object(p_class, p_object)) {
+		return true;
+	}
+	// wgodot-changes::end
 
 	Ref<Script> scr = p_object->get_script();
 	if (scr.is_null() && Object::cast_to<Script>(p_object)) {

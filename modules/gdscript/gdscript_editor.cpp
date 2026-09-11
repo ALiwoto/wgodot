@@ -35,7 +35,7 @@
 #include "gdscript_tokenizer.h"
 #include "gdscript_utility_functions.h"
 // wgodot-changes::begin
-#include "wgodot_stdlib.h"
+#include "wgodot_gd/editor/interface_completion.h"
 // wgodot-changes::end
 
 #ifdef TOOLS_ENABLED
@@ -1126,16 +1126,6 @@ static void _find_built_in_variants(HashMap<String, EditorLanguage::CompletionOp
 	}
 }
 
-// wgodot-changes::begin
-static void _find_wgodot_stdlib_interfaces(HashMap<String, EditorLanguage::CompletionOption> &r_result) {
-	LocalVector<StringName> interfaces;
-	WGodotGDScriptStdLib::get_global_interface_list(interfaces);
-	for (const StringName &interface_name : interfaces) {
-		EditorLanguage::CompletionOption option(interface_name, EditorLanguage::CompletionKind::CLASS, EditorLanguage::CompletionLocation::OTHER_USER_CODE);
-		r_result.insert(option.display, option);
-	}
-}
-// wgodot-changes::end
 
 static void _find_global_enums(HashMap<String, EditorLanguage::CompletionOption> &r_result) {
 	List<StringName> global_enums;
@@ -1217,7 +1207,7 @@ static void _list_available_types(bool p_inherit_only, GDScriptParser::Completio
 	}
 	// wgodot-changes::begin
 	if (!p_inherit_only) {
-		_find_wgodot_stdlib_interfaces(r_result);
+		WGodotGDScriptEditor::find_builtin_interfaces(r_result);
 	}
 	// wgodot-changes::end
 
@@ -1771,7 +1761,7 @@ static void _find_identifiers(const GDScriptParser::CompletionContext &p_context
 		r_result.insert(option.display, option);
 	}
 	// wgodot-changes::begin
-	_find_wgodot_stdlib_interfaces(r_result);
+	WGodotGDScriptEditor::find_builtin_interfaces(r_result);
 	// wgodot-changes::end
 }
 
@@ -3584,13 +3574,7 @@ static void _find_call_arguments(GDScriptParser::CompletionContext &p_context, c
 		} break;
 		// wgodot-changes::begin
 		case GDScriptParser::COMPLETION_WGODOT_INTERFACE_TYPE: {
-			LocalVector<StringName> global_classes;
-			ScriptServer::get_global_class_list(global_classes);
-			for (const StringName &class_name : global_classes) {
-				EditorLanguage::CompletionOption option(class_name, EditorLanguage::CompletionKind::CLASS, EditorLanguage::CompletionLocation::OTHER_USER_CODE);
-				options.insert(option.display, option);
-			}
-			_find_wgodot_stdlib_interfaces(options);
+			WGodotGDScriptEditor::find_interfaces(options);
 			r_forced = true;
 		} break;
 		// wgodot-changes::end

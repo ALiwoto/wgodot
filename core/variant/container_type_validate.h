@@ -128,17 +128,9 @@ private:
 			return true; // All good, no script requested.
 		}
 
-		Ref<Script> other_script = object->get_script();
-
-		// Check base script..
-		if (other_script.is_null()) {
-			if (p_output_errors) {
-				ERR_FAIL_V_MSG(false, vformat("Attempted to %s an object into a %s of incompatible type '%s'.", String(p_operation), String(where), String(script->get_class_name())));
-			} else {
-				return false;
-			}
-		}
-		if (!other_script->inherits_script(script)) {
+		// wgodot-changes::begin
+		if (!script->wgodot_is_instance_compatible(object)) {
+		// wgodot-changes::end
 			if (p_output_errors) {
 				ERR_FAIL_V_MSG(false, vformat("Attempted to %s an object into a %s of incompatible type '%s'.", String(p_operation), String(where), String(script->get_class_name())));
 			} else {
@@ -180,9 +172,11 @@ public:
 
 		if (script.is_null()) {
 			return true;
+		// wgodot-changes::begin
 		} else if (p_type.script.is_null()) {
-			return false;
-		} else if (script != p_type.script && !p_type.script->inherits_script(script)) {
+			return script->wgodot_is_interface_type() && ClassDB::wgodot_class_implements_interface(p_type.class_name, script->wgodot_get_interface_id());
+		} else if (!script->wgodot_is_type_compatible(p_type.script)) {
+		// wgodot-changes::end
 			return false;
 		}
 

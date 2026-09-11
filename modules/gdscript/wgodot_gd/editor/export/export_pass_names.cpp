@@ -23,6 +23,15 @@ protected:
 				for (const auto *identifier : node->extends) {
 					add_global_class_name_reference_replacement(rewrite, identifier);
 				}
+				for (const auto &contract : node->wgodot_implements) {
+					for (const auto *identifier : contract.identifiers) {
+						const int count = rewrite.replacements.size();
+						add_global_class_name_reference_replacement(rewrite, identifier);
+						if (rewrite.replacements.size() == count) {
+							add_class_member_name_reference_replacement(rewrite, identifier);
+						}
+					}
+				}
 			} break;
 			case Parser::Node::TYPE: {
 				const auto *node = static_cast<const Parser::TypeNode *>(p_node);
@@ -113,7 +122,7 @@ Error NamesPass::transform(const ExportPassInput &p_input, ExportPassOutput &r_o
 	}
 	for (const String &path : p_input.project.get_script_paths()) {
 		if (const auto *parser = analyzed_scripts.getptr(path)) {
-			r_output.artifacts.index_interface_methods((*parser)->get_parser()->get_tree());
+			r_output.artifacts.index_interface_members((*parser)->get_parser()->get_tree());
 		}
 	}
 	for (const String &path : p_input.project.get_script_paths()) {

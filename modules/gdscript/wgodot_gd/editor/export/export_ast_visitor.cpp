@@ -40,7 +40,11 @@ void ExportASTVisitor::walk_node(const Parser::Node *p_node, ExportScope p_scope
 	switch (p_node->type) {
 		case Parser::Node::CLASS: {
 			const Parser::ClassNode *node = static_cast<const Parser::ClassNode *>(p_node);
-			for (const Parser::ClassNode::Member &member : node->members) {
+			for (const auto &contract : node->wgodot_implements) {
+				walk_node(contract.path_literal, p_scope);
+			}
+			for (uint32_t i = 0; i < node->wgodot_get_own_member_count(); i++) {
+				const Parser::ClassNode::Member &member = node->members[i];
 				walk_node(member.type == Parser::ClassNode::Member::ENUM_VALUE ? member.enum_value.parent_enum : member.get_source_node(), p_scope);
 			}
 		} break;

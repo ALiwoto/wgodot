@@ -268,19 +268,6 @@ void EditorLog::clear() {
 	_clear_request();
 }
 
-// wgodot-changes::begin
-Array EditorLog::wgodot_get_messages() const {
-	Array result;
-	for (const LogMessage &message : messages) {
-		Dictionary entry;
-		entry["text"] = message.text;
-		entry["type"] = static_cast<int>(message.type);
-		entry["count"] = message.count;
-		result.push_back(entry);
-	}
-	return result;
-}
-// wgodot-changes::end
 
 void EditorLog::_process_message(const String &p_msg, MessageType p_type, bool p_clear) {
 	if (messages.size() > 0 && messages[messages.size() - 1].text == p_msg && messages[messages.size() - 1].type == p_type) {

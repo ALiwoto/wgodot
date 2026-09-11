@@ -783,9 +783,16 @@ public:
 		StringName wgodot_interface_name;
 		struct WGodotInterfaceReference {
 			String path;
+			LiteralNode *path_literal = nullptr;
 			Vector<IdentifierNode *> identifiers;
 		};
 		Vector<WGodotInterfaceReference> wgodot_implements;
+		Vector<ClassNode *> wgodot_resolved_interfaces;
+		bool wgodot_interfaces_resolved = false;
+		bool wgodot_has_native_interface_members = false;
+		int wgodot_own_member_count = -1;
+		uint32_t wgodot_get_own_member_count() const { return wgodot_own_member_count < 0 ? members.size() : uint32_t(wgodot_own_member_count); }
+		bool wgodot_resolving_interfaces = false;
 		// wgodot-changes::end
 		bool has_static_data = false;
 		bool annotated_static_unload = false;
@@ -1136,6 +1143,7 @@ public:
 		bool wgodot_private = false;
 		bool wgodot_protected = false;
 		bool wgodot_no_mangle = false;
+		bool wgodot_interface_implementation = false;
 		// wgodot-changes::end
 #ifdef TOOLS_ENABLED
 		MemberDocData doc_data;
@@ -1350,6 +1358,7 @@ public:
 		bool wgodot_readonly = false;
 		bool wgodot_no_mangle = false;
 		bool wgodot_obfuscate = false;
+		bool wgodot_interface_implementation = false;
 		// wgodot-changes::end
 		PropertyInfo export_info;
 		int assignments = 0;

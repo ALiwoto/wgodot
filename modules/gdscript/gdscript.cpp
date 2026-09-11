@@ -717,42 +717,6 @@ void GDScript::_static_default_init() {
 	}
 }
 
-// wgodot-changes::begin
-void GDScript::_wgodot_strip_function_export_constants(GDScriptFunction *p_function) {
-	if (p_function == nullptr) {
-		return;
-	}
-
-	// The compiler only records local constants that are allowed to be stripped.
-	// Constants marked @no_mangle are never added to this set.
-	for (const StringName &constant_name : p_function->wgodot_declared_local_constants) {
-		p_function->constant_map.erase(constant_name);
-	}
-	p_function->wgodot_declared_local_constants.clear();
-	for (GDScriptFunction *lambda : p_function->lambdas) {
-		_wgodot_strip_function_export_constants(lambda);
-	}
-}
-
-void GDScript::_wgodot_strip_export_constants() {
-	for (const StringName &constant_name : wgodot_declared_constants) {
-		constants.erase(constant_name);
-	}
-	wgodot_declared_constants.clear();
-
-	for (const KeyValue<StringName, GDScriptFunction *> &function : member_functions) {
-		_wgodot_strip_function_export_constants(function.value);
-	}
-	_wgodot_strip_function_export_constants(initializer);
-	_wgodot_strip_function_export_constants(implicit_initializer);
-	_wgodot_strip_function_export_constants(implicit_ready);
-	_wgodot_strip_function_export_constants(static_initializer);
-
-	for (const KeyValue<StringName, Ref<GDScript>> &subclass : subclasses) {
-		subclass.value->_wgodot_strip_export_constants();
-	}
-}
-// wgodot-changes::end
 
 #ifdef TOOLS_ENABLED
 
@@ -1466,45 +1430,6 @@ String GDScript::canonicalize_path(const String &p_path) {
 	return p_path;
 }
 
-// wgodot-changes::begin
-bool GDScript::wgodot_is_interface_type() const {
-	return wgodot_is_interface;
-}
-
-const String &GDScript::wgodot_get_interface_key() const {
-	return wgodot_interface_key;
-}
-
-bool GDScript::wgodot_implements_interface(const String &p_interface_key) const {
-	if (wgodot_implemented_interfaces.has(p_interface_key)) {
-		return true;
-	}
-
-	return base.is_valid() && base->wgodot_implements_interface(p_interface_key);
-}
-
-bool GDScript::wgodot_object_implements_interface(Object *p_object, const GDScript *p_interface_script) {
-	if (p_object == nullptr || p_interface_script == nullptr || !p_interface_script->wgodot_is_interface_type()) {
-		return false;
-	}
-
-	ScriptInstance *script_instance = p_object->get_script_instance();
-	if (script_instance == nullptr) {
-		return false;
-	}
-
-	Ref<Script> current_script = script_instance->get_script();
-	while (current_script.is_valid()) {
-		Ref<GDScript> current_gdscript = current_script;
-		if (current_gdscript.is_valid() && current_gdscript->wgodot_implements_interface(p_interface_script->wgodot_get_interface_key())) {
-			return true;
-		}
-		current_script = current_script->get_base_script();
-	}
-
-	return false;
-}
-// wgodot-changes::end
 
 GDScript::UpdatableFuncPtr::UpdatableFuncPtr(GDScriptFunction *p_function) {
 	if (p_function == nullptr) {
@@ -2299,6 +2224,9 @@ void GDScriptLanguage::init() {
 #ifdef TESTS_ENABLED
 	GDScriptTests::GDScriptTestRunner::handle_cmdline();
 #endif // TESTS_ENABLED
+	// wgodot-changes::begin
+	WGodotGDScriptStdLib::initialize_native_interfaces();
+	// wgodot-changes::end
 }
 
 #ifdef TOOLS_ENABLED

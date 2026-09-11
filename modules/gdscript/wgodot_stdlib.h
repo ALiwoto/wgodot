@@ -15,6 +15,10 @@
 
 namespace WGodotGDScriptStdLib {
 
+Error register_interface(const StringName &p_name, const StringName &p_native_base, const String &p_source);
+void register_native_implementation(const StringName &p_class, const StringName &p_interface);
+void initialize_native_interfaces();
+void clear_module_interfaces();
 bool has_global_interface(const StringName &p_name);
 String get_global_interface_path(const StringName &p_name);
 void get_global_interface_list(LocalVector<StringName> &r_interfaces);

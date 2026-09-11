@@ -70,16 +70,6 @@ GDScriptAnalyzer *GDScriptParserRef::get_analyzer() {
 	return analyzer;
 }
 
-// wgodot-changes::begin
-#ifdef TOOLS_ENABLED
-void GDScriptParserRef::initialize_export_source(const String &p_path, const String &p_source) {
-	path = p_path;
-	export_source = true;
-	export_source_text = p_source;
-	abandoned = true; // This reference never belongs to the editor parser cache.
-}
-#endif
-// wgodot-changes::end
 
 Error GDScriptParserRef::raise_status(Status p_new_status) {
 	ERR_FAIL_COND_V(clearing, ERR_BUG);

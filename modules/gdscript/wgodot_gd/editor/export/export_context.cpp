@@ -18,6 +18,7 @@
 #include "core/variant/variant.h"
 
 #include "modules/gdscript/gdscript_utility_functions.h"
+#include "modules/gdscript/wgodot_gd/interface_helpers.h"
 #include "modules/gdscript/wgodot_stdlib.h"
 
 namespace {
@@ -395,12 +396,14 @@ void index_class(WGodotGDScriptExportTransform::ExportContext &r_context, const 
 		}
 
 		StringName member_name;
+		const bool is_interface_member = WGodotGDScriptInterfaceHelpers::is_contract_member(member) &&
+				(p_class->wgodot_is_interface || WGodotGDScriptInterfaceHelpers::is_implemented_member(member));
 		if (member.type == GDScriptParser::ClassNode::Member::FUNCTION &&
 				member.function != nullptr &&
 				member.function->identifier != nullptr &&
 				!member.function->wgodot_no_mangle) {
 			const StringName function_name = member.function->identifier->name;
-			const bool is_interface_method = r_context.get_interface_method_alias(function_name) != nullptr &&
+			const bool is_interface_method = r_context.get_interface_member_alias(function_name) != nullptr &&
 					(p_class->wgodot_is_interface || member.function->wgodot_interface_implementation || obfuscate_scope);
 			if (obfuscate_scope || member.function->wgodot_obfuscate || is_interface_method) {
 				member_name = function_name;
@@ -410,13 +413,13 @@ void index_class(WGodotGDScriptExportTransform::ExportContext &r_context, const 
 		} else if (member.type == GDScriptParser::ClassNode::Member::VARIABLE &&
 				member.variable != nullptr &&
 				member.variable->identifier != nullptr &&
-				(obfuscate_scope || member.variable->wgodot_obfuscate) &&
+				(obfuscate_scope || member.variable->wgodot_obfuscate || is_interface_member) &&
 				!member.variable->wgodot_no_mangle) {
 			member_name = member.variable->identifier->name;
 		} else if (member.type == GDScriptParser::ClassNode::Member::SIGNAL &&
 				member.signal != nullptr &&
 				member.signal->identifier != nullptr &&
-				(obfuscate_scope || member.signal->wgodot_private) &&
+				(obfuscate_scope || member.signal->wgodot_private || is_interface_member) &&
 				!member.signal->wgodot_no_mangle) {
 			member_name = member.signal->identifier->name;
 		} else {
@@ -438,8 +441,8 @@ void index_class(WGodotGDScriptExportTransform::ExportContext &r_context, const 
 		}
 		phase_start_usec = r_probe != nullptr ? export_timing_get_ticks_usec() : 0;
 		String obfuscated_name;
-		if (member.type == GDScriptParser::ClassNode::Member::FUNCTION && member.function != nullptr) {
-			if (const StringName *interface_alias = r_context.get_interface_method_alias(member_name)) {
+		if (is_interface_member || obfuscate_scope) {
+			if (const StringName *interface_alias = r_context.get_interface_member_alias(member_name)) {
 				obfuscated_name = String(*interface_alias);
 			}
 		}
@@ -474,7 +477,7 @@ namespace WGodotGDScriptExportTransform {
 void ExportContext::reset() {
 	diagnostics.reset();
 	member_renames.clear();
-	interface_method_aliases.clear();
+	interface_member_aliases.clear();
 	builtin_interface_aliases.clear();
 	global_class_renames.clear();
 	global_class_renames_by_path.clear();
@@ -494,7 +497,7 @@ void ExportContext::reset() {
 	reserve_registered_global_class_names();
 	reserve_builtin_class_names();
 	reserve_builtin_function_names();
-	reserve_builtin_interface_methods();
+	reserve_builtin_interface_members();
 	obfuscation_random.randomize();
 }
 
@@ -514,46 +517,39 @@ void ExportContext::reserve_script_member_names(const GDScriptParser::ClassNode 
 	}
 }
 
-void ExportContext::index_interface_methods(const GDScriptParser::ClassNode *p_class) {
+void ExportContext::index_interface_members(const GDScriptParser::ClassNode *p_class) {
 	if (p_class == nullptr) {
 		return;
 	}
-
-	for (const GDScriptParser::ClassNode::Member &member : p_class->members) {
-		if (member.type == GDScriptParser::ClassNode::Member::FUNCTION &&
-				member.function != nullptr &&
-				member.function->identifier != nullptr &&
-				(p_class->wgodot_is_interface || member.function->wgodot_interface_implementation)) {
-			const StringName method_name = member.function->identifier->name;
-			if (!interface_method_aliases.has(method_name)) {
-				interface_method_aliases[method_name] = StringName(make_obfuscated_name_from_reserved_names(reserved_member_names, "interface method"));
-			}
-		} else if (member.type == GDScriptParser::ClassNode::Member::CLASS) {
-			index_interface_methods(member.m_class);
-		}
-	}
-
-	for (const GDScriptParser::ClassNode *base_class = p_class->base_type.class_type; base_class != nullptr; base_class = base_class->base_type.class_type) {
-		for (const GDScriptParser::ClassNode::Member &member : base_class->members) {
-			if (member.type == GDScriptParser::ClassNode::Member::FUNCTION &&
-					member.function != nullptr &&
-					member.function->identifier != nullptr &&
-					member.function->wgodot_interface_implementation) {
-				const StringName method_name = member.function->identifier->name;
-				if (!interface_method_aliases.has(method_name)) {
-					interface_method_aliases[method_name] = StringName(make_obfuscated_name_from_reserved_names(reserved_member_names, "interface method"));
+	using namespace WGodotGDScriptInterfaceHelpers;
+	for (const GDScriptParser::ClassNode *current = p_class; current != nullptr; current = current->base_type.class_type) {
+		const bool native_contract = current->wgodot_is_interface &&
+				(current->wgodot_has_native_interface_members || WGodotGDScriptStdLib::has_script_path(current->self_type.script_path) ||
+						ClassDB::wgodot_interface_has_native_implementation(get_interface_id(current)));
+		for (const GDScriptParser::ClassNode::Member &member : current->members) {
+			if (member.type == GDScriptParser::ClassNode::Member::CLASS) {
+				index_interface_members(member.m_class);
+			} else if (is_contract_member(member) && (current->wgodot_is_interface || is_implemented_member(member))) {
+				const StringName name = member.get_name();
+				if (native_contract || current->wgodot_no_mangle || member_has_no_mangle(member)) {
+					interface_member_aliases[name] = name;
+				} else if (!interface_member_aliases.has(name)) {
+					interface_member_aliases[name] = StringName(make_obfuscated_name_from_reserved_names(reserved_member_names, "interface member"));
 				}
 			}
 		}
+		for (const GDScriptParser::ClassNode *contract : current->wgodot_resolved_interfaces) {
+			index_interface_members(contract);
+		}
 	}
 }
 
-const StringName *ExportContext::get_interface_method_alias(const StringName &p_name) const {
-	return interface_method_aliases.getptr(p_name);
+const StringName *ExportContext::get_interface_member_alias(const StringName &p_name) const {
+	return interface_member_aliases.getptr(p_name);
 }
 
-const HashMap<StringName, StringName> &ExportContext::get_interface_method_aliases() const {
-	return interface_method_aliases;
+const HashMap<StringName, StringName> &ExportContext::get_interface_member_aliases() const {
+	return interface_member_aliases;
 }
 
 void ExportContext::set_options(const TransformOptions &p_options) {
@@ -646,7 +642,7 @@ void ExportContext::reserve_builtin_function_names() {
 	}
 }
 
-void ExportContext::reserve_builtin_interface_methods() {
+void ExportContext::reserve_builtin_interface_members() {
 	// These declarations live in the engine, outside the project's export transform.
 	// Keep implementations and typed calls consistent with that fixed interface.
 	for (int i = 0; i < WGodotGDScriptStdLib::get_builtin_interface_count(); i++) {
@@ -655,9 +651,9 @@ void ExportContext::reserve_builtin_interface_methods() {
 		ERR_FAIL_COND(parser.parse(WGodotGDScriptStdLib::get_builtin_interface_source(i), path, false) != OK);
 		for (uint32_t method_index = 0; method_index < parser.get_tree()->members.size(); method_index++) {
 			const GDScriptParser::ClassNode::Member &member = parser.get_tree()->members[method_index];
-			if (member.type == GDScriptParser::ClassNode::Member::FUNCTION) {
-				const StringName name = member.function->identifier->name;
-				interface_method_aliases[name] = name;
+			if (WGodotGDScriptInterfaceHelpers::is_contract_member(member)) {
+				const StringName name = member.get_name();
+				interface_member_aliases[name] = name;
 				builtin_interface_aliases[(static_cast<uint64_t>(i) << 32) | method_index] = name;
 				reserve_member_name(name);
 			}

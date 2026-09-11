@@ -817,26 +817,6 @@ EditorExportPlatform::ExportNotifier::ExportNotifier(EditorExportPlatform &p_pla
 	}
 }
 
-// wgodot-changes::begin
-Error EditorExportPlatform::ExportNotifier::finish(Error p_result) {
-	if (!enabled || p_result != OK) {
-		return p_result;
-	}
-	const Vector<Ref<EditorExportPlugin>> plugins = EditorExport::get_singleton()->get_export_plugins();
-	for (const Ref<EditorExportPlugin> &plugin : plugins) {
-		if (plugin->export_error != OK) {
-			return plugin->export_error;
-		}
-	}
-	for (const Ref<EditorExportPlugin> &plugin : plugins) {
-		const Error error = plugin->_export_completed();
-		if (error != OK) {
-			return error;
-		}
-	}
-	return OK;
-}
-// wgodot-changes::end
 
 EditorExportPlatform::ExportNotifier::~ExportNotifier() {
 	if (!enabled) {

@@ -485,18 +485,9 @@ struct GDScriptUtilityFunctionsDefinitions {
 
 		Script *script_type = Object::cast_to<Script>(type_object);
 		if (script_type) {
-			bool result = false;
-			if (value_object->get_script_instance()) {
-				Script *script_ptr = value_object->get_script_instance()->get_script().ptr();
-				while (script_ptr) {
-					if (script_ptr == script_type) {
-						result = true;
-						break;
-					}
-					script_ptr = script_ptr->get_base_script().ptr();
-				}
-			}
-			*r_ret = result;
+			// wgodot-changes::begin
+			*r_ret = script_type->wgodot_is_instance_compatible(value_object);
+			// wgodot-changes::end
 			return;
 		}
 

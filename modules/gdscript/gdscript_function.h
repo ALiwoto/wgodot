@@ -125,7 +125,9 @@ public:
 		return kind == p_other.kind &&
 				builtin_type == p_other.builtin_type &&
 				native_type == p_other.native_type &&
-				(script_type == p_other.script_type || script_type_ref == p_other.script_type_ref) &&
+				// wgodot-changes::begin
+				script_type == p_other.script_type &&
+				// wgodot-changes::end
 				container_element_types == p_other.container_element_types;
 	}
 

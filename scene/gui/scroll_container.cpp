@@ -519,6 +519,9 @@ void ScrollContainer::_reposition_children() {
 
 		r.position += ofs;
 		r.position = r.position.floor();
+		// wgodot-changes::begin
+		r.position += _wgodot_get_scroll_displacement();
+		// wgodot-changes::end
 		fit_child_in_rect(c, r);
 	}
 

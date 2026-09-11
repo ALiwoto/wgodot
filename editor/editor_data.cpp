@@ -28,6 +28,10 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
+// wgodot-changes::begin
+#include "editor/wgodot_script_interfaces.h"
+// wgodot-changes::end
+
 #include "editor_data.h"
 
 #include "core/config/project_settings.h"
@@ -1043,6 +1047,12 @@ void EditorData::get_plugin_window_layout(Ref<ConfigFile> p_layout) {
 }
 
 bool EditorData::script_class_is_parent(const String &p_class, const String &p_inherits) {
+	// wgodot-changes::begin
+	if (WGodotEditorInterfaces::accepts_type(p_inherits, p_class)) {
+		return true;
+	}
+	// wgodot-changes::end
+
 	if (!ScriptServer::is_global_class(p_class)) {
 		return false;
 	}

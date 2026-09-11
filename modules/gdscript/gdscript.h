@@ -248,9 +248,12 @@ public:
 
 	bool inherits_script(const Ref<Script> &p_script) const override;
 	// wgodot-changes::begin
-	bool wgodot_is_interface_type() const;
+	bool wgodot_is_interface_type() const override;
+	String wgodot_get_interface_id() const override;
 	const String &wgodot_get_interface_key() const;
-	bool wgodot_implements_interface(const String &p_interface_key) const;
+	bool wgodot_implements_interface(const String &p_interface_key) const override;
+	void wgodot_get_interface_ids(HashSet<String> &r_interfaces) const override;
+	Error wgodot_validate_native_implementation(const StringName &p_class, String &r_error) const override;
 	static bool wgodot_object_implements_interface(Object *p_object, const GDScript *p_interface_script);
 	// wgodot-changes::end
 

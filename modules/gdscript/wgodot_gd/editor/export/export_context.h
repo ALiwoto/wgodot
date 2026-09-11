@@ -36,7 +36,7 @@ class ExportContext {
 	HashMap<uint64_t, String> string_resources;
 	HashMap<String, String> obfuscated_string_literals;
 	HashSet<StringName> reserved_member_names;
-	HashMap<StringName, StringName> interface_method_aliases;
+	HashMap<StringName, StringName> interface_member_aliases;
 	HashMap<uint64_t, StringName> builtin_interface_aliases;
 	HashSet<StringName> reserved_global_class_names;
 	HashSet<String> reserved_script_paths;
@@ -46,7 +46,7 @@ class ExportContext {
 	void reserve_registered_global_class_names();
 	void reserve_builtin_class_names();
 	void reserve_builtin_function_names();
-	void reserve_builtin_interface_methods();
+	void reserve_builtin_interface_members();
 
 public:
 	void reset();
@@ -56,9 +56,9 @@ public:
 	const DiagnosticExport &get_diagnostics() const { return diagnostics; }
 	void reserve_member_name(const StringName &p_name);
 	void reserve_script_member_names(const GDScriptParser::ClassNode *p_class);
-	void index_interface_methods(const GDScriptParser::ClassNode *p_class);
-	const StringName *get_interface_method_alias(const StringName &p_name) const;
-	const HashMap<StringName, StringName> &get_interface_method_aliases() const;
+	void index_interface_members(const GDScriptParser::ClassNode *p_class);
+	const StringName *get_interface_member_alias(const StringName &p_name) const;
+	const HashMap<StringName, StringName> &get_interface_member_aliases() const;
 	const HashMap<uint64_t, StringName> &get_builtin_interface_aliases() const { return builtin_interface_aliases; }
 	void reserve_global_class_name(const StringName &p_name);
 	void reserve_script_path(const String &p_path);

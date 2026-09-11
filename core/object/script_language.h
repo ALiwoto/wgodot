@@ -151,6 +151,15 @@ public:
 	virtual Ref<Script> get_base_script() const = 0; //for script inheritance
 	virtual StringName get_global_name() const = 0;
 	virtual bool inherits_script(const Ref<Script> &p_script) const = 0;
+	// wgodot-changes::begin
+	virtual bool wgodot_is_interface_type() const;
+	virtual String wgodot_get_interface_id() const;
+	virtual bool wgodot_implements_interface(const String &p_interface_id) const;
+	virtual void wgodot_get_interface_ids(HashSet<String> &r_interfaces) const;
+	virtual Error wgodot_validate_native_implementation(const StringName &p_class, String &r_error) const;
+	bool wgodot_is_instance_compatible(Object *p_object) const;
+	bool wgodot_is_type_compatible(const Ref<Script> &p_script) const;
+	// wgodot-changes::end
 
 	virtual StringName get_instance_base_type() const = 0; // this may not work in all scripts, will return empty if so
 	virtual ScriptInstance *instance_create(Object *p_this) = 0;

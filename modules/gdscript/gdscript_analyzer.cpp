@@ -438,7 +438,9 @@ Error GDScriptAnalyzer::resolve_class_inheritance(GDScriptParser::ClassNode *p_c
 		result.type_source = GDScriptParser::DataType::ANNOTATED_INFERRED;
 		result.kind = GDScriptParser::DataType::NATIVE;
 		result.builtin_type = Variant::OBJECT;
-		result.native_type = SNAME("RefCounted");
+		// wgodot-changes::begin
+		result.native_type = p_class->wgodot_is_interface ? SNAME("Object") : SNAME("RefCounted");
+		// wgodot-changes::end
 	} else {
 		result.type_source = GDScriptParser::DataType::ANNOTATED_EXPLICIT;
 
@@ -962,6 +964,12 @@ GDScriptParser::DataType GDScriptAnalyzer::resolve_datatype(GDScriptParser::Type
 		return bad_type;
 	}
 
+	// wgodot-changes::begin
+	if (result.kind == GDScriptParser::DataType::CLASS && result.class_type->wgodot_is_interface) {
+		resolve_class_interface(result.class_type, p_type);
+		result = result.class_type->self_type;
+	}
+	// wgodot-changes::end
 	if (p_type->type_chain.size() > 1) {
 		if (result.kind == GDScriptParser::DataType::CLASS) {
 			for (uint32_t i = 1; i < p_type->type_chain.size(); i++) {
@@ -1381,6 +1389,9 @@ void GDScriptAnalyzer::resolve_class_interface(GDScriptParser::ClassNode *p_clas
 		if (resolve_class_inheritance(p_class) != OK) {
 			return;
 		}
+		// wgodot-changes::begin
+		wgodot_resolve_implemented_interfaces(p_class);
+		// wgodot-changes::end
 
 		GDScriptParser::DataType base_type = p_class->base_type;
 		if (base_type.kind == GDScriptParser::DataType::CLASS) {
@@ -1595,7 +1606,9 @@ void GDScriptAnalyzer::resolve_class_body(GDScriptParser::ClassNode *p_class, co
 			}
 		} else if (member.type == GDScriptParser::ClassNode::Member::SIGNAL) {
 #ifdef DEBUG_ENABLED
-			if (member.signal->usages == 0) {
+			// wgodot-changes::begin
+			if (member.signal->usages == 0 && !p_class->wgodot_is_interface && !member.signal->wgodot_interface_implementation) {
+			// wgodot-changes::end
 				parser->push_warning(member.signal->identifier, GDScriptWarning::UNUSED_SIGNAL, member.signal->identifier->name);
 			}
 #endif // DEBUG_ENABLED
@@ -4857,6 +4870,9 @@ void GDScriptAnalyzer::reduce_identifier(GDScriptParser::IdentifierNode *p_ident
 	}
 
 	// wgodot-changes::begin
+	if (wgodot_reduce_interface_identifier(p_identifier, name)) {
+		return;
+	}
 	if (WGodotGDScriptResolution::is_global_class(name)) {
 	// wgodot-changes::end
 		p_identifier->type_constraint = make_global_class_meta_type(name, p_identifier);
@@ -6200,6 +6216,9 @@ GDScriptParser::DataType GDScriptAnalyzer::type_from_property(const PropertyInfo
 	result.builtin_type = p_property.type;
 	if (p_property.type == Variant::OBJECT) {
 		// wgodot-changes::begin
+		if (wgodot_type_from_interface_property(p_property, p_source, result)) {
+			return result;
+		}
 #ifdef TOOLS_ENABLED
 		if (Ref<GDScriptParserRef> ref = WGodotGDScriptResolution::get_global_class_parser_override(p_property.class_name); ref.is_valid()) {
 			result = type_from_metatype(ref->get_parser()->get_tree()->self_type);
@@ -6703,6 +6722,11 @@ GDScriptParser::DataType GDScriptAnalyzer::get_operation_type(Variant::Operator 
 }
 
 bool GDScriptAnalyzer::is_type_compatible(const GDScriptParser::DataType &p_target, const GDScriptParser::DataType &p_source, bool p_allow_implicit_conversion, const GDScriptParser::Node *p_source_node) {
+	// wgodot-changes::begin
+	if (p_target.kind == GDScriptParser::DataType::CLASS && p_target.class_type->wgodot_is_interface && p_source.kind == GDScriptParser::DataType::CLASS && !p_source.is_meta_type) {
+		resolve_class_interface(p_source.class_type, p_source_node);
+	}
+	// wgodot-changes::end
 #ifdef DEBUG_ENABLED
 	if (p_source_node) {
 		if (p_target.kind == GDScriptParser::DataType::ENUM) {
@@ -6798,6 +6822,11 @@ bool GDScriptAnalyzer::check_type_compatibility(const GDScriptParser::DataType &
 
 	switch (p_source.kind) {
 		case GDScriptParser::DataType::NATIVE:
+			// wgodot-changes::begin
+			if (!p_source.is_meta_type && p_target.kind == GDScriptParser::DataType::CLASS && p_target.class_type->wgodot_is_interface) {
+				return ClassDB::wgodot_class_implements_interface(p_source.native_type, WGodotGDScriptInterfaceHelpers::get_interface_id(p_target.class_type));
+			}
+			// wgodot-changes::end
 			if (p_target.kind != GDScriptParser::DataType::NATIVE) {
 				// Non-native class cannot be supertype of native.
 				return false;
@@ -6809,6 +6838,12 @@ bool GDScriptAnalyzer::check_type_compatibility(const GDScriptParser::DataType &
 			}
 			break;
 		case GDScriptParser::DataType::SCRIPT:
+			// wgodot-changes::begin
+			if (!p_source.is_meta_type && p_source.script_type.is_valid() && p_target.kind == GDScriptParser::DataType::CLASS && p_target.class_type->wgodot_is_interface) {
+				const String id = WGodotGDScriptInterfaceHelpers::get_interface_id(p_target.class_type);
+				return p_source.script_type->wgodot_implements_interface(id) || ClassDB::wgodot_class_implements_interface(p_source.script_type->get_instance_base_type(), id);
+			}
+			// wgodot-changes::end
 			if (p_target.kind == GDScriptParser::DataType::CLASS) {
 				// A script type cannot be a subtype of a GDScript class.
 				return false;
@@ -6861,6 +6896,11 @@ bool GDScriptAnalyzer::check_type_compatibility(const GDScriptParser::DataType &
 			if (p_target.is_meta_type) {
 				return ClassDB::is_parent_class(src_native, p_target.script_type->get_class_name());
 			}
+			// wgodot-changes::begin
+			if (p_target.script_type->wgodot_is_interface_type()) {
+				return p_target.script_type->wgodot_is_type_compatible(src_script) || ClassDB::wgodot_class_implements_interface(src_native, p_target.script_type->wgodot_get_interface_id());
+			}
+			// wgodot-changes::end
 			while (src_script.is_valid()) {
 				if (src_script == p_target.script_type) {
 					return true;

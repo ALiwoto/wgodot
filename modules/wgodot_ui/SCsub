@@ -1,0 +1,6 @@
+# wgodot-changes::file
+Import("env")
+Import("env_modules")
+
+env_ui = env_modules.Clone()
+env_ui.add_source_files(env.modules_sources, "*.cpp")

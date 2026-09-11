@@ -131,6 +131,9 @@ protected:
 
 	void _gui_focus_changed(Control *p_control);
 	void _reposition_children();
+	// wgodot-changes::begin
+	virtual Vector2 _wgodot_get_scroll_displacement() const;
+	// wgodot-changes::end
 
 	void _notification(int p_what);
 	static void _bind_methods();

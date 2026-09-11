@@ -152,10 +152,10 @@ class GDScriptCompiler {
 
 	GDScriptDataType _gdtype_from_datatype(const GDScriptParser::DataType &p_datatype, GDScript *p_owner, bool p_handle_metatype = true);
 	// wgodot-changes::begin
-	String _wgodot_make_interface_key(const String &p_script_path, const String &p_fqcn) const;
-	String _wgodot_get_interface_key_from_datatype(const GDScriptParser::DataType &p_datatype) const;
-	String _wgodot_get_interface_key_from_reference(GDScript *p_script, const GDScriptParser::ClassNode *p_class, const GDScriptParser::ClassNode::WGodotInterfaceReference &p_reference) const;
-	void _wgodot_prepare_interface_metadata(GDScript *p_script, const GDScriptParser::ClassNode *p_class);
+	static String _wgodot_make_interface_key(const String &p_script_path, const String &p_fqcn);
+	static String _wgodot_get_interface_key_from_datatype(const GDScriptParser::DataType &p_datatype);
+	static void _wgodot_prepare_interface_metadata(GDScript *p_script, const GDScriptParser::ClassNode *p_class);
+	bool _wgodot_compile_interface_identifier(CodeGen &p_codegen, const StringName &p_name, const GDScriptParser::ExpressionNode *p_source, GDScriptCodeGenerator::Address &r_address, Error &r_error);
 	// wgodot-changes::end
 
 	GDScriptCodeGenerator::Address _parse_expression(CodeGen &codegen, Error &r_error, const GDScriptParser::ExpressionNode *p_expression, bool p_root = false, bool p_initializer = false);

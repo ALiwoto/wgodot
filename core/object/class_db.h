@@ -40,6 +40,10 @@
 
 #include <type_traits>
 
+// wgodot-changes::begin
+class Script;
+// wgodot-changes::end
+
 template <typename T, typename = void>
 struct is_class_enabled;
 
@@ -109,6 +113,9 @@ public:
 
 public:
 	struct ClassInfo {
+		// wgodot-changes::begin
+		HashSet<String> wgodot_interfaces;
+		// wgodot-changes::end
 		APIType api = API_NONE;
 		ClassInfo *inherits_ptr = nullptr;
 		void *class_ptr = nullptr;
@@ -319,6 +326,11 @@ public:
 	static StringName get_compatibility_remapped_class(const StringName &p_class);
 	static bool class_exists(const StringName &p_class);
 	static bool is_parent_class(const StringName &p_class, const StringName &p_inherits);
+	// wgodot-changes::begin
+	static Error wgodot_register_interface(const StringName &p_class, const Script *p_interface);
+	static bool wgodot_class_implements_interface(const StringName &p_class, const String &p_interface_id);
+	static bool wgodot_interface_has_native_implementation(const String &p_interface_id);
+	// wgodot-changes::end
 	static bool can_instantiate(const StringName &p_class);
 	static bool is_abstract(const StringName &p_class);
 	static bool is_virtual(const StringName &p_class);

@@ -44,6 +44,7 @@
 #endif
 #include "wgodot_gd/interface_method_aliases.h"
 #include "wgodot_gd/string_obfuscation.h"
+#include "wgodot_stdlib.h"
 // wgodot-changes::end
 
 #ifdef TOOLS_ENABLED
@@ -292,6 +293,9 @@ void uninitialize_gdscript_module(ModuleInitializationLevel p_level) {
 		resource_saver_gd.unref();
 
 		GDScriptParser::cleanup();
+		// wgodot-changes::begin
+		WGodotGDScriptStdLib::clear_module_interfaces();
+		// wgodot-changes::end
 		GDScriptUtilityFunctions::unregister_functions();
 	}
 

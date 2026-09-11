@@ -821,7 +821,7 @@ Dictionary click(const Dictionary &p_options) {
 		if (control->get_size().x <= 0.0f || control->get_size().y <= 0.0f) {
 			return make_error("click", "target_has_no_area", "Click target has no clickable area: " + target_path);
 		}
-		position = control->get_screen_transform().xform(control->get_size() * 0.5f);
+		position = control->get_viewport()->get_screen_transform().xform(control->get_global_transform_with_canvas().xform(control->get_size() * 0.5f));
 		window = control->get_window();
 		if (window == nullptr) {
 			return make_error("click", "window_unavailable", "Click target has no window: " + target_path);

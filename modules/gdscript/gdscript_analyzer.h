@@ -127,6 +127,12 @@ class GDScriptAnalyzer {
 	bool wgodot_try_get_callable_info(const GDScriptParser::ExpressionNode *p_expression, MethodInfo &r_callable_info) const;
 	bool wgodot_strict_signal_callable_checking_enabled() const;
 	void wgodot_validate_interface_class(GDScriptParser::ClassNode *p_class);
+	void wgodot_resolve_implemented_interfaces(GDScriptParser::ClassNode *p_class);
+	StringName wgodot_validating_native_class;
+	const GDScriptParser::ClassNode *wgodot_validating_native_interface = nullptr;
+	bool wgodot_interface_type_accepts(const GDScriptParser::DataType &p_target, const GDScriptParser::DataType &p_source);
+	bool wgodot_interface_native_method_matches(const GDScriptParser::FunctionNode *p_method, const MethodInfo &p_native, String &r_error);
+	bool wgodot_interface_native_member_matches(const GDScriptParser::ClassNode::Member &p_member, const StringName &p_native_class, String &r_error);
 	void wgodot_validate_implemented_interfaces(GDScriptParser::ClassNode *p_class);
 	HashSet<StringName> wgodot_validate_implemented_interface_conflicts(GDScriptParser::ClassNode *p_class, const Vector<GDScriptParser::ClassNode *> &p_interfaces);
 	void wgodot_validate_static_class(GDScriptParser::ClassNode *p_class);
@@ -134,6 +140,8 @@ class GDScriptAnalyzer {
 	bool wgodot_validate_static_class_constructor_call(GDScriptParser::CallNode *p_call, const GDScriptParser::DataType &p_base_type);
 	GDScriptParser::ClassNode *wgodot_get_static_class_from_datatype(const GDScriptParser::DataType &p_type, const GDScriptParser::Node *p_source);
 	bool wgodot_try_resolve_stdlib_interface_type(GDScriptParser::TypeNode *p_type, const StringName &p_type_name, GDScriptParser::DataType &r_datatype, bool &r_valid);
+	bool wgodot_type_from_interface_property(const PropertyInfo &p_property, const GDScriptParser::Node *p_source, GDScriptParser::DataType &r_type) const;
+	bool wgodot_reduce_interface_identifier(GDScriptParser::IdentifierNode *p_identifier, const StringName &p_name) const;
 	bool wgodot_try_resolve_value_container_type_hint(GDScriptParser::TypeNode *p_type, GDScriptParser::DataType &r_datatype, bool &r_valid);
 	bool wgodot_try_get_value_container_function_signature(GDScriptParser::Node *p_source, bool p_is_constructor, const GDScriptParser::DataType &p_base_type, const StringName &p_function, GDScriptParser::DataType &r_return_type, List<GDScriptParser::DataType> &r_par_types, int &r_default_arg_count, BitField<MethodFlags> &r_method_flags);
 	bool wgodot_try_get_value_container_signal_type(const GDScriptParser::DataType &p_base_type, const StringName &p_signal, GDScriptParser::DataType &r_signal_type) const;
@@ -141,7 +149,7 @@ class GDScriptAnalyzer {
 	static bool wgodot_is_value_container_type(const GDScriptParser::DataType &p_type);
 	static GDScriptParser::DataType wgodot_get_value_container_element_type(const GDScriptParser::DataType &p_type);
 	GDScriptParser::ClassNode *wgodot_resolve_interface_reference(GDScriptParser::ClassNode *p_class, const GDScriptParser::ClassNode::WGodotInterfaceReference &p_reference);
-	GDScriptParser::FunctionNode *wgodot_find_function_in_class_hierarchy(GDScriptParser::ClassNode *p_class, const StringName &p_function_name);
+	GDScriptParser::ClassNode *wgodot_find_member_owner(GDScriptParser::ClassNode *p_class, const StringName &p_member_name);
 	bool wgodot_interface_methods_conflict(const GDScriptParser::FunctionNode *p_first_function, const GDScriptParser::FunctionNode *p_second_function, String &r_error) const;
 	bool wgodot_interface_method_signature_matches(const GDScriptParser::FunctionNode *p_interface_function, const GDScriptParser::FunctionNode *p_implementation_function, String &r_error);
 	String wgodot_get_class_display_name(const GDScriptParser::ClassNode *p_class) const;
@@ -218,6 +226,9 @@ class GDScriptAnalyzer {
 #endif // DEBUG_ENABLED
 
 public:
+	// wgodot-changes::begin
+	Error wgodot_validate_native_interface(const String &p_qualified_name, const StringName &p_native_class, String &r_error);
+	// wgodot-changes::end
 	Error resolve_inheritance();
 	Error resolve_interface();
 	Error resolve_body();
