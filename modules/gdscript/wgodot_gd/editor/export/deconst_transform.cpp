@@ -186,7 +186,7 @@ bool typed_container_constant_to_source(WGodotGDScriptExportTransform::RewriteCo
 		return false;
 	}
 
-	const GDScriptParser::DataType datatype = p_constant->get_datatype();
+	const GDScriptParser::DataType datatype = p_constant->type_constraint;
 	if (!datatype_is_container_type(datatype, value.get_type())) {
 		return false;
 	}

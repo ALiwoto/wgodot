@@ -86,8 +86,7 @@ String WGodotCLIEditorPlugin::generate_random_hex(int p_byte_count) {
 	Vector<uint8_t> random_bytes;
 	random_bytes.resize(p_byte_count);
 
-	CryptoCore::RandomGenerator random;
-	if (random.init() != OK || random.get_random_bytes(random_bytes.ptrw(), random_bytes.size()) != OK) {
+	if (CryptoCore::generate_random(random_bytes.ptrw(), random_bytes.size()) != OK) {
 		return String();
 	}
 	return String::hex_encode_buffer(random_bytes.ptr(), random_bytes.size());

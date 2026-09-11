@@ -638,7 +638,7 @@ bool load_named_class(const String &p_class_name, Ref<Script> &r_script, Diction
 	}
 	const String script_path = ScriptServer::get_global_class_path(p_class_name);
 	r_script = ResourceLoader::load(script_path, "Script");
-	if (r_script.is_null() || !r_script->is_valid()) {
+	if (r_script.is_null() || !r_script->is_script_valid()) {
 		r_error = make_error("named_class_load_failed", "Could not load named script class " + p_class_name + " from: " + script_path);
 		return false;
 	}
@@ -1110,7 +1110,7 @@ Dictionary execute(const Dictionary &p_options) {
 		collect_object(node, collection, exclude_builtin);
 	} else if (target_name.begins_with("res://")) {
 		Ref<Script> script = ResourceLoader::load(target_name, "Script");
-		if (script.is_null() || !script->is_valid()) {
+		if (script.is_null() || !script->is_script_valid()) {
 			return make_error("script_load_failed", "Could not load script resource: " + target_name);
 		}
 		target_kind = "class";

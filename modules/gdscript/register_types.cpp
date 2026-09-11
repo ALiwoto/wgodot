@@ -47,6 +47,7 @@
 // wgodot-changes::end
 
 #ifdef TOOLS_ENABLED
+#include "editor/gdscript_editor_language.h"
 #include "editor/gdscript_highlighter.h"
 #include "editor/gdscript_translation_parser_plugin.h"
 #include "editor/script/script_editor_plugin.h"
@@ -89,8 +90,8 @@ GDScriptCache *gdscript_cache = nullptr;
 
 Ref<GDScriptEditorTranslationParserPlugin> gdscript_translation_parser_plugin;
 
-class EditorExportGDScript : public EditorExportPlugin {
-	GDCLASS(EditorExportGDScript, EditorExportPlugin);
+class GDScriptExportPlugin : public EditorExportPlugin {
+	GDSOFTCLASS(GDScriptExportPlugin, EditorExportPlugin);
 
 	static constexpr EditorExportPreset::ScriptExportMode DEFAULT_SCRIPT_MODE = EditorExportPreset::MODE_SCRIPT_BINARY_TOKENS_COMPRESSED;
 	EditorExportPreset::ScriptExportMode script_mode = DEFAULT_SCRIPT_MODE;
@@ -216,7 +217,7 @@ public:
 };
 
 static void _editor_init() {
-	Ref<EditorExportGDScript> gd_export;
+	Ref<GDScriptExportPlugin> gd_export;
 	gd_export.instantiate();
 	EditorExport::get_singleton()->add_export_plugin(gd_export);
 
@@ -261,6 +262,8 @@ void initialize_gdscript_module(ModuleInitializationLevel p_level) {
 		gdscript_translation_parser_plugin.instantiate();
 		EditorTranslationParser::get_singleton()->add_parser(gdscript_translation_parser_plugin, EditorTranslationParser::STANDARD);
 	} else if (p_level == MODULE_INITIALIZATION_LEVEL_EDITOR) {
+		memnew(GDScriptEditorLanguage);
+
 		GDREGISTER_CLASS(GDScriptSyntaxHighlighter);
 #ifndef GDSCRIPT_NO_LSP
 		register_lsp_types();
@@ -279,13 +282,8 @@ void uninitialize_gdscript_module(ModuleInitializationLevel p_level) {
 	if (p_level == MODULE_INITIALIZATION_LEVEL_SERVERS) {
 		ScriptServer::unregister_language(script_language_gd);
 
-		if (gdscript_cache) {
-			memdelete(gdscript_cache);
-		}
-
-		if (script_language_gd) {
-			memdelete(script_language_gd);
-		}
+		memdelete(gdscript_cache);
+		memdelete(script_language_gd);
 
 		ResourceLoader::remove_resource_format_loader(resource_loader_gd);
 		resource_loader_gd.unref();
@@ -304,6 +302,7 @@ void uninitialize_gdscript_module(ModuleInitializationLevel p_level) {
 #ifndef GDSCRIPT_NO_LSP
 		memdelete(GDScriptLanguageProtocol::get_singleton());
 #endif // GDSCRIPT_NO_LSP
+		memdelete(GDScriptEditorLanguage::get_singleton());
 	}
 #endif // TOOLS_ENABLED
 }

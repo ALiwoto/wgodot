@@ -229,7 +229,7 @@ void collect_class_insertions(const String &p_source, const Vector<int> &p_line_
 				add_dead_code_insertion(offset, indent, static_class, r_insertions);
 			}
 
-			for (int i = 0; i + 1 < p_class->members.size(); i++) {
+			for (uint32_t i = 0; i + 1 < p_class->members.size(); i++) {
 				const GDScriptParser::Node *current_member = p_class->members[i].get_source_node();
 				const GDScriptParser::Node *next_member = p_class->members[i + 1].get_source_node();
 				if (current_member == nullptr || next_member == nullptr) {

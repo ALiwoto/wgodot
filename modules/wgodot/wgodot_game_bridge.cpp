@@ -227,7 +227,7 @@ bool resolve_named_class_member(
 
 	const String script_path = ScriptServer::get_global_class_path(r_class_name);
 	r_script = ResourceLoader::load(script_path, "Script");
-	if (r_script.is_null() || !r_script->is_valid()) {
+	if (r_script.is_null() || !r_script->is_script_valid()) {
 		r_error = make_error(p_command, "named_class_load_failed", "Could not load named script class " + r_class_name + " from: " + script_path);
 		return false;
 	}

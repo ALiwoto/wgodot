@@ -46,13 +46,12 @@ Vector<uint8_t> decode_resource_map(const String &p_path, const Vector<uint8_t> 
 
 	const int payload_size = p_encoded.size() - MAP_HEADER_SIZE;
 	CryptoCore::AESContext aes;
-	uint8_t iv[16];
-	if (prepare_cipher(p_path, aes, iv) != OK || payload_size == 0) {
+	if (prepare_cipher(p_path, aes, CryptoCore::AESContext::Mode::DECRYPT) != OK || payload_size == 0) {
 		return Vector<uint8_t>();
 	}
 	Vector<uint8_t> compressed;
 	compressed.resize(payload_size);
-	if (aes.decrypt_cfb(payload_size, iv, p_encoded.ptr() + MAP_HEADER_SIZE, compressed.ptrw()) != OK) {
+	if (aes.update(p_encoded.ptr() + MAP_HEADER_SIZE, payload_size, compressed.ptrw(), payload_size) != OK || aes.finish(nullptr, 0) != OK) {
 		return Vector<uint8_t>();
 	}
 

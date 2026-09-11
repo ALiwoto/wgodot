@@ -29,8 +29,7 @@ Vector<uint8_t> encode_resource_map(const String &p_path, const Vector<uint8_t> 
 	compressed.resize(compressed_size);
 
 	CryptoCore::AESContext aes;
-	uint8_t iv[16];
-	if (prepare_cipher(p_path, aes, iv) != OK) {
+	if (prepare_cipher(p_path, aes, CryptoCore::AESContext::Mode::ENCRYPT) != OK) {
 		return Vector<uint8_t>();
 	}
 	Vector<uint8_t> output;
@@ -38,7 +37,7 @@ Vector<uint8_t> encode_resource_map(const String &p_path, const Vector<uint8_t> 
 	uint8_t *buffer = output.ptrw();
 	memcpy(buffer, MAP_MAGIC, sizeof(MAP_MAGIC));
 	encode_uint64(p_raw.size(), buffer + 4);
-	if (aes.encrypt_cfb(compressed.size(), iv, compressed.ptr(), buffer + MAP_HEADER_SIZE) != OK) {
+	if (aes.update(compressed.ptr(), compressed.size(), buffer + MAP_HEADER_SIZE, compressed.size()) != OK || aes.finish(nullptr, 0) != OK) {
 		return Vector<uint8_t>();
 	}
 	return output;

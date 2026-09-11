@@ -1,5 +1,5 @@
 /**************************************************************************/
-/*  gdscript_rpc_callable.h                                               */
+/*  gdscript_linter.h                                                     */
 /**************************************************************************/
 /*                         This file is part of:                          */
 /*                             GODOT ENGINE                               */
@@ -30,31 +30,32 @@
 
 #pragma once
 
-#include "core/variant/callable.h"
-#include "core/variant/variant.h"
+#ifdef DEBUG_ENABLED
 
-class Node;
+#include "modules/gdscript/gdscript_parser.h"
 
-class GDScriptRPCCallable : public CallableCustom {
-	Object *object = nullptr;
-	Node *node = nullptr;
-	StringName method;
-	uint32_t h = 0;
+/**
+ * The `GDScriptLinter` emits warnings based on a completely analyzed AST.
+ *
+ * The linter pass can be skipped if it is not needed, e.g. in release builds
+ * or when analyzing for editor features like autocompletion. As such the linter
+ * must not have an influence on compilation i.e. it can't modify the AST.
+ *
+ * Especially expensive warnings should be implemented through this pass.
+ */
+class GDScriptLinter final {
+	using CallbackWithValidation = void(const GDScriptParser::Node *, GDScriptParser &);
 
-	static bool compare_equal(const CallableCustom *p_a, const CallableCustom *p_b);
-	static bool compare_less(const CallableCustom *p_a, const CallableCustom *p_b);
+	GDScriptParser *const tree;
+	static CallbackWithValidation *const checks[];
 
 public:
-	uint32_t hash() const override;
-	String get_as_text() const override;
-	CompareEqualFunc get_compare_equal_func() const override;
-	CompareLessFunc get_compare_less_func() const override;
-	ObjectID get_object() const override;
-	StringName get_method() const override;
-	int get_argument_count(bool &r_is_valid) const override;
-	void call(const Variant **p_arguments, int p_argcount, Variant &r_return_value, Callable::CallError &r_call_error) const override;
-	Error rpc(int p_peer_id, const Variant **p_arguments, int p_argcount, Callable::CallError &r_call_error) const override;
+	template <typename T>
+	using Callback = void(const T *, GDScriptParser &);
 
-	GDScriptRPCCallable(Object *p_object, const StringName &p_method);
-	virtual ~GDScriptRPCCallable() = default;
+public:
+	Error lint();
+	GDScriptLinter(GDScriptParser &p_tree) : tree(&p_tree) {}
 };
+
+#endif // DEBUG_ENABLED

@@ -8,7 +8,7 @@
 #include "core/error/error_list.h"
 #include "core/io/dir_access.h"
 #include "core/io/file_access.h"
-#include "core/object/script_language.h"
+#include "core/object/editor_language.h"
 #include "core/os/os.h"
 #include "core/string/ustring.h"
 #include "core/templates/list.h"
@@ -70,14 +70,14 @@ void collect_script_paths(const String &p_root_dir, Vector<String> &r_paths, Che
 	dir->list_dir_end();
 }
 
-void append_script_error(const ScriptLanguage::ScriptError &p_error, const String &p_fallback_path, PackedStringArray &r_output) {
+void append_script_error(const EditorLanguage::ScriptError &p_error, const String &p_fallback_path, PackedStringArray &r_output) {
 	const String path = p_error.path.is_empty() ? p_fallback_path : p_error.path;
-	const int line = p_error.line > 0 ? p_error.line : 0;
-	const int column = p_error.column > 0 ? p_error.column : 0;
+	const int line = p_error.start_line > 0 ? p_error.start_line : 0;
+	const int column = p_error.start_column > 0 ? p_error.start_column : 0;
 	r_output.push_back(vformat("%s:%d:%d: error: %s", path, line, column, p_error.message));
 }
 
-void append_script_warning(const ScriptLanguage::Warning &p_warning, const String &p_path, PackedStringArray &r_output) {
+void append_script_warning(const EditorLanguage::Warning &p_warning, const String &p_path, PackedStringArray &r_output) {
 	const int line = p_warning.start_line > 0 ? p_warning.start_line : 0;
 	r_output.push_back(vformat("%s:%d: warning (%s): %s", p_path, line, p_warning.string_code, p_warning.message));
 }
@@ -94,16 +94,16 @@ void check_script(const String &p_path, CheckStats &r_stats, PackedStringArray &
 		return;
 	}
 
-	List<ScriptLanguage::ScriptError> errors;
-	List<ScriptLanguage::Warning> warnings;
-	GDScriptLanguage::get_singleton()->validate(source, p_path, nullptr, &errors, &warnings, nullptr);
+	List<EditorLanguage::ScriptError> errors;
+	List<EditorLanguage::Warning> warnings;
+	GDScriptLanguage::get_singleton()->get_editor_language()->validate(source, p_path, &errors, &warnings, nullptr, nullptr);
 
-	for (const ScriptLanguage::ScriptError &error : errors) {
+	for (const EditorLanguage::ScriptError &error : errors) {
 		r_stats.error_count++;
 		append_script_error(error, p_path, r_output);
 	}
 
-	for (const ScriptLanguage::Warning &warning : warnings) {
+	for (const EditorLanguage::Warning &warning : warnings) {
 		r_stats.warning_count++;
 		append_script_warning(warning, p_path, r_output);
 	}

@@ -196,7 +196,7 @@ const String *get_context_member_rename(WGodotGDScriptExportTransform::RewriteCo
 	}
 
 	Vector<String> keys;
-	WGodotGDScriptExportTransform::ExportContext::make_member_keys(p_class, p_class->get_datatype().script_path, p_name, keys);
+	WGodotGDScriptExportTransform::ExportContext::make_member_keys(p_class, p_class->self_type.script_path, p_name, keys);
 	for (const String &key : keys) {
 		if (const String *name = r_context.export_context->get_member_rename(key)) {
 			return name;
@@ -470,7 +470,7 @@ void add_builtin_class_alias_reference_replacement(RewriteContext &r_context, co
 	}
 
 	StringName target_name;
-	const GDScriptParser::DataType datatype = p_identifier->get_datatype();
+	const GDScriptParser::DataType datatype = p_identifier->type_constraint;
 	if (p_identifier->source == GDScriptParser::IdentifierNode::NATIVE_CLASS) {
 		target_name = datatype.native_type;
 		if (target_name.is_empty()) {
@@ -493,7 +493,7 @@ void add_builtin_class_alias_reference_replacement(RewriteContext &r_context, co
 }
 
 bool add_class_member_name_reference_replacement(RewriteContext &r_context, const GDScriptParser::IdentifierNode *p_identifier) {
-	return p_identifier != nullptr && add_class_member_name_reference_replacement(r_context, p_identifier, p_identifier->get_datatype());
+	return p_identifier != nullptr && add_class_member_name_reference_replacement(r_context, p_identifier, p_identifier->type_constraint);
 }
 
 bool add_class_member_name_reference_replacement(RewriteContext &r_context, const GDScriptParser::IdentifierNode *p_identifier, const GDScriptParser::DataType &p_datatype) {
@@ -583,7 +583,7 @@ void add_attribute_member_name_reference_replacement(RewriteContext &r_context, 
 		return;
 	}
 
-	const GDScriptParser::DataType base_type = p_base->get_datatype();
+	const GDScriptParser::DataType base_type = p_base->type_constraint;
 	if (add_member_name_reference_replacement(r_context, p_identifier, base_type.class_type)) {
 		return;
 	}
@@ -672,7 +672,7 @@ void add_call_member_name_reference_replacement(RewriteContext &r_context, const
 		return;
 	}
 
-	const GDScriptParser::DataType base_type = subscript->base->get_datatype();
+	const GDScriptParser::DataType base_type = subscript->base->type_constraint;
 	if (const StringName *interface_alias = get_datatype_interface_method_alias(r_context, base_type, p_call->function_name)) {
 		add_replacement(r_context, subscript->attribute, String(*interface_alias));
 		return;

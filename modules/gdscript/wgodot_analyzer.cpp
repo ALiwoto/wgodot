@@ -440,11 +440,11 @@ bool GDScriptAnalyzer::wgodot_try_reduce_narrowed_attribute_access(GDScriptParse
 		attribute.function_source_is_static = false;
 		attribute.is_constant = false;
 		attribute.reduced_value = Variant();
-		attribute.set_datatype(GDScriptParser::DataType());
+		attribute.type_constraint = GDScriptParser::DataType();
 
 		GDScriptParser::DataType base_type = alternative_type;
 		reduce_identifier_from_base(&attribute, &base_type);
-		GDScriptParser::DataType attribute_type = attribute.get_datatype();
+		GDScriptParser::DataType attribute_type = attribute.type_constraint;
 
 		if (!attribute_type.is_set() || (!p_can_be_pseudo_type && attribute_type.is_pseudo_type)) {
 			r_result_type.kind = GDScriptParser::DataType::VARIANT;
@@ -475,7 +475,7 @@ bool GDScriptAnalyzer::wgodot_try_reduce_narrowed_attribute_access(GDScriptParse
 		return false;
 	}
 
-	p_subscript->attribute->set_datatype(r_result_type);
+	p_subscript->attribute->type_constraint = r_result_type;
 	r_valid = true;
 	return true;
 }
@@ -558,8 +558,8 @@ void GDScriptAnalyzer::wgodot_validate_signal_callable_connection(GDScriptParser
 	}
 
 	for (int i = 0; i < signal_arg_count && i < callable_info.arguments.size(); i++) {
-		const GDScriptParser::DataType signal_arg_type = type_from_property(signal_info.arguments[i], true);
-		const GDScriptParser::DataType callable_arg_type = type_from_property(callable_info.arguments[i], true);
+		const GDScriptParser::DataType signal_arg_type = type_from_property(signal_info.arguments[i], true, p_call);
+		const GDScriptParser::DataType callable_arg_type = type_from_property(callable_info.arguments[i], true, p_call);
 
 		if (!signal_arg_type.is_hard_type() || !callable_arg_type.is_hard_type() ||
 				signal_arg_type.is_variant() || callable_arg_type.is_variant()) {
@@ -590,7 +590,7 @@ bool GDScriptAnalyzer::wgodot_try_get_connect_signal_info(const GDScriptParser::
 		return false;
 	}
 
-	const GDScriptParser::DataType signal_type = callee->base->get_datatype();
+	const GDScriptParser::DataType signal_type = callee->base->type_constraint;
 	if (!signal_type.is_hard_type() ||
 			signal_type.kind != GDScriptParser::DataType::BUILTIN ||
 			signal_type.builtin_type != Variant::SIGNAL) {
@@ -617,7 +617,7 @@ bool GDScriptAnalyzer::wgodot_try_get_callable_info(const GDScriptParser::Expres
 		return true;
 	}
 
-	const GDScriptParser::DataType callable_type = p_expression->get_datatype();
+	const GDScriptParser::DataType callable_type = p_expression->type_constraint;
 	if (!callable_type.is_hard_type() ||
 			callable_type.kind != GDScriptParser::DataType::BUILTIN ||
 			callable_type.builtin_type != Variant::CALLABLE) {
@@ -701,7 +701,7 @@ void GDScriptAnalyzer::wgodot_validate_implemented_interfaces(GDScriptParser::Cl
 
 	for (GDScriptParser::ClassNode *interface_class : interface_classes) {
 		const int builtin_interface_index = WGodotGDScriptStdLib::get_builtin_interface_index(interface_class->wgodot_interface_name);
-		for (int interface_method_index = 0; interface_method_index < interface_class->members.size(); interface_method_index++) {
+		for (uint32_t interface_method_index = 0; interface_method_index < interface_class->members.size(); interface_method_index++) {
 			const GDScriptParser::ClassNode::Member &interface_member = interface_class->members[interface_method_index];
 			if (interface_member.type != GDScriptParser::ClassNode::Member::FUNCTION) {
 				continue;
@@ -899,7 +899,7 @@ bool GDScriptAnalyzer::wgodot_try_resolve_stdlib_interface_type(GDScriptParser::
 		return true;
 	}
 
-	r_datatype = interface_class->get_datatype();
+	r_datatype = interface_class->self_type;
 	return true;
 }
 
@@ -962,7 +962,7 @@ bool GDScriptAnalyzer::wgodot_try_get_value_container_function_signature(GDScrip
 		if (!p_base_type.has_container_element_type(0) && p_source != nullptr && p_source->type == GDScriptParser::Node::CALL) {
 			GDScriptParser::CallNode *call = static_cast<GDScriptParser::CallNode *>(p_source);
 			if (!call->arguments.is_empty()) {
-				GDScriptParser::DataType first_arg_type = call->arguments[0]->get_datatype();
+				GDScriptParser::DataType first_arg_type = call->arguments[0]->type_constraint;
 				if (first_arg_type.is_set() && !first_arg_type.has_no_type()) {
 					default_value_type = first_arg_type;
 					default_value_type.is_constant = false;
@@ -1024,7 +1024,7 @@ void GDScriptAnalyzer::wgodot_validate_value_container_call(const GDScriptParser
 		return;
 	}
 
-	GDScriptParser::DataType arg_type = p_call->arguments[0]->get_datatype();
+	GDScriptParser::DataType arg_type = p_call->arguments[0]->type_constraint;
 	if (!arg_type.is_hard_type() || arg_type.is_variant()) {
 		push_error(vformat(R"*(Invalid argument for "%s()" function: argument 1 must be statically typed as "%s", but is "%s".)*", p_call->function_name, value_type.to_string(), arg_type.to_string_strict()), p_call->arguments[0]);
 		return;
@@ -1188,17 +1188,17 @@ bool GDScriptAnalyzer::wgodot_interface_methods_conflict(const GDScriptParser::F
 		return true;
 	}
 
-	for (int i = 0; i < p_first_function->parameters.size(); i++) {
-		const String first_parameter_type = p_first_function->parameters[i]->datatype.to_string_strict();
-		const String second_parameter_type = p_second_function->parameters[i]->datatype.to_string_strict();
+	for (uint32_t i = 0; i < p_first_function->parameters.size(); i++) {
+		const String first_parameter_type = p_first_function->parameters[i]->type_constraint.to_string_strict();
+		const String second_parameter_type = p_second_function->parameters[i]->type_constraint.to_string_strict();
 		if (first_parameter_type != second_parameter_type) {
 			r_error = vformat("parameter %d is \"%s\" in one interface but \"%s\" in the other", i + 1, first_parameter_type, second_parameter_type);
 			return true;
 		}
 	}
 
-	const String first_return_type = p_first_function->get_datatype().to_string_strict();
-	const String second_return_type = p_second_function->get_datatype().to_string_strict();
+	const String first_return_type = p_first_function->return_type_constraint.to_string_strict();
+	const String second_return_type = p_second_function->return_type_constraint.to_string_strict();
 	if (first_return_type != second_return_type) {
 		r_error = vformat("return type is \"%s\" in one interface but \"%s\" in the other", first_return_type, second_return_type);
 		return true;
@@ -1230,9 +1230,9 @@ bool GDScriptAnalyzer::wgodot_interface_method_signature_matches(const GDScriptP
 		return false;
 	}
 
-	for (int i = 0; i < p_interface_function->parameters.size() && i < p_implementation_function->parameters.size(); i++) {
-		const GDScriptParser::DataType &interface_parameter_type = p_interface_function->parameters[i]->datatype;
-		const GDScriptParser::DataType &implementation_parameter_type = p_implementation_function->parameters[i]->datatype;
+	for (uint32_t i = 0; i < p_interface_function->parameters.size() && i < p_implementation_function->parameters.size(); i++) {
+		const GDScriptParser::DataType &interface_parameter_type = p_interface_function->parameters[i]->type_constraint;
+		const GDScriptParser::DataType &implementation_parameter_type = p_implementation_function->parameters[i]->type_constraint;
 		if (interface_parameter_type.is_hard_type() && implementation_parameter_type.is_hard_type() &&
 				!is_type_compatible(implementation_parameter_type, interface_parameter_type)) {
 			r_error = vformat("parameter %d expects \"%s\" in the interface, but implementation accepts \"%s\"",
@@ -1241,8 +1241,8 @@ bool GDScriptAnalyzer::wgodot_interface_method_signature_matches(const GDScriptP
 		}
 	}
 
-	const GDScriptParser::DataType interface_return_type = p_interface_function->get_datatype();
-	const GDScriptParser::DataType implementation_return_type = p_implementation_function->get_datatype();
+	const GDScriptParser::DataType interface_return_type = p_interface_function->return_type_constraint;
+	const GDScriptParser::DataType implementation_return_type = p_implementation_function->return_type_constraint;
 	if (interface_return_type.is_hard_type() && implementation_return_type.is_hard_type() &&
 			!is_type_compatible(interface_return_type, implementation_return_type)) {
 		r_error = vformat("interface returns \"%s\", but implementation returns \"%s\"", interface_return_type.to_string(), implementation_return_type.to_string());

@@ -94,7 +94,7 @@ bool add_enum_type_replacement(RewriteContext &r_context, const GDScriptParser::
 		return false;
 	}
 
-	if (find_deenum_enum_for_datatype(r_context, p_type->get_datatype()) == nullptr) {
+	if (find_deenum_enum_for_datatype(r_context, p_type->resolved_type) == nullptr) {
 		return false;
 	}
 
@@ -122,7 +122,7 @@ bool add_enum_identifier_reference_replacement(RewriteContext &r_context, const 
 		return false;
 	}
 
-	const GDScriptParser::DataType datatype = p_identifier->get_datatype();
+	const GDScriptParser::DataType datatype = p_identifier->type_constraint;
 	if (!is_script_enum_datatype(datatype)) {
 		return false;
 	}
@@ -161,7 +161,7 @@ bool add_enum_attribute_reference_replacement(RewriteContext &r_context, const G
 		return false;
 	}
 
-	const GDScriptParser::DataType attribute_type = p_subscript->attribute->get_datatype();
+	const GDScriptParser::DataType attribute_type = p_subscript->attribute->type_constraint;
 	if (is_script_enum_datatype(attribute_type)) {
 		if (attribute_type.is_meta_type) {
 			const GDScriptParser::EnumNode *enum_node = find_deenum_enum_for_datatype(r_context, attribute_type);
@@ -192,7 +192,7 @@ bool add_enum_attribute_reference_replacement(RewriteContext &r_context, const G
 		return true;
 	}
 
-	const GDScriptParser::DataType base_type = p_subscript->base->get_datatype();
+	const GDScriptParser::DataType base_type = p_subscript->base->type_constraint;
 	if (!is_script_enum_datatype(base_type) || !base_type.is_meta_type || !datatype_has_enum_value(base_type, p_subscript->attribute->name)) {
 		return false;
 	}

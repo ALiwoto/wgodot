@@ -264,7 +264,7 @@ Dictionary resolve_in_class(const String &p_target, const Ref<GDScript> &p_scrip
 	}
 
 	const StringName member_name = p_parts[p_part_index];
-	const int *member_index = p_class->members_indices.getptr(member_name);
+	const uint32_t *member_index = p_class->members_indices.getptr(member_name);
 	if (member_index == nullptr) {
 		if (p_class->base_type.kind == GDScriptParser::DataType::CLASS && p_class->base_type.class_type != nullptr) {
 			return resolve_in_class(p_target, p_script, p_parser, p_class->base_type.class_type, p_parts, p_part_index, p_new_name);

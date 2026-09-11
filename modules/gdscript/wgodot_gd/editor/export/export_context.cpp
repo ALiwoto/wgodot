@@ -653,7 +653,7 @@ void ExportContext::reserve_builtin_interface_methods() {
 		GDScriptParser parser;
 		const String path = WGodotGDScriptStdLib::get_builtin_interface_path(i);
 		ERR_FAIL_COND(parser.parse(WGodotGDScriptStdLib::get_builtin_interface_source(i), path, false) != OK);
-		for (int method_index = 0; method_index < parser.get_tree()->members.size(); method_index++) {
+		for (uint32_t method_index = 0; method_index < parser.get_tree()->members.size(); method_index++) {
 			const GDScriptParser::ClassNode::Member &member = parser.get_tree()->members[method_index];
 			if (member.type == GDScriptParser::ClassNode::Member::FUNCTION) {
 				const StringName name = member.function->identifier->name;

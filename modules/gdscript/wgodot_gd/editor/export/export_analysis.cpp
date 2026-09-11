@@ -100,7 +100,7 @@ StringName ExportAnalysis::get_global_class_native_base(const StringName &p_name
 	if (get_source(path) != nullptr) {
 		Error error = OK;
 		Ref<GDScriptParserRef> ref = get_parser(path, GDScriptParserRef::INHERITANCE_SOLVED, error);
-		return error == OK ? ref->get_parser()->get_tree()->get_datatype().native_type : StringName();
+		return error == OK ? ref->get_parser()->get_tree()->self_type.native_type : StringName();
 	}
 	const StringName *base = external_native_bases.getptr(path);
 	return base != nullptr ? *base : StringName();

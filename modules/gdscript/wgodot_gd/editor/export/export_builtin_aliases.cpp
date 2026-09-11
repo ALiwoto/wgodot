@@ -181,7 +181,7 @@ void add_builtin_method_alias_call_replacement(RewriteContext &r_context, const 
 		return;
 	}
 
-	const GDScriptParser::DataType base_type = subscript->base->get_datatype();
+	const GDScriptParser::DataType base_type = subscript->base->type_constraint;
 	const StringName owner = get_builtin_alias_owner_from_datatype(base_type);
 	if (owner.is_empty()) {
 		return;
@@ -201,7 +201,7 @@ void add_builtin_property_alias_reference_replacement(RewriteContext &r_context,
 		return;
 	}
 
-	const GDScriptParser::DataType base_type = p_base->get_datatype();
+	const GDScriptParser::DataType base_type = p_base->type_constraint;
 	const StringName owner = get_builtin_alias_owner_from_datatype(base_type);
 	if (owner.is_empty()) {
 		return;
@@ -236,7 +236,7 @@ void collect_builtin_class_aliases_from_identifier(ExportContext *p_context, con
 		return;
 	}
 
-	const GDScriptParser::DataType datatype = p_identifier->get_datatype();
+	const GDScriptParser::DataType datatype = p_identifier->type_constraint;
 	if (p_identifier->source == GDScriptParser::IdentifierNode::NATIVE_CLASS) {
 		get_or_create_builtin_class_alias(p_context, !datatype.native_type.is_empty() ? datatype.native_type : p_identifier->name);
 	} else if (p_identifier->source == GDScriptParser::IdentifierNode::UNDEFINED_SOURCE && datatype.is_meta_type) {
@@ -272,7 +272,7 @@ protected:
 			case Parser::Node::SUBSCRIPT: {
 				const auto *node = static_cast<const Parser::SubscriptNode *>(p_node);
 				if (node->is_attribute) {
-					const auto &base = node->base->get_datatype();
+					const auto &base = node->base->type_constraint;
 					get_or_create_builtin_member_alias(&artifacts, get_builtin_alias_owner_from_datatype(base), node->attribute->name, base.is_meta_type, true);
 				}
 			} break;
@@ -289,7 +289,7 @@ protected:
 				} else if (node->get_callee_type() == Parser::Node::SUBSCRIPT && node->function_name != SNAME("new")) {
 					const auto *callee = static_cast<const Parser::SubscriptNode *>(node->callee);
 					if (callee->is_attribute) {
-						const auto &base = callee->base->get_datatype();
+						const auto &base = callee->base->type_constraint;
 						get_or_create_builtin_member_alias(&artifacts, get_builtin_alias_owner_from_datatype(base), node->function_name, base.is_meta_type, false);
 					}
 				}

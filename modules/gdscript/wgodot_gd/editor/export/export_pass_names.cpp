@@ -27,11 +27,11 @@ protected:
 			case Parser::Node::TYPE: {
 				const auto *node = static_cast<const Parser::TypeNode *>(p_node);
 				if (!node->type_chain.is_empty()) {
-					if (node->type_chain.size() != 1 || !add_class_member_name_reference_replacement(rewrite, node->type_chain[0], node->get_datatype())) {
+					if (node->type_chain.size() != 1 || !add_class_member_name_reference_replacement(rewrite, node->type_chain[0], node->resolved_type)) {
 						add_global_class_name_reference_replacement(rewrite, node->type_chain[0]);
 					}
 				}
-				for (int i = 1; i < node->type_chain.size(); i++) {
+				for (uint32_t i = 1; i < node->type_chain.size(); i++) {
 					add_class_member_name_reference_replacement(rewrite, node->type_chain[i]);
 				}
 			} break;

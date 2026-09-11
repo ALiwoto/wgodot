@@ -922,6 +922,7 @@ GDScriptTokenizer::Token GDScriptTokenizerText::string() {
 	String result;
 	char32_t prev = 0;
 	int prev_pos = 0;
+	int prev_line = 0;
 
 	// wgodot-changes::begin
 	if (!is_raw && _peek() == '\\' && _peek(1) == '0') {
@@ -996,6 +997,7 @@ GDScriptTokenizer::Token GDScriptTokenizerText::string() {
 			} else {
 				error = make_error("Invisible text direction control character present in the string, escape it (\"\\u" + String::num_int64(ch, 16) + "\") to avoid confusion.");
 			}
+			error.start_line = line;
 			error.start_column = column;
 			error.end_column = column + 1;
 			push_error(error);
@@ -1090,6 +1092,7 @@ GDScriptTokenizer::Token GDScriptTokenizerText::string() {
 							} else {
 								// Make error, but keep parsing the string.
 								Token error = make_error("Invalid hexadecimal digit in unicode escape sequence.");
+								error.start_line = line;
 								error.start_column = column;
 								error.end_column = column + 1;
 								push_error(error);
@@ -1119,6 +1122,7 @@ GDScriptTokenizer::Token GDScriptTokenizerText::string() {
 						break;
 					default:
 						Token error = make_error("Invalid escape in string.");
+						error.start_line = line;
 						error.start_column = column - 2;
 						push_error(error);
 						valid_escape = false;
@@ -1130,9 +1134,11 @@ GDScriptTokenizer::Token GDScriptTokenizerText::string() {
 						if (prev == 0) {
 							prev = escaped;
 							prev_pos = column - 2;
+							prev_line = line;
 							continue;
 						} else {
 							Token error = make_error("Invalid UTF-16 sequence in string, unpaired lead surrogate.");
+							error.start_line = line;
 							error.start_column = column - 2;
 							push_error(error);
 							valid_escape = false;
@@ -1141,6 +1147,7 @@ GDScriptTokenizer::Token GDScriptTokenizerText::string() {
 					} else if ((escaped & 0xfffffc00) == 0xdc00) {
 						if (prev == 0) {
 							Token error = make_error("Invalid UTF-16 sequence in string, unpaired trail surrogate.");
+							error.start_line = line;
 							error.start_column = column - 2;
 							push_error(error);
 							valid_escape = false;
@@ -1151,7 +1158,10 @@ GDScriptTokenizer::Token GDScriptTokenizerText::string() {
 					}
 					if (prev != 0) {
 						Token error = make_error("Invalid UTF-16 sequence in string, unpaired lead surrogate.");
+						error.start_line = prev_line;
 						error.start_column = prev_pos;
+						error.end_line = prev_line;
+						error.end_column = prev_pos + 2;
 						push_error(error);
 						prev = 0;
 					}
@@ -1164,7 +1174,10 @@ GDScriptTokenizer::Token GDScriptTokenizerText::string() {
 		} else if (ch == quote_char) {
 			if (prev != 0) {
 				Token error = make_error("Invalid UTF-16 sequence in string, unpaired lead surrogate");
+				error.start_line = prev_line;
 				error.start_column = prev_pos;
+				error.end_line = prev_line;
+				error.end_column = prev_pos + 2;
 				push_error(error);
 				prev = 0;
 			}
@@ -1186,7 +1199,10 @@ GDScriptTokenizer::Token GDScriptTokenizerText::string() {
 		} else {
 			if (prev != 0) {
 				Token error = make_error("Invalid UTF-16 sequence in string, unpaired lead surrogate");
+				error.start_line = prev_line;
 				error.start_column = prev_pos;
+				error.end_line = prev_line;
+				error.end_column = prev_pos + 2;
 				push_error(error);
 				prev = 0;
 			}
@@ -1199,7 +1215,10 @@ GDScriptTokenizer::Token GDScriptTokenizerText::string() {
 	}
 	if (prev != 0) {
 		Token error = make_error("Invalid UTF-16 sequence in string, unpaired lead surrogate");
+		error.start_line = prev_line;
 		error.start_column = prev_pos;
+		error.end_line = prev_line;
+		error.end_column = prev_pos + 2;
 		push_error(error);
 		prev = 0;
 	}
