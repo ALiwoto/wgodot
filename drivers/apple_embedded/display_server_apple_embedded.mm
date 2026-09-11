@@ -34,8 +34,8 @@
 #include "core/input/input.h"
 #include "core/io/file_access_pack.h"
 #include "core/os/os.h"
-#import "drivers/apple_embedded/app_delegate_service.h"
 #import "drivers/apple_embedded/apple_embedded.h"
+#import "drivers/apple_embedded/godot_app_delegate_service_apple_embedded.h"
 #import "drivers/apple_embedded/godot_keyboard_input_view.h"
 #import "drivers/apple_embedded/godot_view_apple_embedded.h"
 #import "drivers/apple_embedded/godot_view_controller.h"
@@ -269,7 +269,7 @@ void DisplayServerAppleEmbedded::_window_callback(const Callable &p_callable, co
 
 // MARK: Touches
 
-void DisplayServerAppleEmbedded::touch_press(int p_idx, int p_x, int p_y, bool p_pressed, bool p_double_click) {
+void DisplayServerAppleEmbedded::touch_press(int p_idx, int p_x, int p_y, bool p_pressed, bool p_double_click, bool p_long_press) {
 	Ref<InputEventScreenTouch> ev;
 	ev.instantiate();
 
@@ -277,6 +277,7 @@ void DisplayServerAppleEmbedded::touch_press(int p_idx, int p_x, int p_y, bool p
 	ev->set_pressed(p_pressed);
 	ev->set_position(Vector2(p_x, p_y));
 	ev->set_double_tap(p_double_click);
+	ev->set_long_press(p_long_press);
 	perform_event(ev);
 }
 
@@ -302,7 +303,7 @@ void DisplayServerAppleEmbedded::perform_event(const Ref<InputEvent> &p_event) {
 }
 
 void DisplayServerAppleEmbedded::touches_canceled(int p_idx) {
-	touch_press(p_idx, -1, -1, false, false);
+	touch_press(p_idx, -1, -1, false, false, false);
 }
 
 // MARK: Keyboard
@@ -350,6 +351,10 @@ void DisplayServerAppleEmbedded::update_magnetometer(const Vector3 &p_magnetomet
 
 void DisplayServerAppleEmbedded::update_gyroscope(const Vector3 &p_gyroscope) {
 	Input::get_singleton()->set_gyroscope(p_gyroscope);
+}
+
+void DisplayServerAppleEmbedded::update_device_orientation(const Quaternion &p_orientation) {
+	Input::get_singleton()->set_device_orientation(p_orientation);
 }
 
 // MARK: -
@@ -479,7 +484,11 @@ void DisplayServerAppleEmbedded::emit_system_theme_changed() {
 	}
 }
 
-Rect2i DisplayServerAppleEmbedded::get_display_safe_area() const {
+Rect2i DisplayServerAppleEmbedded::get_display_safe_area(int p_screen) const {
+	p_screen = _get_screen_index(p_screen);
+	int screen_count = get_screen_count();
+	ERR_FAIL_INDEX_V(p_screen, screen_count, Rect2i());
+
 	UIEdgeInsets insets = UIEdgeInsetsZero;
 	UIView *view = GDTAppDelegateService.viewController.godotView;
 	if ([view respondsToSelector:@selector(safeAreaInsets)]) {
@@ -665,11 +674,25 @@ void DisplayServerAppleEmbedded::screen_set_orientation(DisplayServerEnums::Scre
 	ERR_FAIL_INDEX(p_screen, screen_count);
 
 	screen_orientation = p_orientation;
-	if (@available(iOS 16.0, *)) {
-		[GDTAppDelegateService.viewController setNeedsUpdateOfSupportedInterfaceOrientations];
+#ifdef IOS_ENABLED
+	// Under the SwiftUI app lifecycle, GDTViewController is wrapped by a UIHostingController
+	// that is the window's root VC. iOS queries the root VC for orientation preferences, so we
+	// must install the selectors on the hosting class before requesting an orientation update.
+	GDTViewController *vc = GDTAppDelegateService.viewController;
+	if (!vc) {
+		return;
 	}
-#if !defined(VISIONOS_ENABLED)
-	else {
+	[vc propagateUIPreferencesToRootViewController];
+
+	UIViewController *rootViewController = vc.view.window.rootViewController ?: vc;
+	if (@available(iOS 16.0, *)) {
+		[rootViewController setNeedsUpdateOfSupportedInterfaceOrientations];
+		UIWindowScene *windowScene = rootViewController.view.window.windowScene;
+		if (windowScene) {
+			UIWindowSceneGeometryPreferencesIOS *preferences = [[UIWindowSceneGeometryPreferencesIOS alloc] initWithInterfaceOrientations:[rootViewController supportedInterfaceOrientations]];
+			[windowScene requestGeometryUpdateWithPreferences:preferences errorHandler:nil];
+		}
+	} else {
 		[UIViewController attemptRotationToDeviceOrientation];
 	}
 #endif
