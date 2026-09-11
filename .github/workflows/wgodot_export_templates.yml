@@ -1,3 +1,4 @@
+# wgodot-changes::file
 name: wgodot export templates
 
 on:
@@ -508,8 +509,10 @@ jobs:
       - name: Set up Emscripten
         uses: emscripten-core/setup-emsdk@v16
         with:
-          version: 4.0.11
+          version: 6.0.1
           no-cache: true
+          actions-cache-folder: .emsdk-cache
+          cache-key: emsdk-6.0.1-${{ runner.os }}-${{ runner.arch }}
 
       - name: Restore Godot build cache
         uses: ./.github/actions/wgodot-cache-restore
