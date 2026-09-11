@@ -13,9 +13,8 @@
 #include "core/input/input_event.h"
 #include "core/io/file_access.h"
 #include "core/io/resource_loader.h"
+#include "core/object/editor_language.h"
 #include "core/object/script_language.h"
-#include "editor/editor_main_screen.h"
-#include "editor/editor_node.h"
 #include "editor/script/script_editor_plugin.h"
 #include "scene/resources/text_file.h"
 
@@ -75,14 +74,14 @@ static bool wgodot_find_script_error_location(String &r_path, int &r_line, int &
 		return r_line > 0;
 	}
 
-	List<ScriptLanguage::ScriptError> errors;
-	if (language->validate(source, r_path, nullptr, &errors) || errors.is_empty()) {
+	List<EditorLanguage::ScriptError> errors;
+	if (language->get_editor_language()->validate(source, r_path, &errors, nullptr, nullptr, nullptr) || errors.is_empty()) {
 		return r_line > 0;
 	}
 
-	ScriptLanguage::ScriptError first_error;
+	EditorLanguage::ScriptError first_error;
 	bool has_first_error = false;
-	for (const ScriptLanguage::ScriptError &error : errors) {
+	for (const EditorLanguage::ScriptError &error : errors) {
 		if (!has_first_error) {
 			first_error = error;
 			has_first_error = true;
@@ -98,8 +97,8 @@ static bool wgodot_find_script_error_location(String &r_path, int &r_line, int &
 	if (!first_error.path.is_empty()) {
 		r_path = ProjectSettings::get_singleton()->localize_path(first_error.path);
 	}
-	r_line = first_error.line;
-	r_column = first_error.column;
+	r_line = first_error.start_line;
+	r_column = first_error.start_column;
 	return r_line > 0;
 }
 
@@ -170,7 +169,7 @@ void EditorToaster::wgodot_open_toast_script_location(const Ref<InputEvent> &p_e
 		return;
 	}
 
-	EditorNode::get_singleton()->get_editor_main_screen()->select(EditorMainScreen::EDITOR_SCRIPT);
+	ScriptEditor::get_singleton()->make_visible();
 	ScriptEditor::get_singleton()->edit(resource, toast.wgodot_script_line - 1, MAX(toast.wgodot_script_column - 1, 0), true);
 	p_control->accept_event();
 }

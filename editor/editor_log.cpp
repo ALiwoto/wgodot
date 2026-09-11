@@ -41,7 +41,6 @@
 // wgodot-changes::end
 #include "core/version.h"
 #include "editor/docks/editor_dock.h"
-#include "editor/docks/inspector_dock.h"
 #include "editor/editor_node.h"
 #include "editor/editor_string_names.h"
 #include "editor/script/script_editor_plugin.h"
@@ -221,7 +220,12 @@ void EditorLog::_meta_clicked(const String &p_meta) {
 		if (ResourceLoader::exists(path)) {
 			const Ref<Resource> res = ResourceLoader::load(path);
 			ScriptEditor::get_singleton()->edit(res, line, 0);
-			InspectorDock::get_singleton()->edit_resource(res);
+			EditorNode *editor_node = EditorNode::get_singleton();
+			if (res.is_valid() && editor_node->get_editor_selection_history()->get_current() != res->get_instance_id()) {
+				// Avoid re-editing the current script without the clicked line number.
+				editor_node->push_item(res.ptr(), "", true);
+			}
+			ScriptEditor::get_singleton()->focus_script_editor(res);
 		}
 	} else if (path.has_extension("cpp") || path.has_extension("h") || path.has_extension("mm") || path.has_extension("hpp")) {
 		// Godot source file. Try to open it in external editor.
@@ -612,9 +616,7 @@ void EditorLog::deinit() {
 }
 
 EditorLog::~EditorLog() {
-	if (bbcode_parser) {
-		memdelete(bbcode_parser);
-	}
+	memdelete(bbcode_parser);
 
 	for (const KeyValue<MessageType, LogFilter *> &E : type_filter_map) {
 		// MSG_TYPE_STD_RICH is connected to the std_filter button, so we do this
