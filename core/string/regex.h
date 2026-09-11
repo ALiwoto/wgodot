@@ -1,5 +1,5 @@
 /**************************************************************************/
-/*  stream_peer_gzip.h                                                    */
+/*  regex.h                                                               */
 /**************************************************************************/
 /*                         This file is part of:                          */
 /*                             GODOT ENGINE                               */
@@ -30,40 +30,80 @@
 
 #pragma once
 
-#include "core/io/stream_peer.h"
-#include "core/templates/ring_buffer.h"
+#include "core/object/ref_counted.h"
+#include "core/string/ustring.h"
+#include "core/templates/hash_map.h"
+#include "core/templates/vector.h"
+#include "core/variant/array.h"
+#include "core/variant/dictionary.h"
+#include "core/variant/typed_array.h"
 
-class StreamPeerGZIP : public StreamPeer {
-	GDCLASS(StreamPeerGZIP, StreamPeer);
+class RegExMatch : public RefCounted {
+	GDCLASS(RegExMatch, RefCounted);
 
-private:
-	void *ctx = nullptr; // Will hold our z_stream instance.
-	bool compressing = true;
+	struct Range {
+		int start = 0;
+		int end = 0;
+	};
 
-	RingBuffer<uint8_t> rb;
-	Vector<uint8_t> buffer;
+	String subject;
+	Vector<Range> data;
+	HashMap<String, int> names;
 
-	Error _process(uint8_t *p_dst, int p_dst_size, const uint8_t *p_src, int p_src_size, int &r_consumed, int &r_out, bool p_close = false);
-	void _close();
-	Error _start(bool p_compress, bool p_is_deflate, int p_buffer_size = 65535);
+	friend class RegEx;
 
 protected:
 	static void _bind_methods();
 
+	int _find(const Variant &p_name) const;
+
 public:
-	Error start_compression(bool p_is_deflate, int p_buffer_size = 65535);
-	Error start_decompression(bool p_is_deflate, int p_buffer_size = 65535);
+	String get_subject() const;
+	int get_group_count() const;
+	Dictionary get_names() const;
 
-	Error finish();
+	PackedStringArray get_strings() const;
+	String get_string(const Variant &p_name) const;
+	int get_start(const Variant &p_name) const;
+	int get_end(const Variant &p_name) const;
+};
+
+class RegEx : public RefCounted {
+	GDCLASS(RegEx, RefCounted);
+
+	void *general_ctx = nullptr;
+	void *code = nullptr;
+	String pattern;
+
+	void _pattern_info(uint32_t p_what, void *r_where) const;
+
+	int _sub(const String &p_subject, const String &p_replacement, int p_offset, int p_end, uint32_t p_flags, String &r_output) const;
+
+protected:
+	static void _bind_methods();
+
+#ifndef DISABLE_DEPRECATED
+	static Ref<RegEx> _create_from_string_bind_compat_95212(const String &p_pattern);
+	Error _compile_bind_compat_95212(const String &p_pattern);
+	static void _bind_compatibility_methods();
+#endif
+
+public:
+	static Ref<RegEx> create_from_string(const String &p_pattern, bool p_show_error = true);
+
 	void clear();
+	Error compile(const String &p_pattern, bool p_show_error = true);
 
-	virtual Error put_data(const uint8_t *p_data, int p_bytes) override;
-	virtual Error put_partial_data(const uint8_t *p_data, int p_bytes, int &r_sent) override;
+	Ref<RegExMatch> search(const String &p_subject, int p_offset = 0, int p_end = -1) const;
+	TypedArray<RegExMatch> search_all(const String &p_subject, int p_offset = 0, int p_end = -1) const;
+	String sub(const String &p_subject, const String &p_replacement, bool p_all = false, int p_offset = 0, int p_end = -1) const;
 
-	virtual Error get_data(uint8_t *p_buffer, int p_bytes) override;
-	virtual Error get_partial_data(uint8_t *p_buffer, int p_bytes, int &r_received) override;
+	bool is_valid() const;
+	String get_pattern() const;
+	int get_group_count() const;
+	PackedStringArray get_names() const;
 
-	virtual int get_available_bytes() const override;
-
-	~StreamPeerGZIP();
+	RegEx();
+	RegEx(const String &p_pattern);
+	~RegEx();
 };

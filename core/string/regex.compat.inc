@@ -1,5 +1,5 @@
 /**************************************************************************/
-/*  stream_peer_gzip.h                                                    */
+/*  regex.compat.inc                                                      */
 /**************************************************************************/
 /*                         This file is part of:                          */
 /*                             GODOT ENGINE                               */
@@ -28,42 +28,23 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
-#pragma once
+#ifndef DISABLE_DEPRECATED
 
-#include "core/io/stream_peer.h"
-#include "core/templates/ring_buffer.h"
+#include "regex.h"
 
-class StreamPeerGZIP : public StreamPeer {
-	GDCLASS(StreamPeerGZIP, StreamPeer);
+#include "core/object/class_db.h"
 
-private:
-	void *ctx = nullptr; // Will hold our z_stream instance.
-	bool compressing = true;
+Ref<RegEx> RegEx::_create_from_string_bind_compat_95212(const String &p_pattern) {
+	return create_from_string(p_pattern, true);
+}
 
-	RingBuffer<uint8_t> rb;
-	Vector<uint8_t> buffer;
+Error RegEx::_compile_bind_compat_95212(const String &p_pattern) {
+	return compile(p_pattern, true);
+}
 
-	Error _process(uint8_t *p_dst, int p_dst_size, const uint8_t *p_src, int p_src_size, int &r_consumed, int &r_out, bool p_close = false);
-	void _close();
-	Error _start(bool p_compress, bool p_is_deflate, int p_buffer_size = 65535);
+void RegEx::_bind_compatibility_methods() {
+	ClassDB::bind_compatibility_static_method("RegEx", D_METHOD("create_from_string", "pattern"), &RegEx::_create_from_string_bind_compat_95212);
+	ClassDB::bind_compatibility_method(D_METHOD("compile", "pattern"), &RegEx::_compile_bind_compat_95212);
+}
 
-protected:
-	static void _bind_methods();
-
-public:
-	Error start_compression(bool p_is_deflate, int p_buffer_size = 65535);
-	Error start_decompression(bool p_is_deflate, int p_buffer_size = 65535);
-
-	Error finish();
-	void clear();
-
-	virtual Error put_data(const uint8_t *p_data, int p_bytes) override;
-	virtual Error put_partial_data(const uint8_t *p_data, int p_bytes, int &r_sent) override;
-
-	virtual Error get_data(uint8_t *p_buffer, int p_bytes) override;
-	virtual Error get_partial_data(uint8_t *p_buffer, int p_bytes, int &r_received) override;
-
-	virtual int get_available_bytes() const override;
-
-	~StreamPeerGZIP();
-};
+#endif // DISABLE_DEPRECATED
