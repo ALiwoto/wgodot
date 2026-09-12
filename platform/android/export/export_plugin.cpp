@@ -2912,7 +2912,12 @@ bool EditorExportPlatformAndroid::has_valid_export_configuration(const Ref<Edito
 	if (!AndroidSDKManager::is_java_sdk_setup(&err)) {
 		valid = false;
 	}
-	if (AndroidSDKManager::is_android_sdk_setup(&err)) {
+	// wgodot-changes::begin
+	// Prebuilt APK exports can use an installed apksigner without Gradle's exact SDK packages.
+	// Remove this workaround once upstream validates SDK requirements per export mode.
+	// The apksigner check below still runs for both export modes.
+	if (!gradle_build_enabled || AndroidSDKManager::is_android_sdk_setup(&err)) {
+		// wgodot-changes::end
 		// Validate that apksigner is available.
 		String target_sdk_version = p_preset->get("gradle_build/target_sdk");
 		if (!target_sdk_version.is_valid_int()) {
