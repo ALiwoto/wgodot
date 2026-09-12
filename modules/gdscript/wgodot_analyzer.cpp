@@ -16,6 +16,7 @@
 #include "wgodot_stdlib.h"
 
 #include "core/config/project_settings.h"
+#include "core/object/class_db.h"
 
 void GDScriptAnalyzer::wgodot_validate_readonly_variable(GDScriptParser::VariableNode *p_variable, bool p_is_local) {
 	ERR_FAIL_NULL(p_variable);
@@ -236,12 +237,33 @@ bool GDScriptAnalyzer::wgodot_datatype_contains_variant(const GDScriptParser::Da
 }
 
 bool GDScriptAnalyzer::wgodot_validate_strict_datatype(const GDScriptParser::DataType &p_datatype, const GDScriptParser::Node *p_source, const String &p_context) {
-	if (!wgodot_strict_type_checking_enabled() || !wgodot_datatype_contains_variant(p_datatype)) {
+	if (!wgodot_strict_type_checking_enabled() || (p_datatype.is_hard_type() && !wgodot_datatype_contains_variant(p_datatype))) {
 		return true;
 	}
 
-	push_error(vformat("Strict type checking requires %s to have a fully known non-Variant type.", p_context), p_source);
+	String message = vformat("Strict type checking requires %s to have a fully known, static non-Variant type.", p_context);
+	if (!p_datatype.is_hard_type() && (p_source->type == GDScriptParser::Node::VARIABLE || p_source->type == GDScriptParser::Node::PARAMETER)) {
+		message += R"( Use ":=" to infer a static type or ": Type" to declare one explicitly; "=" alone leaves the declaration dynamically typed.)";
+	}
+	push_error(message, p_source);
 	return false;
+}
+
+void GDScriptAnalyzer::wgodot_validate_strict_object_call(const GDScriptParser::DataType &p_base_type, const GDScriptParser::CallNode *p_call) {
+	if (p_call->function_name != SNAME("call") && p_call->function_name != SNAME("call_deferred")) {
+		return;
+	}
+	if (p_base_type.kind != GDScriptParser::DataType::NATIVE && p_base_type.kind != GDScriptParser::DataType::SCRIPT && p_base_type.kind != GDScriptParser::DataType::CLASS) {
+		return;
+	}
+	if (!wgodot_strict_type_checking_enabled()) {
+		return;
+	}
+	if (p_call->function_name == SNAME("call") && ClassDB::is_parent_class(p_base_type.native_type, SNAME("JavaScriptObject"))) {
+		return;
+	}
+
+	push_error(vformat(R"*(Strict type checking does not allow object.%s("func_name", ...): method names passed as strings bypass static method checking. You should instead call object.func_name.%s(args).)*", p_call->function_name, p_call->function_name), p_call);
 }
 
 void GDScriptAnalyzer::wgodot_validate_strict_dynamic_call(const GDScriptParser::DataType &p_base_type, const GDScriptParser::CallNode *p_call, bool p_is_self) {

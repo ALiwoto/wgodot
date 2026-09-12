@@ -3843,6 +3843,7 @@ void GDScriptAnalyzer::reduce_call(GDScriptParser::CallNode *p_call, bool p_is_a
 			}
 		}
 	}
+	wgodot_validate_strict_object_call(base_type, p_call);
 	// wgodot-changes::end
 
 	if (is_constructor) {

@@ -114,6 +114,7 @@ class GDScriptAnalyzer {
 	bool wgodot_strict_type_checking_enabled() const;
 	bool wgodot_datatype_contains_variant(const GDScriptParser::DataType &p_datatype) const;
 	bool wgodot_validate_strict_datatype(const GDScriptParser::DataType &p_datatype, const GDScriptParser::Node *p_source, const String &p_context);
+	void wgodot_validate_strict_object_call(const GDScriptParser::DataType &p_base_type, const GDScriptParser::CallNode *p_call);
 	void wgodot_validate_strict_dynamic_call(const GDScriptParser::DataType &p_base_type, const GDScriptParser::CallNode *p_call, bool p_is_self);
 	void wgodot_validate_strict_dynamic_property_access(const GDScriptParser::DataType &p_base_type, const GDScriptParser::SubscriptNode *p_subscript);
 	void wgodot_validate_strict_dynamic_index_access(const GDScriptParser::DataType &p_base_type, const GDScriptParser::SubscriptNode *p_subscript);
