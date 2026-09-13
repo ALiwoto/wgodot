@@ -55,7 +55,16 @@ public:
 class StringsPass : public AnalyzedExportPass {
 public:
 	const char *get_name() const override { return "strings"; }
-	Vector<StringName> get_predecessors() const override { return { SNAME("no_export"), SNAME("diagnostics"), SNAME("dead_code"), SNAME("constants"), SNAME("paths") }; }
+	Vector<StringName> get_predecessors() const override {
+		return {
+			SNAME("no_export"),
+			SNAME("diagnostics"),
+			SNAME("dead_code"),
+			SNAME("constants"),
+			SNAME("names"),
+			SNAME("paths")
+		};
+	}
 	bool is_enabled(const TransformOptions &p_options) const override { return p_options.obfuscate_strings; }
 	Error transform(const ExportPassInput &p_input, ExportPassOutput &r_output, String &r_error) override;
 };

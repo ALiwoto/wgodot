@@ -381,11 +381,11 @@ void add_constant_declaration_replacement(RewriteContext &r_context, const GDScr
 
 	if (!p_leave_pass && remove_full_line) {
 		const int line_start = get_line_start_offset(r_context, start_line);
-		if (line_start >= 0) {
+		if (line_start >= 0 && r_context.source.substr(line_start, start - line_start).strip_edges().is_empty()) {
 			start = line_start;
-		}
-		if (p_constant->end_line < r_context.line_offsets.size()) {
-			end = r_context.line_offsets[p_constant->end_line];
+			if (p_constant->end_line < r_context.line_offsets.size()) {
+				end = r_context.line_offsets[p_constant->end_line];
+			}
 		}
 	}
 

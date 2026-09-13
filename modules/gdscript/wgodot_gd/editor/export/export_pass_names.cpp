@@ -1,17 +1,60 @@
 // wgodot-changes::file
 
+#include "deconst_transform.h"
 #include "export_ast_visitor.h"
 #include "export_pass_ast.h"
 #include "export_transform_internal.h"
 #include "name_obfuscation.h"
+
+#include "modules/gdscript/gdscript_analyzer.h"
 
 namespace WGodotGDScriptExportTransform {
 
 namespace {
 using Parser = GDScriptParser;
 
+class ReplacedPathConstants : public ExportASTVisitor {
+	HashMap<const Parser::ConstantNode *, int> remaining_usages;
+	Vector<const Parser::ConstantNode *> unused;
+
+protected:
+	bool enter(const Parser::Node *p_node, const ExportScope &p_scope) override {
+		if (p_node->type == Parser::Node::IDENTIFIER) {
+			const auto *identifier = static_cast<const Parser::IdentifierNode *>(p_node);
+			if (identifier->source == Parser::IdentifierNode::LOCAL_CONSTANT) {
+				const auto *constant = identifier->constant_source;
+				if (!remaining_usages.has(constant)) {
+					remaining_usages.insert(constant, constant->usages);
+				}
+				if (--remaining_usages[constant] == 0) {
+					unused.push_back(constant);
+					walk_child(constant->initializer, p_scope);
+				}
+			}
+		}
+		return true;
+	}
+
+public:
+	void remove_unused(RewriteContext &r_rewrite) const {
+		// Replacing a constant's last use must not introduce an unused-constant error.
+		for (const auto *constant : unused) {
+			add_constant_declaration_replacement(r_rewrite, constant, false);
+			const Replacement removal = r_rewrite.replacements[r_rewrite.replacements.size() - 1];
+			for (int i = r_rewrite.replacements.size() - 2; i >= 0; i--) {
+				const Replacement &replacement = r_rewrite.replacements[i];
+				if (replacement.start >= removal.start && replacement.end <= removal.end) {
+					r_rewrite.replacements.remove_at(i);
+				}
+			}
+		}
+	}
+};
+
 class NamesVisitor : public ExportASTVisitor {
 	RewriteContext &rewrite;
+	const GDScriptAnalyzer &analyzer;
+	ReplacedPathConstants replaced_path_constants;
 
 protected:
 	bool enter(const Parser::Node *p_node, const ExportScope &p_scope) override {
@@ -64,14 +107,23 @@ protected:
 			} break;
 			case Parser::Node::CALL: {
 				const auto *node = static_cast<const Parser::CallNode *>(p_node);
+				const bool path_replaced = add_tween_property_path_replacement(rewrite, node, analyzer.wgodot_get_tween_property_path(node));
+				if (path_replaced) {
+					replaced_path_constants.walk(node->arguments[1]);
+				}
 				const int count = rewrite.replacements.size();
 				add_call_member_name_reference_replacement(rewrite, node);
-				if (rewrite.replacements.size() != count) {
-					if (node->callee->type == Parser::Node::SUBSCRIPT) {
+				const bool callee_replaced = rewrite.replacements.size() != count;
+				if (callee_replaced || path_replaced) {
+					if (!callee_replaced) {
+						walk_child(node->callee, p_scope);
+					} else if (node->callee->type == Parser::Node::SUBSCRIPT) {
 						walk_child(static_cast<const Parser::SubscriptNode *>(node->callee)->base, p_scope);
 					}
-					for (const auto *argument : node->arguments) {
-						walk_child(argument, p_scope);
+					for (uint32_t i = 0; i < node->arguments.size(); i++) {
+						if (i != 1 || !path_replaced) {
+							walk_child(node->arguments[i], p_scope);
+						}
 					}
 					return false;
 				}
@@ -100,8 +152,10 @@ protected:
 	}
 
 public:
-	explicit NamesVisitor(RewriteContext &p_rewrite) :
-			rewrite(p_rewrite) {}
+	void remove_unused_path_constants() { replaced_path_constants.remove_unused(rewrite); }
+
+	NamesVisitor(RewriteContext &p_rewrite, const GDScriptAnalyzer &p_analyzer) :
+			rewrite(p_rewrite), analyzer(p_analyzer) {}
 };
 } // namespace
 
@@ -141,8 +195,9 @@ Error NamesPass::transform(const ExportPassInput &p_input, ExportPassOutput &r_o
 		const auto *tree = (*parser)->get_parser()->get_tree();
 		r_output.artifacts.seed_reserved_obfuscated_names(rewrite.reserved_obfuscated_names);
 		collect_member_name_obfuscation(rewrite, tree, false);
-		NamesVisitor visitor(rewrite);
+		NamesVisitor visitor(rewrite, *(*parser)->get_analyzer());
 		visitor.walk(tree);
+		visitor.remove_unused_path_constants();
 		finish_rewrite(path, rewrite, r_output);
 	}
 	return OK;

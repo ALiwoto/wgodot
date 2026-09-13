@@ -7,10 +7,12 @@
 
 #include "export_context.h"
 #include "obfuscation_names.h"
+#include "modules/gdscript/wgodot_gd/editor/property_path.h"
 #include "modules/gdscript/wgodot_gd/interface_helpers.h"
 
 #include "core/error/error_macros.h"
 #include "core/variant/variant.h"
+#include "core/variant/variant_parser.h"
 
 namespace {
 
@@ -628,6 +630,46 @@ void add_attribute_member_name_reference_replacement(RewriteContext &r_context, 
 	}
 
 	add_replacement(r_context, p_identifier, obfuscated_name);
+}
+
+bool add_tween_property_path_replacement(RewriteContext &r_context, const GDScriptParser::CallNode *p_call, const WGodotGDScriptPropertyPath *p_path) {
+	if (p_path == nullptr || !r_context.options.obfuscate_names) {
+		return false;
+	}
+
+	Vector<StringName> names = p_path->path.get_as_property_path().get_subnames();
+	bool changed = false;
+	for (int i = 0; i < p_path->segments.size(); i++) {
+		const WGodotGDScriptPropertyPath::Segment &segment = p_path->segments[i];
+		if (segment.member.type != GDScriptParser::ClassNode::Member::VARIABLE || segment.member.variable->wgodot_no_mangle) {
+			continue;
+		}
+		const String *renamed = r_context.obfuscated_variable_names.getptr(segment.member.variable);
+		if (renamed == nullptr) {
+			renamed = get_context_member_rename(r_context, segment.owner, segment.name);
+		}
+		String replacement;
+		if (renamed != nullptr) {
+			replacement = *renamed;
+		} else if (const StringName *alias = get_datatype_interface_member_alias(r_context, segment.base_type, segment.name)) {
+			replacement = String(*alias);
+		}
+		if (!replacement.is_empty()) {
+			names.write[i] = StringName(unwrap_binary_identifier_escape(replacement));
+			changed = true;
+		}
+	}
+	if (!changed) {
+		return false;
+	}
+
+	String text;
+	if (VariantWriter::write_to_string(String(NodePath(Vector<StringName>(), names, false)), text) != OK) {
+		return false;
+	}
+	// Replace this use, not a shared constant that may name a property on another type.
+	add_replacement(r_context, p_call->arguments[1], "^" + text);
+	return true;
 }
 
 void add_call_member_name_reference_replacement(RewriteContext &r_context, const GDScriptParser::CallNode *p_call) {

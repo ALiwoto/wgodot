@@ -3896,6 +3896,9 @@ void GDScriptAnalyzer::reduce_call(GDScriptParser::CallNode *p_call, bool p_is_a
 		// wgodot-changes::begin
 		wgodot_validate_value_container_call(base_type, p_call);
 		wgodot_validate_signal_callable_connection(p_call);
+#ifdef TOOLS_ENABLED
+		wgodot_analyze_tween_property_call(base_type, p_call);
+#endif
 		// wgodot-changes::end
 
 		if (base_type.kind == GDScriptParser::DataType::ENUM && base_type.is_meta_type) {

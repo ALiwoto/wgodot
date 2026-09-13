@@ -35,6 +35,12 @@
 
 #include "core/object/ref_counted.h"
 
+// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+#include "wgodot_gd/editor/property_path.h"
+#endif
+// wgodot-changes::end
+
 class GDScriptAnalyzer {
 	GDScriptParser *parser = nullptr;
 
@@ -61,6 +67,11 @@ class GDScriptAnalyzer {
 		Vector<GDScriptParser::DataType> alternatives;
 	};
 	Vector<HashMap<const GDScriptParser::Node *, WGodotNarrowedType>> wgodot_narrowed_type_stack;
+#ifdef TOOLS_ENABLED
+	HashMap<const GDScriptParser::CallNode *, WGodotGDScriptPropertyPath> wgodot_tween_property_paths;
+	bool wgodot_resolve_property_path_segment(WGodotGDScriptPropertyPath::Segment &r_segment, const GDScriptParser::Node *p_source);
+	void wgodot_analyze_tween_property_call(const GDScriptParser::DataType &p_base_type, const GDScriptParser::CallNode *p_call);
+#endif
 	// wgodot-changes::end
 
 	// Tests for detecting invalid overloading of script members
@@ -228,6 +239,9 @@ class GDScriptAnalyzer {
 
 public:
 	// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+	const WGodotGDScriptPropertyPath *wgodot_get_tween_property_path(const GDScriptParser::CallNode *p_call) const { return wgodot_tween_property_paths.getptr(p_call); }
+#endif
 	Error wgodot_validate_native_interface(const String &p_qualified_name, const StringName &p_native_class, String &r_error);
 	// wgodot-changes::end
 	Error resolve_inheritance();

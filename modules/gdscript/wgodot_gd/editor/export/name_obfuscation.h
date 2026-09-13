@@ -7,6 +7,8 @@
 
 #include "source_rewrite.h"
 
+struct WGodotGDScriptPropertyPath;
+
 namespace WGodotGDScriptExportTransform {
 
 void collect_suite_local_name_obfuscation(RewriteContext &r_context, const GDScriptParser::SuiteNode *p_suite);
@@ -21,6 +23,7 @@ bool add_class_member_name_reference_replacement(RewriteContext &r_context, cons
 bool add_member_name_reference_replacement(RewriteContext &r_context, const GDScriptParser::IdentifierNode *p_identifier, const GDScriptParser::ClassNode *p_class);
 void add_attribute_member_name_reference_replacement(RewriteContext &r_context, const GDScriptParser::ExpressionNode *p_base, const GDScriptParser::IdentifierNode *p_identifier);
 void add_call_member_name_reference_replacement(RewriteContext &r_context, const GDScriptParser::CallNode *p_call);
+bool add_tween_property_path_replacement(RewriteContext &r_context, const GDScriptParser::CallNode *p_call, const WGodotGDScriptPropertyPath *p_path);
 void add_function_pointer_replacement(RewriteContext &r_context, const GDScriptParser::ClassNode *p_class, const GDScriptParser::IdentifierNode *p_identifier);
 
 } // namespace WGodotGDScriptExportTransform
