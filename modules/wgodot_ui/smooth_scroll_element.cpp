@@ -266,7 +266,6 @@ SmoothScrollElement::SmoothScrollElement() {
 	set_horizontal_scroll_mode(SCROLL_MODE_SHOW_NEVER);
 	set_vertical_scroll_mode(SCROLL_MODE_SHOW_NEVER);
 	set_deadzone(8);
-	set_follow_focus(true);
 	get_h_scroll_bar()->set_step(0);
 	get_v_scroll_bar()->set_step(0);
 	get_h_scroll_bar()->connect("value_changed", callable_mp(this, &SmoothScrollElement::bar_changed).bind(0));
