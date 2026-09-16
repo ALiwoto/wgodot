@@ -31,6 +31,7 @@
 #include "gdscript_tokenizer_buffer.h"
 
 // wgodot-changes::begin
+#include "core/profiling/wgodot_startup_profile.h"
 #include "wgodot_gd/binary_identifier.h"
 // wgodot-changes::end
 
@@ -143,6 +144,9 @@ GDScriptTokenizer::Token GDScriptTokenizerBuffer::_binary_to_token(const uint8_t
 }
 
 Error GDScriptTokenizerBuffer::set_code_buffer(const Vector<uint8_t> &p_buffer) {
+// wgodot-changes::begin
+	WGodotStartupProfile::Scope wgodot_profile("GDScript decode tokens");
+// wgodot-changes::end
 	const uint8_t *buf = p_buffer.ptr();
 	ERR_FAIL_COND_V(p_buffer.size() < 12 || p_buffer[0] != 'G' || p_buffer[1] != 'D' || p_buffer[2] != 'S' || p_buffer[3] != 'C', ERR_INVALID_DATA);
 

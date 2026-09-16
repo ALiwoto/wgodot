@@ -30,6 +30,10 @@
 
 #include "main.h"
 
+// wgodot-changes::begin
+#include "core/profiling/wgodot_startup_profile.h"
+// wgodot-changes::end
+
 #include "core/config/engine.h"
 #include "core/config/project_settings.h"
 #include "core/core_globals.h"
@@ -608,6 +612,9 @@ void Main::print_help(const char *p_binary) {
 #endif
 	print_help_option("--generate-spirv-debug-info", "Generate SPIR-V debug information (Vulkan only). This allows source-level shader debugging with RenderDoc.\n");
 	print_help_option("--clear-shader-cache", "Clear the shader_cache directory at launch, so it's re-generated.\n");
+// wgodot-changes::begin
+	print_help_option("--wgodot-startup-profile", "Print native startup timings through the first frame.\n");
+// wgodot-changes::end
 #if defined(DEBUG_ENABLED) || defined(DEV_ENABLED)
 	print_help_option("--extra-gpu-memory-tracking", "Enables additional memory tracking (see class reference for `RenderingDevice.get_driver_and_device_memory_report()` and linked methods). Currently only implemented for Vulkan. Enabling this feature may cause crashes on some systems due to buggy drivers or bugs in the Vulkan Loader. See https://github.com/godotengine/godot/issues/95967\n");
 	print_help_option("--accurate-breadcrumbs", "Force barriers between breadcrumbs. Useful for narrowing down a command causing GPU resets. Currently only implemented for Vulkan.\n");
@@ -1995,6 +2002,10 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 				goto error;
 			}
 #endif // XR_DISABLED
+// wgodot-changes::begin
+		} else if (arg == "--wgodot-startup-profile") {
+			WGodotStartupProfile::enable();
+// wgodot-changes::end
 		} else if (arg == "--benchmark") {
 			OS::get_singleton()->set_use_benchmark(true);
 		} else if (arg == "--benchmark-file") {
@@ -3068,6 +3079,9 @@ Error _parse_resource_dummy(void *p_data, VariantParser::Stream *p_stream, Ref<R
 }
 
 Error Main::setup2(bool p_show_boot_logo) {
+// wgodot-changes::begin
+	WGodotStartupProfile::Scope wgodot_profile("Main::setup2");
+// wgodot-changes::end
 	GodotProfileZone("setup2");
 	OS::get_singleton()->benchmark_begin_measure("Startup", "Main::Setup2");
 
@@ -3946,6 +3960,9 @@ Error Main::setup2(bool p_show_boot_logo) {
 }
 
 void Main::setup_boot_logo() {
+// wgodot-changes::begin
+	WGodotStartupProfile::Scope wgodot_profile("Main::setup_boot_logo");
+// wgodot-changes::end
 	GodotProfileZone("setup_boot_logo");
 	MAIN_PRINT("Main: Load Boot Image");
 
@@ -4038,6 +4055,9 @@ static MainTimerSync main_timer_sync;
 // and should move on to `OS::run`, and EXIT_FAILURE otherwise for
 // an early exit with that error code.
 int Main::start() {
+// wgodot-changes::begin
+	WGodotStartupProfile::Scope wgodot_profile("Main::start");
+// wgodot-changes::end
 	GodotProfileZone("start");
 	OS::get_singleton()->benchmark_begin_measure("Startup", "Main::Start");
 
@@ -4953,6 +4973,9 @@ static uint64_t navigation_process_max = 0;
 // will terminate the program. In case of failure, the OS exit code needs
 // to be set explicitly here (defaults to EXIT_SUCCESS).
 bool Main::iteration() {
+// wgodot-changes::begin
+	WGodotStartupProfile::Scope wgodot_profile("First frame", String(), true);
+// wgodot-changes::end
 	GodotProfileZone("Main::iteration");
 	GodotProfileZoneGroupedFirst(_profile_zone, "prepare");
 	iterating++;

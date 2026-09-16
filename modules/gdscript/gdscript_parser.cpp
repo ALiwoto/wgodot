@@ -30,6 +30,7 @@
 
 #include "gdscript_parser.h"
 // wgodot-changes::begin
+#include "core/profiling/wgodot_startup_profile.h"
 #include "wgodot_gd/script_resolution.h"
 // wgodot-changes::end
 
@@ -456,6 +457,9 @@ void GDScriptParser::set_last_completion_call_arg(int p_argument) {
 }
 
 Error GDScriptParser::parse(const String &p_source_code, const String &p_script_path, bool p_for_completion, bool p_parse_body) {
+// wgodot-changes::begin
+	WGodotStartupProfile::Scope wgodot_profile("GDScript parse source", p_script_path);
+// wgodot-changes::end
 	clear();
 
 	String source = p_source_code;
@@ -548,6 +552,9 @@ Error GDScriptParser::parse(const String &p_source_code, const String &p_script_
 }
 
 Error GDScriptParser::parse_binary(const Vector<uint8_t> &p_binary, const String &p_script_path) {
+// wgodot-changes::begin
+	WGodotStartupProfile::Scope wgodot_profile("GDScript parse binary", p_script_path);
+// wgodot-changes::end
 	GDScriptTokenizerBuffer *buffer_tokenizer = memnew(GDScriptTokenizerBuffer);
 	Error err = buffer_tokenizer->set_code_buffer(p_binary);
 

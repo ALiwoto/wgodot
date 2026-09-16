@@ -30,6 +30,7 @@
 
 #include "gdscript_analyzer.h"
 // wgodot-changes::begin
+#include "core/profiling/wgodot_startup_profile.h"
 #include "wgodot_gd/script_resolution.h"
 // wgodot-changes::end
 
@@ -7055,15 +7056,24 @@ bool GDScriptAnalyzer::class_exists(const StringName &p_class) {
 }
 
 Error GDScriptAnalyzer::resolve_inheritance() {
+// wgodot-changes::begin
+	WGodotStartupProfile::Scope wgodot_profile("GDScript resolve_inheritance", parser->script_path);
+// wgodot-changes::end
 	return resolve_class_inheritance(parser->head, true);
 }
 
 Error GDScriptAnalyzer::resolve_interface() {
+// wgodot-changes::begin
+	WGodotStartupProfile::Scope wgodot_profile("GDScript resolve_interface", parser->script_path);
+// wgodot-changes::end
 	resolve_class_interface(parser->head, true);
 	return parser->errors.is_empty() ? OK : ERR_PARSE_ERROR;
 }
 
 Error GDScriptAnalyzer::resolve_body() {
+// wgodot-changes::begin
+	WGodotStartupProfile::Scope wgodot_profile("GDScript resolve_body", parser->script_path);
+// wgodot-changes::end
 	resolve_class_body(parser->head, true);
 
 #ifdef DEBUG_ENABLED
@@ -7075,6 +7085,9 @@ Error GDScriptAnalyzer::resolve_body() {
 }
 
 Error GDScriptAnalyzer::resolve_dependencies() {
+// wgodot-changes::begin
+	WGodotStartupProfile::Scope wgodot_profile("GDScript resolve_dependencies", parser->script_path);
+// wgodot-changes::end
 	for (KeyValue<String, Ref<GDScriptParserRef>> &K : parser->depended_parsers) {
 		if (K.value.is_null()) {
 			return ERR_PARSE_ERROR;
@@ -7086,6 +7099,9 @@ Error GDScriptAnalyzer::resolve_dependencies() {
 }
 
 Error GDScriptAnalyzer::analyze() {
+// wgodot-changes::begin
+	WGodotStartupProfile::Scope wgodot_profile("GDScript analyze", parser->script_path);
+// wgodot-changes::end
 	parser->errors.clear();
 
 	RETURN_IF_ERROR(resolve_inheritance());

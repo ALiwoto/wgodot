@@ -81,3 +81,7 @@ WGodot annotations are registered in `modules/gdscript/wgodot_annotations.cpp` a
 ## Core API Helpers
 
 - `StreamPeer.get_data_bytes(bytes)` returns the `PackedByteArray` payload from `get_data(bytes)` directly, avoiding untyped `Array` indexing in strict type checking.
+
+## Startup Diagnosis
+
+`--wgodot-startup-profile` enables native startup timings, including export templates. On Android, put it in the export preset's Extra Args. Logs include resource paths, script processing, texture decode/upload, splash rendering, and the first frame; self time excludes instrumented children on the same thread. Scopes under 1 ms are omitted. Profiling stops after the first frame and does no timing reads or logging when the flag is absent.

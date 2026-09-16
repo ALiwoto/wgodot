@@ -30,6 +30,10 @@
 
 #include "java_godot_lib_jni.h"
 
+// wgodot-changes::begin
+#include "core/profiling/wgodot_startup_profile.h"
+// wgodot-changes::end
+
 #include "android_input_handler.h"
 #include "api/java_class_wrapper.h"
 #include "dir_access_jandroid.h"
@@ -336,7 +340,13 @@ JNIEXPORT jboolean JNICALL Java_org_godotengine_godot_GodotLib_step(JNIEnv *env,
 		}
 
 		godot_java->on_godot_setup_completed(env);
+// wgodot-changes::begin
+		WGodotStartupProfile::Scope wgodot_ready_profile("Android main_loop_begin (_ready)");
+// wgodot-changes::end
 		os_android->main_loop_begin();
+// wgodot-changes::begin
+		wgodot_ready_profile.finish();
+// wgodot-changes::end
 		godot_java->on_godot_main_loop_started(env);
 		step.increment();
 	}

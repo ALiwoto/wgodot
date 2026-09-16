@@ -30,6 +30,10 @@
 
 #include "gdscript.h"
 
+// wgodot-changes::begin
+#include "core/profiling/wgodot_startup_profile.h"
+// wgodot-changes::end
+
 #include "gdscript_analyzer.h"
 #include "gdscript_cache.h"
 #include "gdscript_compiler.h"
@@ -673,6 +677,9 @@ String GDScript::_get_debug_path() const {
 }
 
 Error GDScript::_static_init() {
+// wgodot-changes::begin
+	WGodotStartupProfile::Scope wgodot_profile("GDScript::_static_init", path);
+// wgodot-changes::end
 	if (likely(valid) && static_initializer) {
 		Callable::CallError call_err;
 		static_initializer->call(nullptr, nullptr, 0, call_err);
@@ -744,6 +751,9 @@ void GDScript::_restore_old_static_data() {
 #endif
 
 Error GDScript::reload(bool p_keep_state) {
+// wgodot-changes::begin
+	WGodotStartupProfile::Scope wgodot_profile("GDScript::reload", path);
+// wgodot-changes::end
 	if (reloading) {
 		return OK;
 	}

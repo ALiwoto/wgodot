@@ -30,6 +30,10 @@
 
 #include "gdscript_compiler.h"
 
+// wgodot-changes::begin
+#include "core/profiling/wgodot_startup_profile.h"
+// wgodot-changes::end
+
 #include "gdscript.h"
 #include "gdscript_analyzer.h"
 #include "gdscript_byte_codegen.h"
@@ -3377,6 +3381,9 @@ void GDScriptCompiler::_get_function_ptr_replacements(HashMap<GDScriptFunction *
 }
 
 Error GDScriptCompiler::compile(const GDScriptParser *p_parser, GDScript *p_script, bool p_keep_state) {
+// wgodot-changes::begin
+	WGodotStartupProfile::Scope wgodot_profile("GDScript compile", p_script->get_path());
+// wgodot-changes::end
 	err_line = -1;
 	err_column = -1;
 	error = "";

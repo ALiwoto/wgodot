@@ -30,6 +30,10 @@
 
 #include "compressed_texture.h"
 
+// wgodot-changes::begin
+#include "core/profiling/wgodot_startup_profile.h"
+// wgodot-changes::end
+
 #include "core/io/file_access.h"
 #include "core/io/resource_loader.h"
 #include "core/object/class_db.h"
@@ -133,6 +137,9 @@ Image::Format CompressedTexture2D::get_format() const {
 }
 
 Error CompressedTexture2D::load(const String &p_path) {
+// wgodot-changes::begin
+	WGodotStartupProfile::Scope wgodot_profile("Texture read and decode", p_path);
+// wgodot-changes::end
 	int lw, lh;
 	Ref<Image> image;
 	image.instantiate();
@@ -143,6 +150,10 @@ Error CompressedTexture2D::load(const String &p_path) {
 	int mipmap_limit;
 
 	RETURN_IF_ERROR(_load_data(p_path, lw, lh, image, request_3d, request_normal, request_roughness, mipmap_limit));
+
+// wgodot-changes::begin
+	wgodot_profile.next("Texture upload and finish");
+// wgodot-changes::end
 
 	if (texture.is_valid()) {
 		RID new_texture = RS::get_singleton()->texture_2d_create(image);

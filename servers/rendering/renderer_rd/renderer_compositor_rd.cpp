@@ -30,6 +30,10 @@
 
 #include "renderer_compositor_rd.h"
 
+// wgodot-changes::begin
+#include "core/profiling/wgodot_startup_profile.h"
+// wgodot-changes::end
+
 #include "core/config/engine.h"
 #include "core/config/project_settings.h"
 #include "core/io/dir_access.h"
@@ -213,6 +217,9 @@ float RendererCompositorRD::_compute_reference_multiplier(RD::ColorSpace p_color
 }
 
 void RendererCompositorRD::set_boot_image_with_stretch(const Ref<Image> &p_image, const Color &p_color, RSE::SplashStretchMode p_stretch_mode, bool p_use_filter) {
+// wgodot-changes::begin
+	WGodotStartupProfile::Scope wgodot_profile("Boot screen prepare");
+// wgodot-changes::end
 	if (p_image.is_null() || p_image->is_empty()) {
 		return;
 	}
@@ -223,8 +230,14 @@ void RendererCompositorRD::set_boot_image_with_stretch(const Ref<Image> &p_image
 		return;
 	}
 
+// wgodot-changes::begin
+	wgodot_profile.next("Boot blit pipelines");
+// wgodot-changes::end
 	BlitPipelines blit_pipelines = _get_blit_pipelines_for_format(RD::get_singleton()->screen_get_framebuffer_format(DisplayServerEnums::MAIN_WINDOW_ID));
 
+// wgodot-changes::begin
+	wgodot_profile.next("Boot texture upload and uniforms");
+// wgodot-changes::end
 	RID texture = texture_storage->texture_allocate();
 	texture_storage->texture_2d_initialize(texture, p_image);
 	RID rd_texture = texture_storage->texture_get_rd_texture(texture, false);
@@ -269,6 +282,9 @@ void RendererCompositorRD::set_boot_image_with_stretch(const Ref<Image> &p_image
 		clear_color.b *= reference_multiplier;
 	}
 
+// wgodot-changes::begin
+	wgodot_profile.next("Boot draw commands");
+// wgodot-changes::end
 	RD::DrawListID draw_list = RD::get_singleton()->draw_list_begin_for_screen(DisplayServerEnums::MAIN_WINDOW_ID, clear_color);
 
 	RD::get_singleton()->draw_list_bind_render_pipeline(draw_list, blit_pipelines.pipelines[BLIT_MODE_NORMAL_ALPHA]);
@@ -305,8 +321,14 @@ void RendererCompositorRD::set_boot_image_with_stretch(const Ref<Image> &p_image
 
 	RD::get_singleton()->draw_list_end();
 
+// wgodot-changes::begin
+	wgodot_profile.next("Boot swap buffers");
+// wgodot-changes::end
 	RD::get_singleton()->swap_buffers(true);
 
+// wgodot-changes::begin
+	wgodot_profile.next("Boot texture cleanup");
+// wgodot-changes::end
 	texture_storage->texture_free(texture);
 	RD::get_singleton()->free_rid(sampler);
 }

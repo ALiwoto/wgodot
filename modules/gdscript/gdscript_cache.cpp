@@ -30,6 +30,10 @@
 
 #include "gdscript_cache.h"
 
+// wgodot-changes::begin
+#include "core/profiling/wgodot_startup_profile.h"
+// wgodot-changes::end
+
 #include "gdscript.h"
 #include "gdscript_analyzer.h"
 #include "gdscript_compiler.h"
@@ -297,6 +301,7 @@ void GDScriptCache::remove_parser(const String &p_path) {
 
 String GDScriptCache::get_source_code(const String &p_path) {
 	// wgodot-changes::begin
+	WGodotStartupProfile::Scope wgodot_profile("GDScript read source", p_path);
 	if (WGodotGDScriptStdLib::has_script_path(p_path)) {
 		return WGodotGDScriptStdLib::get_script_source(p_path);
 	}
@@ -321,6 +326,9 @@ String GDScriptCache::get_source_code(const String &p_path) {
 }
 
 Vector<uint8_t> GDScriptCache::get_binary_tokens(const String &p_path) {
+// wgodot-changes::begin
+	WGodotStartupProfile::Scope wgodot_profile("GDScript read tokens", p_path);
+// wgodot-changes::end
 	Vector<uint8_t> buffer;
 	Error err = OK;
 	Ref<FileAccess> f = FileAccess::open(p_path, FileAccess::READ, &err);
@@ -335,6 +343,9 @@ Vector<uint8_t> GDScriptCache::get_binary_tokens(const String &p_path) {
 }
 
 Ref<GDScript> GDScriptCache::get_shallow_script(const String &p_path, Error &r_error, const String &p_owner) {
+// wgodot-changes::begin
+	WGodotStartupProfile::Scope wgodot_profile("GDScript shallow load", p_path);
+// wgodot-changes::end
 	// wgodot-changes::begin
 #ifdef TOOLS_ENABLED
 	Ref<GDScript> export_script;
@@ -386,6 +397,9 @@ Ref<GDScript> GDScriptCache::get_shallow_script(const String &p_path, Error &r_e
 }
 
 Ref<GDScript> GDScriptCache::get_full_script(const String &p_path, Error &r_error, const String &p_owner, bool p_update_from_disk) {
+// wgodot-changes::begin
+	WGodotStartupProfile::Scope wgodot_profile("GDScript full load", p_path);
+// wgodot-changes::end
 	MutexLock lock(singleton->mutex);
 
 	if (!p_owner.is_empty() && p_path != p_owner) {
