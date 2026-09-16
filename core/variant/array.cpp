@@ -42,6 +42,10 @@ STATIC_ASSERT_INCOMPLETE_TYPE(class, String);
 #include "core/variant/container_type_validate.h"
 #include "core/variant/dictionary.h"
 
+// wgodot-changes::begin
+#include "core/variant/wgodot_array_access.h"
+// wgodot-changes::end
+
 struct ArrayPrivate {
 	SafeRefCount refcount;
 	Vector<Variant> array;
@@ -52,6 +56,12 @@ struct ArrayPrivate {
 	ArrayPrivate(std::initializer_list<Variant> p_init) :
 			array(p_init) {}
 };
+
+// wgodot-changes::begin
+bool WGodotNative::array_is_shared(const Array &p_array) {
+	return static_cast<const ArrayPrivate *>(p_array.id())->refcount.get() > 1;
+}
+// wgodot-changes::end
 
 void Array::_ref(const Array &p_from) const {
 	ArrayPrivate *_fp = p_from._p;

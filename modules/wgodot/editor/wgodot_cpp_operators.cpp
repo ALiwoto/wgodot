@@ -100,7 +100,7 @@ String WGodotCppEmitter::cast(const Parser::CastNode *p_cast) {
 
 String WGodotCppEmitter::type_test(const Parser::TypeTestNode *p_test) {
 	const auto &target = p_test->test_datatype;
-	const String value = expression(p_test->operand);
+	const String value = receiver_expression(p_test->operand);
 	if (is_warray(expression_type(p_test->operand))) {
 		const bool same = target.is_variant() || (target.kind == Parser::DataType::BUILTIN && target.builtin_type == Variant::ARRAY && (!target.has_container_element_type(0) || type(target, p_test) == type(expression_type(p_test->operand), p_test)));
 		return "([&]() { (void)(" + value + "); return " + (same ? "true" : "false") + "; }())";

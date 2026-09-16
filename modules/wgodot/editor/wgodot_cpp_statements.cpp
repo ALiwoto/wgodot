@@ -64,31 +64,7 @@ String WGodotCppEmitter::suite(const Parser::SuiteNode *p_suite, int p_indent) {
 				break;
 			}
 			case Parser::Node::FOR: {
-				const auto *node = static_cast<const Parser::ForNode *>(statement);
-				class_call_headers.insert("modules/wgodot/native/wgodot_native_values.h");
-				String collection;
-				bool range = node->list->type_constraint.kind == Parser::DataType::BUILTIN && node->list->type_constraint.builtin_type == Variant::INT;
-				if (node->list->type == Parser::Node::CALL && static_cast<const Parser::CallNode *>(node->list)->function_name == "range") {
-					const auto *call = static_cast<const Parser::CallNode *>(node->list);
-					collection = "([&]() { ";
-					Vector<String> arguments;
-					for (uint32_t i = 0; i < call->arguments.size(); i++) {
-						const String argument = "argument_" + itos(i);
-						collection += "auto &&" + argument + " = " + expression(call->arguments[i]) + "; ";
-						arguments.push_back(argument);
-					}
-					collection += "return WGodotNative::Range(" + String(", ").join(arguments) + "); }())";
-					range = true;
-				} else {
-					collection = expression(node->list);
-				}
-				const auto collection_type = expression_type(node->list);
-				const String iterator_type = range ? "WGodotNative::Range" : is_warray(collection_type) ? "WGodotNative::WArrayIterator<" + type(collection_type.get_container_element_type(0), node) + ">"
-																										: "WGodotNative::Iterator";
-				const String variable_type = type(node->variable->type_constraint, node->variable);
-				code += indent + "for (" + iterator_type + " iterator(" + collection + "); iterator.has_value(); iterator.next()) {\n";
-				code += indent + "\t" + variable_type + " v_" + symbol(node->variable->name) + " = iterator." + (range ? "get()" : "get<" + variable_type + ">()") + ";\n";
-				code += suite(node->loop, p_indent + 1) + indent + "}\n";
+				code += iteration(static_cast<const Parser::ForNode *>(statement), p_indent);
 				break;
 			}
 			case Parser::Node::BREAK:

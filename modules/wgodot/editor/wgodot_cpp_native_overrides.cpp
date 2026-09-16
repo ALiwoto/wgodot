@@ -70,13 +70,28 @@ bool WGodotCppEmitter::native_override(const MethodBind *p_method, const String 
 		class_call_headers.insert("scene/main/node.h");
 		class_call_headers.insert("modules/wgodot/native/wgodot_native_calls.h");
 		const bool children = method == SNAME("get_children");
-		r_code = (children ? "WGodotNative::copy_array<" + p_result + ">(" : "") + "WGodotNative::invoke_member<" + (children ? "Array" : p_result) + ">(&Node::" + String(method) + ", " + p_receiver + ", " + String(", ").join(arguments) + ")" + (children ? ")" : "");
+		if (children) {
+			const String receiver = p_receiver == "this" ? "this" : "(" + p_receiver + ")";
+			r_code = receiver + "->get_children(" + String(", ").join(arguments) + ")";
+			if (p_origin == iterated_expression) {
+				r_code = array_iteration_result(r_code, p_origin);
+			} else {
+				r_code = "WGodotNative::copy_array<" + p_result + ">(" + r_code + ")";
+			}
+		} else {
+			r_code = "WGodotNative::invoke_member<" + p_result + ">(&Node::" + String(method) + ", " + p_receiver + ", " + String(", ").join(arguments) + ")";
+		}
 		return true;
 	}
 	if (owner == SNAME("SmoothScrollElement") && method == SNAME("get_virtual_items") && p_arguments.is_empty()) {
 		class_call_headers.insert("modules/wgodot_ui/smooth_scroll_element.h");
 		class_call_headers.insert("modules/wgodot/native/wgodot_native_calls.h");
-		r_code = "WGodotNative::copy_array<" + p_result + ">(WGodotNative::invoke_member<Array>(&SmoothScrollElement::get_virtual_items, " + p_receiver + "))";
+		r_code = "(" + p_receiver + ")->get_virtual_items()";
+		if (p_origin == iterated_expression) {
+			r_code = array_iteration_result(r_code, p_origin);
+		} else {
+			r_code = "WGodotNative::copy_array<" + p_result + ">(" + r_code + ")";
+		}
 		return true;
 	}
 	if (owner == SNAME("SceneTree") && method == SNAME("get_nodes_in_group") && p_arguments.size() == 1) {

@@ -14,8 +14,10 @@ String WGodotCppEmitter::lambda(const Parser::LambdaNode *p_lambda) {
 		const bool outer_failed = function_failed;
 		auto outer_locals = std::move(local_overrides);
 		auto outer_expressions = std::move(expression_overrides);
+		auto outer_views = std::move(object_views);
 		local_overrides.clear();
 		expression_overrides.clear();
+		object_views.clear();
 		String declaration;
 		const String definition = function(p_lambda->function, declaration, name);
 		class_lambda_declarations += declaration;
@@ -24,6 +26,7 @@ String WGodotCppEmitter::lambda(const Parser::LambdaNode *p_lambda) {
 		function_failed = function_failed || outer_failed;
 		local_overrides = std::move(outer_locals);
 		expression_overrides = std::move(outer_expressions);
+		object_views = std::move(outer_views);
 	}
 	Vector<String> captures;
 	Vector<String> arguments;

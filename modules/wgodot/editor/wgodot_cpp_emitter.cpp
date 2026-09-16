@@ -478,6 +478,11 @@ String WGodotCppEmitter::expression(const Parser::ExpressionNode *p_expression) 
 			if (const String *replacement = local_overrides.getptr(local_source(identifier))) {
 				return *replacement;
 			}
+			if (const String *view = object_views.getptr(local_source(identifier))) {
+				// Value uses (including captures, arguments and stores) must not
+				// escape with a pointer into the range's temporary array.
+				return *view + ".owned()";
+			}
 			if (identifier->type_constraint.is_meta_type && identifier->type_constraint.kind == Parser::DataType::CLASS) {
 				return class_name(identifier->type_constraint, identifier);
 			}

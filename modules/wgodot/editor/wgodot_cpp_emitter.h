@@ -30,6 +30,9 @@ class WGodotCppEmitter {
 	bool function_failed = false;
 	HashMap<const GDScriptParser::ExpressionNode *, String> expression_overrides;
 	HashMap<const GDScriptParser::Node *, String> local_overrides;
+	HashMap<const GDScriptParser::Node *, String> object_views;
+	const GDScriptParser::ExpressionNode *iterated_expression = nullptr;
+	bool emitted_array_range = false;
 	const GDScriptParser::CallNode *awaited_call = nullptr;
 
 	void unsupported(const GDScriptParser::Node *p_node, const String &p_feature);
@@ -77,6 +80,10 @@ class WGodotCppEmitter {
 	const GDScriptParser::Node *local_source(const GDScriptParser::IdentifierNode *p_identifier) const;
 	String assignment(const GDScriptParser::AssignmentNode *p_assignment);
 	String expression(const GDScriptParser::ExpressionNode *p_expression);
+	String receiver_expression(const GDScriptParser::ExpressionNode *p_expression);
+	String array_iteration_element(const GDScriptParser::ExpressionNode *p_expression);
+	String array_iteration_result(const String &p_call, const GDScriptParser::Node *p_origin);
+	String iteration(const GDScriptParser::ForNode *p_loop, int p_indent);
 	String suite(const GDScriptParser::SuiteNode *p_suite, int p_indent);
 	String match_condition(const GDScriptParser::PatternNode *p_pattern, const String &p_value);
 	String function(const GDScriptParser::FunctionNode *p_function, String &r_declaration, const String &p_cpp_name = String());

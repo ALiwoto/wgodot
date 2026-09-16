@@ -45,6 +45,11 @@ T *object_pointer(const ObjectValue<T> &p_value) {
 	return p_value.ptr();
 }
 
+template <class T>
+T *object_pointer(const ObjectView<T> &p_value) {
+	return p_value.ptr();
+}
+
 inline Object *object_pointer(const Variant &p_value) {
 	return p_value.get_validated_object();
 }

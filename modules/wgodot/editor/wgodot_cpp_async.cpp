@@ -348,7 +348,9 @@ void WGodotCppAsync::suite(const Parser::SuiteNode *p_suite, int p_indent, bool 
 			}
 			case Parser::Node::FOR: {
 				const auto *node = static_cast<const Parser::ForNode *>(statement);
+				const auto collection_type = emitter.expression_type(node->list);
 				String collection;
+				bool array_range = false;
 				bool range = node->list->type_constraint.kind == Parser::DataType::BUILTIN && node->list->type_constraint.builtin_type == Variant::INT;
 				if (node->list->type == Parser::Node::CALL && static_cast<const Parser::CallNode *>(node->list)->function_name == "range") {
 					Vector<String> arguments;
@@ -358,11 +360,25 @@ void WGodotCppAsync::suite(const Parser::SuiteNode *p_suite, int p_indent, bool 
 					collection = String(", ").join(arguments);
 					range = true;
 				} else {
+					const auto *outer_expression = emitter.iterated_expression;
+					const bool outer_range = emitter.emitted_array_range;
+					emitter.iterated_expression = emitter.is_warray(collection_type) ? node->list : nullptr;
+					emitter.emitted_array_range = false;
 					collection = expression(node->list, p_indent);
+					array_range = emitter.emitted_array_range;
+					emitter.iterated_expression = outer_expression;
+					emitter.emitted_array_range = outer_range;
 				}
-				const auto collection_type = emitter.expression_type(node->list);
-				const String iterator_type = range ? "WGodotNative::Range" : emitter.is_warray(collection_type) ? "WGodotNative::WArrayIterator<" + emitter.type(collection_type.get_container_element_type(0), node) + ">"
-																												: "WGodotNative::Iterator";
+				String iterator_type;
+				if (array_range) {
+					iterator_type = "WGodotNative::ArrayIterator<" + emitter.array_iteration_element(node->list) + ">";
+				} else if (range) {
+					iterator_type = "WGodotNative::Range";
+				} else if (emitter.is_warray(collection_type)) {
+					iterator_type = "WGodotNative::WArrayIterator<" + emitter.type(collection_type.get_container_element_type(0), node) + ">";
+				} else {
+					iterator_type = "WGodotNative::Iterator";
+				}
 				const String iterator = add_field("std::optional<" + iterator_type + ">", "iterator");
 				line(p_indent, iterator + ".emplace(" + collection + ");");
 				clear_temporaries(p_indent);
