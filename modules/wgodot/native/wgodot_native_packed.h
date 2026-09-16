@@ -29,6 +29,7 @@ public:
 	}
 	operator const Variant &() const { return value; }
 	const ArrayType &native() const { return VariantInternalAccessor<ArrayType>::get(&value); }
+	bool operator==(const Packed &p_other) const { return value == p_other.value; }
 };
 
 template <class T>

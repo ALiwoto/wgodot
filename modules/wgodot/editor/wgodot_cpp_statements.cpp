@@ -12,6 +12,10 @@ String WGodotCppEmitter::match_condition(const Parser::PatternNode *p_pattern, c
 		case Parser::PatternNode::PT_LITERAL:
 			return "WGodotNative::match_value(" + p_value + ", " + expression(p_pattern->literal) + ")";
 		case Parser::PatternNode::PT_EXPRESSION:
+			if (is_warray(expression_type(p_pattern->expression))) {
+				unsupported(p_pattern, "WArray expression in a Variant match pattern");
+				return String();
+			}
 			return "WGodotNative::match_value(" + p_value + ", " + expression(p_pattern->expression) + ")";
 		case Parser::PatternNode::PT_WILDCARD:
 			return "true";
@@ -36,8 +40,9 @@ String WGodotCppEmitter::suite(const Parser::SuiteNode *p_suite, int p_indent) {
 			}
 			case Parser::Node::VARIABLE: {
 				const auto *node = static_cast<const Parser::VariableNode *>(statement);
-				code += indent + type(node->type_constraint, node) + " v_" + symbol(node->identifier->name);
-				code += node->initializer ? " = " + converted(node->initializer, node->type_constraint) + ";\n" : "{};\n";
+				const auto datatype = variable_type(node);
+				code += indent + type(datatype, node) + " v_" + symbol(node->identifier->name);
+				code += node->initializer ? " = " + converted(node->initializer, datatype) + ";\n" : "{};\n";
 				break;
 			}
 			case Parser::Node::CONSTANT:
@@ -77,7 +82,9 @@ String WGodotCppEmitter::suite(const Parser::SuiteNode *p_suite, int p_indent) {
 				} else {
 					collection = expression(node->list);
 				}
-				const String iterator_type = range ? "WGodotNative::Range" : "WGodotNative::Iterator";
+				const auto collection_type = expression_type(node->list);
+				const String iterator_type = range ? "WGodotNative::Range" : is_warray(collection_type) ? "WGodotNative::WArrayIterator<" + type(collection_type.get_container_element_type(0), node) + ">"
+																										: "WGodotNative::Iterator";
 				const String variable_type = type(node->variable->type_constraint, node->variable);
 				code += indent + "for (" + iterator_type + " iterator(" + collection + "); iterator.has_value(); iterator.next()) {\n";
 				code += indent + "\t" + variable_type + " v_" + symbol(node->variable->name) + " = iterator." + (range ? "get()" : "get<" + variable_type + ">()") + ";\n";
@@ -92,6 +99,10 @@ String WGodotCppEmitter::suite(const Parser::SuiteNode *p_suite, int p_indent) {
 				break;
 			case Parser::Node::MATCH: {
 				const auto *node = static_cast<const Parser::MatchNode *>(statement);
+				if (is_warray(expression_type(node->test))) {
+					unsupported(node, "matching WArray through the current Variant pattern matcher");
+					break;
+				}
 				class_call_headers.insert("modules/wgodot/native/wgodot_native_values.h");
 				code += indent + "{\n" + indent + "\tauto match_value = " + expression(node->test) + ";\n";
 				bool first = true;

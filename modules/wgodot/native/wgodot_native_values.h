@@ -81,6 +81,16 @@ Result get_index(const Base &p_base, const Key &p_key) {
 	return convert<Result>(result);
 }
 
+template <class Result, class T, class Key>
+Result get_index(const WArray<T> &p_base, const Key &p_key) {
+	return convert<Result>(p_base.get(p_key));
+}
+
+template <class T, class Key, class Value>
+void set_index(WArray<T> &p_base, const Key &p_key, const Value &p_value) {
+	p_base.set(p_key, convert<T>(p_value));
+}
+
 template <class Base, class Key, class Value>
 void set_index(Base &p_base, const Key &p_key, const Value &p_value) {
 	Variant base(p_base);
@@ -132,6 +142,26 @@ inline int64_t length(const Variant &p_value) {
 	}
 	ERR_FAIL_V_MSG(0, "Native game value cannot provide a length: " + Variant::get_type_name(type));
 }
+
+template <class T>
+int64_t length(const WArray<T> &p_value) {
+	return p_value.size();
+}
+
+// Own the array handle, not a buffer pointer: mutations may resize it, and
+// assigning another array to the original variable must not redirect the loop.
+template <class T>
+class WArrayIterator {
+	WArray<T> collection;
+	int64_t position = 0;
+
+public:
+	explicit WArrayIterator(const WArray<T> &p_collection) : collection(p_collection) {}
+	bool has_value() const { return position < collection.size(); }
+	void next() { position++; }
+	template <class Result>
+	Result get() const { return convert<Result>(collection.get(position)); }
+};
 
 // Godot's iterator protocol preserves dictionary keys, integer ranges, and
 // changes to shared collections made from inside a loop.

@@ -27,6 +27,7 @@ public:
 	operator const Variant &() const { return value; }
 	T *ptr() const { return static_cast<T *>(value.get_validated_object()); }
 	T *operator->() const { return ptr(); }
+	bool operator==(const ObjectValue &p_other) const { return value == p_other.value; }
 };
 
 template <class T>

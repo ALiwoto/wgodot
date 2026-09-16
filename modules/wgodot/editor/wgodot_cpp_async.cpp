@@ -175,6 +175,14 @@ String WGodotCppAsync::expression(const Parser::ExpressionNode *p_expression, in
 	}
 	if (p_expression->type == Parser::Node::AWAIT) {
 		const auto *node = static_cast<const Parser::AwaitNode *>(p_expression);
+		if (emitter.is_warray(emitter.expression_type(node->to_await))) {
+			// Awaiting a value which is not a signal or coroutine returns it directly.
+			return expression(node->to_await, p_indent);
+		}
+		if (emitter.is_warray(node->type_constraint)) {
+			emitter.unsupported(node, "WArray await results through the current Variant task ABI");
+			return String();
+		}
 		const auto *outer_call = emitter.awaited_call;
 		emitter.awaited_call = node->to_await->type == Parser::Node::CALL ? static_cast<const Parser::CallNode *>(node->to_await) : nullptr;
 		const bool interface_call = emitter.awaited_call && emitter.interface_method(emitter.awaited_call);
@@ -215,13 +223,14 @@ String WGodotCppAsync::expression(const Parser::ExpressionNode *p_expression, in
 	if (p_expression->type == Parser::Node::TERNARY_OPERATOR) {
 		const auto *node = static_cast<const Parser::TernaryOpNode *>(p_expression);
 		(void)expression(node->condition, p_indent);
-		const String result = add_field(emitter.type(node->type_constraint, node), "choice");
+		const auto result_type = emitter.expression_type(node);
+		const String result = add_field(emitter.type(result_type, node), "choice");
 		line(p_indent, "if (" + emitter.truth(node->condition) + ") {");
 		(void)expression(node->true_expr, p_indent + 1);
-		line(p_indent + 1, result + " = " + emitter.converted(node->true_expr, node->type_constraint) + ";");
+		line(p_indent + 1, result + " = " + emitter.converted(node->true_expr, result_type) + ";");
 		line(p_indent, "} else {");
 		(void)expression(node->false_expr, p_indent + 1);
-		line(p_indent + 1, result + " = " + emitter.converted(node->false_expr, node->type_constraint) + ";");
+		line(p_indent + 1, result + " = " + emitter.converted(node->false_expr, result_type) + ";");
 		line(p_indent, "}");
 		temporary_fields.push_back(result);
 		emitter.expression_overrides.insert(p_expression, result);
@@ -270,7 +279,7 @@ void WGodotCppAsync::suite(const Parser::SuiteNode *p_suite, int p_indent, bool 
 	for (const auto *statement : p_suite->statements) {
 		if (statement->type == Parser::Node::VARIABLE) {
 			const auto *node = static_cast<const Parser::VariableNode *>(statement);
-			locals.push_back(local(node, node->identifier->name, node->type_constraint));
+			locals.push_back(local(node, node->identifier->name, emitter.variable_type(node)));
 		}
 	}
 	for (const auto *statement : p_suite->statements) {
@@ -281,7 +290,7 @@ void WGodotCppAsync::suite(const Parser::SuiteNode *p_suite, int p_indent, bool 
 				if (node->initializer) {
 					(void)expression(node->initializer, p_indent);
 				}
-				line(p_indent, name + " = " + (node->initializer ? emitter.converted(node->initializer, node->type_constraint) : field_types[name] + "()") + ";");
+				line(p_indent, name + " = " + (node->initializer ? emitter.converted(node->initializer, emitter.variable_type(node)) : field_types[name] + "()") + ";");
 				break;
 			}
 			case Parser::Node::RETURN: {
@@ -337,7 +346,9 @@ void WGodotCppAsync::suite(const Parser::SuiteNode *p_suite, int p_indent, bool 
 				} else {
 					collection = expression(node->list, p_indent);
 				}
-				const String iterator_type = range ? "WGodotNative::Range" : "WGodotNative::Iterator";
+				const auto collection_type = emitter.expression_type(node->list);
+				const String iterator_type = range ? "WGodotNative::Range" : emitter.is_warray(collection_type) ? "WGodotNative::WArrayIterator<" + emitter.type(collection_type.get_container_element_type(0), node) + ">"
+																												: "WGodotNative::Iterator";
 				const String iterator = add_field("std::optional<" + iterator_type + ">", "iterator");
 				line(p_indent, iterator + ".emplace(" + collection + ");");
 				clear_temporaries(p_indent);
@@ -364,6 +375,10 @@ void WGodotCppAsync::suite(const Parser::SuiteNode *p_suite, int p_indent, bool 
 				break;
 			case Parser::Node::MATCH: {
 				const auto *node = static_cast<const Parser::MatchNode *>(statement);
+				if (emitter.is_warray(emitter.expression_type(node->test))) {
+					emitter.unsupported(node, "matching WArray through the current Variant pattern matcher");
+					break;
+				}
 				const String value = add_field(emitter.type(node->test->type_constraint, node->test), "match_value");
 				const String matched = add_field("bool", "matched");
 				line(p_indent, value + " = " + expression(node->test, p_indent) + ";");

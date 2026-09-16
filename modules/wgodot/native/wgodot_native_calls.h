@@ -3,6 +3,7 @@
 
 #include "wgodot_native_object.h"
 #include "wgodot_native_packed.h"
+#include "wgodot_native_warray.h"
 
 #include "core/object/class_db.h"
 #include "core/object/ref_counted.h"
@@ -75,6 +76,8 @@ decltype(auto) convert(From &&p_value) {
 		} else {
 			return Target(std::forward<From>(p_value));
 		}
+	} else if constexpr (IsWArray<Target>::value || IsWArray<Source>::value) {
+		static_assert(std::is_same_v<Target, Source>, "WArray requires an explicit container boundary handler; implicit Array/Variant conversion is forbidden.");
 	} else if constexpr (std::is_convertible_v<From &&, Target>) {
 		return Target(std::forward<From>(p_value));
 	} else if constexpr (IsPacked<Source>::value) {
@@ -105,6 +108,30 @@ Result invoke_result(Function &&p_function, Args &&...p_args) {
 	} else {
 		return convert<Result>(std::forward<Function>(p_function)(std::forward<Args>(p_args)...));
 	}
+}
+
+// Used only by exporter handlers for APIs that return an independent snapshot.
+// This is not an implicit conversion: aliases of p_source are not preserved.
+template <class Result>
+Result copy_array(const Array &p_source) {
+	static_assert(IsWArray<Result>::value);
+	Result result;
+	result.resize(p_source.size());
+	for (int64_t i = 0; i < p_source.size(); i++) {
+		result.set(i, convert<typename Result::Element>(p_source[i]));
+	}
+	return result;
+}
+
+template <class Result, class T>
+Result copy_vector(const Vector<T> &p_source) {
+	static_assert(IsWArray<Result>::value);
+	Result result;
+	result.resize(p_source.size());
+	for (int64_t i = 0; i < p_source.size(); i++) {
+		result.set(i, convert<typename Result::Element>(p_source[i]));
+	}
+	return result;
 }
 
 template <class Result, class Owner, class Return, class... Params, class Instance, class... Args,

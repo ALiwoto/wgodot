@@ -23,6 +23,10 @@ String WGodotCppEmitter::property_access(const Parser::DataType &p_base_type, co
 	class_call_headers.insert("modules/wgodot/native/wgodot_native_values.h");
 	const bool write = !p_value.is_empty();
 	if (p_base_type.kind == Parser::DataType::CLASS && p_base_type.class_type->wgodot_is_interface && p_base_type.class_type->has_member(p_name)) {
+		if (is_warray(p_origin->type_constraint)) {
+			unsupported(p_origin, "WArray interface property through the current Variant property ABI");
+			return String();
+		}
 		return write ? "WGodotNative::set_member(" + p_receiver + ", SNAME(" + quoted(p_name) + "), " + p_value + ")" : "WGodotNative::get_member<" + type(p_origin->type_constraint, p_origin) + ">(" + p_receiver + ", SNAME(" + quoted(p_name) + "))";
 	}
 	if (p_base_type.kind == Parser::DataType::CLASS) {
@@ -89,11 +93,17 @@ String WGodotCppEmitter::assignment(const Parser::AssignmentNode *p_assignment) 
 	const auto *target = p_assignment->assignee;
 	const auto *assigned = p_assignment->assigned_value;
 	const bool compound = p_assignment->operation != Parser::AssignmentNode::OP_NONE;
+	const auto target_type = expression_type(target);
+	if (!compound && !validate_array_conversion(assigned, target_type)) {
+		return String();
+	}
+	const auto assigned_type = assigned->type == Parser::Node::ARRAY && is_warray(target_type) ? target_type : expression_type(assigned);
+	const String assigned_value = assigned->type == Parser::Node::ARRAY && is_warray(target_type) ? array_literal(static_cast<const Parser::ArrayNode *>(assigned), target_type) : expression(assigned);
 	String body = "([&]() { ";
 	if (target->type == Parser::Node::IDENTIFIER) {
-		body += "auto &&value = " + expression(assigned) + "; ";
+		body += "auto &&value = " + assigned_value + "; ";
 		if (compound) {
-			body += "auto &&previous = " + expression(target) + "; auto result = " + operation(p_assignment->variant_op, p_assignment->type_constraint, target->type_constraint, assigned->type_constraint, "previous", "value", p_assignment) + "; ";
+			body += "auto &&previous = " + expression(target) + "; auto result = " + operation(p_assignment->variant_op, target_type, target_type, assigned_type, "previous", "value", p_assignment) + "; ";
 		}
 		return body + store_identifier(static_cast<const Parser::IdentifierNode *>(target), compound ? "result" : "value") + "; }())";
 	}
@@ -130,7 +140,7 @@ String WGodotCppEmitter::assignment(const Parser::AssignmentNode *p_assignment) 
 	};
 	for (int i = 0; i < chain.size(); i++) {
 		if (i == chain.size() - 1) {
-			body += "auto &&value = " + expression(assigned) + "; ";
+			body += "auto &&value = " + assigned_value + "; ";
 		}
 		if (!chain[i]->is_attribute) {
 			body += "auto &&" + key(i) + " = " + expression(chain[i]->index) + "; ";
@@ -141,7 +151,7 @@ String WGodotCppEmitter::assignment(const Parser::AssignmentNode *p_assignment) 
 	}
 	const int leaf = chain.size() - 1;
 	if (compound) {
-		body += "auto previous = " + read(leaf) + "; auto result = " + operation(p_assignment->variant_op, p_assignment->type_constraint, target->type_constraint, assigned->type_constraint, "previous", "value", p_assignment) + "; ";
+		body += "auto previous = " + read(leaf) + "; auto result = " + operation(p_assignment->variant_op, target_type, target_type, assigned_type, "previous", "value", p_assignment) + "; ";
 	}
 	body += write(leaf, compound ? "result" : "value") + "; ";
 	auto write_back = [&](const Parser::DataType &p_type, const String &p_value, const String &p_write) {

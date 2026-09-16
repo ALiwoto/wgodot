@@ -51,6 +51,10 @@ void WGodotCppEmitter::emit_virtuals(const WGodotCppProject::Class &p_class, Str
 		}
 		emitted.insert(method.name);
 		const auto *function = p_class.node->get_member(method.name).function;
+		if (has_warray_signature(function)) {
+			unsupported(function, "native callback " + String(method.name) + " with a WArray signature through the Variant callback ABI");
+			continue;
+		}
 		if (method.flags & METHOD_FLAG_OBJECT_CORE) {
 			unsupported(function, "Object callback " + String(method.name));
 			continue;

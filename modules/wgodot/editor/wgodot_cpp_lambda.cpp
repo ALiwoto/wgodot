@@ -6,6 +6,16 @@ using Parser = GDScriptParser;
 using namespace WGodotCppNames;
 
 String WGodotCppEmitter::lambda(const Parser::LambdaNode *p_lambda) {
+	if (has_warray_signature(p_lambda->function)) {
+		unsupported(p_lambda, "WArray lambda parameters, captures, or results through the current Callable ABI");
+		return String();
+	}
+	for (const auto *capture : p_lambda->captures) {
+		if (is_warray(expression_type(capture))) {
+			unsupported(capture, "WArray capture through the current Callable ABI");
+			return String();
+		}
+	}
 	const String name = "lambda_" + itos(p_lambda->start_line) + "_" + itos(p_lambda->start_column);
 	class_call_headers.insert("modules/wgodot/native/wgodot_native_lambda.h");
 	if (!class_lambdas.has(p_lambda)) {

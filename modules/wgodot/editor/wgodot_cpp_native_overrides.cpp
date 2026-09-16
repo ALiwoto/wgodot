@@ -9,6 +9,12 @@ bool WGodotCppEmitter::validate_native_arguments(const MethodBind *p_method, con
 	for (int i = 0; i < p_method->get_argument_count(); i++) {
 		const Variant::Type argument_type = p_method->get_argument_type(i);
 		if (argument_type == Variant::ARRAY || argument_type == Variant::DICTIONARY) {
+			if (argument_type == Variant::ARRAY && p_origin->type == Parser::Node::CALL) {
+				const auto *call = static_cast<const Parser::CallNode *>(p_origin);
+				if (uint32_t(i) < call->arguments.size() && is_array_duplicate(call->arguments[i])) {
+					continue; // Explicit independent copy, never shared WArray storage.
+				}
+			}
 			const PropertyInfo argument = p_method->get_argument_info(i);
 			unsupported(p_origin, vformat("native call %s.%s: argument %d (%s) uses %s. This API needs an explicit native handler for its container semantics", p_method->get_instance_class(), p_method->get_name(), i + 1, argument.name, Variant::get_type_name(argument_type)));
 			return false;
@@ -22,6 +28,12 @@ bool WGodotCppEmitter::validate_builtin_arguments(Variant::Type p_type, const St
 	for (int i = 0; i < count; i++) {
 		const Variant::Type argument_type = Variant::get_builtin_method_argument_type(p_type, p_method, i);
 		if (argument_type == Variant::ARRAY || argument_type == Variant::DICTIONARY) {
+			if (argument_type == Variant::ARRAY && p_origin->type == Parser::Node::CALL) {
+				const auto *call = static_cast<const Parser::CallNode *>(p_origin);
+				if (uint32_t(i) < call->arguments.size() && is_array_duplicate(call->arguments[i])) {
+					continue;
+				}
+			}
 			unsupported(p_origin, vformat("builtin call %s.%s: argument %d (%s) uses %s. This API needs an explicit native handler for its container semantics", Variant::get_type_name(p_type), p_method, i + 1, Variant::get_builtin_method_argument_name(p_type, p_method, i), Variant::get_type_name(argument_type)));
 			return false;
 		}
@@ -57,13 +69,20 @@ bool WGodotCppEmitter::native_override(const MethodBind *p_method, const String 
 		}
 		class_call_headers.insert("scene/main/node.h");
 		class_call_headers.insert("modules/wgodot/native/wgodot_native_calls.h");
-		r_code = "WGodotNative::invoke_member<" + p_result + ">(&Node::" + String(method) + ", " + p_receiver + ", " + String(", ").join(arguments) + ")";
+		const bool children = method == SNAME("get_children");
+		r_code = (children ? "WGodotNative::copy_array<" + p_result + ">(" : "") + "WGodotNative::invoke_member<" + (children ? "Array" : p_result) + ">(&Node::" + String(method) + ", " + p_receiver + ", " + String(", ").join(arguments) + ")" + (children ? ")" : "");
 		return true;
 	}
 	if (owner == SNAME("SmoothScrollElement") && method == SNAME("get_virtual_items") && p_arguments.is_empty()) {
 		class_call_headers.insert("modules/wgodot_ui/smooth_scroll_element.h");
 		class_call_headers.insert("modules/wgodot/native/wgodot_native_calls.h");
-		r_code = "WGodotNative::invoke_member<" + p_result + ">(&SmoothScrollElement::get_virtual_items, " + p_receiver + ")";
+		r_code = "WGodotNative::copy_array<" + p_result + ">(WGodotNative::invoke_member<Array>(&SmoothScrollElement::get_virtual_items, " + p_receiver + "))";
+		return true;
+	}
+	if (owner == SNAME("SceneTree") && method == SNAME("get_nodes_in_group") && p_arguments.size() == 1) {
+		class_call_headers.insert("scene/main/scene_tree.h");
+		class_call_headers.insert("modules/wgodot/native/wgodot_native_calls.h");
+		r_code = "WGodotNative::copy_vector<" + p_result + ">(WGodotNative::invoke_member<Vector<Node *>>(&SceneTree::get_nodes_in_group, " + p_receiver + ", " + p_arguments[0] + "))";
 		return true;
 	}
 	if (owner == SNAME("StreamPeer") && method == SNAME("put_data")) {

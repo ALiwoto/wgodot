@@ -62,7 +62,8 @@ String WGodotCppEmitter::native_call(const Parser::CallNode *p_call, const Parse
 	Vector<String> arguments;
 	for (uint32_t i = 0; i < p_call->arguments.size(); i++) {
 		const String argument = "argument_" + itos(i);
-		body += "auto &&" + argument + " = " + expression(p_call->arguments[i]) + "; ";
+		const Variant::Type target = int(i) < method->get_argument_count() ? method->get_argument_type(i) : Variant::NIL;
+		body += "auto &&" + argument + " = " + engine_argument(p_call->arguments[i], target) + "; ";
 		arguments.push_back(argument);
 	}
 	String receiver;
@@ -90,6 +91,10 @@ String WGodotCppEmitter::native_invoke(const MethodBind *p_method, const String 
 		return override_code;
 	}
 	if (!validate_native_arguments(p_method, p_origin)) {
+		return String();
+	}
+	if (p_method->get_argument_type(-1) == Variant::ARRAY) {
+		unsupported(p_origin, "native Array result from " + String(p_method->get_instance_class()) + "." + String(p_method->get_name()) + "; this API needs an explicit WArray result handler");
 		return String();
 	}
 	// Native C++ defaults can differ from the registered GDScript API defaults.

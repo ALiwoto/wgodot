@@ -20,6 +20,7 @@ public:
 	operator const Variant &() const { return value; }
 	NativeBase *ptr() const { return static_cast<NativeBase *>(value.get_validated_object()); }
 	bool is_valid() const { return ptr() != nullptr; }
+	bool operator==(const InterfaceValue &p_other) const { return value == p_other.value; }
 	static bool accepts(const Variant &p_value) {
 		if (p_value.get_type() == Variant::NIL) {
 			return true;

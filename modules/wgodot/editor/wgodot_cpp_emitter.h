@@ -33,6 +33,15 @@ class WGodotCppEmitter {
 	String class_name(const GDScriptParser::DataType &p_type, const GDScriptParser::Node *p_origin);
 	StringName native_base(const GDScriptParser::DataType &p_type) const;
 	String type(const GDScriptParser::DataType &p_type, const GDScriptParser::Node *p_origin);
+	bool is_warray(const GDScriptParser::DataType &p_type) const;
+	GDScriptParser::DataType expression_type(const GDScriptParser::ExpressionNode *p_expression) const;
+	GDScriptParser::DataType variable_type(const GDScriptParser::VariableNode *p_variable) const;
+	bool has_warray_signature(const GDScriptParser::FunctionNode *p_function) const;
+	bool validate_array_conversion(const GDScriptParser::ExpressionNode *p_value, const GDScriptParser::DataType &p_target);
+	String array_literal(const GDScriptParser::ArrayNode *p_array, const GDScriptParser::DataType &p_target);
+	String warray_call(const GDScriptParser::CallNode *p_call, bool p_to_array = false);
+	String engine_argument(const GDScriptParser::ExpressionNode *p_value, Variant::Type p_target);
+	bool is_array_duplicate(const GDScriptParser::ExpressionNode *p_value) const;
 	String literal(const Variant &p_value, const GDScriptParser::Node *p_origin);
 	String converted(const GDScriptParser::ExpressionNode *p_expression, const GDScriptParser::DataType &p_target);
 	String truth(const GDScriptParser::ExpressionNode *p_expression);

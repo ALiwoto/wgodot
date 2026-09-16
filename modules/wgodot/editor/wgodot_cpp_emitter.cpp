@@ -33,6 +33,19 @@ void WGodotCppEmitter::unsupported(const Parser::Node *p_node, const String &p_f
 }
 
 String WGodotCppEmitter::type(const Parser::DataType &p_type, const Parser::Node *p_origin) {
+	if (p_type.kind == Parser::DataType::BUILTIN && p_type.builtin_type == Variant::ARRAY && !p_type.has_container_element_type(0)) {
+		if (p_origin->type == Parser::Node::VARIABLE) {
+			const auto resolved = variable_type(static_cast<const Parser::VariableNode *>(p_origin));
+			if (is_warray(resolved)) {
+				return type(resolved, p_origin);
+			}
+		} else if (p_origin->is_expression()) {
+			const auto resolved = expression_type(static_cast<const Parser::ExpressionNode *>(p_origin));
+			if (is_warray(resolved)) {
+				return type(resolved, p_origin);
+			}
+		}
+	}
 	if (p_type.is_variant() || p_type.is_coroutine) {
 		return "Variant";
 	}
@@ -46,12 +59,24 @@ String WGodotCppEmitter::type(const Parser::DataType &p_type, const Parser::Node
 		}
 		if (p_type.builtin_type == Variant::ARRAY && p_type.has_container_element_type(0)) {
 			const auto &element = p_type.get_container_element_type(0);
-			return "TypedArray<" + (element.kind == Parser::DataType::CLASS || element.kind == Parser::DataType::NATIVE ? class_name(element, p_origin) : type(element, p_origin)) + ">";
+			if (element.is_variant()) {
+				unsupported(p_origin, "WArray elements without a concrete type");
+				return "Variant";
+			}
+			if (element.kind == Parser::DataType::BUILTIN && element.builtin_type == Variant::ARRAY) {
+				unsupported(p_origin, "nested Array elements; WArray currently requires a non-Array element type");
+				return "Variant";
+			}
+			class_native_headers.insert("modules/wgodot/native/wgodot_native_warray.h");
+			return "WGodotNative::WArray<" + type(element, p_origin) + ">";
 		}
 		if (p_type.builtin_type == Variant::DICTIONARY && p_type.has_container_element_type(0) && p_type.has_container_element_type(1)) {
 			Vector<String> elements;
 			for (int i = 0; i < 2; i++) {
 				const auto &element = p_type.get_container_element_type(i);
+				if (is_warray(element)) {
+					unsupported(p_origin, "WArray stored inside a Godot Dictionary; this requires an explicit container boundary");
+				}
 				elements.push_back(element.kind == Parser::DataType::CLASS || element.kind == Parser::DataType::NATIVE ? class_name(element, p_origin) : type(element, p_origin));
 			}
 			return "TypedDictionary<" + String(", ").join(elements) + ">";
@@ -113,6 +138,12 @@ String WGodotCppEmitter::class_name(const Parser::DataType &p_type, const Parser
 
 String WGodotCppEmitter::converted(const Parser::ExpressionNode *p_expression, const Parser::DataType &p_target) {
 	const String target = type(p_target, p_expression);
+	if (p_expression->type == Parser::Node::ARRAY && is_warray(p_target)) {
+		return array_literal(static_cast<const Parser::ArrayNode *>(p_expression), p_target);
+	}
+	if (!validate_array_conversion(p_expression, p_target)) {
+		return String();
+	}
 	if (p_expression->is_constant && p_expression->reduced && p_expression->reduced_value.get_type() == Variant::NIL) {
 		if (p_target.kind == Parser::DataType::CLASS || p_target.kind == Parser::DataType::NATIVE) {
 			return target + "()";
@@ -137,7 +168,10 @@ String WGodotCppEmitter::truth(const Parser::ExpressionNode *p_expression) {
 		return "true";
 	}
 	const String value = expression(p_expression);
-	const auto &datatype = p_expression->type_constraint;
+	const auto datatype = expression_type(p_expression);
+	if (is_warray(datatype)) {
+		return "!(" + value + ").is_empty()";
+	}
 	if (datatype.kind == Parser::DataType::CLASS || datatype.kind == Parser::DataType::NATIVE) {
 		return ClassDB::is_parent_class(native_base(datatype), "RefCounted") ? "(" + value + ").is_valid()" : "Variant(" + value + ").booleanize()";
 	}
@@ -155,8 +189,12 @@ const WGodotCppProject::Class *WGodotCppEmitter::member_owner(const Parser::Clas
 }
 
 String WGodotCppEmitter::member(const Parser::ExpressionNode *p_base, const StringName &p_name, const Parser::ExpressionNode *p_origin) {
-	const auto &datatype = p_base ? p_base->type_constraint : current_class->node->self_type;
+	const auto datatype = p_base ? expression_type(p_base) : current_class->node->self_type;
 	if (datatype.kind == Parser::DataType::BUILTIN && Variant::has_builtin_method(datatype.builtin_type, p_name)) {
+		if (is_warray(datatype)) {
+			unsupported(p_origin, "WArray method references through Callable; call the typed method directly");
+			return String();
+		}
 		if (!validate_builtin_arguments(datatype.builtin_type, p_name, p_origin)) {
 			return String();
 		}
@@ -180,6 +218,10 @@ String WGodotCppEmitter::member(const Parser::ExpressionNode *p_base, const Stri
 		return "Signal(WGodotNative::object_pointer(" + (p_base ? expression(p_base) : "this") + "), SNAME(" + quoted(p_name) + "))";
 	}
 	if (entry.type == Parser::ClassNode::Member::FUNCTION) {
+		if (has_warray_signature(entry.function)) {
+			unsupported(p_origin, "method reference " + String(p_name) + " with a WArray signature through Callable");
+			return String();
+		}
 		if (entry.function->is_static) {
 			class_call_headers.insert("modules/wgodot/native/wgodot_native_callable.h");
 			Vector<String> defaults;
@@ -371,6 +413,20 @@ String WGodotCppEmitter::expression(const Parser::ExpressionNode *p_expression) 
 		}
 	}
 	if (p_expression->is_constant && p_expression->reduced && !p_expression->type_constraint.is_meta_type && p_expression->type != Parser::Node::ARRAY && p_expression->type != Parser::Node::DICTIONARY) {
+		if (is_warray(p_expression->type_constraint) && p_expression->reduced_value.get_type() == Variant::ARRAY) {
+			const Array values = p_expression->reduced_value;
+			Vector<String> elements;
+			const String element_type = type(p_expression->type_constraint.get_container_element_type(0), p_expression);
+			for (int i = 0; i < values.size(); i++) {
+				elements.push_back("WGodotNative::convert<" + element_type + ">(" + literal(values[i], p_expression) + ")");
+			}
+			class_call_headers.insert("modules/wgodot/native/wgodot_native_calls.h");
+			const String value = type(p_expression->type_constraint, p_expression) + "{" + String(", ").join(elements) + "}";
+			if (p_expression->type == Parser::Node::IDENTIFIER || p_expression->type == Parser::Node::SUBSCRIPT) {
+				return "([&]() { auto value = " + value + "; value.make_read_only(); return value; }())";
+			}
+			return value;
+		}
 		return literal(p_expression->reduced_value, p_expression);
 	}
 	switch (p_expression->type) {
@@ -418,13 +474,21 @@ String WGodotCppEmitter::expression(const Parser::ExpressionNode *p_expression) 
 				const auto *array = static_cast<const Parser::ArrayNode *>(binary->right_operand);
 				Vector<String> arguments;
 				for (const auto *element : array->elements) {
-					arguments.push_back("Variant(" + expression(element) + ")");
+					arguments.push_back("Variant(" + engine_argument(element, Variant::NIL) + ")");
 				}
 				// Initializer-list elements are evaluated and captured in order. Mixed
 				// format arguments need Variants, but no heap-allocated Godot Array.
 				return "([&]() -> String { auto &&format = " + expression(binary->left_operand) + "; const std::array<Variant, " + itos(array->elements.size()) + "> arguments{ " + String(", ").join(arguments) + " }; return WGodotNative::format_string(format, Span<Variant>(arguments.data(), arguments.size())); }())";
 			}
-			return "([&]() -> " + type(binary->type_constraint, binary) + " { auto &&left = " + expression(binary->left_operand) + "; auto &&right = " + expression(binary->right_operand) + "; return " + operation(binary->variant_op, binary->type_constraint, binary->left_operand->type_constraint, binary->right_operand->type_constraint, "left", "right", binary) + "; }())";
+			auto left_type = expression_type(binary->left_operand);
+			auto right_type = expression_type(binary->right_operand);
+			if (is_warray(left_type) && binary->right_operand->type == Parser::Node::ARRAY) {
+				right_type = left_type;
+			} else if (is_warray(right_type) && binary->left_operand->type == Parser::Node::ARRAY) {
+				left_type = right_type;
+			}
+			const auto result_type = expression_type(binary);
+			return "([&]() -> " + type(result_type, binary) + " { auto &&left = " + converted(binary->left_operand, left_type) + "; auto &&right = " + converted(binary->right_operand, right_type) + "; return " + operation(binary->variant_op, result_type, left_type, right_type, "left", "right", binary) + "; }())";
 		}
 		case Parser::Node::UNARY_OPERATOR: {
 			const auto *unary = static_cast<const Parser::UnaryOpNode *>(p_expression);
@@ -436,7 +500,8 @@ String WGodotCppEmitter::expression(const Parser::ExpressionNode *p_expression) 
 		}
 		case Parser::Node::TERNARY_OPERATOR: {
 			const auto *ternary = static_cast<const Parser::TernaryOpNode *>(p_expression);
-			return "(" + truth(ternary->condition) + " ? " + converted(ternary->true_expr, ternary->type_constraint) + " : " + converted(ternary->false_expr, ternary->type_constraint) + ")";
+			const auto datatype = expression_type(ternary);
+			return "(" + truth(ternary->condition) + " ? " + converted(ternary->true_expr, datatype) + " : " + converted(ternary->false_expr, datatype) + ")";
 		}
 		case Parser::Node::CAST:
 			return cast(static_cast<const Parser::CastNode *>(p_expression));
@@ -454,11 +519,14 @@ String WGodotCppEmitter::expression(const Parser::ExpressionNode *p_expression) 
 		}
 		case Parser::Node::ARRAY: {
 			const auto *array = static_cast<const Parser::ArrayNode *>(p_expression);
+			if (is_warray(array->type_constraint)) {
+				return array_literal(array, array->type_constraint);
+			}
 			String body = "([&]() { ";
 			Vector<String> elements;
 			for (const auto *element : array->elements) {
 				const String name = "element_" + itos(elements.size());
-				body += "auto &&" + name + " = " + expression(element) + "; ";
+				body += "auto &&" + name + " = " + engine_argument(element, Variant::NIL) + "; ";
 				elements.push_back(name);
 			}
 			return body + "return " + type(array->type_constraint, array) + "{" + String(", ").join(elements) + "}; }())";
@@ -470,7 +538,7 @@ String WGodotCppEmitter::expression(const Parser::ExpressionNode *p_expression) 
 			int index = 0;
 			for (const auto &element : dictionary->elements) {
 				const String suffix = itos(index++);
-				body += "auto &&key_" + suffix + " = " + expression(element.key) + "; auto &&value_" + suffix + " = " + expression(element.value) + "; ";
+				body += "auto &&key_" + suffix + " = " + engine_argument(element.key, Variant::NIL) + "; auto &&value_" + suffix + " = " + engine_argument(element.value, Variant::NIL) + "; ";
 				entries += "dictionary[key_" + suffix + "] = value_" + suffix + "; ";
 			}
 			return body + type(dictionary->type_constraint, dictionary) + " dictionary; " + entries + "return dictionary; }())";

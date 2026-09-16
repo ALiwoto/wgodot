@@ -11,6 +11,10 @@ using namespace WGodotCppNames;
 String WGodotCppEmitter::function(const Parser::FunctionNode *p_function, String &r_declaration, const String &p_cpp_name) {
 	function_failed = false;
 	current_function = p_function;
+	if (p_function->is_coroutine && is_warray(p_function->return_type_constraint)) {
+		unsupported(p_function, "WArray coroutine results through the current Variant task ABI");
+		return String();
+	}
 	if (p_function->is_vararg() || p_function->is_abstract) {
 		unsupported(p_function, p_function->is_vararg() ? "variadic functions" : "abstract methods");
 		return String();
@@ -128,7 +132,7 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 				}
 				// The inherited MethodBind calls a virtual C++ method, so it already
 				// dispatches to this implementation and must not be registered twice.
-				if (!is_static && !method->is_static && method_name != "_init" && !inherits_binding) {
+				if (!is_static && !method->is_static && method_name != "_init" && !inherits_binding && !has_warray_signature(method)) {
 					String arguments;
 					String defaults;
 					for (const auto *parameter : method->parameters) {
@@ -147,7 +151,11 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 					unsupported(variable, "onready field " + entry.get_name());
 					break;
 				}
-				const String field_type = type(variable->type_constraint, variable);
+				const auto datatype = variable_type(variable);
+				const String field_type = type(datatype, variable);
+				if (is_warray(datatype) && variable->exported) {
+					unsupported(variable, "exported WArray property " + entry.get_name() + "; scene serialization needs an explicit container adapter");
+				}
 				const String field_name = "v_" + symbol(variable->identifier->name);
 				if (variable->is_static) {
 					static_fields += "\t\t" + field_type + " " + field_name + "{};\n";
@@ -155,7 +163,7 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 					fields += "\t" + field_type + " " + field_name + "{};\n";
 				}
 				if (variable->initializer) {
-					const String value = converted(variable->initializer, variable->type_constraint);
+					const String value = converted(variable->initializer, datatype);
 					if (variable->is_static) {
 						static_initialization += "\tfields." + field_name + " = " + value + ";\n";
 					} else {
@@ -172,7 +180,7 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 				declaration += "\t" + static_modifier + field_type + " " + getter + "()" + getter_const + ";\n\t" + static_modifier + "void " + setter + "(" + field_type + " p_value);\n";
 				definitions += field_type + " " + name + "::" + getter + "()" + getter_const + " { return " + (property_getter.is_empty() ? storage : "m_" + symbol(property_getter) + "()") + "; }\n";
 				definitions += "void " + name + "::" + setter + "(" + field_type + " p_value) { " + (property_setter.is_empty() ? storage + " = p_value" : "m_" + symbol(property_setter) + "(p_value)") + "; }\n";
-				if (!is_static) {
+				if (!is_static && !is_warray(datatype)) {
 					const String bind_getter = variable->is_static ? "instance_" + getter : getter;
 					const String bind_setter = variable->is_static ? "instance_" + setter : setter;
 					if (variable->is_static) {
@@ -197,6 +205,10 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 				const auto *signal = entry.signal;
 				bindings += "\t{\n\t\tMethodInfo info(" + quoted(signal->identifier->name) + ");\n";
 				for (const auto *parameter : signal->parameters) {
+					if (is_warray(parameter->type_constraint)) {
+						unsupported(parameter, "signal " + String(signal->identifier->name) + " carrying WArray through Godot's Variant signal ABI");
+						continue;
+					}
 					bindings += "\t\t{ PropertyInfo argument = GetTypeInfo<" + type(parameter->type_constraint, parameter) + ">::get_class_info(); argument.name = " + quoted(parameter->identifier->name) + "; info.arguments.push_back(argument); }\n";
 				}
 				bindings += "\t\tADD_SIGNAL(info);\n\t}\n";

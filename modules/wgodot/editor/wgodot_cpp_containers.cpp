@@ -6,8 +6,8 @@ using Parser = GDScriptParser;
 
 namespace {
 
-// Reject explicit aliases while native container ownership is undecided. This
-// checks storage copies and returns, not arbitrary escapes through engine APIs.
+// Packed-array and dictionary ownership is still undecided. Typed Arrays use
+// WArray; their conversions and engine boundaries are checked by the emitter.
 class ContainerSharing : public WGodotCppAstVisitor {
 	const String &path;
 	Vector<String> &diagnostics;
@@ -17,7 +17,7 @@ class ContainerSharing : public WGodotCppAstVisitor {
 			return false;
 		}
 		const Variant::Type type = p_value->type_constraint.builtin_type;
-		if (type != Variant::ARRAY && type != Variant::DICTIONARY && !(type >= Variant::PACKED_BYTE_ARRAY && type <= Variant::PACKED_VECTOR4_ARRAY)) {
+		if (type != Variant::DICTIONARY && !(type >= Variant::PACKED_BYTE_ARRAY && type <= Variant::PACKED_VECTOR4_ARRAY)) {
 			return false;
 		}
 		switch (p_value->type) {

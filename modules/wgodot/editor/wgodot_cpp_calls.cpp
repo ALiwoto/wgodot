@@ -25,6 +25,10 @@ String WGodotCppEmitter::call(const Parser::CallNode *p_call) {
 		return native_call(p_call, base, base_type);
 	}
 	if (const auto *contract_method = interface_method(p_call)) {
+		if (has_warray_signature(contract_method)) {
+			unsupported(p_call, "WArray in an interface call through the current name-based interface ABI");
+			return String();
+		}
 		class_call_headers.insert("modules/wgodot/native/wgodot_native_values.h");
 		String body = "([&]() { ";
 		Vector<String> arguments;

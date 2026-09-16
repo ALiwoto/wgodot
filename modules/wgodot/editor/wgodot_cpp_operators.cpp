@@ -10,7 +10,21 @@ using namespace WGodotCppNames;
 String WGodotCppEmitter::operation(Variant::Operator p_operation, const Parser::DataType &p_result, const Parser::DataType &p_left_type, const Parser::DataType &p_right_type, const String &p_left, const String &p_right, const Parser::Node *p_origin) {
 	if (p_operation == Variant::OP_MODULE && p_left_type.kind == Parser::DataType::BUILTIN && p_left_type.builtin_type == Variant::STRING && p_right_type.kind == Parser::DataType::BUILTIN && p_right_type.builtin_type == Variant::ARRAY) {
 		class_call_headers.insert("modules/wgodot/native/wgodot_native_format.h");
-		return "WGodotNative::format_string(" + p_left + ", " + p_right + ".span())";
+		return "WGodotNative::format_string(" + p_left + ", " + p_right + (is_warray(p_right_type) ? ")" : ".span())");
+	}
+	if (is_warray(p_left_type) || is_warray(p_right_type)) {
+		if (p_operation == Variant::OP_IN && is_warray(p_right_type) && !is_warray(p_left_type)) {
+			return p_right + ".has(WGodotNative::convert<" + type(p_right_type.get_container_element_type(0), p_origin) + ">(" + p_left + "))";
+		}
+		if (is_warray(p_left_type) && is_warray(p_right_type) && type(p_left_type, p_origin) == type(p_right_type, p_origin)) {
+			if (p_operation == Variant::OP_ADD || p_operation == Variant::OP_EQUAL || p_operation == Variant::OP_NOT_EQUAL) {
+				return "(" + p_left + (p_operation == Variant::OP_ADD ? " + " : p_operation == Variant::OP_EQUAL ? " == "
+																												 : " != ") +
+						p_right + ")";
+			}
+		}
+		unsupported(p_origin, "WArray operator " + Variant::get_operator_name(p_operation) + " for these operand types");
+		return String();
 	}
 	auto numeric = [](const Parser::DataType &p_type) {
 		return p_type.kind == Parser::DataType::ENUM || (p_type.kind == Parser::DataType::BUILTIN && (p_type.builtin_type == Variant::INT || p_type.builtin_type == Variant::FLOAT));
@@ -60,6 +74,12 @@ String WGodotCppEmitter::operation(Variant::Operator p_operation, const Parser::
 
 String WGodotCppEmitter::cast(const Parser::CastNode *p_cast) {
 	const auto &target = p_cast->type_constraint;
+	if (is_warray(target) || is_warray(expression_type(p_cast->operand))) {
+		if (is_warray(target) && p_cast->operand->type == Parser::Node::ARRAY) {
+			return array_literal(static_cast<const Parser::ArrayNode *>(p_cast->operand), target);
+		}
+		return converted(p_cast->operand, target);
+	}
 	if (target.is_variant()) {
 		return expression(p_cast->operand);
 	}
@@ -78,6 +98,10 @@ String WGodotCppEmitter::cast(const Parser::CastNode *p_cast) {
 String WGodotCppEmitter::type_test(const Parser::TypeTestNode *p_test) {
 	const auto &target = p_test->test_datatype;
 	const String value = expression(p_test->operand);
+	if (is_warray(expression_type(p_test->operand))) {
+		const bool same = target.is_variant() || (target.kind == Parser::DataType::BUILTIN && target.builtin_type == Variant::ARRAY && (!target.has_container_element_type(0) || type(target, p_test) == type(expression_type(p_test->operand), p_test)));
+		return "([&]() { (void)(" + value + "); return " + (same ? "true" : "false") + "; }())";
+	}
 	if (target.is_variant()) {
 		return "([&]() { (void)(" + value + "); return true; }())";
 	}
