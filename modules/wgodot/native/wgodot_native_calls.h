@@ -63,19 +63,27 @@ struct IsRef : std::false_type {};
 template <class T>
 struct IsRef<Ref<T>> : std::true_type {};
 
-// Keep exact native arguments borrowed. In particular, obtaining an Object pointer
-// from Ref<T> must not temporarily increase the object's visible reference count.
+// Borrow existing arguments, but own temporaries: returning an rvalue reference
+// through a function does not extend its lifetime in an auto&& argument slot.
 template <class To, class From>
 decltype(auto) convert(From &&p_value) {
 	using Target = std::decay_t<To>;
 	using Source = std::decay_t<From>;
 	if constexpr (std::is_same_v<Target, Source>) {
-		return std::forward<From>(p_value);
+		if constexpr (std::is_lvalue_reference_v<From &&>) {
+			return (p_value);
+		} else {
+			return Target(std::forward<From>(p_value));
+		}
 	} else if constexpr (std::is_convertible_v<From &&, Target>) {
 		return Target(std::forward<From>(p_value));
 	} else if constexpr (IsPacked<Source>::value) {
 		if constexpr (std::is_same_v<Target, typename Source::Native>) {
-			return p_value.native();
+			if constexpr (std::is_lvalue_reference_v<From &&>) {
+				return p_value.native();
+			} else {
+				return Target(p_value.native());
+			}
 		} else {
 			return VariantCaster<Target>::cast(static_cast<const Variant &>(p_value));
 		}

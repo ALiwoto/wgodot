@@ -574,6 +574,21 @@ Error WGodotCppEmitter::write(const String &p_directory) const {
 	manifest["format"] = 1;
 	manifest["generation"] = fingerprint.as_string().sha256_text();
 	manifest["files"] = names;
+	Dictionary sources;
+	Dictionary native_classes;
+	for (const auto &entry : project.get_classes()) {
+		if (entry.script_path.begins_with("res://") && !sources.has(entry.script_path)) {
+			sources[entry.script_path] = FileAccess::get_sha256(entry.script_path);
+		}
+		if (!entry.node->outer && !entry.node->wgodot_static_class && !entry.node->wgodot_is_interface) {
+			Dictionary native_class;
+			native_class["class"] = entry.cpp_name;
+			native_class["base"] = native_base(entry.node->self_type);
+			native_classes[entry.script_path] = native_class;
+		}
+	}
+	manifest["sources"] = sources;
+	manifest["native_classes"] = native_classes;
 	Ref<FileAccess> manifest_file = FileAccess::open(manifest_path, FileAccess::WRITE, &error);
 	ERR_FAIL_COND_V(error != OK, error);
 	manifest_file->store_string(JSON::stringify(manifest, "\t", true) + "\n");

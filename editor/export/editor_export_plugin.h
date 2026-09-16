@@ -144,6 +144,8 @@ protected:
 	void set_export_error(Error p_error, const String &p_message);
 	virtual void _export_paths_ready(const HashSet<String> &p_paths);
 	virtual void _export_global_class_list(Array &r_global_class_list);
+	virtual void _export_project_settings(HashMap<String, Variant> &r_settings) {}
+	virtual void _export_cache_paths(HashSet<String> &r_paths) {}
 	virtual Error _export_completed() { return OK; }
 	// wgodot-changes::end
 	virtual void _export_end();

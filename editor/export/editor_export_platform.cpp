@@ -1778,7 +1778,11 @@ Error EditorExportPlatform::export_project_files(const Ref<EditorExportPreset> &
 	}
 
 	// wgodot-changes::begin
-	const FilteredCache filtered_cache = _get_filtered_cache(paths, export_plugins);
+	HashSet<String> cache_paths = paths;
+	for (const Ref<EditorExportPlugin> &plugin : export_plugins) {
+		plugin->_export_cache_paths(cache_paths);
+	}
+	const FilteredCache filtered_cache = _get_filtered_cache(cache_paths, export_plugins);
 	// wgodot-changes::end
 
 	Vector<String> forced_export = get_forced_export_files(p_preset);
@@ -1826,6 +1830,11 @@ Error EditorExportPlatform::export_project_files(const Ref<EditorExportPreset> &
 	String config_file = "project.binary";
 	String engine_cfb = EditorPaths::get_singleton()->get_temp_dir().path_join("tmp" + config_file);
 	ProjectSettings::CustomMap custom_map = get_custom_project_settings(p_preset);
+	// wgodot-changes::begin
+	for (const Ref<EditorExportPlugin> &plugin : export_plugins) {
+		plugin->_export_project_settings(custom_map);
+	}
+	// wgodot-changes::end
 	ProjectSettings::get_singleton()->save_custom(engine_cfb, custom_map, custom_list);
 	Vector<uint8_t> data = FileAccess::get_file_as_bytes(engine_cfb);
 	DirAccess::remove_file_or_error(engine_cfb);

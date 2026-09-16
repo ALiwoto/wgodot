@@ -11,7 +11,16 @@
 
 #ifdef TOOLS_ENABLED
 #include "editor/wgodot_cli_editor_plugin.h"
+#include "editor/wgodot_native_export_plugin.h"
+#include "editor/editor_node.h"
+#include "editor/export/editor_export.h"
 #include "editor/plugins/editor_plugin.h"
+
+static void _native_export_editor_init() {
+	Ref<WGodotNativeExportPlugin> plugin;
+	plugin.instantiate();
+	EditorExport::get_singleton()->add_export_plugin(plugin);
+}
 #endif
 
 void initialize_wgodot_module(ModuleInitializationLevel p_level) {
@@ -23,6 +32,7 @@ void initialize_wgodot_module(ModuleInitializationLevel p_level) {
 #ifdef TOOLS_ENABLED
 	if (p_level == MODULE_INITIALIZATION_LEVEL_EDITOR) {
 		EditorPlugins::add_by_type<WGodotCLIEditorPlugin>();
+		EditorNode::add_init_callback(_native_export_editor_init);
 	}
 #endif
 }

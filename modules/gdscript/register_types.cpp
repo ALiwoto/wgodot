@@ -100,6 +100,7 @@ class GDScriptExportPlugin : public EditorExportPlugin {
 	WGodotGDScriptExportTransform::ExportPipeline pipeline;
 	WGodotGDScriptExportTransform::TransformOptions transform_options;
 	String diagnostic_map_path;
+	bool native_game = false;
 	// wgodot-changes::end
 
 protected:
@@ -107,6 +108,10 @@ protected:
 		script_mode = DEFAULT_SCRIPT_MODE;
 		// wgodot-changes::begin
 		pipeline.reset();
+		native_game = p_features.has("wgodot_native");
+		if (native_game) {
+			return;
+		}
 		// wgodot-changes::end
 
 		const Ref<EditorExportPreset> &preset = get_export_preset();
@@ -124,14 +129,23 @@ protected:
 
 	// wgodot-changes::begin
 	virtual void _export_paths_ready(const HashSet<String> &p_paths) override {
+		if (native_game) {
+			return;
+		}
 		pipeline.prepare_export(this, p_paths, transform_options);
 	}
 
 	virtual void _export_global_class_list(Array &r_global_class_list) override {
+		if (native_game) {
+			return;
+		}
 		WGodotGDScriptExportTransform::transform_global_class_list(&pipeline.get_artifacts(), &r_global_class_list);
 	}
 
 	virtual Error _export_completed() override {
+		if (native_game) {
+			return OK;
+		}
 		return pipeline.complete_export(this, transform_options.redact_diagnostics, diagnostic_map_path);
 	}
 
@@ -142,7 +156,9 @@ protected:
 
 	virtual void _export_file(const String &p_path, const String &p_type, const HashSet<String> &p_features) override {
 		// wgodot-changes::begin
-		pipeline.export_file(this, p_path, script_mode);
+		if (!native_game) {
+			pipeline.export_file(this, p_path, script_mode);
+		}
 		// wgodot-changes::end
 	}
 

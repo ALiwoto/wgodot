@@ -103,6 +103,13 @@ if (!$SkipBuild) {
 		Pop-Location
 	}
 	Write-Host "Built: $binaryPath"
+	if ($Game) {
+		$buildManifest = @{
+			generation = $gameManifest.generation
+			binary_sha256 = (Get-FileHash -LiteralPath $binaryPath -Algorithm SHA256).Hash.ToLowerInvariant()
+		} | ConvertTo-Json
+		[IO.File]::WriteAllText("$binaryPath.native.json", $buildManifest, [Text.UTF8Encoding]::new($false))
+	}
 }
 
 if ($shouldRunTests) {
