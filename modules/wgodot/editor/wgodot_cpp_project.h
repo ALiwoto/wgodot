@@ -26,6 +26,7 @@ private:
 
 	Error collect_scripts(const String &p_directory, Vector<String> &r_scripts);
 	void collect_classes(const String &p_script_path, GDScriptParser::ClassNode *p_class);
+	void validate_container_sharing(const String &p_script_path, const GDScriptParser::ClassNode *p_class);
 
 public:
 	Error analyze();

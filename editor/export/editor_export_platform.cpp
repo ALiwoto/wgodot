@@ -1778,7 +1778,7 @@ Error EditorExportPlatform::export_project_files(const Ref<EditorExportPreset> &
 	}
 
 	// wgodot-changes::begin
-	HashSet<String> cache_paths = paths;
+	HashSet<String> cache_paths(paths);
 	for (const Ref<EditorExportPlugin> &plugin : export_plugins) {
 		plugin->_export_cache_paths(cache_paths);
 	}

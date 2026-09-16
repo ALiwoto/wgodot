@@ -47,6 +47,9 @@ class WGodotCppEmitter {
 	String cast(const GDScriptParser::CastNode *p_cast);
 	String type_test(const GDScriptParser::TypeTestNode *p_test);
 	void initialize_native_methods();
+	bool validate_native_arguments(const MethodBind *p_method, const GDScriptParser::Node *p_origin);
+	bool validate_builtin_arguments(Variant::Type p_type, const StringName &p_method, const GDScriptParser::Node *p_origin);
+	bool native_override(const MethodBind *p_method, const String &p_receiver, const Vector<String> &p_arguments, const String &p_result, const GDScriptParser::Node *p_origin, String &r_code);
 	String native_call(const GDScriptParser::CallNode *p_call, const GDScriptParser::ExpressionNode *p_base, const GDScriptParser::DataType &p_base_type);
 	String native_adapter(const StringName &p_owner, const StringName &p_name, bool p_static, bool p_vararg);
 	String native_invoke(const MethodBind *p_method, const String &p_receiver, Vector<String> p_arguments, const String &p_result, const GDScriptParser::Node *p_origin);

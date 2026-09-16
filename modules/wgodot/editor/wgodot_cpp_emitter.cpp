@@ -157,6 +157,9 @@ const WGodotCppProject::Class *WGodotCppEmitter::member_owner(const Parser::Clas
 String WGodotCppEmitter::member(const Parser::ExpressionNode *p_base, const StringName &p_name, const Parser::ExpressionNode *p_origin) {
 	const auto &datatype = p_base ? p_base->type_constraint : current_class->node->self_type;
 	if (datatype.kind == Parser::DataType::BUILTIN && Variant::has_builtin_method(datatype.builtin_type, p_name)) {
+		if (!validate_builtin_arguments(datatype.builtin_type, p_name, p_origin)) {
+			return String();
+		}
 		return "Callable::create(" + expression(p_base) + ", SNAME(" + quoted(p_name) + "))";
 	}
 	if (datatype.kind == Parser::DataType::BUILTIN && Variant::has_member(datatype.builtin_type, p_name)) {
@@ -409,6 +412,17 @@ String WGodotCppEmitter::expression(const Parser::ExpressionNode *p_expression) 
 			const auto *binary = static_cast<const Parser::BinaryOpNode *>(p_expression);
 			if (binary->operation == Parser::BinaryOpNode::OP_LOGIC_AND || binary->operation == Parser::BinaryOpNode::OP_LOGIC_OR) {
 				return "(" + truth(binary->left_operand) + (binary->operation == Parser::BinaryOpNode::OP_LOGIC_AND ? " && " : " || ") + truth(binary->right_operand) + ")";
+			}
+			if (binary->variant_op == Variant::OP_MODULE && binary->left_operand->type_constraint.kind == Parser::DataType::BUILTIN && binary->left_operand->type_constraint.builtin_type == Variant::STRING && binary->right_operand->type == Parser::Node::ARRAY && !expression_overrides.has(binary->right_operand)) {
+				class_call_headers.insert("modules/wgodot/native/wgodot_native_format.h");
+				const auto *array = static_cast<const Parser::ArrayNode *>(binary->right_operand);
+				Vector<String> arguments;
+				for (const auto *element : array->elements) {
+					arguments.push_back("Variant(" + expression(element) + ")");
+				}
+				// Initializer-list elements are evaluated and captured in order. Mixed
+				// format arguments need Variants, but no heap-allocated Godot Array.
+				return "([&]() -> String { auto &&format = " + expression(binary->left_operand) + "; const std::array<Variant, " + itos(array->elements.size()) + "> arguments{ " + String(", ").join(arguments) + " }; return WGodotNative::format_string(format, Span<Variant>(arguments.data(), arguments.size())); }())";
 			}
 			return "([&]() -> " + type(binary->type_constraint, binary) + " { auto &&left = " + expression(binary->left_operand) + "; auto &&right = " + expression(binary->right_operand) + "; return " + operation(binary->variant_op, binary->type_constraint, binary->left_operand->type_constraint, binary->right_operand->type_constraint, "left", "right", binary) + "; }())";
 		}

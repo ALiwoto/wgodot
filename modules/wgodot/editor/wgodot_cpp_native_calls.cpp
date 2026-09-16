@@ -71,6 +71,10 @@ String WGodotCppEmitter::native_call(const Parser::CallNode *p_call, const Parse
 		native_type.kind = Parser::DataType::NATIVE;
 		native_type.native_type = method->get_instance_class();
 		receiver = "static_cast<" + class_name(native_type, p_call) + " *>(nullptr)";
+	} else if (p_base && p_base->type == Parser::Node::IDENTIFIER && static_cast<const Parser::IdentifierNode *>(p_base)->name == SNAME("ResourceLoader") && p_base_type.kind == Parser::DataType::NATIVE && p_base_type.is_meta_type && method->get_name() == SNAME("load_threaded_get_status")) {
+		// This singleton operation is emitted as a core static call. Do not
+		// generate a runtime singleton-name lookup for its class identifier.
+		receiver = "nullptr";
 	} else if (p_base) {
 		body += "auto &&receiver = " + expression(p_base) + "; ";
 		receiver = "WGodotNative::object_pointer(receiver)";
@@ -81,6 +85,13 @@ String WGodotCppEmitter::native_call(const Parser::CallNode *p_call, const Parse
 }
 
 String WGodotCppEmitter::native_invoke(const MethodBind *p_method, const String &p_receiver, Vector<String> p_arguments, const String &p_result, const Parser::Node *p_origin) {
+	String override_code;
+	if (native_override(p_method, p_receiver, p_arguments, p_result, p_origin, override_code)) {
+		return override_code;
+	}
+	if (!validate_native_arguments(p_method, p_origin)) {
+		return String();
+	}
 	// Native C++ defaults can differ from the registered GDScript API defaults.
 	for (int i = p_arguments.size(); i < p_method->get_argument_count(); i++) {
 		if (!p_method->has_default_argument(i)) {
@@ -105,6 +116,11 @@ String WGodotCppEmitter::native_property(const Parser::ExpressionNode *p_base, c
 	}
 	const StringName base_name = native_base(base_type);
 	if (!p_value && (ClassDB::has_signal(base_name, p_name) || ClassDB::has_method(base_name, p_name))) {
+		// A stored Callable bypasses native_invoke when it is invoked later.
+		// Do not let it circumvent the generic-container boundary checks.
+		if (!ClassDB::has_signal(base_name, p_name) && !validate_native_arguments(ClassDB::get_method(base_name, p_name), p_origin)) {
+			return String();
+		}
 		class_call_headers.insert("modules/wgodot/native/wgodot_native_calls.h");
 		return String(ClassDB::has_signal(base_name, p_name) ? "Signal" : "Callable") + "(WGodotNative::object_pointer(" + (p_base ? expression(p_base) : "this") + "), SNAME(" + quoted(p_name) + "))";
 	}

@@ -34,6 +34,10 @@ void WGodotNativeExportPlugin::_export_begin(const HashSet<String> &p_features, 
 	if (!enabled) {
 		return;
 	}
+	if (!GLOBAL_GET("wgodot/gdscript/strict_type_checking")) {
+		set_export_error(ERR_UNCONFIGURED, "Native export requires strict type checking. Enable 'wgodot/gdscript/strict_type_checking' in Project Settings.");
+		return;
+	}
 	const String directory = get_export_preset()->get("wgodot/native_module");
 	manifest = read_manifest(directory.path_join("main_game.json"));
 	if (int(manifest.get("format", 0)) != 1 || !manifest.has("native_classes") || !manifest.has("sources")) {

@@ -8,6 +8,10 @@ using Parser = GDScriptParser;
 using namespace WGodotCppNames;
 
 String WGodotCppEmitter::operation(Variant::Operator p_operation, const Parser::DataType &p_result, const Parser::DataType &p_left_type, const Parser::DataType &p_right_type, const String &p_left, const String &p_right, const Parser::Node *p_origin) {
+	if (p_operation == Variant::OP_MODULE && p_left_type.kind == Parser::DataType::BUILTIN && p_left_type.builtin_type == Variant::STRING && p_right_type.kind == Parser::DataType::BUILTIN && p_right_type.builtin_type == Variant::ARRAY) {
+		class_call_headers.insert("modules/wgodot/native/wgodot_native_format.h");
+		return "WGodotNative::format_string(" + p_left + ", " + p_right + ".span())";
+	}
 	auto numeric = [](const Parser::DataType &p_type) {
 		return p_type.kind == Parser::DataType::ENUM || (p_type.kind == Parser::DataType::BUILTIN && (p_type.builtin_type == Variant::INT || p_type.builtin_type == Variant::FLOAT));
 	};

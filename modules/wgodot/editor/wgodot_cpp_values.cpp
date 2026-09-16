@@ -31,6 +31,9 @@ String WGodotCppEmitter::builtin_call(const Parser::CallNode *p_call) {
 		unsupported(p_call, "builtin call " + String(p_call->function_name));
 		return String();
 	}
+	if (!validate_builtin_arguments(base_type.builtin_type, p_call->function_name, p_call)) {
+		return String();
+	}
 	class_call_headers.insert("modules/wgodot/native/wgodot_native_values.h");
 	String body = "([&]() { ";
 	Vector<String> arguments;
@@ -41,6 +44,9 @@ String WGodotCppEmitter::builtin_call(const Parser::CallNode *p_call) {
 	}
 	const bool is_static = Variant::is_builtin_method_static(base_type.builtin_type, p_call->function_name);
 	body += "auto &&receiver = " + (is_static && base_type.is_meta_type ? type(base_type, base) + "()" : expression(base)) + "; ";
+	if (base_type.builtin_type == Variant::STRING && p_call->function_name == SNAME("join") && arguments.size() == 1) {
+		return body + "return receiver.join(WGodotNative::convert<PackedStringArray>(" + arguments[0] + ")); }())";
+	}
 	// Shared containers mutate their existing storage. Signal methods operate on
 	// the owning Object. Only non-shared values need to be assigned back.
 	const bool write_back = !Variant::is_builtin_method_const(base_type.builtin_type, p_call->function_name) && !Variant::is_type_shared(base_type.builtin_type) && base_type.builtin_type != Variant::SIGNAL;
