@@ -10,4 +10,37 @@ env_wgodot = env_modules.Clone()
 env_wgodot.add_source_files(env.modules_sources, "*.cpp")
 
 if env.editor_build:
+    import pathlib
+    import cpp_builders
+
+    root = pathlib.Path(Dir("#").abspath)
+    headers = []
+    implementations = []
+    for directory in ("core", "scene", "servers"):
+        headers.extend(str(path) for path in (root / directory).rglob("*.h") if not path.name.endswith(".gen.h"))
+        implementations.extend(str(path) for path in (root / directory).rglob("*.cpp") if not path.name.endswith(".gen.cpp"))
+    # These APIs include Godot's native stubs on other targets (e.g. Web APIs
+    # remain available on Windows). Follow the engine's configured API list.
+    for platform in env.platform_apis:
+        api = root / "platform" / platform / "api"
+        headers.extend(str(path) for path in api.rglob("*.h") if not path.name.endswith(".gen.h"))
+        implementations.extend(str(path) for path in api.glob("*.cpp"))
+    for module_path in env.module_list.values():
+        headers.extend(str(path) for path in (root / module_path).rglob("*.h")
+                       if not path.name.endswith(".gen.h") and "tests" not in path.parts)
+        implementations.extend(str(path) for path in (root / module_path).rglob("*.cpp")
+                               if not path.name.endswith(".gen.cpp") and "tests" not in path.parts and "editor" not in path.parts)
+    env_wgodot["wgodot_source_root"] = str(root)
+    native_headers = env_wgodot.CommandNoCache(
+        "editor/wgodot_cpp_native_headers.gen.h",
+        sorted(set(headers)),
+        env.Run(cpp_builders.native_headers),
+    )
+    env_wgodot.Depends("editor/wgodot_cpp_emitter.cpp", native_headers)
+    native_methods = env_wgodot.CommandNoCache(
+        "editor/wgodot_cpp_native_methods.gen.h",
+        sorted(set(implementations)),
+        env.Run(cpp_builders.native_methods),
+    )
+    env_wgodot.Depends("editor/wgodot_cpp_native_calls.cpp", native_methods)
     env_wgodot.add_source_files(env.modules_sources, "editor/*.cpp")

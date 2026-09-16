@@ -522,6 +522,13 @@ protected:
 	// Used in gdvirtual.gen.h
 	void _gdvirtual_init_method_ptr(uint32_t p_compat_hash, void *&r_fn_ptr, const StringName &p_fn_name, bool p_compat) const;
 
+	// wgodot-changes::begin
+#ifdef WGODOT_NATIVE_GAME
+	using WGodotNativeVirtual = Variant (*)(Object *, const Variant **, int);
+	virtual WGodotNativeVirtual _wgodot_get_native_virtual(const StringName &p_name) const { return nullptr; }
+#endif
+	// wgodot-changes::end
+
 	friend class GDExtensionMethodBind;
 	_ALWAYS_INLINE_ const ObjectGDExtension *_get_extension() const { return _extension; }
 	_ALWAYS_INLINE_ GDExtensionClassInstancePtr _get_extension_instance() const { return _extension_instance; }

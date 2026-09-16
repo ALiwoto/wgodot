@@ -34,6 +34,12 @@
 #include "core/object/script_language.h"
 #include "core/variant/variant.h"
 
+// wgodot-changes::begin
+#ifdef WGODOT_NATIVE_GAME
+#include "core/object/wgodot_native_interfaces.h"
+#endif
+// wgodot-changes::end
+
 struct ContainerType {
 	Variant::Type builtin_type = Variant::NIL;
 	StringName class_name;
@@ -110,7 +116,13 @@ private:
 		}
 
 		const StringName &obj_class = object->get_class_name();
+		// wgodot-changes::begin
+#ifdef WGODOT_NATIVE_GAME
+		if (obj_class != class_name && !object->is_class(class_name) && !WGodotNativeInterfaces::accepts(obj_class, class_name)) {
+#else
 		if (obj_class != class_name && !object->is_class(class_name)) {
+#endif
+		// wgodot-changes::end
 			if (p_output_errors) {
 				String object_class_name = object->get_class();
 				if (const Ref<Script> other_script = object->get_script(); other_script.is_valid()) {
@@ -166,7 +178,13 @@ public:
 			return true;
 		} else if (p_type.class_name == StringName()) {
 			return false;
+		// wgodot-changes::begin
+#ifdef WGODOT_NATIVE_GAME
+		} else if (!WGodotNativeInterfaces::can_reference(p_type.class_name, class_name)) {
+#else
 		} else if (class_name != p_type.class_name && !ClassDB::is_parent_class(p_type.class_name, class_name)) {
+#endif
+		// wgodot-changes::end
 			return false;
 		}
 

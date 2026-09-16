@@ -48,10 +48,14 @@ $sconsArgs = @(
 $binarySuffix = ""
 if ($Game) {
 	$gameModulePath = Join-Path $PSScriptRoot "generated/main_game"
-	foreach ($moduleFile in @("SCsub", "config.py", "register_types.h")) {
+	foreach ($moduleFile in @("SCsub", "config.py", "register_types.h", "main_game.json")) {
 		if (!(Test-Path -LiteralPath (Join-Path $gameModulePath $moduleFile) -PathType Leaf)) {
 			throw "Generated native game module is missing '$moduleFile': $gameModulePath. The Plan Z C++ exporter must generate this module before -Game can build it."
 		}
+	}
+	$gameManifest = Get-Content -LiteralPath (Join-Path $gameModulePath 'main_game.json') -Raw | ConvertFrom-Json
+	if ($gameManifest.format -ne 1 -or !$gameManifest.generation -or !$gameManifest.files) {
+		throw "Incomplete or unsupported native game manifest: $gameModulePath/main_game.json. Run the C++ exporter again."
 	}
 
 	$binarySuffix = ".game"

@@ -1,3 +1,7 @@
+# wgodot-changes::begin
+import wgodot_native_virtuals
+# wgodot-changes::end
+
 script_call = """ScriptInstance *_script_instance = ((Object *)(this))->get_script_instance();\\
 		if (_script_instance) {\\
 			Callable::CallError ce;\\
@@ -65,7 +69,9 @@ proto = """#define GDVIRTUAL$VER($ALIAS $RET m_name $ARG)\\
 
 
 def generate_version(argcount, const=False, returns=False, required=False, compat=False):
-    s = proto
+    # wgodot-changes::begin
+    s = wgodot_native_virtuals.add_native_variant(proto, compat)
+    # wgodot-changes::end
     if compat:
         s = s.replace("$SCRIPTCALL", "")
         s = s.replace("$SCRIPTHASMETHOD", "")

@@ -193,6 +193,13 @@ void Object::_postinitialize() {
 		signal_mutex = memnew(Mutex);
 	}
 	notification(NOTIFICATION_POSTINITIALIZE);
+	// wgodot-changes::begin
+#ifdef WGODOT_NATIVE_GAME
+	if (auto callback = _wgodot_get_native_virtual(SNAME("@game_initialize"))) {
+		callback(this, nullptr, 0);
+	}
+#endif
+	// wgodot-changes::end
 }
 
 void Object::set(const StringName &p_name, const Variant &p_value, bool *r_valid) {
@@ -1004,9 +1011,29 @@ void Object::_notification_forward(int p_notification) {
 	if (script_instance) {
 		script_instance->notification(p_notification, false);
 	}
+	// wgodot-changes::begin
+#ifdef WGODOT_NATIVE_GAME
+	if (auto callback = _wgodot_get_native_virtual(SNAME("_notification"))) {
+		Variant what = p_notification;
+		Variant reversed = false;
+		const Variant *arguments[] = { &what, &reversed };
+		callback(this, arguments, 2);
+	}
+#endif
+	// wgodot-changes::end
 }
 
 void Object::_notification_backward(int p_notification) {
+	// wgodot-changes::begin
+#ifdef WGODOT_NATIVE_GAME
+	if (auto callback = _wgodot_get_native_virtual(SNAME("_notification"))) {
+		Variant what = p_notification;
+		Variant reversed = true;
+		const Variant *arguments[] = { &what, &reversed };
+		callback(this, arguments, 2);
+	}
+#endif
+	// wgodot-changes::end
 	if (script_instance) {
 		script_instance->notification(p_notification, true);
 	}
