@@ -5,6 +5,7 @@
 #include "core/object/class_db.h"
 
 #include "modules/gdscript/wgodot_gd/interface_helpers.h"
+#include "modules/gdscript/wgodot_stdlib.h"
 
 using Parser = GDScriptParser;
 using namespace WGodotCppNames;
@@ -18,8 +19,48 @@ void WGodotCppEmitter::emit_interface(const WGodotCppProject::Class &p_class) {
 	}
 	const String &name = p_class.cpp_name;
 	const String qualified = "WGodotGame::" + name;
-	const String base = "WGodotNative::InterfaceValue<" + name + ", " + native_cpp_names[native] + ">";
+	const String interface = interface_cpp_type(p_class.node);
+	const String base = "WGodotNative::InterfaceValue<" + name + ", " + native_cpp_names[native] + ", " + interface + ">";
 	String header = "// wgodot-changes::file\n// Generated native interface value.\n#pragma once\n#include \"modules/wgodot/native/wgodot_native_interface.h\"\n#include \"" + *native_header + "\"\n\nnamespace WGodotGame {\n";
+	String contract;
+	if (const auto *native_interface = WGodotGDScriptStdLib::get_native_interface(p_class.node->wgodot_interface_name)) {
+		header = header.replace("namespace WGodotGame {", "#include \"" + native_interface->cpp_header + "\"\nnamespace WGodotGame {");
+	} else {
+		contract = "class " + interface + " {\n\tWGD_INTERFACE(" + interface + ");\npublic:\n";
+		for (const auto &member : p_class.node->members) {
+			if (member.type != Parser::ClassNode::Member::FUNCTION) {
+				continue;
+			}
+			Vector<String> parameters;
+			for (const auto *parameter : member.function->parameters) {
+				parameters.push_back(type(parameter->type_constraint, parameter));
+			}
+			contract += "\tvirtual " + function_result(member.function) + " " + String(member.get_name()) + "(" + String(", ").join(parameters) + ") = 0;\n";
+		}
+		contract += "};\n";
+		String includes;
+		Vector<String> headers;
+		for (const String &include : class_native_headers) {
+			if (include != name + ".h") {
+				headers.push_back(include);
+			}
+		}
+		headers.sort();
+		for (const String &include : headers) {
+			includes += "#include \"" + include + "\"\n";
+		}
+		Vector<String> dependencies;
+		for (const String &dependency : class_dependencies) {
+			dependencies.push_back(dependency);
+		}
+		dependencies.sort();
+		String forward;
+		for (const String &dependency : dependencies) {
+			forward += "class " + dependency + ";\n";
+		}
+		header = header.replace("namespace WGodotGame {", includes + "namespace WGodotGame {\n" + forward);
+		header += contract;
+	}
 	header += "class " + name + " : public " + base + " {\npublic:\n\tusing " + base + "::InterfaceValue;\n\tstatic const StringName &get_class_static() { static const StringName name = \"" + name + "\"; return name; }\n};\n} // namespace WGodotGame\n\n";
 	header += "template <> struct GetTypeInfo<" + qualified + "> : WGodotNative::InterfaceTypeInfo<" + qualified + "> {};\n";
 	header += "template <> struct PtrToArg<" + qualified + "> : WGodotNative::InterfacePtrToArg<" + qualified + "> {};\n";

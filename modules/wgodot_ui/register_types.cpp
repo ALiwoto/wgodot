@@ -1,9 +1,10 @@
 // wgodot-changes::file
 #include "register_types.h"
 
-#include "ui_texture_drawing.h"
 #include "elements.h"
 #include "smooth_scroll_element.h"
+#include "ui_texture_drawing.h"
+
 #include "modules/modules_enabled.gen.h"
 
 #ifdef MODULE_GDSCRIPT_ENABLED
@@ -19,10 +20,7 @@ void initialize_wgodot_ui_module(ModuleInitializationLevel p_level) {
 		GDREGISTER_CLASS(TextBoxElement);
 		GDREGISTER_CLASS(SmoothScrollElement);
 #ifdef MODULE_GDSCRIPT_ENABLED
-		const char *element_contract =
-#include "element_base.gd.inc"
-				;
-		WGodotGDScriptStdLib::register_interface("ElementBase", "Control", element_contract);
+		WGodotGDScriptStdLib::register_interface({ "ElementBase", "Control", "::ElementBase", "modules/wgodot_ui/element_base.h", "FlatElement", {} });
 		for (const char *name : { "FlatElement", "SurfaceElement", "ButtonElement", "TextBoxElement", "SmoothScrollElement" }) {
 			WGodotGDScriptStdLib::register_native_implementation(name, "ElementBase");
 		}

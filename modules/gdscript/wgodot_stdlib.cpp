@@ -6,15 +6,16 @@
 #include "gdscript_cache.h"
 
 #include "core/error/error_macros.h"
-#include "core/object/script_language.h"
 #include "core/object/class_db.h"
+#include "core/object/script_language.h"
 #include "core/templates/vector.h"
+
+#include "modules/wgodot/native/binary_serializable.h"
 
 namespace {
 
 struct InterfaceSource {
-	StringName name;
-	StringName native_base;
+	WGodotGDScriptStdLib::NativeInterface native;
 	String path;
 	String source;
 };
@@ -27,14 +28,12 @@ struct NativeImplementation {
 };
 Vector<NativeImplementation> native_implementations;
 
-const char *binary_serializable_source =
-#include "wgodot_stdlib/binary_serializable.gd.inc"
-;
-
 // The core interface keeps slot zero, independent of optional modules.
 void ensure_core_interfaces() {
 	if (interfaces.is_empty()) {
-		interfaces.push_back({ SNAME("BinarySerializable"), SNAME("Object"), "wgodot://stdlib/BinarySerializable.gd", String::utf8(binary_serializable_source) });
+		WGodotGDScriptStdLib::NativeInterface binary{ SNAME("BinarySerializable"), SNAME("Object"), "::BinarySerializable", "modules/wgodot/native/binary_serializable.h", StringName(), {} };
+		binary.methods.push_back(WGodotGDScriptStdLib::interface_method("serialize_binary", &BinarySerializable::serialize_binary));
+		interfaces.push_back({ binary, "wgodot-interface://BinarySerializable", WGodotGDScriptStdLib::make_interface_source(binary) });
 	}
 }
 
@@ -54,12 +53,17 @@ int find_path(const String &p_path) {
 
 } // namespace
 
-Error WGodotGDScriptStdLib::register_interface(const StringName &p_name, const StringName &p_native_base, const String &p_source) {
-	ERR_FAIL_COND_V_MSG(has_global_interface(p_name), ERR_ALREADY_EXISTS, vformat("Interface '%s' is already registered.", p_name));
-	const String path = "wgodot://stdlib/" + String(p_name) + ".gd";
-	interfaces.push_back({ p_name, p_native_base, path, p_source });
-	ScriptServer::add_global_class(p_name, p_native_base, "GDScript", path, true, false);
+Error WGodotGDScriptStdLib::register_interface(const NativeInterface &p_interface) {
+	ERR_FAIL_COND_V_MSG(has_global_interface(p_interface.name), ERR_ALREADY_EXISTS, vformat("Interface '%s' is already registered.", p_interface.name));
+	const String path = "wgodot-interface://" + String(p_interface.name);
+	interfaces.push_back({ p_interface, path, make_interface_source(p_interface) });
+	ScriptServer::add_global_class(p_interface.name, p_interface.native_base, "GDScript", path, true, false);
 	return OK;
+}
+
+const WGodotGDScriptStdLib::NativeInterface *WGodotGDScriptStdLib::get_native_interface(const StringName &p_name) {
+	const int index = get_builtin_interface_index(p_name);
+	return index >= 0 ? &get_interface(index).native : nullptr;
 }
 
 void WGodotGDScriptStdLib::clear_module_interfaces() {
@@ -95,7 +99,7 @@ String WGodotGDScriptStdLib::get_global_interface_path(const StringName &p_name)
 
 void WGodotGDScriptStdLib::get_global_interface_list(LocalVector<StringName> &r_interfaces) {
 	for (int i = 0; i < get_builtin_interface_count(); i++) {
-		r_interfaces.push_back(get_interface(i).name);
+		r_interfaces.push_back(get_interface(i).native.name);
 	}
 }
 
@@ -106,7 +110,7 @@ int WGodotGDScriptStdLib::get_builtin_interface_count() {
 
 int WGodotGDScriptStdLib::get_builtin_interface_index(const StringName &p_name) {
 	for (int i = 0; i < get_builtin_interface_count(); i++) {
-		if (get_interface(i).name == p_name) {
+		if (get_interface(i).native.name == p_name) {
 			return i;
 		}
 	}
@@ -135,6 +139,6 @@ String WGodotGDScriptStdLib::get_script_source(const String &p_path) {
 void WGodotGDScriptStdLib::register_global_classes() {
 	for (int i = 0; i < get_builtin_interface_count(); i++) {
 		const InterfaceSource source = get_interface(i);
-		ScriptServer::add_global_class(source.name, source.native_base, "GDScript", source.path, true, false);
+		ScriptServer::add_global_class(source.native.name, source.native.native_base, "GDScript", source.path, true, false);
 	}
 }

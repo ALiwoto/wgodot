@@ -367,9 +367,17 @@ private:
 	Transform2D _get_internal_transform() const;
 
 	void _set_anchor(Side p_side, real_t p_anchor);
+	// wgodot-changes::begin
+public:
+	// Native exports use the registered property setters directly, including
+	// their debug diagnostics, without going through MethodBind.
+	// wgodot-changes::end
 	void _set_position(const Point2 &p_point);
 	void _set_global_position(const Point2 &p_point);
 	void _set_size(const Size2 &p_size);
+	// wgodot-changes::begin
+private:
+	// wgodot-changes::end
 
 	void _compute_layout_rect(Rect2 p_rect, bool p_keep_offsets = false);
 

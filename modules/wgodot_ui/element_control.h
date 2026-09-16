@@ -1,13 +1,15 @@
 // wgodot-changes::file
 #pragma once
 
+#include "element_base.h"
 #include "element_behavior.h"
+
 #include "core/object/callable_mp.h"
 #include "core/object/class_db.h"
 
 // C++ sharing only: ClassDB still sees each concrete Control/Button/LineEdit parent.
 template <class NativeControl>
-class ElementControl : public NativeControl {
+class ElementControl : public NativeControl, public ElementBase {
 protected:
 	ElementBehavior element;
 	void element_notification(int p_what) { element.notification(p_what); }
@@ -138,8 +140,16 @@ protected:
 	}
 
 public:
-	void change_text_translation(const String &p_key, const TypedArray<String> &p_arguments = TypedArray<String>()) { element.translate_text(p_key, p_arguments); }
-	void append_text(const String &p_text) { element.set_text(element.get_text() + p_text); }
+#ifndef TOOLS_ENABLED
+	void *wgodot_get_native_interface(const void *p_type) override {
+		if (p_type == &ElementBase::wgodot_interface_tag) {
+			return static_cast<ElementBase *>(this);
+		}
+		return NativeControl::wgodot_get_native_interface(p_type);
+	}
+#endif
+	void change_text_translation(const String &p_key, const TypedArray<String> &p_arguments = TypedArray<String>()) override { element.translate_text(p_key, p_arguments); }
+	void append_text(const String &p_text) override { element.set_text(element.get_text() + p_text); }
 	ElementControl() : element(this) {
 		this->connect("item_rect_changed", callable_mp(this, &ElementControl::_rect_changed));
 		if constexpr (std::is_base_of_v<BaseButton, NativeControl>) {
@@ -150,63 +160,63 @@ public:
 		element.gui_input(p_event);
 		NativeControl::gui_input(p_event);
 	}
-	void change_parent(Node *p_parent) { element.change_parent(p_parent); }
-	Node * get_element_parent() const { return element.get_element_parent(); }
-	void change_position(float p_x, float p_y) { this->set_position(Vector2(p_x, p_y)); }
-	void change_position_vector(const Vector2 &p_position) { this->set_position(p_position); }
-	Vector2 get_element_position() const { return this->get_position(); }
-	void change_element_size(float p_width, float p_height) { this->set_size(Vector2(p_width, p_height)); }
-	void change_element_size_vector(const Vector2 &p_size) { this->set_size(p_size); }
-	Vector2 get_element_size() const { return this->get_size(); }
-	Rect2 get_element_rect() const { return Rect2(Vector2(), this->get_size()); }
-	void set_element_enabled(bool p_enabled) { element.set_enabled(p_enabled); }
-	bool is_element_enabled() const { return element.is_enabled(); }
-	void enable_element() { element.set_enabled(true); }
-	void disable_element() { element.set_enabled(false); }
-	void set_input_handling_disabled(bool p_disabled) { element.set_input_disabled(p_disabled); }
-	bool get_input_handling_disabled() const { return element.is_input_disabled(); }
-	void enable_input_handling() { element.set_input_disabled(false); }
-	void disable_input_handling() { element.set_input_disabled(true); }
-	bool is_element_hovered() const { return element.is_mouse_in(); }
-	void change_movements(int p_movements) { element.set_movements(p_movements); }
-	int get_movement_mode() const { return element.get_movements(); }
-	void change_text(const String &p_text, bool p_update_position = true) { element.set_text(p_text); }
-	String get_element_text() const { return element.get_text(); }
-	void set_element_text(const String &p_text) { element.set_text(p_text); }
-	void change_font(const Ref<Font> &p_font) { element.set_font(p_font); }
-	Ref<Font> get_element_font() const { return element.get_font(); }
-	void change_font_size(int p_size) { element.set_font_size(p_size); }
-	int get_element_font_size() const { return element.get_font_size(); }
-	void change_text_alignment(int p_alignment) { element.set_text_alignment(p_alignment); }
-	int get_element_text_alignment() const { return element.get_text_alignment(); }
-	void change_outline_size(int p_size) { element.set_outline_size(p_size); }
-	void change_back_color(const Color &p_color) { element.set_back_color(p_color); }
-	Color get_element_back_color() const { return element.get_back_color(); }
-	void change_fore_color(const Color &p_color) { element.set_fore_color(p_color); }
-	Color get_element_fore_color() const { return element.get_fore_color(); }
-	void change_image(const Ref<Texture2D> &p_image) { element.set_image(p_image); }
-	Ref<Texture2D> get_element_image() const { return element.get_image(); }
-	void set_element_background(const Ref<Texture2D> &p_image) { element.set_background(p_image); }
-	Ref<Texture2D> get_element_background() const { return element.get_background(); }
-	void change_image_modulate(const Color &p_color) { element.set_image_modulate(p_color); }
-	Color get_element_image_modulate() const { return element.get_image_modulate(); }
-	void change_bg_position_vector(const Vector2 &p_position) { element.set_bg_position(p_position); }
-	Vector2 get_element_bg_position() const { return element.get_bg_position(); }
-	void move_element_to(const Vector2 &p_position, double p_duration = 0.9, double p_delay = 0.4) { element.move_to(p_position, p_duration, p_delay, callable_mp(this, &ElementControl::_moving_finished)); }
-	void fade_element_to(double p_alpha, double p_duration = 0.9, double p_delay = 0.0) { element.fade_to(p_alpha, p_duration, p_delay, callable_mp(this, &ElementControl::_fading_finished)); }
-	bool get_is_element_moving() const { return element.is_moving(); }
-	bool get_is_element_fading() const { return element.is_fading(); }
-	void stop_moving_element() { element.stop_moving(); }
-	void stop_fading_element() { element.stop_fading(); }
-	void enable_mouse_enter_effect() { element.set_hover_effect(true); }
-	void disable_mouse_enter_effect() { element.set_hover_effect(false); }
-	void center_to_screen() { element.center_to_screen(); }
-	void change_position_mid_width(float p_y) { element.change_position_mid_width(p_y); }
-	float get_element_width() const { return this->get_size().x; }
-	float get_element_height() const { return this->get_size().y; }
-	float get_element_bottom() const { return this->get_position().y + this->get_size().y; }
-	Vector2 get_element_bottom_left() const { return this->get_position() + Vector2(0, this->get_size().y); }
-	Vector2 viewport_to_local_position(const Vector2 &p_position) const { return this->get_global_transform_with_canvas().affine_inverse().xform(p_position); }
-	bool is_position_acceptable(const Vector2 &p_position) const { return this->has_point(viewport_to_local_position(p_position)); }
-	void update() { this->queue_redraw(); }
+	void change_parent(Node *p_parent) override { element.change_parent(p_parent); }
+	Node *get_element_parent() const override { return element.get_element_parent(); }
+	void change_position(float p_x, float p_y) override { this->set_position(Vector2(p_x, p_y)); }
+	void change_position_vector(const Vector2 &p_position) override { this->set_position(p_position); }
+	Vector2 get_element_position() const override { return this->get_position(); }
+	void change_element_size(float p_width, float p_height) override { this->set_size(Vector2(p_width, p_height)); }
+	void change_element_size_vector(const Vector2 &p_size) override { this->set_size(p_size); }
+	Vector2 get_element_size() const override { return this->get_size(); }
+	Rect2 get_element_rect() const override { return Rect2(Vector2(), this->get_size()); }
+	void set_element_enabled(bool p_enabled) override { element.set_enabled(p_enabled); }
+	bool is_element_enabled() const override { return element.is_enabled(); }
+	void enable_element() override { element.set_enabled(true); }
+	void disable_element() override { element.set_enabled(false); }
+	void set_input_handling_disabled(bool p_disabled) override { element.set_input_disabled(p_disabled); }
+	bool get_input_handling_disabled() const override { return element.is_input_disabled(); }
+	void enable_input_handling() override { element.set_input_disabled(false); }
+	void disable_input_handling() override { element.set_input_disabled(true); }
+	bool is_element_hovered() const override { return element.is_mouse_in(); }
+	void change_movements(int p_movements) override { element.set_movements(p_movements); }
+	int get_movement_mode() const override { return element.get_movements(); }
+	void change_text(const String &p_text, bool p_update_position = true) override { element.set_text(p_text); }
+	String get_element_text() const override { return element.get_text(); }
+	void set_element_text(const String &p_text) override { element.set_text(p_text); }
+	void change_font(const Ref<Font> &p_font) override { element.set_font(p_font); }
+	Ref<Font> get_element_font() const override { return element.get_font(); }
+	void change_font_size(int p_size) override { element.set_font_size(p_size); }
+	int get_element_font_size() const override { return element.get_font_size(); }
+	void change_text_alignment(int p_alignment) override { element.set_text_alignment(p_alignment); }
+	int get_element_text_alignment() const override { return element.get_text_alignment(); }
+	void change_outline_size(int p_size) override { element.set_outline_size(p_size); }
+	void change_back_color(const Color &p_color) override { element.set_back_color(p_color); }
+	Color get_element_back_color() const override { return element.get_back_color(); }
+	void change_fore_color(const Color &p_color) override { element.set_fore_color(p_color); }
+	Color get_element_fore_color() const override { return element.get_fore_color(); }
+	void change_image(const Ref<Texture2D> &p_image) override { element.set_image(p_image); }
+	Ref<Texture2D> get_element_image() const override { return element.get_image(); }
+	void set_element_background(const Ref<Texture2D> &p_image) override { element.set_background(p_image); }
+	Ref<Texture2D> get_element_background() const override { return element.get_background(); }
+	void change_image_modulate(const Color &p_color) override { element.set_image_modulate(p_color); }
+	Color get_element_image_modulate() const override { return element.get_image_modulate(); }
+	void change_bg_position_vector(const Vector2 &p_position) override { element.set_bg_position(p_position); }
+	Vector2 get_element_bg_position() const override { return element.get_bg_position(); }
+	void move_element_to(const Vector2 &p_position, double p_duration = 0.9, double p_delay = 0.4) override { element.move_to(p_position, p_duration, p_delay, callable_mp(this, &ElementControl::_moving_finished)); }
+	void fade_element_to(double p_alpha, double p_duration = 0.9, double p_delay = 0.0) override { element.fade_to(p_alpha, p_duration, p_delay, callable_mp(this, &ElementControl::_fading_finished)); }
+	bool get_is_element_moving() const override { return element.is_moving(); }
+	bool get_is_element_fading() const override { return element.is_fading(); }
+	void stop_moving_element() override { element.stop_moving(); }
+	void stop_fading_element() override { element.stop_fading(); }
+	void enable_mouse_enter_effect() override { element.set_hover_effect(true); }
+	void disable_mouse_enter_effect() override { element.set_hover_effect(false); }
+	void center_to_screen() override { element.center_to_screen(); }
+	void change_position_mid_width(float p_y) override { element.change_position_mid_width(p_y); }
+	float get_element_width() const override { return this->get_size().x; }
+	float get_element_height() const override { return this->get_size().y; }
+	float get_element_bottom() const override { return this->get_position().y + this->get_size().y; }
+	Vector2 get_element_bottom_left() const override { return this->get_position() + Vector2(0, this->get_size().y); }
+	Vector2 viewport_to_local_position(const Vector2 &p_position) const override { return this->get_global_transform_with_canvas().affine_inverse().xform(p_position); }
+	bool is_position_acceptable(const Vector2 &p_position) const override { return this->has_point(viewport_to_local_position(p_position)); }
+	void update() override { this->queue_redraw(); }
 };

@@ -12,27 +12,42 @@ void WGodotCppEmitter::initialize_native_methods() {
 	for (const auto &entry : native_cpp_methods) {
 		native_methods.insert(String(entry.owner) + "::" + entry.name, entry.method);
 	}
+	// These binding wrappers only forward to the public API.
+	native_methods.insert("Object::get", "get");
+	native_methods.insert("Object::set", "set");
 }
 
-String WGodotCppEmitter::native_adapter(const StringName &p_owner, const StringName &p_name, bool p_static, bool p_vararg) {
-	const String key = String(p_owner) + "::" + String(p_name);
-	const String name = "NativeCall_" + key.sha256_text().substr(0, 16);
-	const String header = name + ".h";
-	class_call_headers.insert(header);
-	if (files.has(header)) {
-		return name;
+String WGodotCppEmitter::native_argument_type(const PropertyInfo &p_info, const Parser::Node *p_origin) {
+	if (p_info.usage & (PROPERTY_USAGE_CLASS_IS_ENUM | PROPERTY_USAGE_CLASS_IS_BITFIELD)) {
+		String enum_type = p_info.class_name;
+		const int separator = enum_type.find(".");
+		if (separator >= 0) {
+			Parser::DataType owner;
+			owner.kind = Parser::DataType::NATIVE;
+			owner.native_type = enum_type.substr(0, separator);
+			enum_type = class_name(owner, p_origin) + "::" + enum_type.substr(separator + 1);
+		}
+		return p_info.usage & PROPERTY_USAGE_CLASS_IS_BITFIELD ? "BitField<" + enum_type + ">" : enum_type;
 	}
-	const String *method = p_vararg ? nullptr : native_methods.getptr(key);
-	String code = "// wgodot-changes::file\n// Generated native call adapter for " + key + ".\n#pragma once\n#include \"modules/wgodot/native/wgodot_native_calls.h\"\n\nnamespace WGodotGame {\nstruct " + name + " {\n";
-	if (method) {
-		const String invoke = String("WGodotNative::") + (p_static ? "invoke_static" : "invoke_member") + "<Result>(&Instance::" + *method + (p_static ? "" : ", p_self") + ", std::forward<Args>(p_args)...)";
-		code += "\ttemplate <class Result, class Instance, class... Args>\n\tstatic auto invoke(int, Instance *p_self, Args &&...p_args) -> decltype(" + invoke + ") {\n\t\treturn " + invoke + ";\n\t}\n";
+	if (p_info.type == Variant::OBJECT) {
+		Parser::DataType object;
+		object.kind = Parser::DataType::NATIVE;
+		object.native_type = p_info.class_name.is_empty() ? StringName("Object") : p_info.class_name;
+		const String name = class_name(object, p_origin);
+		return ClassDB::is_parent_class(object.native_type, "RefCounted") ? "Ref<" + name + ">" : name + " *";
 	}
-	// Some bindings expose private wrappers or overloaded methods. Let C++ overload
-	// resolution choose the existing native MethodBind when direct access is invalid.
-	code += "\ttemplate <class Result, class Instance, class... Args>\n\tstatic Result invoke(long, Instance *p_self, Args &&...p_args) {\n\t\tstatic const MethodBind *method = ClassDB::get_method(SNAME(" + quoted(p_owner) + "), SNAME(" + quoted(p_name) + "));\n\t\treturn WGodotNative::invoke_bind<Result>(method, " + (p_static ? "nullptr" : "p_self") + ", std::forward<Args>(p_args)...);\n\t}\n};\n} // namespace WGodotGame\n";
-	files.insert(header, code);
-	return name;
+	switch (p_info.type) {
+		case Variant::NIL:
+			return "Variant";
+		case Variant::BOOL:
+			return "bool";
+		case Variant::INT:
+			return "int64_t";
+		case Variant::FLOAT:
+			return "double";
+		default:
+			return Variant::get_type_name(p_info.type);
+	}
 }
 
 String WGodotCppEmitter::native_call(const Parser::CallNode *p_call, const Parser::ExpressionNode *p_base, const Parser::DataType &p_base_type) {
@@ -110,13 +125,39 @@ String WGodotCppEmitter::native_invoke(const MethodBind *p_method, const String 
 		}
 		p_arguments.push_back(literal(p_method->get_default_argument(i), p_origin));
 	}
-	const String adapter = native_adapter(p_method->get_instance_class(), p_method->get_name(), p_method->is_static(), p_method->is_vararg());
-	String result = adapter + "::invoke<" + result_type + ">(0, " + p_receiver;
-	for (const String &argument : p_arguments) {
-		result += ", " + argument;
+	const String key = String(p_method->get_instance_class()) + "::" + String(p_method->get_name());
+	const String *mapped_method = native_methods.getptr(key);
+	const String method = mapped_method ? *mapped_method : String(p_method->get_name());
+	if (p_method->is_vararg()) {
+		unsupported(p_origin, "direct native call " + key + "; no fixed C++ method mapping is available");
+		return String();
 	}
-	result += ")";
-	return array_iteration ? array_iteration_result(result, p_origin) : result;
+	Parser::DataType owner_type;
+	owner_type.kind = Parser::DataType::NATIVE;
+	owner_type.native_type = p_method->get_instance_class();
+	const String owner = class_name(owner_type, p_origin);
+	for (int i = 0; i < p_arguments.size(); i++) {
+		p_arguments.write[i] = "WGodotNative::convert<" + native_argument_type(p_method->get_argument_info(i), p_origin) + ">(" + p_arguments[i] + ")";
+	}
+	String call = (p_method->is_static() ? owner + "::" : "instance->") + method + "(" + String(", ").join(p_arguments) + ")";
+	if (array_iteration) {
+		call = array_iteration_result(call, p_origin);
+	} else if (result_type != "void") {
+		call = "WGodotNative::convert<" + result_type + ">(" + call + ")";
+	} else {
+		call = "(void)(" + call + ")";
+	}
+	if (p_method->is_static()) {
+		return call;
+	}
+	// Resolve the pointer after the arguments. Keep the owning receiver in the
+	// caller's scope, and use the analyzer-resolved owner for narrowed accesses.
+	const String returned_type = array_iteration ? "WGodotNative::ArrayRange<" + array_iteration_element(static_cast<const Parser::ExpressionNode *>(p_origin)) + ">" : result_type;
+	String body = "([&]() -> " + returned_type + " { auto *instance = static_cast<" + owner + " *>(" + p_receiver + "); ";
+	// An ArrayRange needs an empty array rather than a default constructor.
+	const String empty_result = array_iteration ? returned_type + "(Array())" : returned_type + "()";
+	body += "ERR_FAIL_NULL_V(instance, (" + empty_result + ")); return " + call + "; }())";
+	return body;
 }
 
 String WGodotCppEmitter::native_property(const Parser::ExpressionNode *p_base, const StringName &p_name, const Parser::ExpressionNode *p_origin, const Parser::ExpressionNode *p_value) {

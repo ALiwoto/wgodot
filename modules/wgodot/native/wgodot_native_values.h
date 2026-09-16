@@ -39,18 +39,6 @@ Result builtin_call(Base &&p_base, const StringName &p_method, const Args &...p_
 	}
 }
 
-template <class Result, class... Args>
-Result interface_call(Object *p_self, const StringName &p_method, const Args &...p_args) {
-	ERR_FAIL_NULL_V(p_self, Result());
-	Arguments<sizeof...(Args)> arguments(p_args...);
-	Callable::CallError error;
-	Variant result = p_self->callp(p_method, arguments.data(), arguments.size(), error);
-	ERR_FAIL_COND_V_MSG(error.error != Callable::CallError::CALL_OK, Result(), Variant::get_call_error_text(p_self, p_method, arguments.data(), arguments.size(), error));
-	if constexpr (!std::is_void_v<Result>) {
-		return convert<Result>(result);
-	}
-}
-
 template <class Result, Variant::Type Type, class... Args>
 Result construct(const Args &...p_args) {
 	Arguments<sizeof...(Args)> arguments(p_args...);

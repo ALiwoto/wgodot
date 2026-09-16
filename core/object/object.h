@@ -641,6 +641,12 @@ public:
 	void detach_from_objectdb();
 	_FORCE_INLINE_ ObjectID get_instance_id() const { return _instance_id; }
 
+	// wgodot-changes::begin
+#ifndef TOOLS_ENABLED
+	virtual void *wgodot_get_native_interface(const void *p_type) { return nullptr; }
+#endif
+	// wgodot-changes::end
+
 	template <typename T, typename O>
 	static T *cast_to(O *p_object) {
 		// This is like dynamic_cast, but faster.

@@ -144,12 +144,14 @@ Result copy_vector(const Vector<T> &p_source) {
 template <class Result, class Owner, class Return, class... Params, class Instance, class... Args,
 		std::enable_if_t<sizeof...(Params) == sizeof...(Args), int> = 0>
 Result invoke_member(Return (Owner::*p_method)(Params...), Instance *p_self, Args &&...p_args) {
+	ERR_FAIL_NULL_V(p_self, Result());
 	return invoke_result<Result>([&]() -> decltype(auto) { return (p_self->*p_method)(convert<Params>(std::forward<Args>(p_args))...); });
 }
 
 template <class Result, class Owner, class Return, class... Params, class Instance, class... Args,
 		std::enable_if_t<sizeof...(Params) == sizeof...(Args), int> = 0>
 Result invoke_member(Return (Owner::*p_method)(Params...) const, Instance *p_self, Args &&...p_args) {
+	ERR_FAIL_NULL_V(p_self, Result());
 	return invoke_result<Result>([&]() -> decltype(auto) { return (p_self->*p_method)(convert<Params>(std::forward<Args>(p_args))...); });
 }
 
@@ -157,22 +159,6 @@ template <class Result, class Return, class... Params, class... Args,
 		std::enable_if_t<sizeof...(Params) == sizeof...(Args), int> = 0>
 Result invoke_static(Return (*p_method)(Params...), Args &&...p_args) {
 	return invoke_result<Result>([&]() -> decltype(auto) { return p_method(convert<Params>(std::forward<Args>(p_args))...); });
-}
-
-template <class Result, class... Args>
-Result invoke_bind(const MethodBind *p_method, Object *p_self, const Args &...p_args) {
-	ERR_FAIL_NULL_V(p_method, Result());
-	std::array<Variant, sizeof...(Args)> arguments{ Variant(p_args)... };
-	std::array<const Variant *, sizeof...(Args)> pointers{};
-	for (size_t i = 0; i < arguments.size(); i++) {
-		pointers[i] = &arguments[i];
-	}
-	Callable::CallError error;
-	Variant result = p_method->call(p_self, pointers.data(), int(arguments.size()), error);
-	ERR_FAIL_COND_V_MSG(error.error != Callable::CallError::CALL_OK, Result(), "Native game call failed: " + String(p_method->get_instance_class()) + "." + String(p_method->get_name()));
-	if constexpr (!std::is_void_v<Result>) {
-		return convert<Result>(result);
-	}
 }
 
 } // namespace WGodotNative

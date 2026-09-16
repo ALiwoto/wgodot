@@ -49,13 +49,13 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 	current_class = &p_class;
 	current_function = nullptr;
 	function_failed = false;
+	class_dependencies.clear();
+	class_native_headers.clear();
+	class_call_headers.clear();
 	if (p_class.node->wgodot_is_interface) {
 		emit_interface(p_class);
 		return;
 	}
-	class_dependencies.clear();
-	class_native_headers.clear();
-	class_call_headers.clear();
 	class_resource_types.clear();
 	class_lambdas.clear();
 	class_lambda_declarations.clear();
@@ -68,15 +68,23 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 	if (node->is_abstract) {
 		unsupported(node, "abstract class registration");
 	}
+	String interface_bases;
+	String interface_declarations;
+	String interface_definitions;
+	if (!is_static) {
+		emit_interface_inheritance(p_class, interface_bases, interface_declarations, interface_definitions);
+	}
 	String declaration = "class " + name;
 	String definitions;
 	String fields;
-	String bindings;
+	String property_reads;
+	String property_writes;
+	String property_list;
 	String initialization;
 	String static_fields;
 	String static_initialization;
 	if (!is_static) {
-		declaration += " : public " + parent + " {\n\tGDCLASS(" + name + ", " + parent + ");\n\nprotected:\n\tstatic void _bind_methods();\n";
+		declaration += " : public " + parent + interface_bases + " {\n\tGDCLASS(" + name + ", " + parent + ");\n\nprotected:\n\tstatic void _bind_methods();\n";
 		declaration += "\tvirtual void initialize_fields()" + String(game_parent ? " override" : "") + ";\n";
 		declaration += "\tvirtual void initialize_default()" + String(game_parent ? " override" : "") + ";\n";
 		if (!game_parent) {
@@ -93,6 +101,8 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 	} else {
 		declaration += " {\npublic:\n";
 	}
+	declaration += interface_declarations;
+	definitions += interface_definitions;
 	declaration += "\tstatic void prepare_game_class();\n";
 	for (const auto &entry : node->members) {
 		function_failed = false;
@@ -104,12 +114,10 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 				String signature;
 				definitions += function(method, signature);
 				declaration += signature;
-				bool inherits_binding = false;
 				if (!method->is_static && method_name != "_init" && game_parent) {
 					const auto *owner = member_owner(node->base_type.class_type, method_name);
 					if (owner && owner->node->get_member(method_name).type == Parser::ClassNode::Member::FUNCTION) {
 						const auto *inherited = owner->node->get_member(method_name).function;
-						inherits_binding = true;
 						const String method_result = function_result(method);
 						const String inherited_result = function_result(inherited);
 						bool same_signature = method->parameters.size() == inherited->parameters.size() && method_result == inherited_result;
@@ -125,19 +133,6 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 							unsupported(method, "method override with different signature or defaults: " + method_name);
 						}
 					}
-				}
-				// The inherited MethodBind calls a virtual C++ method, so it already
-				// dispatches to this implementation and must not be registered twice.
-				if (!is_static && !method->is_static && method_name != "_init" && !inherits_binding && !method->is_coroutine && !has_native_value_signature(method)) {
-					String arguments;
-					String defaults;
-					for (const auto *parameter : method->parameters) {
-						arguments += ", " + quoted(parameter->identifier->name);
-						if (parameter->initializer) {
-							defaults += ", DEFVAL(" + expression(parameter->initializer) + ")";
-						}
-					}
-					bindings += "\tClassDB::bind_method(D_METHOD(" + quoted(method_name) + arguments + "), &" + name + "::m_" + symbol(method_name) + defaults + ");\n";
 				}
 				break;
 			}
@@ -177,14 +172,10 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 				definitions += field_type + " " + name + "::" + getter + "()" + getter_const + " { return " + (property_getter.is_empty() ? storage : "m_" + symbol(property_getter) + "()") + "; }\n";
 				definitions += "void " + name + "::" + setter + "(" + field_type + " p_value) { " + (property_setter.is_empty() ? storage + " = p_value" : "m_" + symbol(property_setter) + "(p_value)") + "; }\n";
 				if (!is_static && !native_only(datatype)) {
-					const String bind_getter = variable->is_static ? "instance_" + getter : getter;
-					const String bind_setter = variable->is_static ? "instance_" + setter : setter;
-					if (variable->is_static) {
-						declaration += "\t" + field_type + " " + bind_getter + "() { return " + getter + "(); }\n\tvoid " + bind_setter + "(" + field_type + " p_value) { " + setter + "(p_value); }\n";
-					}
-					bindings += "\tClassDB::bind_method(D_METHOD(" + quoted(bind_getter) + "), &" + name + "::" + bind_getter + ");\n";
-					bindings += "\tClassDB::bind_method(D_METHOD(" + quoted(bind_setter) + ", \"value\"), &" + name + "::" + bind_setter + ");\n";
-					bindings += "\t{\n\t\tPropertyInfo info = GetTypeInfo<" + field_type + ">::get_class_info();\n\t\tinfo.name = " + quoted(variable->identifier->name) + ";\n\t\tinfo.usage = " + String(variable->is_static ? "PROPERTY_USAGE_NONE" : "PROPERTY_USAGE_STORAGE") + ";\n\t\tADD_PROPERTY(info, " + quoted(bind_setter) + ", " + quoted(bind_getter) + ");\n\t}\n";
+					const String property = quoted(variable->identifier->name);
+					property_reads += "\tif (p_name == " + property + ") { r_value = const_cast<" + name + " *>(this)->" + getter + "(); return true; }\n";
+					property_writes += "\tif (p_name == " + property + ") { " + setter + "(WGodotNative::convert<" + field_type + ">(p_value)); return true; }\n";
+					property_list += "\t{ PropertyInfo info = GetTypeInfo<" + field_type + ">::get_class_info(); info.name = " + property + "; info.usage = " + String(variable->is_static ? "PROPERTY_USAGE_NONE" : "PROPERTY_USAGE_STORAGE") + "; p_list->push_back(info); }\n";
 				}
 				if (variable->property == Parser::VariableNode::PROP_INLINE) {
 					for (const auto *accessor : { variable->getter, variable->setter }) {
@@ -223,7 +214,13 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 	}
 	if (!is_static) {
 		emit_virtuals(p_class, declaration, definitions);
-		definitions += "void " + name + "::_bind_methods() {\n" + bindings + "}\n\n";
+		definitions += "void " + name + "::_bind_methods() {}\n\n";
+		if (!property_reads.is_empty()) {
+			declaration += "protected:\n\tbool _get(const StringName &p_name, Variant &r_value) const;\n\tbool _set(const StringName &p_name, const Variant &p_value);\n\tvoid _get_property_list(List<PropertyInfo> *p_list) const;\npublic:\n";
+			definitions += "bool " + name + "::_get(const StringName &p_name, Variant &r_value) const {\n" + property_reads + "\treturn false;\n}\n\n";
+			definitions += "bool " + name + "::_set(const StringName &p_name, const Variant &p_value) {\n" + property_writes + "\treturn false;\n}\n\n";
+			definitions += "void " + name + "::_get_property_list(List<PropertyInfo> *p_list) const {\n" + property_list + "}\n\n";
+		}
 		definitions += "void " + name + "::initialize_fields() {\n\tprepare_game_class();\n" + initialization + "}\n\n";
 		const auto *owner = member_owner(node, "_init");
 		const auto *initializer = owner ? owner->node->get_member("_init").function : nullptr;

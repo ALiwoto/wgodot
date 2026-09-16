@@ -71,7 +71,7 @@ class WGodotCppEmitter {
 	bool validate_builtin_arguments(Variant::Type p_type, const StringName &p_method, const GDScriptParser::Node *p_origin);
 	bool native_override(const MethodBind *p_method, const String &p_receiver, const Vector<String> &p_arguments, const String &p_result, const GDScriptParser::Node *p_origin, String &r_code);
 	String native_call(const GDScriptParser::CallNode *p_call, const GDScriptParser::ExpressionNode *p_base, const GDScriptParser::DataType &p_base_type);
-	String native_adapter(const StringName &p_owner, const StringName &p_name, bool p_static, bool p_vararg);
+	String native_argument_type(const PropertyInfo &p_info, const GDScriptParser::Node *p_origin);
 	String native_invoke(const MethodBind *p_method, const String &p_receiver, Vector<String> p_arguments, const String &p_result, const GDScriptParser::Node *p_origin);
 	String native_property(const GDScriptParser::ExpressionNode *p_base, const StringName &p_name, const GDScriptParser::ExpressionNode *p_origin, const GDScriptParser::ExpressionNode *p_value = nullptr);
 	String property_access(const GDScriptParser::DataType &p_base_type, const StringName &p_name, const GDScriptParser::ExpressionNode *p_origin, const String &p_receiver, const String &p_value = String());
@@ -90,6 +90,9 @@ class WGodotCppEmitter {
 	String lambda(const GDScriptParser::LambdaNode *p_lambda);
 	void emit_class(const WGodotCppProject::Class &p_class);
 	void emit_interface(const WGodotCppProject::Class &p_class);
+	String interface_cpp_type(const GDScriptParser::ClassNode *p_interface);
+	StringName interface_native_metadata(const GDScriptParser::ClassNode *p_interface) const;
+	void emit_interface_inheritance(const WGodotCppProject::Class &p_class, String &r_bases, String &r_declaration, String &r_definitions);
 	String register_interfaces();
 	void emit_virtuals(const WGodotCppProject::Class &p_class, String &r_declaration, String &r_definitions);
 	void register_class(const WGodotCppProject::Class &p_class, HashSet<String> &r_registered, String &r_code);

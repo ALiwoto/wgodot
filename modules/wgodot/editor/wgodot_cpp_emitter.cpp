@@ -243,12 +243,16 @@ String WGodotCppEmitter::member(const Parser::ExpressionNode *p_base, const Stri
 	class_dependencies.insert(owner->cpp_name);
 	const auto entry = owner->node->get_member(p_name);
 	if (entry.type == Parser::ClassNode::Member::SIGNAL) {
+		if (!interface_native_metadata(owner->node).is_empty()) {
+			return signature_type(p_origin, true) + "(Signal(WGodotNative::object_pointer(" + expression(p_base) + "), SNAME(" + quoted(p_name) + ")))";
+		}
 		return "(" + (p_base ? expression(p_base) : "this") + ")->s_" + symbol(p_name) + ".signal()";
 	}
 	if (entry.type == Parser::ClassNode::Member::FUNCTION) {
 		class_call_headers.insert("modules/wgodot/native/wgodot_native_callback.h");
-		String value = "WGodotNative::method_callable(";
-		if (!entry.function->is_static) {
+		const bool interface = owner->node->wgodot_is_interface;
+		String value = interface ? "WGodotNative::interface_callable<" + signature_type(p_origin) + ">(" + expression(p_base) + ", " : "WGodotNative::method_callable(";
+		if (!entry.function->is_static && !interface) {
 			value += "WGodotNative::object_pointer(" + (p_base ? expression(p_base) : "this") + "), ";
 		}
 		const auto *slot_owner = owner;
@@ -260,7 +264,7 @@ String WGodotCppEmitter::member(const Parser::ExpressionNode *p_base, const Stri
 			slot_owner = parent;
 		}
 		const String slot = (slot_owner->cpp_name + "::" + String(p_name)).sha256_text().substr(0, 16);
-		value += "&" + owner->cpp_name + "::m_" + symbol(p_name) + ", UINT64_C(0x" + slot + "))";
+		value += "&" + (interface ? interface_cpp_type(owner->node) + "::" + String(p_name) : owner->cpp_name + "::m_" + symbol(p_name)) + ", UINT64_C(0x" + slot + "))";
 		Vector<String> defaults;
 		for (const auto *parameter : entry.function->parameters) {
 			if (parameter->initializer) {

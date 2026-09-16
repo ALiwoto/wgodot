@@ -152,7 +152,14 @@ private:
 		return memnew(T);
 	}
 
+	// wgodot-changes::begin
+public:
+	// Preserve get_open_error() when native exports call the script API directly.
+	// wgodot-changes::end
 	static Ref<FileAccess> _open(const String &p_path, ModeFlags p_mode_flags);
+	// wgodot-changes::begin
+private:
+	// wgodot-changes::end
 
 	bool _is_temp_file = false;
 	bool _temp_keep_after_use = false;
