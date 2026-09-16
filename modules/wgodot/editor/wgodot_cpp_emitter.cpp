@@ -17,7 +17,7 @@
 using Parser = GDScriptParser;
 using namespace WGodotCppNames;
 
-WGodotCppEmitter::WGodotCppEmitter(const WGodotCppProject &p_project) : project(p_project) {
+WGodotCppEmitter::WGodotCppEmitter(const WGodotCppProject &p_project) : project(p_project), signatures(p_project) {
 	for (const auto &entry : native_cpp_headers) {
 		native_headers.insert(entry.name, entry.header);
 		native_cpp_names.insert(entry.name, entry.cpp_type);
@@ -33,6 +33,12 @@ void WGodotCppEmitter::unsupported(const Parser::Node *p_node, const String &p_f
 }
 
 String WGodotCppEmitter::type(const Parser::DataType &p_type, const Parser::Node *p_origin) {
+	if (p_type.is_variant() && p_origin->is_expression()) {
+		const auto resolved = expression_type(static_cast<const Parser::ExpressionNode *>(p_origin));
+		if (!resolved.is_variant()) {
+			return type(resolved, p_origin);
+		}
+	}
 	if (p_type.kind == Parser::DataType::BUILTIN && p_type.builtin_type == Variant::ARRAY && !p_type.has_container_element_type(0)) {
 		if (p_origin->type == Parser::Node::VARIABLE) {
 			const auto resolved = variable_type(static_cast<const Parser::VariableNode *>(p_origin));
@@ -46,7 +52,16 @@ String WGodotCppEmitter::type(const Parser::DataType &p_type, const Parser::Node
 			}
 		}
 	}
-	if (p_type.is_variant() || p_type.is_coroutine) {
+	if (p_type.is_coroutine) {
+		auto result = p_type;
+		result.is_coroutine = false;
+		class_native_headers.insert("modules/wgodot/native/wgodot_native_task.h");
+		return "WGodotNative::Task<" + type(result, p_origin) + ">";
+	}
+	if (p_type.kind == Parser::DataType::BUILTIN && (p_type.builtin_type == Variant::CALLABLE || p_type.builtin_type == Variant::SIGNAL)) {
+		return signature_type(p_origin, p_type.builtin_type == Variant::SIGNAL);
+	}
+	if (p_type.is_variant()) {
 		return "Variant";
 	}
 	if (p_type.kind == Parser::DataType::ENUM) {
@@ -74,7 +89,7 @@ String WGodotCppEmitter::type(const Parser::DataType &p_type, const Parser::Node
 			Vector<String> elements;
 			for (int i = 0; i < 2; i++) {
 				const auto &element = p_type.get_container_element_type(i);
-				if (is_warray(element)) {
+				if (native_only(element)) {
 					unsupported(p_origin, "WArray stored inside a Godot Dictionary; this requires an explicit container boundary");
 				}
 				elements.push_back(element.kind == Parser::DataType::CLASS || element.kind == Parser::DataType::NATIVE ? class_name(element, p_origin) : type(element, p_origin));
@@ -136,12 +151,12 @@ String WGodotCppEmitter::class_name(const Parser::DataType &p_type, const Parser
 	}
 }
 
-String WGodotCppEmitter::converted(const Parser::ExpressionNode *p_expression, const Parser::DataType &p_target) {
-	const String target = type(p_target, p_expression);
+String WGodotCppEmitter::converted(const Parser::ExpressionNode *p_expression, const Parser::DataType &p_target, const Parser::Node *p_target_origin) {
+	const String target = type(p_target, p_target_origin ? p_target_origin : p_expression);
 	if (p_expression->type == Parser::Node::ARRAY && is_warray(p_target)) {
 		return array_literal(static_cast<const Parser::ArrayNode *>(p_expression), p_target);
 	}
-	if (!validate_array_conversion(p_expression, p_target)) {
+	if (!validate_array_conversion(p_expression, p_target, p_target_origin)) {
 		return String();
 	}
 	if (p_expression->is_constant && p_expression->reduced && p_expression->reduced_value.get_type() == Variant::NIL) {
@@ -149,6 +164,17 @@ String WGodotCppEmitter::converted(const Parser::ExpressionNode *p_expression, c
 			return target + "()";
 		}
 		return "Variant()";
+	}
+	if (p_target.kind == Parser::DataType::BUILTIN && p_target.builtin_type == Variant::CALLABLE) {
+		if (p_expression->is_constant && p_expression->reduced && p_expression->reduced_value.get_type() == Variant::CALLABLE && Callable(p_expression->reduced_value).is_null()) {
+			return target + "()";
+		}
+		if (const auto *signature = signatures.get(p_target_origin ? p_target_origin : p_expression)) {
+			if (!validate_callback(p_expression, *signature)) {
+				return String();
+			}
+		}
+		return target + "::adapt(" + expression(p_expression) + ")";
 	}
 	const String value = expression(p_expression);
 	if (p_target.is_variant()) {
@@ -172,6 +198,9 @@ String WGodotCppEmitter::truth(const Parser::ExpressionNode *p_expression) {
 	if (is_warray(datatype)) {
 		return "!(" + value + ").is_empty()";
 	}
+	if (datatype.kind == Parser::DataType::BUILTIN && (datatype.builtin_type == Variant::CALLABLE || datatype.builtin_type == Variant::SIGNAL)) {
+		return "!(" + value + ").is_null()";
+	}
 	if (datatype.kind == Parser::DataType::CLASS || datatype.kind == Parser::DataType::NATIVE) {
 		return ClassDB::is_parent_class(native_base(datatype), "RefCounted") ? "(" + value + ").is_valid()" : "Variant(" + value + ").booleanize()";
 	}
@@ -191,14 +220,14 @@ const WGodotCppProject::Class *WGodotCppEmitter::member_owner(const Parser::Clas
 String WGodotCppEmitter::member(const Parser::ExpressionNode *p_base, const StringName &p_name, const Parser::ExpressionNode *p_origin) {
 	const auto datatype = p_base ? expression_type(p_base) : current_class->node->self_type;
 	if (datatype.kind == Parser::DataType::BUILTIN && Variant::has_builtin_method(datatype.builtin_type, p_name)) {
-		if (is_warray(datatype)) {
-			unsupported(p_origin, "WArray method references through Callable; call the typed method directly");
+		if (native_only(datatype)) {
+			unsupported(p_origin, "native container/callback/signal method references; use an inline lambda to call the typed method");
 			return String();
 		}
 		if (!validate_builtin_arguments(datatype.builtin_type, p_name, p_origin)) {
 			return String();
 		}
-		return "Callable::create(" + expression(p_base) + ", SNAME(" + quoted(p_name) + "))";
+		return signature_type(p_origin) + "::from_callable(Callable::create(" + expression(p_base) + ", SNAME(" + quoted(p_name) + ")))";
 	}
 	if (datatype.kind == Parser::DataType::BUILTIN && Variant::has_member(datatype.builtin_type, p_name)) {
 		class_call_headers.insert("modules/wgodot/native/wgodot_native_values.h");
@@ -214,26 +243,34 @@ String WGodotCppEmitter::member(const Parser::ExpressionNode *p_base, const Stri
 	class_dependencies.insert(owner->cpp_name);
 	const auto entry = owner->node->get_member(p_name);
 	if (entry.type == Parser::ClassNode::Member::SIGNAL) {
-		class_call_headers.insert("modules/wgodot/native/wgodot_native_calls.h");
-		return "Signal(WGodotNative::object_pointer(" + (p_base ? expression(p_base) : "this") + "), SNAME(" + quoted(p_name) + "))";
+		return "(" + (p_base ? expression(p_base) : "this") + ")->s_" + symbol(p_name) + ".signal()";
 	}
 	if (entry.type == Parser::ClassNode::Member::FUNCTION) {
-		if (has_warray_signature(entry.function)) {
-			unsupported(p_origin, "method reference " + String(p_name) + " with a WArray signature through Callable");
-			return String();
+		class_call_headers.insert("modules/wgodot/native/wgodot_native_callback.h");
+		String value = "WGodotNative::method_callable(";
+		if (!entry.function->is_static) {
+			value += "WGodotNative::object_pointer(" + (p_base ? expression(p_base) : "this") + "), ";
 		}
-		if (entry.function->is_static) {
-			class_call_headers.insert("modules/wgodot/native/wgodot_native_callable.h");
-			Vector<String> defaults;
-			for (const auto *parameter : entry.function->parameters) {
-				if (parameter->initializer) {
-					defaults.push_back(expression(parameter->initializer));
-				}
+		const auto *slot_owner = owner;
+		while (!entry.function->is_static && slot_owner->node->base_type.kind == Parser::DataType::CLASS) {
+			const auto *parent = member_owner(slot_owner->node->base_type.class_type, p_name);
+			if (!parent || parent->node->get_member(p_name).type != Parser::ClassNode::Member::FUNCTION) {
+				break;
 			}
-			return "WGodotNative::static_callable(&" + owner->cpp_name + "::m_" + symbol(p_name) + ", SNAME(" + quoted(p_name) + "), {" + String(", ").join(defaults) + "})";
+			slot_owner = parent;
 		}
-		class_call_headers.insert("modules/wgodot/native/wgodot_native_calls.h");
-		return "Callable(WGodotNative::object_pointer(" + (p_base ? expression(p_base) : "this") + "), SNAME(" + quoted(p_name) + "))";
+		const String slot = (slot_owner->cpp_name + "::" + String(p_name)).sha256_text().substr(0, 16);
+		value += "&" + owner->cpp_name + "::m_" + symbol(p_name) + ", UINT64_C(0x" + slot + "))";
+		Vector<String> defaults;
+		for (const auto *parameter : entry.function->parameters) {
+			if (parameter->initializer) {
+				defaults.push_back(converted(parameter->initializer, parameter->type_constraint, parameter));
+			}
+		}
+		if (!defaults.is_empty()) {
+			value += ".with_defaults(std::make_tuple(" + String(", ").join(defaults) + "))";
+		}
+		return value;
 	}
 	if (entry.type == Parser::ClassNode::Member::CONSTANT) {
 		return expression(entry.constant->initializer);
@@ -299,13 +336,13 @@ String WGodotCppEmitter::literal(const Variant &p_value, const Parser::Node *p_o
 		}
 		case Variant::CALLABLE:
 			if (Callable(p_value).is_null()) {
-				return "Callable()";
+				return signature_type(p_origin) + "()";
 			}
 			unsupported(p_origin, "nonempty callable constant");
 			return String();
 		case Variant::SIGNAL:
 			if (Signal(p_value).is_null()) {
-				return "Signal()";
+				return signature_type(p_origin, true) + "()";
 			}
 			unsupported(p_origin, "nonempty signal constant");
 			return String();
@@ -575,6 +612,7 @@ Error WGodotCppEmitter::generate() {
 	files.clear();
 	diagnostics.clear();
 	used_native_headers.clear();
+	signatures.analyze();
 	for (const WGodotCppProject::Class &entry : project.get_classes()) {
 		emit_class(entry);
 	}
@@ -582,11 +620,11 @@ Error WGodotCppEmitter::generate() {
 		return ERR_UNAVAILABLE;
 	}
 	files.insert("game_types.h", "// wgodot-changes::file\n#pragma once\n#include \"modules/wgodot/native/wgodot_native_support.h\"\n#include \"core/object/ref_counted.h\"\n#include \"core/variant/variant_caster.h\"\n#include \"core/variant/typed_array.h\"\n#include \"core/variant/typed_dictionary.h\"\n");
-	files.insert("SCsub", "# wgodot-changes::file\nImport('env')\nImport('env_modules')\nenv_game = env_modules.Clone()\nenv_game.add_source_files(env.modules_sources, '*.cpp')\nenv_game.add_source_files(env.modules_sources, [File('#modules/wgodot/native/wgodot_native_task.cpp')])\n");
+	files.insert("SCsub", "# wgodot-changes::file\nImport('env')\nImport('env_modules')\nenv_game = env_modules.Clone()\nenv_game.add_source_files(env.modules_sources, '*.cpp')\nenv_game.add_source_files(env.modules_sources, [File('#modules/wgodot/native/wgodot_native_task.cpp'), File('#modules/wgodot/native/wgodot_native_connections.cpp')])\n");
 	files.insert("config.py", "# wgodot-changes::file\ndef can_build(env, platform):\n    return not env.editor_build\n\ndef configure(env):\n    env.AppendUnique(CPPDEFINES=['WGODOT_NATIVE_GAME'])\n");
 	files.insert("register_types.h", "// wgodot-changes::file\n#pragma once\n#include \"modules/register_module_types.h\"\nvoid initialize_main_game_module(ModuleInitializationLevel p_level);\nvoid uninitialize_main_game_module(ModuleInitializationLevel p_level);\n");
 	String registration = "// wgodot-changes::file\n#include \"register_types.h\"\n#include \"modules/wgodot/native/wgodot_native_static.h\"\n#include \"modules/wgodot/native/wgodot_native_task.h\"\n#include \"core/object/wgodot_native_interfaces.h\"\n";
-	String body = "\tGDREGISTER_INTERNAL_CLASS(WGodotNative::NativeTask);\n" + register_interfaces();
+	String body = "\tWGodotNative::NativeConnections::initialize();\n\tGDREGISTER_ABSTRACT_CLASS(WGodotNative::NativeTask);\n" + register_interfaces();
 	HashSet<String> registered;
 	for (const auto &entry : project.get_classes()) {
 		if (!entry.node->wgodot_static_class) {
@@ -594,7 +632,7 @@ Error WGodotCppEmitter::generate() {
 			register_class(entry, registered, body);
 		}
 	}
-	registration += "\nusing namespace WGodotGame;\nvoid initialize_main_game_module(ModuleInitializationLevel p_level) {\n\tif (p_level != MODULE_INITIALIZATION_LEVEL_SCENE) { return; }\n" + body + "}\nvoid uninitialize_main_game_module(ModuleInitializationLevel p_level) {\n\tif (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {\n\t\tWGodotNative::NativeTask::clear_all();\n\t\tWGodotNative::StaticRegistry::get().clear();\n\t\tWGodotNativeInterfaces::clear();\n\t}\n}\n";
+	registration += "\nusing namespace WGodotGame;\nvoid initialize_main_game_module(ModuleInitializationLevel p_level) {\n\tif (p_level != MODULE_INITIALIZATION_LEVEL_SCENE) { return; }\n" + body + "}\nvoid uninitialize_main_game_module(ModuleInitializationLevel p_level) {\n\tif (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {\n\t\tWGodotNative::NativeTask::clear_all();\n\t\tWGodotNative::StaticRegistry::get().clear();\n\t\tWGodotNative::NativeConnections::clear();\n\t\tWGodotNativeInterfaces::clear();\n\t}\n}\n";
 	// A project containing only static classes needs no class namespace here.
 	if (registered.is_empty()) {
 		registration = registration.replace("using namespace WGodotGame;\n", "");

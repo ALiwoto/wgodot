@@ -127,7 +127,18 @@ String WGodotCppEmitter::native_property(const Parser::ExpressionNode *p_base, c
 			return String();
 		}
 		class_call_headers.insert("modules/wgodot/native/wgodot_native_calls.h");
-		return String(ClassDB::has_signal(base_name, p_name) ? "Signal" : "Callable") + "(WGodotNative::object_pointer(" + (p_base ? expression(p_base) : "this") + "), SNAME(" + quoted(p_name) + "))";
+		const bool signal = ClassDB::has_signal(base_name, p_name);
+		const String native_type = signature_type(p_origin, signal);
+		const auto *signature = signatures.get(p_origin);
+		if (signature) {
+			for (const auto &argument : signature->arguments) {
+				if (native_only(argument.type)) {
+					unsupported(p_origin, "engine signal/callback with a native container argument; an explicit boundary adapter is required");
+					return String();
+				}
+			}
+		}
+		return native_type + (signal ? "(Signal(" : "::from_callable(Callable(") + "WGodotNative::object_pointer(" + (p_base ? expression(p_base) : "this") + "), SNAME(" + quoted(p_name) + ")))";
 	}
 	String body = "([&]() { ";
 	String receiver = "this";

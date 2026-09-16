@@ -1,6 +1,8 @@
 // wgodot-changes::file
 #pragma once
 
+#include "wgodot_native_callback_fwd.h"
+
 #include "core/templates/safe_refcount.h"
 #include "core/templates/vector.h"
 #include "core/variant/array.h"
@@ -140,9 +142,15 @@ public:
 			storage->elements.sort();
 		}
 	}
-	void sort_custom(const Callable &p_compare) {
+	template <class Compare>
+	void sort_custom(const Compare &p_compare) {
+		struct Comparator {
+			Compare callback;
+			explicit Comparator(Compare p_callback) : callback(std::move(p_callback)) {}
+			bool operator()(const T &p_left, const T &p_right) const { return callback.call(p_left, p_right); }
+		};
 		if (writable()) {
-			storage->elements.template sort_custom<CallableComparator, true>(p_compare);
+			storage->elements.template sort_custom<Comparator, true>(p_compare);
 		}
 	}
 	void fill(T p_value) {
@@ -178,11 +186,19 @@ public:
 
 	Array duplicate_to_array(bool p_deep = false) const {
 		Array result;
-		const PropertyInfo element = GetTypeInfo<T>::get_class_info();
-		result.set_typed(GetTypeInfo<T>::VARIANT_TYPE, element.class_name, Variant());
-		result.resize(size());
-		for (int64_t i = 0; i < size(); i++) {
-			result[i] = Variant(storage->elements[i]);
+		if constexpr (IsWCallable<T>::value) {
+			result.set_typed(Variant::CALLABLE, StringName(), Variant());
+			result.resize(size());
+			for (int64_t i = 0; i < size(); i++) {
+				result[i] = storage->elements[i].to_callable();
+			}
+		} else {
+			const PropertyInfo element = GetTypeInfo<T>::get_class_info();
+			result.set_typed(GetTypeInfo<T>::VARIANT_TYPE, element.class_name, Variant());
+			result.resize(size());
+			for (int64_t i = 0; i < size(); i++) {
+				result[i] = Variant(storage->elements[i]);
+			}
 		}
 		return p_deep ? result.duplicate(true) : result;
 	}

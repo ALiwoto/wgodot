@@ -33,8 +33,8 @@ String WGodotCppEmitter::suite(const Parser::SuiteNode *p_suite, int p_indent) {
 			case Parser::Node::RETURN: {
 				const auto *node = static_cast<const Parser::ReturnNode *>(statement);
 				const bool implicit_nil = !node->return_value && (!current_function->identifier || current_function->identifier->name != SNAME("_init")) && current_function->return_type_constraint.is_variant();
-				code += indent + "return" + (node->return_value ? " " + converted(node->return_value, current_function->return_type_constraint) : implicit_nil ? " Variant()"
-																																							   : "") +
+				code += indent + "return" + (node->return_value ? " " + converted(node->return_value, current_function->return_type_constraint, current_function) : implicit_nil ? " Variant()"
+																																												 : "") +
 						";\n";
 				break;
 			}
@@ -42,7 +42,7 @@ String WGodotCppEmitter::suite(const Parser::SuiteNode *p_suite, int p_indent) {
 				const auto *node = static_cast<const Parser::VariableNode *>(statement);
 				const auto datatype = variable_type(node);
 				code += indent + type(datatype, node) + " v_" + symbol(node->identifier->name);
-				code += node->initializer ? " = " + converted(node->initializer, datatype) + ";\n" : "{};\n";
+				code += node->initializer ? " = " + converted(node->initializer, datatype, node) + ";\n" : "{};\n";
 				break;
 			}
 			case Parser::Node::CONSTANT:

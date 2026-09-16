@@ -11,10 +11,6 @@ using namespace WGodotCppNames;
 String WGodotCppEmitter::function(const Parser::FunctionNode *p_function, String &r_declaration, const String &p_cpp_name) {
 	function_failed = false;
 	current_function = p_function;
-	if (p_function->is_coroutine && is_warray(p_function->return_type_constraint)) {
-		unsupported(p_function, "WArray coroutine results through the current Variant task ABI");
-		return String();
-	}
 	if (p_function->is_vararg() || p_function->is_abstract) {
 		unsupported(p_function, p_function->is_vararg() ? "variadic functions" : "abstract methods");
 		return String();
@@ -25,14 +21,14 @@ String WGodotCppEmitter::function(const Parser::FunctionNode *p_function, String
 		String declaration = type(parameter->type_constraint, parameter) + " v_" + symbol(parameter->identifier->name);
 		parameters.push_back(declaration);
 		if (parameter->initializer && p_cpp_name.is_empty()) {
-			declaration += " = " + converted(parameter->initializer, parameter->type_constraint);
+			declaration += " = " + converted(parameter->initializer, parameter->type_constraint, parameter);
 		}
 		declarations.push_back(declaration);
 	}
 	const bool initializer = !p_function->source_lambda && p_function->identifier && p_function->identifier->name == "_init";
 	const bool is_static = p_function->source_lambda ? !p_function->source_lambda->use_self : p_function->is_static;
-	const String return_type = p_function->is_coroutine ? "Variant" : initializer ? "void"
-																				  : type(p_function->return_type_constraint, p_function);
+	const String return_type = initializer ? "void"
+										   : function_result(p_function);
 	const String name = p_cpp_name.is_empty() ? "m_" + symbol(p_function->identifier->name) : p_cpp_name;
 	r_declaration = "\t" + String(is_static ? "static " : initializer || !p_cpp_name.is_empty() ? ""
 																								: "virtual ") +
@@ -114,8 +110,8 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 					if (owner && owner->node->get_member(method_name).type == Parser::ClassNode::Member::FUNCTION) {
 						const auto *inherited = owner->node->get_member(method_name).function;
 						inherits_binding = true;
-						const String method_result = method->is_coroutine ? "Variant" : type(method->return_type_constraint, method);
-						const String inherited_result = inherited->is_coroutine ? "Variant" : type(inherited->return_type_constraint, inherited);
+						const String method_result = function_result(method);
+						const String inherited_result = function_result(inherited);
 						bool same_signature = method->parameters.size() == inherited->parameters.size() && method_result == inherited_result;
 						for (uint32_t i = 0; same_signature && i < method->parameters.size(); i++) {
 							const auto *parameter = method->parameters[i];
@@ -132,7 +128,7 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 				}
 				// The inherited MethodBind calls a virtual C++ method, so it already
 				// dispatches to this implementation and must not be registered twice.
-				if (!is_static && !method->is_static && method_name != "_init" && !inherits_binding && !has_warray_signature(method)) {
+				if (!is_static && !method->is_static && method_name != "_init" && !inherits_binding && !method->is_coroutine && !has_native_value_signature(method)) {
 					String arguments;
 					String defaults;
 					for (const auto *parameter : method->parameters) {
@@ -153,7 +149,7 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 				}
 				const auto datatype = variable_type(variable);
 				const String field_type = type(datatype, variable);
-				if (is_warray(datatype) && variable->exported) {
+				if (native_only(datatype) && variable->exported) {
 					unsupported(variable, "exported WArray property " + entry.get_name() + "; scene serialization needs an explicit container adapter");
 				}
 				const String field_name = "v_" + symbol(variable->identifier->name);
@@ -163,7 +159,7 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 					fields += "\t" + field_type + " " + field_name + "{};\n";
 				}
 				if (variable->initializer) {
-					const String value = converted(variable->initializer, datatype);
+					const String value = converted(variable->initializer, datatype, variable);
 					if (variable->is_static) {
 						static_initialization += "\tfields." + field_name + " = " + value + ";\n";
 					} else {
@@ -180,7 +176,7 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 				declaration += "\t" + static_modifier + field_type + " " + getter + "()" + getter_const + ";\n\t" + static_modifier + "void " + setter + "(" + field_type + " p_value);\n";
 				definitions += field_type + " " + name + "::" + getter + "()" + getter_const + " { return " + (property_getter.is_empty() ? storage : "m_" + symbol(property_getter) + "()") + "; }\n";
 				definitions += "void " + name + "::" + setter + "(" + field_type + " p_value) { " + (property_setter.is_empty() ? storage + " = p_value" : "m_" + symbol(property_setter) + "(p_value)") + "; }\n";
-				if (!is_static && !is_warray(datatype)) {
+				if (!is_static && !native_only(datatype)) {
 					const String bind_getter = variable->is_static ? "instance_" + getter : getter;
 					const String bind_setter = variable->is_static ? "instance_" + setter : setter;
 					if (variable->is_static) {
@@ -203,15 +199,8 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 			}
 			case Parser::ClassNode::Member::SIGNAL: {
 				const auto *signal = entry.signal;
-				bindings += "\t{\n\t\tMethodInfo info(" + quoted(signal->identifier->name) + ");\n";
-				for (const auto *parameter : signal->parameters) {
-					if (is_warray(parameter->type_constraint)) {
-						unsupported(parameter, "signal " + String(signal->identifier->name) + " carrying WArray through Godot's Variant signal ABI");
-						continue;
-					}
-					bindings += "\t\t{ PropertyInfo argument = GetTypeInfo<" + type(parameter->type_constraint, parameter) + ">::get_class_info(); argument.name = " + quoted(parameter->identifier->name) + "; info.arguments.push_back(argument); }\n";
-				}
-				bindings += "\t\tADD_SIGNAL(info);\n\t}\n";
+				const String signal_type = signature_type(signal, true).replace("WSignal<", "SignalSource<");
+				declaration += "\t" + signal_type + " s_" + symbol(signal->identifier->name) + "{this};\n";
 				break;
 			}
 			case Parser::ClassNode::Member::CONSTANT: {
@@ -248,7 +237,7 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 				parameters.push_back(parameter_text);
 				arguments.push_back("v_" + symbol(parameter->identifier->name));
 				if (parameter->initializer) {
-					parameter_text += " = " + converted(parameter->initializer, parameter->type_constraint);
+					parameter_text += " = " + converted(parameter->initializer, parameter->type_constraint, parameter);
 				} else {
 					default_constructible = false;
 				}

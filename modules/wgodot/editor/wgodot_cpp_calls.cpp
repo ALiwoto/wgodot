@@ -25,7 +25,7 @@ String WGodotCppEmitter::call(const Parser::CallNode *p_call) {
 		return native_call(p_call, base, base_type);
 	}
 	if (const auto *contract_method = interface_method(p_call)) {
-		if (has_warray_signature(contract_method)) {
+		if (has_native_value_signature(contract_method)) {
 			unsupported(p_call, "WArray in an interface call through the current name-based interface ABI");
 			return String();
 		}
@@ -66,7 +66,7 @@ String WGodotCppEmitter::call(const Parser::CallNode *p_call) {
 	for (uint32_t i = 0; i < p_call->arguments.size(); i++) {
 		const String argument = "argument_" + itos(i);
 		const auto *source = p_call->arguments[i];
-		body += "auto &&" + argument + " = " + (method && i < method->parameters.size() ? converted(source, method->parameters[i]->type_constraint) : expression(source)) + "; ";
+		body += "auto &&" + argument + " = " + (method && i < method->parameters.size() ? converted(source, method->parameters[i]->type_constraint, method->parameters[i]) : expression(source)) + "; ";
 		arguments.push_back(argument);
 	}
 	String receiver;

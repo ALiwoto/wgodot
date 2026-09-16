@@ -2,6 +2,7 @@
 #pragma once
 
 #include "wgodot_cpp_project.h"
+#include "wgodot_cpp_signatures.h"
 
 class MethodBind;
 class WGodotCppAsync;
@@ -9,6 +10,8 @@ class WGodotCppAsync;
 class WGodotCppEmitter {
 	friend class WGodotCppAsync;
 	const WGodotCppProject &project;
+	WGodotCppSignatures signatures;
+	HashSet<const GDScriptParser::Node *> rendering_signatures;
 	const WGodotCppProject::Class *current_class = nullptr;
 	HashMap<String, String> files;
 	Vector<String> diagnostics;
@@ -33,17 +36,22 @@ class WGodotCppEmitter {
 	String class_name(const GDScriptParser::DataType &p_type, const GDScriptParser::Node *p_origin);
 	StringName native_base(const GDScriptParser::DataType &p_type) const;
 	String type(const GDScriptParser::DataType &p_type, const GDScriptParser::Node *p_origin);
+	String signature_type(const GDScriptParser::Node *p_origin, bool p_signal = false);
+	String function_result(const GDScriptParser::FunctionNode *p_function);
+	bool native_only(const GDScriptParser::DataType &p_type) const;
+	String callback_call(const GDScriptParser::CallNode *p_call);
+	bool validate_callback(const GDScriptParser::ExpressionNode *p_source, const WGodotCppSignatures::Signature &p_target, bool p_discard_result = false);
 	bool is_warray(const GDScriptParser::DataType &p_type) const;
 	GDScriptParser::DataType expression_type(const GDScriptParser::ExpressionNode *p_expression) const;
 	GDScriptParser::DataType variable_type(const GDScriptParser::VariableNode *p_variable) const;
-	bool has_warray_signature(const GDScriptParser::FunctionNode *p_function) const;
-	bool validate_array_conversion(const GDScriptParser::ExpressionNode *p_value, const GDScriptParser::DataType &p_target);
+	bool has_native_value_signature(const GDScriptParser::FunctionNode *p_function) const;
+	bool validate_array_conversion(const GDScriptParser::ExpressionNode *p_value, const GDScriptParser::DataType &p_target, const GDScriptParser::Node *p_target_origin = nullptr);
 	String array_literal(const GDScriptParser::ArrayNode *p_array, const GDScriptParser::DataType &p_target);
 	String warray_call(const GDScriptParser::CallNode *p_call, bool p_to_array = false);
 	String engine_argument(const GDScriptParser::ExpressionNode *p_value, Variant::Type p_target);
 	bool is_array_duplicate(const GDScriptParser::ExpressionNode *p_value) const;
 	String literal(const Variant &p_value, const GDScriptParser::Node *p_origin);
-	String converted(const GDScriptParser::ExpressionNode *p_expression, const GDScriptParser::DataType &p_target);
+	String converted(const GDScriptParser::ExpressionNode *p_expression, const GDScriptParser::DataType &p_target, const GDScriptParser::Node *p_target_origin = nullptr);
 	String truth(const GDScriptParser::ExpressionNode *p_expression);
 	const WGodotCppProject::Class *member_owner(const GDScriptParser::ClassNode *p_class, const StringName &p_name) const;
 	String member(const GDScriptParser::ExpressionNode *p_base, const StringName &p_name, const GDScriptParser::ExpressionNode *p_origin);

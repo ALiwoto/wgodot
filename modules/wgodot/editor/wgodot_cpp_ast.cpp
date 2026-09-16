@@ -10,6 +10,9 @@ bool WGodotCppAstVisitor::walk(const Parser::Node *p_node) {
 	if (!visit(p_node)) {
 		return false;
 	}
+	if (!descend(p_node)) {
+		return true;
+	}
 	switch (p_node->type) {
 		case Parser::Node::CLASS: {
 			const auto *node = static_cast<const Parser::ClassNode *>(p_node);

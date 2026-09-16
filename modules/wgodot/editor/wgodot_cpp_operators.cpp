@@ -12,6 +12,9 @@ String WGodotCppEmitter::operation(Variant::Operator p_operation, const Parser::
 		class_call_headers.insert("modules/wgodot/native/wgodot_native_format.h");
 		return "WGodotNative::format_string(" + p_left + ", " + p_right + (is_warray(p_right_type) ? ")" : ".span())");
 	}
+	if (WGodotCppSignatures::contains_signature(p_left_type) && p_left_type.builtin_type != Variant::ARRAY && (p_operation == Variant::OP_EQUAL || p_operation == Variant::OP_NOT_EQUAL)) {
+		return "(" + p_left + (p_operation == Variant::OP_EQUAL ? " == " : " != ") + p_right + ")";
+	}
 	if (is_warray(p_left_type) || is_warray(p_right_type)) {
 		if (p_operation == Variant::OP_IN && is_warray(p_right_type) && !is_warray(p_left_type)) {
 			return p_right + ".has(WGodotNative::convert<" + type(p_right_type.get_container_element_type(0), p_origin) + ">(" + p_left + "))";

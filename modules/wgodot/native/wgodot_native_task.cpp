@@ -33,41 +33,32 @@ TaskOwner::~TaskOwner() {
 	clear();
 }
 
-void NativeTask::_bind_methods() {
-	ClassDB::bind_vararg_method(METHOD_FLAGS_DEFAULT, "_resume", &NativeTask::signal_resume, MethodInfo("_resume"));
-	ADD_SIGNAL(MethodInfo("completed", PropertyInfo(Variant::NIL, "result", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NIL_IS_VARIANT)));
-}
-
-Variant NativeTask::start(TaskFrame *p_frame, TaskOwner *p_owner) {
-	Ref<NativeTask> task = memnew(NativeTask);
-	task->frame = p_frame;
+void NativeTask::start(TaskFrame *p_frame, TaskOwner *p_owner) {
+	frame = p_frame;
 	{
 		MutexLock lock(registry().mutex);
 		if (registry().closing || (p_owner && p_owner->closing)) {
-			return Variant();
+			state = State::CANCELLED;
+			memdelete(frame);
+			frame = nullptr;
+			return;
 		}
-		registry().tasks.add(&task->registry_link);
+		registry().tasks.add(&registry_link);
 		if (p_owner) {
-			p_owner->tasks.add(&task->owner_link);
+			p_owner->tasks.add(&owner_link);
 		}
+		resume_pending = true;
 	}
-	task->drive(Variant());
-	MutexLock lock(registry().mutex);
-	if (task->state == State::COMPLETED) {
-		return task->result;
-	}
-	return task->state == State::CANCELLED ? Variant() : Variant(task);
+	drive();
 }
 
-void NativeTask::drive(const Variant &p_value) {
+void NativeTask::drive() {
 	Ref<NativeTask> keep_alive(this);
 	{
 		MutexLock lock(registry().mutex);
 		if (state == State::COMPLETED || state == State::CANCELLED) {
 			return;
 		}
-		inbox = p_value;
-		resume_pending = true;
 		if (driving) {
 			return;
 		}
@@ -84,7 +75,6 @@ void NativeTask::drive(const Variant &p_value) {
 				if (completed || state == State::CANCELLED) {
 					finished_frame = frame;
 					frame = nullptr;
-					inbox = Variant();
 				}
 				break;
 			}
@@ -99,87 +89,46 @@ void NativeTask::drive(const Variant &p_value) {
 	if (completed) {
 		// GDScript resumes the caller before releasing the finished invocation's
 		// parameters and remaining locals. Preserve that observable lifetime.
-		emit_signal(SNAME("completed"), result);
+		publish();
 	}
 	memdelete(finished_frame);
 }
 
-bool NativeTask::wait(const Variant &p_value) {
+bool NativeTask::suspend(const std::function<std::function<void()>()> &p_subscribe) {
 	MutexLock lock(registry().mutex);
 	if (state == State::CANCELLED) {
 		return true;
 	}
-	Variant value = p_value;
-	if (value.get_type() == Variant::OBJECT) {
-		bool freed = false;
-		Object *object = value.get_validated_object_with_check(freed);
-		if (freed) {
-			ERR_PRINT("Cannot await a freed native game object.");
-			cancel();
-			return true;
-		}
-		if (NativeTask *task = Object::cast_to<NativeTask>(object)) {
-			value = task->state == State::COMPLETED ? task->result : Variant(Signal(task, SNAME("completed")));
-		}
-	}
-	if (value.get_type() != Variant::SIGNAL) {
-		inbox = value;
-		return false;
-	}
 	state = State::WAITING;
-	// The emitter's connection owns the task while waiting. The task does not
-	// own that Callable, so a never-emitted signal creates no self-reference cycle.
-	Ref<NativeTask> keep_alive(this);
-	const Error error = Signal(value).connect(Callable(this, SNAME("_resume")).bind(keep_alive), Object::CONNECT_ONE_SHOT);
-	if (error != OK) {
-		ERR_PRINT("Cannot connect native game await to signal " + String(Signal(value).get_name()) + ".");
+	disconnect_wait = p_subscribe();
+	if (!disconnect_wait) {
 		cancel();
 	}
 	return true;
 }
 
-Variant NativeTask::signal_resume(const Variant **p_arguments, int p_count, Callable::CallError &r_error) {
-	r_error.error = Callable::CallError::CALL_OK;
-	ERR_FAIL_COND_V(p_count < 1, Variant()); // The final argument retains this task.
-	Variant value;
-	if (p_count == 2) {
-		value = *p_arguments[0];
-	} else if (p_count > 2) {
-		Array values;
-		values.resize(p_count - 1);
-		for (int i = 0; i < p_count - 1; i++) {
-			values[i] = *p_arguments[i];
+void NativeTask::deliver(const std::function<void()> &p_store) {
+	{
+		MutexLock lock(registry().mutex);
+		if (state == State::CANCELLED || state == State::COMPLETED) {
+			return;
 		}
-		value = values;
+		p_store();
+		disconnect_wait = {};
+		resume_pending = true;
 	}
-	drive(value);
-	return Variant();
+	drive();
 }
 
-Variant NativeTask::take_result() {
-	MutexLock lock(registry().mutex);
-	Variant value = std::move(inbox);
-	inbox = Variant();
-	return value;
-}
-
-void NativeTask::complete(const Variant &p_result) {
+void NativeTask::finish(const std::function<void()> &p_store) {
 	MutexLock lock(registry().mutex);
 	if (state == State::CANCELLED) {
 		return;
 	}
-	result = p_result;
+	p_store();
 	state = State::COMPLETED;
 	owner_link.remove_from_list();
 	registry_link.remove_from_list();
-}
-
-void NativeTask::clear_connections() {
-	List<Object::Connection> incoming_connections;
-	get_signals_connected_to_this(&incoming_connections);
-	for (Object::Connection &connection : incoming_connections) {
-		connection.signal.disconnect(connection.callable);
-	}
 }
 
 void NativeTask::cancel() {
@@ -193,11 +142,13 @@ void NativeTask::cancel() {
 		state = State::CANCELLED;
 		owner_link.remove_from_list();
 		registry_link.remove_from_list();
-		clear_connections();
+		if (disconnect_wait) {
+			auto disconnect = std::move(disconnect_wait);
+			disconnect();
+		}
 		if (!driving) {
 			cancelled_frame = frame;
 			frame = nullptr;
-			inbox = Variant();
 		}
 	}
 	memdelete(cancelled_frame);
@@ -206,6 +157,15 @@ void NativeTask::cancel() {
 bool NativeTask::is_cancelled() const {
 	MutexLock lock(registry().mutex);
 	return state == State::CANCELLED;
+}
+
+bool NativeTask::is_completed() const {
+	MutexLock lock(registry().mutex);
+	return state == State::COMPLETED;
+}
+
+Mutex &NativeTask::coordination_mutex() {
+	return registry().mutex;
 }
 
 void NativeTask::clear_all() {

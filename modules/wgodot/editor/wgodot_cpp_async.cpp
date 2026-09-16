@@ -175,33 +175,47 @@ String WGodotCppAsync::expression(const Parser::ExpressionNode *p_expression, in
 	}
 	if (p_expression->type == Parser::Node::AWAIT) {
 		const auto *node = static_cast<const Parser::AwaitNode *>(p_expression);
-		if (emitter.is_warray(emitter.expression_type(node->to_await))) {
-			// Awaiting a value which is not a signal or coroutine returns it directly.
-			return expression(node->to_await, p_indent);
-		}
-		if (emitter.is_warray(node->type_constraint)) {
-			emitter.unsupported(node, "WArray await results through the current Variant task ABI");
+		if (node->to_await->type == Parser::Node::CALL && emitter.interface_method(static_cast<const Parser::CallNode *>(node->to_await))) {
+			emitter.unsupported(node, "await through the current interface Variant ABI; this requires typed interface dispatch");
 			return String();
 		}
-		const auto *outer_call = emitter.awaited_call;
-		emitter.awaited_call = node->to_await->type == Parser::Node::CALL ? static_cast<const Parser::CallNode *>(node->to_await) : nullptr;
-		const bool interface_call = emitter.awaited_call && emitter.interface_method(emitter.awaited_call);
-		String value = expression(node->to_await, p_indent);
-		emitter.awaited_call = outer_call;
-		if (!interface_call && emitter.type(node->to_await->type_constraint, node) == "void") {
-			line(p_indent, value + ";");
-			value = "Variant()";
+		const auto awaited_type = emitter.expression_type(node->to_await);
+		const bool signal = awaited_type.kind == Parser::DataType::BUILTIN && awaited_type.builtin_type == Variant::SIGNAL;
+		if (!signal && !awaited_type.is_coroutine) {
+			return expression(node->to_await, p_indent);
 		}
+		String value = expression(node->to_await, p_indent);
+		String result_type;
+		if (signal) {
+			const auto *signature = emitter.signatures.get(node->to_await);
+			if (!signature) {
+				(void)emitter.signature_type(node->to_await, true);
+				return String();
+			}
+			if (signature->arguments.is_empty()) {
+				result_type = "WGodotNative::Unit";
+			} else if (signature->arguments.size() == 1) {
+				result_type = emitter.type(signature->arguments[0].type, signature->arguments[0].origin);
+			} else {
+				Vector<String> arguments;
+				for (const auto &argument : signature->arguments) {
+					arguments.push_back(emitter.type(argument.type, argument.origin));
+				}
+				result_type = "std::tuple<" + String(", ").join(arguments) + ">";
+			}
+		} else {
+			auto result = awaited_type;
+			result.is_coroutine = false;
+			result_type = emitter.type(result, node->to_await);
+			if (result_type == "void") {
+				result_type = "WGodotNative::Unit";
+			}
+		}
+		const String field = add_field(result_type, "await_result");
 		const int resume = ++resume_count;
 		line(p_indent, "frame.continuation = " + itos(resume) + ";");
-		line(p_indent, "if (task.wait(" + value + ")) { return; }");
+		line(p_indent, "if (WGodotNative::" + String(signal ? "await_signal" : "await_task") + "(task, " + value + ", " + field + ")) { return; }");
 		line(p_indent, "resume_" + itos(resume) + ":;");
-		String type = emitter.type(node->type_constraint, node);
-		if (type == "void") {
-			type = "Variant";
-		}
-		const String field = add_field(type, "await_result");
-		line(p_indent, field + " = WGodotNative::convert<" + type + ">(task.take_result());");
 		temporary_fields.push_back(field);
 		emitter.expression_overrides.insert(p_expression, field);
 		return field;
@@ -290,7 +304,7 @@ void WGodotCppAsync::suite(const Parser::SuiteNode *p_suite, int p_indent, bool 
 				if (node->initializer) {
 					(void)expression(node->initializer, p_indent);
 				}
-				line(p_indent, name + " = " + (node->initializer ? emitter.converted(node->initializer, emitter.variable_type(node)) : field_types[name] + "()") + ";");
+				line(p_indent, name + " = " + (node->initializer ? emitter.converted(node->initializer, emitter.variable_type(node), node) : field_types[name] + "()") + ";");
 				break;
 			}
 			case Parser::Node::RETURN: {
@@ -301,7 +315,7 @@ void WGodotCppAsync::suite(const Parser::SuiteNode *p_suite, int p_indent, bool 
 				if (node->void_return && node->return_value) {
 					line(p_indent, emitter.expression(node->return_value) + ";");
 				}
-				line(p_indent, "task.complete(" + (node->return_value && !node->void_return ? emitter.converted(node->return_value, emitter.current_function->return_type_constraint) : "") + ");");
+				line(p_indent, "task.complete(" + (node->return_value && !node->void_return ? emitter.converted(node->return_value, emitter.current_function->return_type_constraint, emitter.current_function) : "") + ");");
 				line(p_indent, "return;");
 				break;
 			}
@@ -409,7 +423,7 @@ void WGodotCppAsync::suite(const Parser::SuiteNode *p_suite, int p_indent, bool 
 				break;
 			default:
 				if (statement->is_expression()) {
-					line(p_indent, expression(static_cast<const Parser::ExpressionNode *>(statement), p_indent) + ";");
+					line(p_indent, "(void)(" + expression(static_cast<const Parser::ExpressionNode *>(statement), p_indent) + ");");
 				} else {
 					emitter.unsupported(statement, "async statement kind " + itos(statement->type));
 				}
@@ -428,11 +442,14 @@ String WGodotCppAsync::generate(const Parser::FunctionNode *p_function, const St
 	emitter.class_native_headers.insert("modules/wgodot/native/wgodot_native_task.h");
 	emitter.class_call_headers.insert("modules/wgodot/native/wgodot_native_values.h");
 	emitter.class_call_headers.insert("optional");
+	const String result_type = emitter.type(p_function->return_type_constraint, p_function);
+	const String task_type = "WGodotNative::TaskState<" + result_type + ">";
+	const String handle_type = "WGodotNative::Task<" + result_type + ">";
 	const String owner = emitter.current_class->cpp_name;
 	const bool is_static = p_function->source_lambda ? !p_function->source_lambda->use_self : p_function->is_static;
 	const String frame_name = "Async_" + p_name;
 	const String resume_name = "resume_" + p_name;
-	r_declaration += "\tstruct " + frame_name + ";\n\t" + String(is_static ? "static " : "") + "void " + resume_name + "(" + frame_name + " &frame, WGodotNative::NativeTask &task);\n";
+	r_declaration += "\tstruct " + frame_name + ";\n\t" + String(is_static ? "static " : "") + "void " + resume_name + "(" + frame_name + " &frame, " + task_type + " &task);\n";
 	String initialize;
 	for (const auto *parameter : p_function->parameters) {
 		const String field = local(parameter, parameter->identifier->name, parameter->type_constraint);
@@ -451,12 +468,12 @@ String WGodotCppAsync::generate(const Parser::FunctionNode *p_function, const St
 	String definition = "struct " + owner + "::" + frame_name + " : WGodotNative::TaskFrame {\n\tint continuation = 0;\n" + (is_static ? "" : "\tObjectID owner;\n") + fields;
 	definition += "\tvoid resume(WGodotNative::NativeTask &task) override {\n";
 	if (is_static) {
-		definition += "\t\t" + owner + "::" + resume_name + "(*this, task);\n";
+		definition += "\t\t" + owner + "::" + resume_name + "(*this, static_cast<" + task_type + " &>(task));\n";
 	} else {
-		definition += "\t\tauto *instance = Object::cast_to<" + owner + ">(ObjectDB::get_instance(owner));\n\t\tif (!instance) { task.cancel(); return; }\n\t\tinstance->" + resume_name + "(*this, task);\n";
+		definition += "\t\tauto *instance = Object::cast_to<" + owner + ">(ObjectDB::get_instance(owner));\n\t\tif (!instance) { task.cancel(); return; }\n\t\tinstance->" + resume_name + "(*this, static_cast<" + task_type + " &>(task));\n";
 	}
 	definition += "\t}\n};\n\n";
-	definition += "Variant " + owner + "::" + p_name + "(" + String(", ").join(p_parameters) + ") {\n";
+	definition += handle_type + " " + owner + "::" + p_name + "(" + String(", ").join(p_parameters) + ") {\n";
 	if (is_static) {
 		definition += "\tprepare_game_class();\n";
 	}
@@ -464,8 +481,8 @@ String WGodotCppAsync::generate(const Parser::FunctionNode *p_function, const St
 	if (!is_static) {
 		definition += "\tframe->owner = get_instance_id();\n";
 	}
-	definition += "\treturn WGodotNative::NativeTask::start(frame" + String(is_static ? "" : ", &game_tasks") + ");\n}\n\n";
-	definition += "void " + owner + "::" + resume_name + "(" + frame_name + " &frame, WGodotNative::NativeTask &task) {\n\tswitch (frame.continuation) {\n";
+	definition += "\treturn " + handle_type + "::start(frame" + String(is_static ? "" : ", &game_tasks") + ");\n}\n\n";
+	definition += "void " + owner + "::" + resume_name + "(" + frame_name + " &frame, " + task_type + " &task) {\n\tswitch (frame.continuation) {\n";
 	for (int i = 1; i <= resume_count; i++) {
 		definition += "\t\tcase " + itos(i) + ": goto resume_" + itos(i) + ";\n";
 	}

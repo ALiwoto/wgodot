@@ -29,6 +29,12 @@
 /**************************************************************************/
 
 #include "object.h"
+
+// wgodot-changes::begin
+#ifdef WGODOT_NATIVE_GAME
+#include "wgodot_native_lifetime.h"
+#endif
+// wgodot-changes::end
 #include "object.compat.inc"
 
 #include "core/config/engine.h"
@@ -149,6 +155,9 @@ bool Object::_predelete() {
 #ifdef WGODOT_NATIVE_GAME
 	if (auto callback = _wgodot_get_native_virtual(SNAME("@game_clear"))) {
 		callback(this, nullptr, 0);
+	}
+	if (WGodotNativeLifetime::object_deleted) {
+		WGodotNativeLifetime::object_deleted(get_instance_id());
 	}
 #endif
 	// wgodot-changes::end

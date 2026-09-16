@@ -94,7 +94,7 @@ String WGodotCppEmitter::assignment(const Parser::AssignmentNode *p_assignment) 
 	const auto *assigned = p_assignment->assigned_value;
 	const bool compound = p_assignment->operation != Parser::AssignmentNode::OP_NONE;
 	const auto target_type = expression_type(target);
-	if (!compound && !validate_array_conversion(assigned, target_type)) {
+	if (!compound && !validate_array_conversion(assigned, target_type, target)) {
 		return String();
 	}
 	const auto assigned_type = assigned->type == Parser::Node::ARRAY && is_warray(target_type) ? target_type : expression_type(assigned);

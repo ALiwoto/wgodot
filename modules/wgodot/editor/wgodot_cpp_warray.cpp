@@ -16,9 +16,27 @@ Parser::DataType WGodotCppEmitter::variable_type(const Parser::VariableNode *p_v
 }
 
 Parser::DataType WGodotCppEmitter::expression_type(const Parser::ExpressionNode *p_expression) const {
+	if (p_expression->type == Parser::Node::CALL) {
+		const auto *call = static_cast<const Parser::CallNode *>(p_expression);
+		if (call->get_callee_type() == Parser::Node::SUBSCRIPT && call->function_name == SNAME("call")) {
+			const auto *base = static_cast<const Parser::SubscriptNode *>(call->callee)->base;
+			if (const auto *signature = signatures.get(base); signature && !signature->signal) {
+				return signature->result.type;
+			}
+		}
+	}
 	if (p_expression->type == Parser::Node::AWAIT) {
 		const auto value = expression_type(static_cast<const Parser::AwaitNode *>(p_expression)->to_await);
-		if (is_warray(value)) {
+		if (value.is_coroutine) {
+			auto result = value;
+			result.is_coroutine = false;
+			return result;
+		}
+		if (value.kind == Parser::DataType::BUILTIN && value.builtin_type == Variant::SIGNAL) {
+			if (const auto *signature = signatures.get(static_cast<const Parser::AwaitNode *>(p_expression)->to_await); signature && signature->arguments.size() == 1) {
+				return signature->arguments[0].type;
+			}
+		} else {
 			return value;
 		}
 	}
@@ -30,6 +48,9 @@ Parser::DataType WGodotCppEmitter::expression_type(const Parser::ExpressionNode 
 			// code keeps them without changing the editor's cached GDScript AST.
 			if (is_warray(base) && call->function_name == SNAME("duplicate")) {
 				return base;
+			}
+			if (is_warray(base) && (call->function_name == SNAME("get") || call->function_name == SNAME("front") || call->function_name == SNAME("back") || call->function_name == SNAME("pop_back") || call->function_name == SNAME("pop_front") || call->function_name == SNAME("pop_at"))) {
+				return base.get_container_element_type(0);
 			}
 			if (base.kind == Parser::DataType::BUILTIN && base.builtin_type == Variant::DICTIONARY && (call->function_name == SNAME("keys") || call->function_name == SNAME("values"))) {
 				const int index = call->function_name == SNAME("keys") ? 0 : 1;
@@ -92,25 +113,25 @@ Parser::DataType WGodotCppEmitter::expression_type(const Parser::ExpressionNode 
 	return p_expression->type_constraint;
 }
 
-bool WGodotCppEmitter::has_warray_signature(const Parser::FunctionNode *p_function) const {
-	if (is_warray(p_function->return_type_constraint)) {
+bool WGodotCppEmitter::has_native_value_signature(const Parser::FunctionNode *p_function) const {
+	if (native_only(p_function->return_type_constraint)) {
 		return true;
 	}
 	for (const auto *parameter : p_function->parameters) {
-		if (is_warray(parameter->type_constraint)) {
+		if (native_only(parameter->type_constraint)) {
 			return true;
 		}
 	}
 	return false;
 }
 
-bool WGodotCppEmitter::validate_array_conversion(const Parser::ExpressionNode *p_value, const Parser::DataType &p_target) {
+bool WGodotCppEmitter::validate_array_conversion(const Parser::ExpressionNode *p_value, const Parser::DataType &p_target, const Parser::Node *p_target_origin) {
 	const auto source_type = expression_type(p_value);
 	if (is_warray(source_type) || is_warray(p_target)) {
 		if (p_value->type == Parser::Node::ARRAY && is_warray(p_target)) {
 			return true; // A literal is constructed directly in its destination type.
 		}
-		if (!is_warray(source_type) || !is_warray(p_target) || type(source_type, p_value) != type(p_target, p_value)) {
+		if (!is_warray(source_type) || !is_warray(p_target) || type(source_type, p_value) != type(p_target, p_target_origin ? p_target_origin : p_value)) {
 			unsupported(p_value, "implicit container conversion from " + p_value->type_constraint.to_string() + " to " + p_target.to_string() + ". WArray sharing cannot cross an Array/Variant boundary; use .duplicate() at a supported Godot API boundary");
 			return false;
 		}
@@ -122,7 +143,7 @@ String WGodotCppEmitter::array_literal(const Parser::ArrayNode *p_array, const P
 	Vector<String> elements;
 	const auto &element_type = p_target.get_container_element_type(0);
 	for (const auto *element : p_array->elements) {
-		elements.push_back(converted(element, element_type));
+		elements.push_back(converted(element, element_type, p_array));
 	}
 	// Each element is captured before the next expression runs.
 	return type(p_target, p_array) + "{" + String(", ").join(elements) + "}";
@@ -137,10 +158,51 @@ bool WGodotCppEmitter::is_array_duplicate(const Parser::ExpressionNode *p_value)
 }
 
 String WGodotCppEmitter::engine_argument(const Parser::ExpressionNode *p_value, Variant::Type p_target) {
+	const auto value_type = expression_type(p_value);
+	if (value_type.kind == Parser::DataType::BUILTIN && value_type.builtin_type == Variant::CALLABLE) {
+		const auto *signature = signatures.get(p_value);
+		if (!signature) {
+			(void)signature_type(p_value);
+			return String();
+		}
+		if (native_only(signature->result.type)) {
+			unsupported(p_value, "native callback result at a Godot Callable boundary");
+			return String();
+		}
+		for (const auto &argument : signature->arguments) {
+			if (native_only(argument.type)) {
+				unsupported(p_value, "native callback container/signature at a Godot Callable boundary");
+				return String();
+			}
+		}
+		return "(" + expression(p_value) + ").to_callable()";
+	}
 	if (!is_warray(expression_type(p_value))) {
 		return expression(p_value);
 	}
 	if ((p_target == Variant::ARRAY || p_target == Variant::NIL) && is_array_duplicate(p_value)) {
+		const auto &element = value_type.get_container_element_type(0);
+		if (element.builtin_type == Variant::SIGNAL) {
+			unsupported(p_value, "copying native game signal handles into a Godot Array");
+			return String();
+		}
+		if (element.builtin_type == Variant::CALLABLE) {
+			const auto *signature = signatures.get(p_value);
+			if (!signature) {
+				(void)signature_type(p_value);
+				return String();
+			}
+			if (native_only(signature->result.type)) {
+				unsupported(p_value, "copying callbacks with native results into a Godot Array");
+				return String();
+			}
+			for (const auto &argument : signature->arguments) {
+				if (native_only(argument.type)) {
+					unsupported(p_value, "copying callbacks with native arguments into a Godot Array");
+					return String();
+				}
+			}
+		}
 		const auto *call = static_cast<const Parser::CallNode *>(p_value);
 		// Async lowering may already have evaluated the explicit duplicate.
 		if (expression_overrides.has(call)) {
@@ -185,15 +247,15 @@ String WGodotCppEmitter::warray_call(const Parser::CallNode *p_call, bool p_to_a
 	for (uint32_t i = 0; i < p_call->arguments.size(); i++) {
 		const String argument = "argument_" + itos(i);
 		const auto *source = p_call->arguments[i];
-		const String value = int(i) == value_argument ? converted(source, element_type) : array_argument ? converted(source, base_type)
-																										 : expression(source);
+		const String value = int(i) == value_argument ? converted(source, element_type, base) : array_argument ? converted(source, base_type)
+																											   : expression(source);
 		body += "auto &&" + argument + " = " + value + "; ";
 		arguments.push_back(argument);
 	}
 	body += "auto &&receiver = " + expression(base) + "; ";
 	const String invoke = "receiver." + method + "(" + String(", ").join(arguments) + ")";
 	const bool nullable = name == SNAME("pop_back") || name == SNAME("pop_front") || name == SNAME("pop_at") || name == SNAME("front") || name == SNAME("back") || name == SNAME("get");
-	if (nullable && p_call->type_constraint.is_variant()) {
+	if (nullable && expression_type(p_call).is_variant()) {
 		const bool pop = name == SNAME("pop_back") || name == SNAME("pop_front") || name == SNAME("pop_at");
 		body += "if (receiver.is_empty()" + String(pop ? " || receiver.is_read_only()" : "") + ") { (void)" + invoke + "; return Variant(); } ";
 		if (name == SNAME("pop_at") || name == SNAME("get")) {

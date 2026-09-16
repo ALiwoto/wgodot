@@ -10,6 +10,8 @@
 
 // Editor-only semantic input for native export. Parser references own all AST nodes.
 class WGodotCppProject {
+	friend class WGodotCppSignatures;
+
 public:
 	struct Class {
 		String script_path;

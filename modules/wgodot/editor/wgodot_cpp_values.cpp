@@ -31,6 +31,9 @@ String WGodotCppEmitter::builtin_call(const Parser::CallNode *p_call) {
 		unsupported(p_call, "builtin call " + String(p_call->function_name));
 		return String();
 	}
+	if (!base_type.is_meta_type && (base_type.builtin_type == Variant::CALLABLE || base_type.builtin_type == Variant::SIGNAL)) {
+		return callback_call(p_call);
+	}
 	if (is_warray(base_type) && !base_type.is_meta_type) {
 		return warray_call(p_call);
 	}
@@ -91,6 +94,9 @@ String WGodotCppEmitter::global_call(const Parser::CallNode *p_call) {
 		if (p_call->arguments.size() == 1) {
 			return converted(p_call->arguments[0], p_call->type_constraint);
 		}
+	}
+	if ((name == SNAME("Callable") || name == SNAME("Signal")) && p_call->arguments.is_empty()) {
+		return type(p_call->type_constraint, p_call) + "()";
 	}
 	String body = "([&]() { ";
 	Vector<String> arguments;

@@ -42,6 +42,11 @@
 // wgodot-changes::end
 
 class GDScriptAnalyzer {
+	// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+	friend class WGodotCppSignatures;
+#endif
+	// wgodot-changes::end
 	GDScriptParser *parser = nullptr;
 
 	template <typename Fn>

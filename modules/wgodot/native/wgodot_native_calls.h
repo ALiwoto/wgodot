@@ -76,6 +76,8 @@ decltype(auto) convert(From &&p_value) {
 		} else {
 			return Target(std::forward<From>(p_value));
 		}
+	} else if constexpr (IsWCallable<Target>::value && IsWCallable<Source>::value) {
+		return Target::adapt(p_value);
 	} else if constexpr (IsWArray<Target>::value || IsWArray<Source>::value) {
 		static_assert(std::is_same_v<Target, Source>, "WArray requires an explicit container boundary handler; implicit Array/Variant conversion is forbidden.");
 	} else if constexpr (std::is_convertible_v<From &&, Target>) {
