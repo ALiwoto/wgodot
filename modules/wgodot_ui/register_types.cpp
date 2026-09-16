@@ -4,7 +4,11 @@
 #include "ui_texture_drawing.h"
 #include "elements.h"
 #include "smooth_scroll_element.h"
+#include "modules/modules_enabled.gen.h"
+
+#ifdef MODULE_GDSCRIPT_ENABLED
 #include "modules/gdscript/wgodot_stdlib.h"
+#endif
 
 void initialize_wgodot_ui_module(ModuleInitializationLevel p_level) {
 	if (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {
@@ -14,6 +18,7 @@ void initialize_wgodot_ui_module(ModuleInitializationLevel p_level) {
 		GDREGISTER_CLASS(ButtonElement);
 		GDREGISTER_CLASS(TextBoxElement);
 		GDREGISTER_CLASS(SmoothScrollElement);
+#ifdef MODULE_GDSCRIPT_ENABLED
 		const char *element_contract =
 #include "element_base.gd.inc"
 				;
@@ -21,6 +26,7 @@ void initialize_wgodot_ui_module(ModuleInitializationLevel p_level) {
 		for (const char *name : { "FlatElement", "SurfaceElement", "ButtonElement", "TextBoxElement", "SmoothScrollElement" }) {
 			WGodotGDScriptStdLib::register_native_implementation(name, "ElementBase");
 		}
+#endif
 	}
 }
 

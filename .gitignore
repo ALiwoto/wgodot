@@ -30,6 +30,9 @@
 
 # Buildsystem
 bin
+# wgodot-changes::begin
+/generated/main_game/
+# wgodot-changes::end
 *.gen.*
 compile_commands.json
 platform/windows/godot_res.res

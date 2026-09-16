@@ -2,7 +2,7 @@
 
 
 def can_build(env, platform):
-    env.module_add_dependencies("wgodot_ui", ["gdscript"])
+    env.module_add_dependencies("wgodot_ui", ["gdscript"], optional=True)
     return True
 
 

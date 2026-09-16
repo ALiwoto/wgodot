@@ -6,24 +6,36 @@ param(
 	[string]$RunTest = $null,
 
 	[switch]$SkipBuild,
-	[switch]$Templates
+	[switch]$Templates,
+	[switch]$Game,
+	[switch]$Release
 )
+
+$ErrorActionPreference = "Stop"
+$shouldRunTests = $PSBoundParameters.ContainsKey("RunTest")
+
+if ($Game -and $Templates) {
+	throw "Use either -Game or -Templates."
+}
+if ($Release -and !($Game -or $Templates)) {
+	throw "-Release requires -Game or -Templates."
+}
+if ($Game -and $shouldRunTests) {
+	throw "-RunTest requires the editor; it cannot be combined with -Game."
+}
 
 $defaultTests = @(
 	"deadcode"
 )
 
-$vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-Import-Module "$vs\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
-Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments "-arch=x64"
-
 $target = "editor"
-if ($Templates) {
-	$target = "template_debug"
+if ($Templates -or $Game) {
+	$target = if ($Release) { "template_release" } else { "template_debug" }
 }
 
 $sconsArgs = @(
 	"platform=windows",
+	"arch=x86_64",
 	"target=$target",
 	"debug_symbols=no",
 	"windows_subsystem=console",
@@ -33,15 +45,60 @@ $sconsArgs = @(
 	"winrt=no"
 )
 
-$shouldRunTests = $PSBoundParameters.ContainsKey("RunTest")
+$binarySuffix = ""
+if ($Game) {
+	$gameModulePath = Join-Path $PSScriptRoot "generated/main_game"
+	foreach ($moduleFile in @("SCsub", "config.py", "register_types.h")) {
+		if (!(Test-Path -LiteralPath (Join-Path $gameModulePath $moduleFile) -PathType Leaf)) {
+			throw "Generated native game module is missing '$moduleFile': $gameModulePath. The Plan Z C++ exporter must generate this module before -Game can build it."
+		}
+	}
+
+	$binarySuffix = ".game"
+	$sconsArgs += @(
+		"custom_modules=$gameModulePath",
+		"custom_modules_recursive=no",
+		"module_main_game_enabled=yes",
+		"module_gdscript_enabled=no",
+		"extra_suffix=game"
+	)
+	if (!$Release) {
+		# Keep native game builds easy to step through in the Windows debugger.
+		$sconsArgs = $sconsArgs | Where-Object { $_ -ne "debug_symbols=no" }
+		$sconsArgs += @("debug_symbols=yes", "optimize=none", "lto=none")
+	}
+}
+if ($Release) {
+	$sconsArgs += "production=yes"
+}
+
+$binaryPath = Join-Path $PSScriptRoot "bin/godot.windows.$target.x86_64$binarySuffix.exe"
 
 if (!$SkipBuild) {
-	# open processes of godot will prevent us from building the binary
-	Get-Process "*godot*" | Stop-Process -Force
-	& scons @sconsArgs
-	if ($LASTEXITCODE -ne 0) {
-		exit $LASTEXITCODE
+	$vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+	if (!$vs) {
+		throw "Visual Studio with the C++ x64 build tools was not found."
 	}
+	Import-Module "$vs\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
+	Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments "-arch=x64"
+
+	# Only the executable being rebuilt needs to close; keep other editors/games open.
+	$processName = [IO.Path]::GetFileNameWithoutExtension($binaryPath)
+	Get-Process -Name $processName -ErrorAction SilentlyContinue |
+		Where-Object { $_.Path -eq $binaryPath } |
+		Stop-Process -Force
+
+	Push-Location $PSScriptRoot
+	try {
+		& scons @sconsArgs
+		if ($LASTEXITCODE -ne 0) {
+			exit $LASTEXITCODE
+		}
+	}
+	finally {
+		Pop-Location
+	}
+	Write-Host "Built: $binaryPath"
 }
 
 if ($shouldRunTests) {
