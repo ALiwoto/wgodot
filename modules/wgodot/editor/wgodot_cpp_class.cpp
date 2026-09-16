@@ -1,4 +1,5 @@
 // wgodot-changes::file
+#include "wgodot_cpp_async.h"
 #include "wgodot_cpp_emitter.h"
 #include "wgodot_cpp_names.h"
 
@@ -10,9 +11,8 @@ using namespace WGodotCppNames;
 String WGodotCppEmitter::function(const Parser::FunctionNode *p_function, String &r_declaration, const String &p_cpp_name) {
 	function_failed = false;
 	current_function = p_function;
-	if (p_function->is_coroutine || p_function->is_vararg() || p_function->is_abstract) {
-		unsupported(p_function, p_function->is_coroutine ? "await continuations" : p_function->is_vararg() ? "variadic functions"
-																										   : "abstract methods");
+	if (p_function->is_vararg() || p_function->is_abstract) {
+		unsupported(p_function, p_function->is_vararg() ? "variadic functions" : "abstract methods");
 		return String();
 	}
 	Vector<String> parameters;
@@ -27,11 +27,16 @@ String WGodotCppEmitter::function(const Parser::FunctionNode *p_function, String
 	}
 	const bool initializer = !p_function->source_lambda && p_function->identifier && p_function->identifier->name == "_init";
 	const bool is_static = p_function->source_lambda ? !p_function->source_lambda->use_self : p_function->is_static;
-	const String return_type = initializer ? "void" : type(p_function->return_type_constraint, p_function);
+	const String return_type = p_function->is_coroutine ? "Variant" : initializer ? "void"
+																				  : type(p_function->return_type_constraint, p_function);
 	const String name = p_cpp_name.is_empty() ? "m_" + symbol(p_function->identifier->name) : p_cpp_name;
 	r_declaration = "\t" + String(is_static ? "static " : initializer || !p_cpp_name.is_empty() ? ""
 																								: "virtual ") +
 			return_type + " " + name + "(" + String(", ").join(declarations) + ");\n";
+	if (p_function->is_coroutine) {
+		WGodotCppAsync async(*this);
+		return async.generate(p_function, name, parameters, r_declaration);
+	}
 	String body = is_static ? "\tprepare_game_class();\n" : "";
 	body += suite(p_function->body, 1);
 	if (return_type == "Variant" && !p_function->body->has_return) {
@@ -76,6 +81,8 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 		declaration += "\tvirtual void initialize_default()" + String(game_parent ? " override" : "") + ";\n";
 		if (!game_parent) {
 			declaration += "\tWGodotNative::Construction construction_mode;\n\tbool game_initialized = false;\n";
+			class_native_headers.insert("modules/wgodot/native/wgodot_native_task.h");
+			declaration += "\tWGodotNative::TaskOwner game_tasks;\n";
 		}
 		declaration += "\npublic:\n\texplicit " + name + "(WGodotNative::Construction p_mode = WGodotNative::Construction::SCENE);\n\t~" + name + "() override;\n";
 		definitions += name + "::" + name + "(WGodotNative::Construction p_mode) : " + (game_parent ? parent + "(p_mode)" : "construction_mode(p_mode)") + " {}\n";
@@ -103,7 +110,9 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 					if (owner && owner->node->get_member(method_name).type == Parser::ClassNode::Member::FUNCTION) {
 						const auto *inherited = owner->node->get_member(method_name).function;
 						inherits_binding = true;
-						bool same_signature = method->parameters.size() == inherited->parameters.size() && type(method->return_type_constraint, method) == type(inherited->return_type_constraint, inherited);
+						const String method_result = method->is_coroutine ? "Variant" : type(method->return_type_constraint, method);
+						const String inherited_result = inherited->is_coroutine ? "Variant" : type(inherited->return_type_constraint, inherited);
+						bool same_signature = method->parameters.size() == inherited->parameters.size() && method_result == inherited_result;
 						for (uint32_t i = 0; same_signature && i < method->parameters.size(); i++) {
 							const auto *parameter = method->parameters[i];
 							const auto *base_parameter = inherited->parameters[i];

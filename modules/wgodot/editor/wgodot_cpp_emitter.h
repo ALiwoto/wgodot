@@ -4,8 +4,10 @@
 #include "wgodot_cpp_project.h"
 
 class MethodBind;
+class WGodotCppAsync;
 
 class WGodotCppEmitter {
+	friend class WGodotCppAsync;
 	const WGodotCppProject &project;
 	const WGodotCppProject::Class *current_class = nullptr;
 	HashMap<String, String> files;
@@ -23,6 +25,9 @@ class WGodotCppEmitter {
 	String class_lambda_definitions;
 	const GDScriptParser::FunctionNode *current_function = nullptr;
 	bool function_failed = false;
+	HashMap<const GDScriptParser::ExpressionNode *, String> expression_overrides;
+	HashMap<const GDScriptParser::Node *, String> local_overrides;
+	const GDScriptParser::CallNode *awaited_call = nullptr;
 
 	void unsupported(const GDScriptParser::Node *p_node, const String &p_feature);
 	String class_name(const GDScriptParser::DataType &p_type, const GDScriptParser::Node *p_origin);
@@ -34,6 +39,7 @@ class WGodotCppEmitter {
 	const WGodotCppProject::Class *member_owner(const GDScriptParser::ClassNode *p_class, const StringName &p_name) const;
 	String member(const GDScriptParser::ExpressionNode *p_base, const StringName &p_name, const GDScriptParser::ExpressionNode *p_origin);
 	String call(const GDScriptParser::CallNode *p_call);
+	const GDScriptParser::FunctionNode *interface_method(const GDScriptParser::CallNode *p_call) const;
 	String builtin_call(const GDScriptParser::CallNode *p_call);
 	String global_call(const GDScriptParser::CallNode *p_call);
 	String variant_type(Variant::Type p_type) const;
@@ -48,6 +54,7 @@ class WGodotCppEmitter {
 	String property_access(const GDScriptParser::DataType &p_base_type, const StringName &p_name, const GDScriptParser::ExpressionNode *p_origin, const String &p_receiver, const String &p_value = String());
 	String store_identifier(const GDScriptParser::IdentifierNode *p_target, const String &p_value);
 	StringName accessor_name(const GDScriptParser::VariableNode *p_variable, bool p_setter) const;
+	const GDScriptParser::Node *local_source(const GDScriptParser::IdentifierNode *p_identifier) const;
 	String assignment(const GDScriptParser::AssignmentNode *p_assignment);
 	String expression(const GDScriptParser::ExpressionNode *p_expression);
 	String suite(const GDScriptParser::SuiteNode *p_suite, int p_indent);

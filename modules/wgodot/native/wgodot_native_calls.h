@@ -15,6 +15,21 @@
 namespace WGodotNative {
 
 template <class T>
+auto instantiate() {
+	if constexpr (std::is_abstract_v<T>) {
+		// Crypto and other backend interfaces register a concrete engine factory.
+		T *instance = Object::cast_to<T>(ClassDB::instantiate(T::get_class_static()));
+		if constexpr (std::is_base_of_v<RefCounted, T>) {
+			return Ref<T>(instance);
+		} else {
+			return instance;
+		}
+	} else {
+		return memnew(T);
+	}
+}
+
+template <class T>
 T *object_pointer(T *p_value) {
 	return p_value;
 }

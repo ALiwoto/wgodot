@@ -117,6 +117,11 @@ String WGodotCppEmitter::assignment(const Parser::AssignmentNode *p_assignment) 
 	auto base = [&](int p_index) { return "base_" + itos(p_index); };
 	auto read = [&](int p_index) {
 		const auto *node = chain[p_index];
+		if (p_index + 1 < chain.size()) {
+			if (const String *saved = expression_overrides.getptr(node)) {
+				return *saved;
+			}
+		}
 		return node->is_attribute ? property_access(node->base->type_constraint, node->attribute->name, node, base(p_index)) : "WGodotNative::get_index<" + type(node->type_constraint, node) + ">(" + base(p_index) + ", " + key(p_index) + ")";
 	};
 	auto write = [&](int p_index, const String &p_value) {
@@ -131,7 +136,7 @@ String WGodotCppEmitter::assignment(const Parser::AssignmentNode *p_assignment) 
 			body += "auto &&" + key(i) + " = " + expression(chain[i]->index) + "; ";
 		}
 		if (i < chain.size() - 1) {
-			body += "auto " + base(i + 1) + " = " + read(i) + "; ";
+			body += String(expression_overrides.has(chain[i]) ? "auto &&" : "auto ") + base(i + 1) + " = " + read(i) + "; ";
 		}
 	}
 	const int leaf = chain.size() - 1;

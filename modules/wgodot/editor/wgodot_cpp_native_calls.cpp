@@ -50,7 +50,8 @@ String WGodotCppEmitter::native_call(const Parser::CallNode *p_call, const Parse
 			unsupported(p_call, "native constructor " + String(base_name));
 			return String();
 		}
-		return "memnew(" + class_name(p_base_type, p_call) + ")";
+		class_call_headers.insert("modules/wgodot/native/wgodot_native_calls.h");
+		return "WGodotNative::instantiate<" + class_name(p_base_type, p_call) + ">()";
 	}
 	const MethodBind *method = ClassDB::get_method(base_name, p_call->function_name);
 	if (!method) {

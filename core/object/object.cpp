@@ -145,6 +145,14 @@ bool Object::_predelete() {
 	_gdtype_ptr = nullptr; // Must restore, so constructors/destructors have proper class name access at each stage.
 	notification(NOTIFICATION_PREDELETE_CLEANUP, true);
 
+	// wgodot-changes::begin
+#ifdef WGODOT_NATIVE_GAME
+	if (auto callback = _wgodot_get_native_virtual(SNAME("@game_clear"))) {
+		callback(this, nullptr, 0);
+	}
+#endif
+	// wgodot-changes::end
+
 	// Destruction order starts with the most derived class, and progresses towards the base Object class:
 	// Script subclasses -> GDExtension subclasses -> C++ subclasses -> Object
 	memdelete(script_instance);

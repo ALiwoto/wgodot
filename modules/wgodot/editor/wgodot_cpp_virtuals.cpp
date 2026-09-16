@@ -17,6 +17,9 @@ void WGodotCppEmitter::emit_virtuals(const WGodotCppProject::Class &p_class, Str
 		r_declaration += "\tstatic Variant callback_initialize_game(Object *p_self, const Variant **p_args, int p_count);\n";
 		r_definitions += "Variant " + p_class.cpp_name + "::callback_initialize_game(Object *p_self, const Variant **p_args, int p_count) {\n\tauto *self = static_cast<" + p_class.cpp_name + " *>(p_self);\n\tself->game_initialized = true;\n\tself->initialize_fields();\n\tif (self->construction_mode == WGodotNative::Construction::SCENE) { self->initialize_default(); }\n\treturn Variant();\n}\n\n";
 		dispatch += "\tif (p_name == \"@game_initialize\") { return &callback_initialize_game; }\n";
+		r_declaration += "\tstatic Variant callback_clear_game(Object *p_self, const Variant **p_args, int p_count);\n";
+		r_definitions += "Variant " + p_class.cpp_name + "::callback_clear_game(Object *p_self, const Variant **p_args, int p_count) {\n\tstatic_cast<" + p_class.cpp_name + " *>(p_self)->game_tasks.clear();\n\treturn Variant();\n}\n\n";
+		dispatch += "\tif (p_name == \"@game_clear\") { return &callback_clear_game; }\n";
 	}
 	// Script notifications visit every script level. Keep their ordering separate
 	// from native base notifications, just as Object does for ScriptInstance.

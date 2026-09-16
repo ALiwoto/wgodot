@@ -33,7 +33,7 @@ void WGodotCppEmitter::unsupported(const Parser::Node *p_node, const String &p_f
 }
 
 String WGodotCppEmitter::type(const Parser::DataType &p_type, const Parser::Node *p_origin) {
-	if (p_type.is_variant()) {
+	if (p_type.is_variant() || p_type.is_coroutine) {
 		return "Variant";
 	}
 	if (p_type.kind == Parser::DataType::ENUM) {
@@ -123,7 +123,9 @@ String WGodotCppEmitter::converted(const Parser::ExpressionNode *p_expression, c
 	if (p_target.is_variant()) {
 		return value;
 	}
-	if (p_expression->type_constraint.is_variant() || type(p_expression->type_constraint, p_expression) != target) {
+	// Flow analysis can narrow an object expression without changing the C++
+	// storage type. Let the native helper preserve exact types or perform the cast.
+	if (p_target.kind == Parser::DataType::CLASS || p_target.kind == Parser::DataType::NATIVE || p_expression->type_constraint.is_variant() || type(p_expression->type_constraint, p_expression) != target) {
 		class_native_headers.insert("modules/wgodot/native/wgodot_native_calls.h");
 		return "WGodotNative::convert<" + target + ">(" + value + ")";
 	}
@@ -332,9 +334,31 @@ String WGodotCppEmitter::literal(const Variant &p_value, const Parser::Node *p_o
 	}
 }
 
+const Parser::Node *WGodotCppEmitter::local_source(const Parser::IdentifierNode *p_identifier) const {
+	switch (p_identifier->source) {
+		case Parser::IdentifierNode::FUNCTION_PARAMETER:
+			return p_identifier->parameter_source;
+		case Parser::IdentifierNode::LOCAL_VARIABLE:
+			return p_identifier->variable_source;
+		case Parser::IdentifierNode::LOCAL_ITERATOR:
+		case Parser::IdentifierNode::LOCAL_BIND:
+			return p_identifier->bind_source;
+		default:
+			return nullptr;
+	}
+}
+
 String WGodotCppEmitter::expression(const Parser::ExpressionNode *p_expression) {
 	if (!p_expression) {
 		return String();
+	}
+	if (const String *replacement = expression_overrides.getptr(p_expression)) {
+		return *replacement;
+	}
+	if (p_expression->type_constraint.kind == Parser::DataType::CLASS || p_expression->type_constraint.kind == Parser::DataType::NATIVE) {
+		// A receiver can come from another class's field or method without a local
+		// declaration. Its complete type is still needed for native calls/casts.
+		(void)class_name(p_expression->type_constraint, p_expression);
 	}
 	if (p_expression->type == Parser::Node::IDENTIFIER) {
 		const auto *identifier = static_cast<const Parser::IdentifierNode *>(p_expression);
@@ -355,6 +379,9 @@ String WGodotCppEmitter::expression(const Parser::ExpressionNode *p_expression) 
 			return literal(static_cast<const Parser::LiteralNode *>(p_expression)->value, p_expression);
 		case Parser::Node::IDENTIFIER: {
 			const Parser::IdentifierNode *identifier = static_cast<const Parser::IdentifierNode *>(p_expression);
+			if (const String *replacement = local_overrides.getptr(local_source(identifier))) {
+				return *replacement;
+			}
 			if (identifier->type_constraint.is_meta_type && identifier->type_constraint.kind == Parser::DataType::CLASS) {
 				return class_name(identifier->type_constraint, identifier);
 			}
@@ -472,12 +499,12 @@ Error WGodotCppEmitter::generate() {
 	if (!diagnostics.is_empty()) {
 		return ERR_UNAVAILABLE;
 	}
-	files.insert("game_types.h", "// wgodot-changes::file\n#pragma once\n#include \"modules/wgodot/native/wgodot_native_support.h\"\n#include \"core/variant/variant_caster.h\"\n#include \"core/variant/typed_array.h\"\n#include \"core/variant/typed_dictionary.h\"\n");
-	files.insert("SCsub", "# wgodot-changes::file\nImport('env')\nImport('env_modules')\nenv_game = env_modules.Clone()\nenv_game.add_source_files(env.modules_sources, '*.cpp')\n");
+	files.insert("game_types.h", "// wgodot-changes::file\n#pragma once\n#include \"modules/wgodot/native/wgodot_native_support.h\"\n#include \"core/object/ref_counted.h\"\n#include \"core/variant/variant_caster.h\"\n#include \"core/variant/typed_array.h\"\n#include \"core/variant/typed_dictionary.h\"\n");
+	files.insert("SCsub", "# wgodot-changes::file\nImport('env')\nImport('env_modules')\nenv_game = env_modules.Clone()\nenv_game.add_source_files(env.modules_sources, '*.cpp')\nenv_game.add_source_files(env.modules_sources, [File('#modules/wgodot/native/wgodot_native_task.cpp')])\n");
 	files.insert("config.py", "# wgodot-changes::file\ndef can_build(env, platform):\n    return not env.editor_build\n\ndef configure(env):\n    env.AppendUnique(CPPDEFINES=['WGODOT_NATIVE_GAME'])\n");
 	files.insert("register_types.h", "// wgodot-changes::file\n#pragma once\n#include \"modules/register_module_types.h\"\nvoid initialize_main_game_module(ModuleInitializationLevel p_level);\nvoid uninitialize_main_game_module(ModuleInitializationLevel p_level);\n");
-	String registration = "// wgodot-changes::file\n#include \"register_types.h\"\n#include \"modules/wgodot/native/wgodot_native_static.h\"\n#include \"core/object/wgodot_native_interfaces.h\"\n";
-	String body = register_interfaces();
+	String registration = "// wgodot-changes::file\n#include \"register_types.h\"\n#include \"modules/wgodot/native/wgodot_native_static.h\"\n#include \"modules/wgodot/native/wgodot_native_task.h\"\n#include \"core/object/wgodot_native_interfaces.h\"\n";
+	String body = "\tGDREGISTER_INTERNAL_CLASS(WGodotNative::NativeTask);\n" + register_interfaces();
 	HashSet<String> registered;
 	for (const auto &entry : project.get_classes()) {
 		if (!entry.node->wgodot_static_class) {
@@ -485,7 +512,7 @@ Error WGodotCppEmitter::generate() {
 			register_class(entry, registered, body);
 		}
 	}
-	registration += "\nusing namespace WGodotGame;\nvoid initialize_main_game_module(ModuleInitializationLevel p_level) {\n\tif (p_level != MODULE_INITIALIZATION_LEVEL_SCENE) { return; }\n" + body + "}\nvoid uninitialize_main_game_module(ModuleInitializationLevel p_level) {\n\tif (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {\n\t\tWGodotNative::StaticRegistry::get().clear();\n\t\tWGodotNativeInterfaces::clear();\n\t}\n}\n";
+	registration += "\nusing namespace WGodotGame;\nvoid initialize_main_game_module(ModuleInitializationLevel p_level) {\n\tif (p_level != MODULE_INITIALIZATION_LEVEL_SCENE) { return; }\n" + body + "}\nvoid uninitialize_main_game_module(ModuleInitializationLevel p_level) {\n\tif (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {\n\t\tWGodotNative::NativeTask::clear_all();\n\t\tWGodotNative::StaticRegistry::get().clear();\n\t\tWGodotNativeInterfaces::clear();\n\t}\n}\n";
 	// A project containing only static classes needs no class namespace here.
 	if (registered.is_empty()) {
 		registration = registration.replace("using namespace WGodotGame;\n", "");
