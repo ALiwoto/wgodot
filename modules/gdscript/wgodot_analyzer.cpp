@@ -249,6 +249,21 @@ bool GDScriptAnalyzer::wgodot_validate_strict_datatype(const GDScriptParser::Dat
 	return false;
 }
 
+#ifdef TOOLS_ENABLED
+void GDScriptAnalyzer::wgodot_validate_strict_signal_parameter(const GDScriptParser::SignalNode *p_signal, const GDScriptParser::ParameterNode *p_parameter) {
+	// Validate signal contracts during editing/export, including addon scripts.
+	// The general strict-type helper can exempt addons.
+	if (!GLOBAL_GET_CACHED(bool, "wgodot/gdscript/strict_type_checking")) {
+		return;
+	}
+	const GDScriptParser::DataType &datatype = p_parameter->type_constraint;
+	if (p_parameter->datatype_specifier && datatype.is_hard_type() && !wgodot_datatype_contains_variant(datatype)) {
+		return;
+	}
+	push_error(vformat(R"(Strict type checking requires parameter "%s" of signal "%s" to declare a fully known, non-Variant type using ": Type". Array and Dictionary element types must also be specified.)", p_parameter->identifier->name, p_signal->identifier->name), p_parameter);
+}
+#endif
+
 void GDScriptAnalyzer::wgodot_validate_strict_object_call(const GDScriptParser::DataType &p_base_type, const GDScriptParser::CallNode *p_call) {
 	if (p_call->function_name != SNAME("call") && p_call->function_name != SNAME("call_deferred")) {
 		return;

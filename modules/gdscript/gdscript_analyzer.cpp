@@ -1215,6 +1215,11 @@ void GDScriptAnalyzer::resolve_class_member(GDScriptParser::ClassNode *p_class, 
 				for (GDScriptParser::ParameterNode *param : member.signal->parameters) {
 					GDScriptParser::DataType param_type = type_from_metatype(resolve_datatype(param->datatype_specifier));
 					param->type_constraint = param_type;
+					// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+					wgodot_validate_strict_signal_parameter(member.signal, param);
+#endif
+					// wgodot-changes::end
 #ifdef DEBUG_ENABLED
 					if (param->datatype_specifier == nullptr) {
 						parser->push_warning(param, GDScriptWarning::UNTYPED_DECLARATION, "Parameter", param->identifier->name);
