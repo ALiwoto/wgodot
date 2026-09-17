@@ -146,7 +146,7 @@ class GDScriptAnalyzer {
 	bool wgodot_datatypes_match_for_narrowed_access(const GDScriptParser::DataType &p_left, const GDScriptParser::DataType &p_right) const;
 	void wgodot_validate_signal_callable_connection(GDScriptParser::CallNode *p_call);
 	bool wgodot_try_get_connect_signal_info(const GDScriptParser::CallNode *p_call, MethodInfo &r_signal_info) const;
-	bool wgodot_try_get_callable_info(const GDScriptParser::ExpressionNode *p_expression, MethodInfo &r_callable_info) const;
+	bool wgodot_try_get_callable_info(const GDScriptParser::ExpressionNode *p_expression, MethodInfo &r_callable_info, Vector<const GDScriptParser::ExpressionNode *> &r_bound_arguments) const;
 	bool wgodot_strict_signal_callable_checking_enabled() const;
 	void wgodot_validate_interface_class(GDScriptParser::ClassNode *p_class);
 	void wgodot_resolve_implemented_interfaces(GDScriptParser::ClassNode *p_class);

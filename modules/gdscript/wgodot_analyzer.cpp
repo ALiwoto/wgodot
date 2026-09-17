@@ -589,43 +589,58 @@ void GDScriptAnalyzer::wgodot_validate_signal_callable_connection(GDScriptParser
 	}
 
 	MethodInfo callable_info;
-	if (!wgodot_try_get_callable_info(p_call->arguments[0], callable_info)) {
+	Vector<const GDScriptParser::ExpressionNode *> bound_arguments;
+	if (!wgodot_try_get_callable_info(p_call->arguments[0], callable_info, bound_arguments)) {
 		return;
 	}
 
 	const int signal_arg_count = signal_info.arguments.size();
+	const int supplied_arg_count = signal_arg_count + bound_arguments.size();
 	const int callable_required_arg_count = callable_info.arguments.size() - callable_info.default_arguments.size();
 	const bool callable_is_vararg = (callable_info.flags & METHOD_FLAG_VARARG) != 0;
 	const int callable_max_arg_count = callable_is_vararg ? INT_MAX : callable_info.arguments.size();
 	const String signal_name = signal_info.name == StringName() ? String("<unknown signal>") : String(signal_info.name);
 	const String callable_name = callable_info.name == StringName() ? String("<anonymous callable>") : String(callable_info.name);
+	String supplied_arguments = vformat("the signal emits %d arguments", signal_arg_count);
+	if (!bound_arguments.is_empty()) {
+		supplied_arguments += vformat(" and bind supplies %d", bound_arguments.size());
+	}
 
-	if (signal_arg_count < callable_required_arg_count) {
-		push_error(vformat(R"*(Cannot connect signal "%s" to callable "%s": the signal emits %d arguments, but the callable requires at least %d.)*",
-						   signal_name, callable_name, signal_arg_count, callable_required_arg_count),
+	if (supplied_arg_count < callable_required_arg_count) {
+		push_error(vformat(R"*(Cannot connect signal "%s" to callable "%s": %s, but the callable requires at least %d.)*",
+						   signal_name, callable_name, supplied_arguments, callable_required_arg_count),
 				p_call->arguments[0]);
 		return;
 	}
 
-	if (signal_arg_count > callable_max_arg_count) {
-		push_error(vformat(R"*(Cannot connect signal "%s" to callable "%s": the signal emits %d arguments, but the callable accepts at most %d.)*",
-						   signal_name, callable_name, signal_arg_count, callable_max_arg_count),
+	if (supplied_arg_count > callable_max_arg_count) {
+		push_error(vformat(R"*(Cannot connect signal "%s" to callable "%s": %s, but the callable accepts at most %d.)*",
+						   signal_name, callable_name, supplied_arguments, callable_max_arg_count),
 				p_call->arguments[0]);
 		return;
 	}
 
-	for (int i = 0; i < signal_arg_count && i < callable_info.arguments.size(); i++) {
-		const GDScriptParser::DataType signal_arg_type = type_from_property(signal_info.arguments[i], true, p_call);
+	// bind appends to the supplied arguments, before the function applies defaults.
+	// Validate that complete call rather than removing the last declared parameters.
+	for (int i = 0; i < supplied_arg_count && i < callable_info.arguments.size(); i++) {
+		const auto *bound_argument = i < signal_arg_count ? nullptr : bound_arguments[i - signal_arg_count];
+		const GDScriptParser::DataType argument_type = bound_argument ? bound_argument->type_constraint : type_from_property(signal_info.arguments[i], true, p_call);
 		const GDScriptParser::DataType callable_arg_type = type_from_property(callable_info.arguments[i], true, p_call);
 
-		if (!signal_arg_type.is_hard_type() || !callable_arg_type.is_hard_type() ||
-				signal_arg_type.is_variant() || callable_arg_type.is_variant()) {
+		if (!argument_type.is_hard_type() || !callable_arg_type.is_hard_type() ||
+				argument_type.is_variant() || callable_arg_type.is_variant()) {
 			continue;
 		}
 
-		if (!is_type_compatible(callable_arg_type, signal_arg_type, true)) {
+		if (!is_type_compatible(callable_arg_type, argument_type, true)) {
+			if (bound_argument) {
+				push_error(vformat(R"*(Cannot connect signal "%s" to callable "%s": bound argument %d has type "%s", but callable parameter %d expects "%s".)*",
+							   signal_name, callable_name, i - signal_arg_count + 1, argument_type.to_string(), i + 1, callable_arg_type.to_string()),
+						bound_argument);
+				return;
+			}
 			push_error(vformat(R"*(Cannot connect signal "%s" to callable "%s": signal argument %d emits "%s", but the callable expects "%s".)*",
-							   signal_name, callable_name, i + 1, signal_arg_type.to_string(), callable_arg_type.to_string()),
+							   signal_name, callable_name, i + 1, argument_type.to_string(), callable_arg_type.to_string()),
 					p_call->arguments[0]);
 			return;
 		}
@@ -661,8 +676,23 @@ bool GDScriptAnalyzer::wgodot_try_get_connect_signal_info(const GDScriptParser::
 	return true;
 }
 
-bool GDScriptAnalyzer::wgodot_try_get_callable_info(const GDScriptParser::ExpressionNode *p_expression, MethodInfo &r_callable_info) const {
+bool GDScriptAnalyzer::wgodot_try_get_callable_info(const GDScriptParser::ExpressionNode *p_expression, MethodInfo &r_callable_info, Vector<const GDScriptParser::ExpressionNode *> &r_bound_arguments) const {
 	ERR_FAIL_NULL_V(p_expression, false);
+
+	if (p_expression->type == GDScriptParser::Node::CALL) {
+		const auto *call = static_cast<const GDScriptParser::CallNode *>(p_expression);
+		if (call->function_name == SNAME("bind") && call->get_callee_type() == GDScriptParser::Node::SUBSCRIPT) {
+			const auto *callee = static_cast<const GDScriptParser::SubscriptNode *>(call->callee);
+			const auto &base_type = callee->base->type_constraint;
+			if (base_type.kind == GDScriptParser::DataType::BUILTIN && base_type.builtin_type == Variant::CALLABLE && !base_type.is_meta_type) {
+				// f.bind(a).bind(b) calls f(signal_arguments..., b, a).
+				for (const auto *argument : call->arguments) {
+					r_bound_arguments.push_back(argument);
+				}
+				return wgodot_try_get_callable_info(callee->base, r_callable_info, r_bound_arguments);
+			}
+		}
+	}
 
 	if (p_expression->type == GDScriptParser::Node::LAMBDA) {
 		const GDScriptParser::LambdaNode *lambda = static_cast<const GDScriptParser::LambdaNode *>(p_expression);

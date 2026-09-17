@@ -84,6 +84,10 @@ Error WGodotCppProject::analyze() {
 		diagnostics.push_back("Native export requires strict type checking. Enable 'wgodot/gdscript/strict_type_checking' in Project Settings.");
 		return ERR_UNCONFIGURED;
 	}
+	if (!GLOBAL_GET("wgodot/gdscript/strict_signal_callable_checking")) {
+		diagnostics.push_back("Native export requires strict signal/callable checking. Enable 'wgodot/gdscript/strict_signal_callable_checking' in Project Settings.");
+		return ERR_UNCONFIGURED;
+	}
 	Vector<String> scripts;
 	Error error = collect_scripts("res://", scripts);
 	if (error != OK) {
