@@ -68,6 +68,9 @@ WGodotCppEmitter::Value WGodotCppEmitter::native_call(const Parser::CallNode *p_
 		return Value();
 	}
 	const StringName base_name = native_base(p_base_type);
+	if (p_call->function_name == SNAME("call") && !p_base_type.is_meta_type && ClassDB::is_parent_class(base_name, SNAME("JavaScriptObject"))) {
+		return javascript_call(p_call, p_base, p_base_type);
+	}
 	if (p_call->function_name == SNAME("free") && p_call->arguments.is_empty() && !p_base_type.is_meta_type) {
 		class_call_headers.insert("modules/wgodot/native/wgodot_native_calls.h");
 		Value receiver = lower_receiver(p_base);

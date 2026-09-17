@@ -190,6 +190,23 @@ String WGodotCppEmitter::engine_argument(const Parser::ExpressionNode *p_value, 
 		return dictionary_engine_argument(p_value, p_target);
 	}
 	if (value_type.kind == Parser::DataType::BUILTIN && value_type.builtin_type == Variant::CALLABLE) {
+		if (p_value->type == Parser::Node::CALL) {
+			const auto *call = static_cast<const Parser::CallNode *>(p_value);
+			if (call->function_name == SNAME("unbind") && call->get_callee_type() == Parser::Node::SUBSCRIPT) {
+				const auto *base = static_cast<const Parser::SubscriptNode *>(call->callee)->base;
+				const auto base_type = expression_type(base);
+				if (base_type.kind == Parser::DataType::BUILTIN && base_type.builtin_type == Variant::CALLABLE && !base_type.is_meta_type) {
+					// At the engine boundary, discard arguments before the typed
+					// callback adapter decodes them (e.g. JavaScript's argument Array).
+					Vector<Value> operands{ lower(call->arguments[0]), lower_engine_argument(base, Variant::CALLABLE) };
+					Value result = sequence(operands);
+					result.code = "(" + operands[1].code + ").unbind(" + convert_value(operands[0], "int") + ")";
+					result.cpp_type = "Callable";
+					result.effects = true;
+					return result.expression();
+				}
+			}
+		}
 		const auto *signature = signatures.get(p_value);
 		if (!signature) {
 			(void)signature_type(p_value);

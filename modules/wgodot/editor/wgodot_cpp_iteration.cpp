@@ -111,7 +111,8 @@ String WGodotCppEmitter::iteration(const Parser::ForNode *p_loop, int p_indent) 
 		return collection.block(code.trim_suffix("\n"), p_indent);
 	}
 	class_call_headers.insert("modules/wgodot/native/wgodot_native_values.h");
-	const String iterator_type = range ? "WGodotNative::Range" : is_wdictionary(collection_type) ? "WGodotNative::WDictionaryIterator<" + type(collection_type.get_container_element_type(0), p_loop) + ", " + type(collection_type.get_container_element_type(1), p_loop) + ">" : is_warray(collection_type) ? "WGodotNative::WArrayIterator<" + type(collection_type.get_container_element_type(0), p_loop) + ">"
+	// Element callback signatures belong to the collection expression, not the loop statement.
+	const String iterator_type = range ? "WGodotNative::Range" : is_wdictionary(collection_type) ? "WGodotNative::WDictionaryIterator<" + type(collection_type.get_container_element_type(0), p_loop->list) + ", " + type(collection_type.get_container_element_type(1), p_loop->list) + ">" : is_warray(collection_type) ? "WGodotNative::WArrayIterator<" + type(collection_type.get_container_element_type(0), p_loop->list) + ">"
 																							: "WGodotNative::Iterator";
 	String code = "for (" + iterator_type + " iterator{" + collection.code + "}; iterator.has_value(); iterator.next()) {\n";
 	code += "\t" + variable_type + " " + variable + " = iterator." + (range ? "get()" : "get<" + variable_type + ">()") + ";\n";
