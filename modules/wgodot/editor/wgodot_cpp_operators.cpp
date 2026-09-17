@@ -77,6 +77,9 @@ String WGodotCppEmitter::operation(Variant::Operator p_operation, const Parser::
 
 String WGodotCppEmitter::cast(const Parser::CastNode *p_cast) {
 	const auto &target = p_cast->type_constraint;
+	if (is_packed(target) && (p_cast->operand->type == Parser::Node::ARRAY || is_warray(expression_type(p_cast->operand)))) {
+		return packed_array(p_cast->operand, target).expression();
+	}
 	if (is_warray(target) || is_warray(expression_type(p_cast->operand))) {
 		if (is_warray(target) && p_cast->operand->type == Parser::Node::ARRAY) {
 			return array_literal(static_cast<const Parser::ArrayNode *>(p_cast->operand), target).expression();

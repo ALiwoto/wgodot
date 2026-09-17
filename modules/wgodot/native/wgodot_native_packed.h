@@ -5,6 +5,9 @@
 #include "core/variant/type_info.h"
 #include "core/variant/variant_internal.h"
 
+#include <type_traits>
+#include <utility>
+
 namespace WGodotNative {
 
 // Packed arrays share the Variant's packed-array reference in GDScript. A plain
@@ -15,7 +18,10 @@ class Packed {
 
 public:
 	using Native = ArrayType;
+	using Element = std::decay_t<decltype(std::declval<ArrayType>()[0])>;
 	Packed() : value(ArrayType()) {}
+	// An engine Vector has value semantics. Retain its COW buffer in a new
+	// packed-array identity; never borrow the Vector or its owner's lifetime.
 	Packed(const ArrayType &p_value) : value(p_value) {}
 	Packed(const Variant &p_value) {
 		if (p_value.get_type() == GetTypeInfo<ArrayType>::VARIANT_TYPE) {
@@ -24,7 +30,10 @@ public:
 			const Variant *argument = &p_value;
 			Callable::CallError error;
 			Variant::construct(GetTypeInfo<ArrayType>::VARIANT_TYPE, value, &argument, 1, error);
-			ERR_FAIL_COND_MSG(error.error != Callable::CallError::CALL_OK, "Invalid native game packed-array conversion.");
+			if (error.error != Callable::CallError::CALL_OK) {
+				value = ArrayType();
+				ERR_FAIL_MSG("Invalid native game packed-array conversion.");
+			}
 		}
 	}
 	operator const Variant &() const { return value; }

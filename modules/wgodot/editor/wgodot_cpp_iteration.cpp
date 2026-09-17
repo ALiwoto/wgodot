@@ -113,7 +113,7 @@ String WGodotCppEmitter::iteration(const Parser::ForNode *p_loop, int p_indent) 
 	class_call_headers.insert("modules/wgodot/native/wgodot_native_values.h");
 	const String iterator_type = range ? "WGodotNative::Range" : is_warray(collection_type) ? "WGodotNative::WArrayIterator<" + type(collection_type.get_container_element_type(0), p_loop) + ">"
 																							: "WGodotNative::Iterator";
-	String code = "for (" + iterator_type + " iterator(" + collection.code + "); iterator.has_value(); iterator.next()) {\n";
+	String code = "for (" + iterator_type + " iterator{" + collection.code + "}; iterator.has_value(); iterator.next()) {\n";
 	code += "\t" + variable_type + " " + variable + " = iterator." + (range ? "get()" : "get<" + variable_type + ">()") + ";\n";
 	return collection.block(code + suite(p_loop->loop, 1) + "}", p_indent);
 }

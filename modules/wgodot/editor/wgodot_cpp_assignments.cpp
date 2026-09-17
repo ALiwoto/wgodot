@@ -135,7 +135,9 @@ WGodotCppEmitter::Value WGodotCppEmitter::assignment(const Parser::AssignmentNod
 		return String();
 	}
 	const auto assigned_type = assigned->type == Parser::Node::ARRAY && is_warray(target_type) ? target_type : expression_type(assigned);
-	Value assigned_value = assigned->type == Parser::Node::ARRAY && is_warray(target_type) ? lower_converted(assigned, target_type) : lower(assigned);
+	const bool construct_container = (assigned->type == Parser::Node::ARRAY && is_warray(target_type)) ||
+			(is_packed(target_type) && (assigned->type == Parser::Node::ARRAY || is_warray(assigned_type)));
+	Value assigned_value = construct_container ? lower_converted(assigned, target_type) : lower(assigned);
 	Value result;
 	result.cpp_type = "void";
 	if (target->type == Parser::Node::IDENTIFIER) {
@@ -205,7 +207,12 @@ WGodotCppEmitter::Value WGodotCppEmitter::assignment(const Parser::AssignmentNod
 	};
 	auto write = [&](int p_index, const String &p_value) {
 		const auto *node = chain[p_index];
-		return node->is_attribute ? property_access(node->base->type_constraint, node->attribute->name, node, Value(base(p_index), type(node->base->type_constraint, node)), Value(p_value, type(node->type_constraint, node))).expression() : "WGodotNative::set_index(" + base(p_index) + ", " + key(p_index) + ", " + p_value + ")";
+		// These bases are already evaluated local slots. In particular, a
+		// packed vector/color element must be mutated before it is written back.
+		Value receiver(base(p_index), type(node->base->type_constraint, node));
+		receiver.borrowed = true;
+		receiver.effects = false;
+		return node->is_attribute ? property_access(node->base->type_constraint, node->attribute->name, node, receiver, Value(p_value, type(node->type_constraint, node))).expression() : "WGodotNative::set_index(" + base(p_index) + ", " + key(p_index) + ", " + p_value + ")";
 	};
 	for (int i = 0; i < chain.size(); i++) {
 		if (i == chain.size() - 1) {

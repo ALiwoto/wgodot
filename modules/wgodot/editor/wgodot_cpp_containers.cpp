@@ -6,8 +6,8 @@ using Parser = GDScriptParser;
 
 namespace {
 
-// Packed-array and dictionary ownership is still undecided. Typed Arrays use
-// WArray; their conversions and engine boundaries are checked by the emitter.
+// Dictionary ownership is still undecided. Typed Arrays use WArray and packed
+// arrays retain Godot's shared packed-array identity through Packed<T>.
 class ContainerSharing : public WGodotCppAstVisitor {
 	const String &path;
 	Vector<String> &diagnostics;
@@ -17,7 +17,7 @@ class ContainerSharing : public WGodotCppAstVisitor {
 			return false;
 		}
 		const Variant::Type type = p_value->type_constraint.builtin_type;
-		if (type != Variant::DICTIONARY && !(type >= Variant::PACKED_BYTE_ARRAY && type <= Variant::PACKED_VECTOR4_ARRAY)) {
+		if (type != Variant::DICTIONARY) {
 			return false;
 		}
 		switch (p_value->type) {

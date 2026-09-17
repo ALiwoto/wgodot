@@ -18,6 +18,17 @@ Parser::DataType WGodotCppEmitter::variable_type(const Parser::VariableNode *p_v
 Parser::DataType WGodotCppEmitter::expression_type(const Parser::ExpressionNode *p_expression) const {
 	if (p_expression->type == Parser::Node::CALL) {
 		const auto *call = static_cast<const Parser::CallNode *>(p_expression);
+		if (call->get_callee_type() == Parser::Node::IDENTIFIER && call->function_name == SNAME("Array") && call->arguments.size() == 1) {
+			const auto source = expression_type(call->arguments[0]);
+			if (is_packed(source)) {
+				auto result = p_expression->type_constraint;
+				Parser::DataType element;
+				element.kind = Parser::DataType::BUILTIN;
+				element.builtin_type = Variant::get_indexed_element_type(source.builtin_type);
+				result.set_container_element_type(0, element);
+				return result;
+			}
+		}
 		if (call->get_callee_type() == Parser::Node::SUBSCRIPT && call->function_name == SNAME("call")) {
 			const auto *base = static_cast<const Parser::SubscriptNode *>(call->callee)->base;
 			if (const auto *signature = signatures.get(base); signature && !signature->signal) {
@@ -127,6 +138,9 @@ bool WGodotCppEmitter::has_native_value_signature(const Parser::FunctionNode *p_
 
 bool WGodotCppEmitter::validate_array_conversion(const Parser::ExpressionNode *p_value, const Parser::DataType &p_target, const Parser::Node *p_target_origin) {
 	const auto source_type = expression_type(p_value);
+	if (is_packed(p_target) && (is_warray(source_type) || p_value->type == Parser::Node::ARRAY)) {
+		return true; // Packed construction copies elements into independent storage.
+	}
 	if (is_warray(source_type) || is_warray(p_target)) {
 		if (p_value->type == Parser::Node::ARRAY && is_warray(p_target)) {
 			return true; // A literal is constructed directly in its destination type.

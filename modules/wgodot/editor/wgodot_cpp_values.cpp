@@ -93,14 +93,30 @@ WGodotCppEmitter::Value WGodotCppEmitter::global_call(const Parser::CallNode *p_
 		name = type_alias;
 	}
 	class_call_headers.insert("modules/wgodot/native/wgodot_native_values.h");
+	if (is_packed(p_call->type_constraint) && Parser::get_builtin_type(name) == p_call->type_constraint.builtin_type && p_call->arguments.size() == 1) {
+		const auto *source = p_call->arguments[0];
+		if (source->type == Parser::Node::ARRAY || is_warray(expression_type(source))) {
+			return packed_array(source, p_call->type_constraint);
+		}
+	}
 	if (name == SNAME("len") && p_call->arguments.size() == 1 && is_warray(expression_type(p_call->arguments[0]))) {
 		return "(" + expression(p_call->arguments[0]) + ").size()";
 	}
-	if (is_warray(p_call->type_constraint) && Parser::get_builtin_type(name) == Variant::ARRAY) {
+	if (is_warray(expression_type(p_call)) && Parser::get_builtin_type(name) == Variant::ARRAY) {
 		if (p_call->arguments.is_empty()) {
 			return type(p_call->type_constraint, p_call) + "()";
 		}
 		if (p_call->arguments.size() == 1) {
+			const auto *source = p_call->arguments[0];
+			const auto source_type = expression_type(source);
+			if (is_packed(source_type)) {
+				Value result = lower(source);
+				result.code = "WGodotNative::copy_vector<" + type(expression_type(p_call), p_call) + ">(" + convert_value(result, Variant::get_type_name(source_type.builtin_type)) + ")";
+				result.cpp_type = type(expression_type(p_call), p_call);
+				result.borrowed = false;
+				result.effects = true;
+				return result;
+			}
 			return converted(p_call->arguments[0], p_call->type_constraint);
 		}
 	}

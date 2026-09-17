@@ -129,6 +129,18 @@ Result invoke_result(Function &&p_function, Args &&...p_args) {
 	}
 }
 
+// Explicit Array -> PackedArray construction creates independent storage.
+template <class Result, class T>
+Result copy_packed(const WArray<T> &p_source) {
+	static_assert(IsPacked<Result>::value);
+	typename Result::Native result;
+	result.resize(p_source.size());
+	for (int64_t i = 0; i < p_source.size(); i++) {
+		result.set(i, convert<typename Result::Element>(p_source.get(i)));
+	}
+	return result;
+}
+
 // Used only by exporter handlers for APIs that return an independent snapshot.
 // This is not an implicit conversion: aliases of p_source are not preserved.
 template <class Result>

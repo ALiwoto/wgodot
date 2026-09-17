@@ -70,6 +70,8 @@ class WGodotCppEmitter {
 	Value callback_call(const GDScriptParser::CallNode *p_call);
 	bool validate_callback(const GDScriptParser::ExpressionNode *p_source, const WGodotCppSignatures::Signature &p_target, bool p_discard_result = false);
 	bool is_warray(const GDScriptParser::DataType &p_type) const;
+	bool is_packed(const GDScriptParser::DataType &p_type) const;
+	Value packed_array(const GDScriptParser::ExpressionNode *p_source, const GDScriptParser::DataType &p_target);
 	GDScriptParser::DataType expression_type(const GDScriptParser::ExpressionNode *p_expression) const;
 	GDScriptParser::DataType variable_type(const GDScriptParser::VariableNode *p_variable) const;
 	bool has_native_value_signature(const GDScriptParser::FunctionNode *p_function) const;

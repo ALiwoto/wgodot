@@ -372,6 +372,9 @@ WGodotCppEmitter::Value WGodotCppEmitter::lower_converted(const Parser::Expressi
 	if (p_expression->type == Parser::Node::ARRAY && is_warray(p_target)) {
 		return array_literal(static_cast<const Parser::ArrayNode *>(p_expression), p_target);
 	}
+	if (is_packed(p_target) && (p_expression->type == Parser::Node::ARRAY || is_warray(expression_type(p_expression)))) {
+		return packed_array(p_expression, p_target);
+	}
 	if (!validate_array_conversion(p_expression, p_target, p_target_origin)) {
 		return Value();
 	}
@@ -423,6 +426,12 @@ WGodotCppEmitter::Value WGodotCppEmitter::lower_converted(const Parser::Expressi
 
 WGodotCppEmitter::Value WGodotCppEmitter::lower_engine_argument(const Parser::ExpressionNode *p_expression, Variant::Type p_target) {
 	const auto datatype = expression_type(p_expression);
+	Parser::DataType target;
+	target.kind = Parser::DataType::BUILTIN;
+	target.builtin_type = p_target;
+	if (is_packed(target) && (p_expression->type == Parser::Node::ARRAY || is_warray(datatype))) {
+		return packed_array(p_expression, target);
+	}
 	if (!is_warray(datatype) && datatype.builtin_type != Variant::CALLABLE) {
 		return lower(p_expression);
 	}
