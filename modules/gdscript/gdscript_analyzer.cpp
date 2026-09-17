@@ -6780,8 +6780,12 @@ GDScriptParser::DataType GDScriptAnalyzer::get_operation_type(Variant::Operator 
 
 bool GDScriptAnalyzer::is_type_compatible(const GDScriptParser::DataType &p_target, const GDScriptParser::DataType &p_source, bool p_allow_implicit_conversion, const GDScriptParser::Node *p_source_node) {
 	// wgodot-changes::begin
-	if (p_target.kind == GDScriptParser::DataType::CLASS && p_target.class_type->wgodot_is_interface && p_source.kind == GDScriptParser::DataType::CLASS && !p_source.is_meta_type) {
-		resolve_class_interface(p_source.class_type, p_source_node);
+	if (p_source.kind == GDScriptParser::DataType::CLASS && !p_source.is_meta_type) {
+		const bool script_interface = p_target.kind == GDScriptParser::DataType::CLASS && p_target.class_type->wgodot_is_interface;
+		const bool native_interface = p_target.kind == GDScriptParser::DataType::NATIVE && WGodotGDScriptStdLib::has_global_interface(p_target.native_type);
+		if (script_interface || native_interface) {
+			resolve_class_interface(p_source.class_type, p_source_node);
+		}
 	}
 	// wgodot-changes::end
 #ifdef DEBUG_ENABLED

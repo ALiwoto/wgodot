@@ -3169,7 +3169,10 @@ void EditorHelp::load_script_doc_cache() {
 		return;
 	}
 
-	if (EditorNode::is_cmdline_mode()) {
+	// wgodot-changes::begin
+	// The documentation worker can queue this callback during editor shutdown.
+	if (!EditorNode::get_singleton() || EditorNode::is_cmdline_mode()) {
+	// wgodot-changes::end
 		return;
 	}
 

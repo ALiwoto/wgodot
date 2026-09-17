@@ -88,6 +88,9 @@ void GDScriptAnalyzer::wgodot_resolve_implemented_interfaces(ClassNode *p_class)
 		for (ClassNode *ancestor : inherited) {
 			const String id = WGodotGDScriptInterfaceHelpers::get_interface_id(ancestor);
 			if (!seen.has(id)) {
+				// Preserve the owning parser through the declaring contract. A
+				// descendant may inherit this interface without importing its script.
+				ensure_cached_external_parser_for_class(ancestor, contract, "Trying to inherit interface", p_class);
 				seen.insert(id);
 				p_class->wgodot_resolved_interfaces.push_back(ancestor);
 			}

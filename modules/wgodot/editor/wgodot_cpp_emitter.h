@@ -39,6 +39,7 @@ class WGodotCppEmitter {
 	const GDScriptParser::CallNode *awaited_call = nullptr;
 
 	void unsupported(const GDScriptParser::Node *p_node, const String &p_feature);
+	String source_header(const String &p_path, const String &p_class) const;
 	String class_name(const GDScriptParser::DataType &p_type, const GDScriptParser::Node *p_origin);
 	StringName native_base(const GDScriptParser::DataType &p_type) const;
 	String type(const GDScriptParser::DataType &p_type, const GDScriptParser::Node *p_origin);

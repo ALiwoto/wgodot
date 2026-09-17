@@ -169,7 +169,7 @@ bool restore_persisted_breakpoints() {
 	if (settings == nullptr) {
 		return false;
 	}
-	const Variant stored = settings->get_project_metadata(BREAKPOINT_METADATA_SECTION, BREAKPOINT_METADATA_KEY, Variant());
+	const Variant stored = settings->get_project_metadata(BREAKPOINT_METADATA_SECTION, BREAKPOINT_METADATA_KEY, Dictionary());
 	if (stored.get_type() != Variant::DICTIONARY) {
 		return false;
 	}

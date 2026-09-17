@@ -10,7 +10,8 @@ String WGodotCppEmitter::native_interface_call(const Parser::CallNode *p_call, c
 	class_call_headers.insert(p_interface.cpp_header);
 	class_call_headers.insert("modules/wgodot/native/wgodot_native_interface.h");
 	const String traits = "WGodotNative::InterfaceMethod<decltype(&" + p_interface.cpp_type + "::" + String(p_call->function_name) + ")>";
-	String body = "([&]() { ";
+	const String result = type(p_call->type_constraint, p_call);
+	String body = "([&]() -> " + result + " { ";
 	Vector<String> arguments;
 	int index = 0;
 	for (const PropertyInfo &parameter : method.arguments) {
@@ -35,10 +36,9 @@ String WGodotCppEmitter::native_interface_call(const Parser::CallNode *p_call, c
 		arguments.push_back("WGodotNative::convert<" + traits + "::Argument<" + itos(index) + ">>(" + argument + ")");
 		index++;
 	}
-	const String result = type(p_call->type_constraint, p_call);
 	body += "auto &&receiver = " + expression(p_base) + "; auto *instance = receiver.operator->(); ERR_FAIL_NULL_V(instance, (" + result + "())); ";
 	const String invoke = "instance->" + String(p_call->function_name) + "(" + String(", ").join(arguments) + ")";
-	return body.replace("([&]() {", "([&]() -> " + result + " {") + "return " + (result == "void" ? invoke : "WGodotNative::convert<" + result + ">(" + invoke + ")") + "; }())";
+	return body + "return " + (result == "void" ? invoke : "WGodotNative::convert<" + result + ">(" + invoke + ")") + "; }())";
 }
 
 String WGodotCppEmitter::native_interface_member(const Parser::ExpressionNode *p_base, const StringName &p_name, const Parser::ExpressionNode *p_origin, const WGodotNativeInterfaces::Descriptor &p_interface) {

@@ -55,7 +55,7 @@ void WGodotCppEmitter::emit_native_interface(const WGodotNativeInterfaces::Descr
 		}
 		signals += "};\n";
 	}
-	String header = "// wgodot-changes::file\n#pragma once\n#include \"modules/wgodot/native/wgodot_native_interface.h\"\n#include \"" + p_interface.cpp_header + "\"\n#include \"" + native_headers[p_interface.native_base] + "\"\n\nnamespace WGodotGame {\n";
+	String header = source_header(p_interface.cpp_header, p_interface.name) + "#pragma once\n#include \"modules/wgodot/native/wgodot_native_interface.h\"\n#include \"" + p_interface.cpp_header + "\"\n#include \"" + native_headers[p_interface.native_base] + "\"\n\nnamespace WGodotGame {\n";
 	String includes;
 	for (const String &include : class_native_headers) {
 		if (include != name + ".h") {
@@ -131,7 +131,7 @@ void WGodotCppEmitter::emit_interface(const WGodotCppProject::Class &p_class) {
 		}
 	}
 	contract += "};\n";
-	String header = "// wgodot-changes::file\n#pragma once\n#include \"game_types.h\"\n#include \"modules/wgodot/native/wgodot_native_interface.h\"\n#include \"" + *native_header + "\"\n";
+	String header = source_header(p_class.script_path, p_class.node->fqcn) + "#pragma once\n#include \"game_types.h\"\n#include \"modules/wgodot/native/wgodot_native_interface.h\"\n#include \"" + *native_header + "\"\n";
 	Vector<String> headers;
 	for (const String &include : class_native_headers) {
 		if (include != name + ".h") {

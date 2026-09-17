@@ -35,7 +35,8 @@ String WGodotCppEmitter::call(const Parser::CallNode *p_call) {
 	}
 	if (const auto *contract_method = interface_method(p_call)) {
 		class_call_headers.insert("modules/wgodot/native/wgodot_native_interface.h");
-		String body = "([&]() { ";
+		const String result_type = type(p_call->type_constraint, p_call);
+		String body = "([&]() -> " + result_type + " { ";
 		Vector<String> arguments;
 		for (uint32_t i = 0; i < p_call->arguments.size(); i++) {
 			const String argument = "argument_" + itos(i);
@@ -51,10 +52,9 @@ String WGodotCppEmitter::call(const Parser::CallNode *p_call) {
 			}
 			arguments.push_back(converted(parameter->initializer, parameter->type_constraint, parameter));
 		}
-		const String result_type = type(p_call->type_constraint, p_call);
 		body += "auto &&receiver = " + expression(base) + "; auto *instance = receiver.operator->(); ERR_FAIL_NULL_V(instance, (" + result_type + "())); ";
 		const String invoke = "instance->" + String(p_call->function_name) + "(" + String(", ").join(arguments) + ")";
-		return body.replace("([&]() {", "([&]() -> " + result_type + " {") + "return " + (result_type == "void" ? invoke : "WGodotNative::convert<" + result_type + ">(" + invoke + ")") + "; }())";
+		return body + "return " + (result_type == "void" ? invoke : "WGodotNative::convert<" + result_type + ">(" + invoke + ")") + "; }())";
 	}
 	const bool construct = !p_call->is_super && base && base_type.is_meta_type && p_call->function_name == "new";
 	const StringName name = construct ? SNAME("_init") : p_call->function_name;
