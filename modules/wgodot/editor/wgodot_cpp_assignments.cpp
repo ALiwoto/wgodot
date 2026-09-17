@@ -24,15 +24,25 @@ StringName WGodotCppEmitter::accessor_name(const Parser::VariableNode *p_variabl
 WGodotCppEmitter::Value WGodotCppEmitter::property_access(const Parser::DataType &p_base_type, const StringName &p_name, const Parser::ExpressionNode *p_origin, Value p_receiver_value, Value p_assigned) {
 	class_call_headers.insert("modules/wgodot/native/wgodot_native_values.h");
 	const bool write = !p_assigned.code.is_empty();
-	Vector<Value> operands{ p_receiver_value };
+	// A class name qualifies static storage/accessors without a runtime receiver.
+	// Static access through an instance still evaluates that instance expression.
+	// Implicit self uses ClassNode::self_type (a metatype), but has a real pointer.
+	const bool has_receiver = !p_base_type.is_meta_type || p_receiver_value.object_pointer;
+	Vector<Value> operands;
+	if (has_receiver) {
+		operands.push_back(p_receiver_value);
+	}
 	if (write) {
 		operands.push_back(p_assigned);
 	}
 	Value result = sequence(operands);
-	p_receiver_value = operands[0];
+	p_receiver_value = has_receiver ? operands[0] : Value();
+	if (write) {
+		p_assigned = operands[operands.size() - 1];
+	}
 	const String p_receiver = p_receiver_value.code;
-	const String p_value = write ? operands[1].code : String();
-	const String p_value_type = write ? operands[1].cpp_type : String();
+	const String p_value = p_assigned.code;
+	const String p_value_type = p_assigned.cpp_type;
 	result.cpp_type = write ? "void" : type(p_origin->type_constraint, p_origin);
 	result.effects = true;
 	auto finish = [&](const String &p_code) { result.code = p_code; return result; };
@@ -44,7 +54,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::property_access(const Parser::DataType
 				return finish(String());
 			}
 			class_call_headers.insert(contract->cpp_header);
-			const String argument = write ? convert_value(operands[1], native_argument_type(property->info, p_origin)) : "";
+			const String argument = write ? convert_value(p_assigned, native_argument_type(property->info, p_origin)) : "";
 			if (!p_receiver_value.borrowed && !p_receiver_value.object_pointer) {
 				materialize(p_receiver_value, result.setup);
 			}
@@ -189,34 +199,50 @@ WGodotCppEmitter::Value WGodotCppEmitter::assignment(const Parser::AssignmentNod
 	}
 	const String prefix = "assignment_" + itos(temporary_index++) + "_";
 	String body;
+	Vector<Value> receivers;
+	auto key = [&](int p_index) { return prefix + "key_" + itos(p_index); };
+	auto base = [&](int p_index) { return prefix + "base_" + itos(p_index); };
+	auto save_receiver = [&](Value p_value, int p_index, bool p_borrow) {
+		if (!p_value.storage_type.is_empty() && p_value.storage_type != p_value.cpp_type) {
+			p_value.code = p_value.storage_type + "(" + p_value.code + ")";
+			p_value.cpp_type = p_value.storage_type;
+			p_value.object_pointer = false;
+		}
+		body += String(p_borrow ? "auto &&" : "auto ") + base(p_index) + " = " + p_value.expression() + ";\n";
+		// Preserve the actual C++ representation: self is a raw pointer, while
+		// ObjectValue, Ref and interface receivers are handles with accessors.
+		p_value.code = base(p_index);
+		p_value.setup.clear();
+		p_value.guard = String();
+		p_value.guard_setup = String();
+		p_value.effects = false;
+		p_value.borrowed = true;
+		receivers.push_back(p_value);
+	};
 	// Borrow the root slot, but own intermediate get results as the language does.
 	// Read the RHS before the final index, and only then read a compound target.
 	if (!root->type_constraint.is_meta_type) {
 		Value root_value = lower(root);
 		Vector<Value> roots{ root_value };
 		result.setup.append_array(sequence(roots).setup);
-		root_value = roots[0];
-		body += "auto &&" + prefix + "base_0 = " + root_value.code + ";\n";
+		save_receiver(roots[0], 0, true);
+	} else {
+		receivers.push_back(Value());
 	}
-	auto key = [&](int p_index) { return prefix + "key_" + itos(p_index); };
-	auto base = [&](int p_index) { return prefix + "base_" + itos(p_index); };
 	auto read = [&](int p_index) {
 		const auto *node = chain[p_index];
 		if (p_index + 1 < chain.size()) {
 			if (const String *saved = expression_overrides.getptr(node)) {
-				return *saved;
+				return value_facts(node, *saved);
 			}
 		}
-		return node->is_attribute ? property_access(node->base->type_constraint, node->attribute->name, node, Value(base(p_index), type(node->base->type_constraint, node))).expression() : "WGodotNative::get_index<" + type(node->type_constraint, node) + ">(" + base(p_index) + ", " + key(p_index) + ")";
+		return node->is_attribute ? property_access(node->base->type_constraint, node->attribute->name, node, receivers[p_index]) : Value("WGodotNative::get_index<" + type(node->type_constraint, node) + ">(" + base(p_index) + ", " + key(p_index) + ")", type(node->type_constraint, node));
 	};
 	auto write = [&](int p_index, const String &p_value) {
 		const auto *node = chain[p_index];
 		// These bases are already evaluated local slots. In particular, a
 		// packed vector/color element must be mutated before it is written back.
-		Value receiver(base(p_index), type(node->base->type_constraint, node));
-		receiver.borrowed = true;
-		receiver.effects = false;
-		return node->is_attribute ? property_access(node->base->type_constraint, node->attribute->name, node, receiver, Value(p_value, type(node->type_constraint, node))).expression() : "WGodotNative::set_index(" + base(p_index) + ", " + key(p_index) + ", " + p_value + ")";
+		return node->is_attribute ? property_access(node->base->type_constraint, node->attribute->name, node, receivers[p_index], Value(p_value, type(node->type_constraint, node))).expression() : "WGodotNative::set_index(" + base(p_index) + ", " + key(p_index) + ", " + p_value + ")";
 	};
 	for (int i = 0; i < chain.size(); i++) {
 		if (i == chain.size() - 1) {
@@ -232,12 +258,12 @@ WGodotCppEmitter::Value WGodotCppEmitter::assignment(const Parser::AssignmentNod
 			body += "auto &&" + key(i) + " = " + expression(chain[i]->index) + "; ";
 		}
 		if (i < chain.size() - 1) {
-			body += String(expression_overrides.has(chain[i]) ? "auto &&" : "auto ") + base(i + 1) + " = " + read(i) + "; ";
+			save_receiver(read(i), i + 1, expression_overrides.has(chain[i]));
 		}
 	}
 	const int leaf = chain.size() - 1;
 	if (compound) {
-		body += "auto " + prefix + "previous = " + read(leaf) + ";\nauto " + prefix + "result = " + operation(p_assignment->variant_op, target_type, target_type, assigned_type, prefix + "previous", prefix + "value", p_assignment) + ";\n";
+		body += "auto " + prefix + "previous = " + read(leaf).expression() + ";\nauto " + prefix + "result = " + operation(p_assignment->variant_op, target_type, target_type, assigned_type, prefix + "previous", prefix + "value", p_assignment) + ";\n";
 	}
 	body += write(leaf, prefix + (compound ? "result" : "value")) + ";\n";
 	auto write_back = [&](const Parser::DataType &p_type, const String &p_value, const String &p_write) {

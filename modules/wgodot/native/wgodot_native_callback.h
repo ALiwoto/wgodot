@@ -71,8 +71,14 @@ template <class R, class... Args>
 class WCallable<R(Args...)> {
 	template <class>
 	friend class WCallable;
-	std::shared_ptr<const std::function<R(Args...)>> invoke;
-	std::function<bool()> valid;
+	// Godot's Vector relocates elements as bytes. Keep both functions at a
+	// stable address: std::function can point into its own inline storage.
+	struct Invocation {
+		std::function<R(Args...)> invoke;
+		std::function<bool()> valid;
+		Invocation(std::function<R(Args...)> p_invoke, std::function<bool()> p_valid) : invoke(std::move(p_invoke)), valid(std::move(p_valid)) {}
+	};
+	std::shared_ptr<const Invocation> invocation;
 	std::shared_ptr<CallbackIdentity> identity;
 	ObjectID owner;
 	std::tuple<Args...> defaults{};
@@ -88,7 +94,7 @@ class WCallable<R(Args...)> {
 	}
 	template <class Tuple, size_t... I>
 	R call_tuple(Tuple &p_args, std::index_sequence<I...>) const {
-		return (*invoke)(argument<I>(p_args)...);
+		return invocation->invoke(argument<I>(p_args)...);
 	}
 	template <class Tuple, size_t... I>
 	void set_defaults(Tuple &&p_defaults, std::index_sequence<I...>) {
@@ -106,7 +112,7 @@ class WCallable<R(Args...)> {
 		auto result = Bound::make([source, bound](std::tuple_element_t<I, std::tuple<Args...>>... p_args) -> R {
 			return std::apply([&](const auto &...p_tail) -> R { return source.call(p_args..., p_tail...); }, *bound);
 		},
-				valid, owner, std::make_shared<BoundIdentity<Tuple>>(identity, bound));
+				invocation->valid, owner, std::make_shared<BoundIdentity<Tuple>>(identity, bound));
 		result.defaults = std::make_tuple(std::get<I>(defaults)...);
 		result.default_count = MAX(0, default_count - int(std::tuple_size_v<Tuple>));
 		return result;
@@ -120,8 +126,7 @@ public:
 	template <class F>
 	static WCallable make(F p_function, std::function<bool()> p_valid = {}, ObjectID p_owner = ObjectID(), std::shared_ptr<CallbackIdentity> p_identity = {}) {
 		WCallable result;
-		result.invoke = std::make_shared<const std::function<R(Args...)>>(std::move(p_function));
-		result.valid = std::move(p_valid);
+		result.invocation = std::make_shared<const Invocation>(std::move(p_function), std::move(p_valid));
 		result.owner = p_owner;
 		result.identity = p_identity ? std::move(p_identity) : std::make_shared<CallbackIdentity>();
 		return result;
@@ -140,8 +145,8 @@ public:
 		result.owner = p_owner;
 		return result;
 	}
-	bool is_null() const { return !invoke; }
-	bool is_valid() const { return invoke && (!valid || valid()); }
+	bool is_null() const { return !invocation; }
+	bool is_valid() const { return invocation && (!invocation->valid || invocation->valid()); }
 	ObjectID get_object_id() const { return owner; }
 	uint32_t hash() const { return identity ? identity->hash() : 0; }
 	int get_argument_count() const { return sizeof...(Args); }

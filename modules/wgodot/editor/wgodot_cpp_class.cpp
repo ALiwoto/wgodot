@@ -21,7 +21,15 @@ String WGodotCppEmitter::function(const Parser::FunctionNode *p_function, String
 		String declaration = type(parameter->type_constraint, parameter) + " v_" + symbol(parameter->identifier->name);
 		parameters.push_back(declaration);
 		if (parameter->initializer && p_cpp_name.is_empty()) {
+			// Default arguments are emitted in the header. Collect their helper
+			// dependencies independently of calls already emitted in method bodies.
+			HashSet<String> source_headers;
+			SWAP(class_call_headers, source_headers);
 			declaration += " = " + converted(parameter->initializer, parameter->type_constraint, parameter);
+			for (const String &include : class_call_headers) {
+				class_native_headers.insert(include);
+			}
+			SWAP(class_call_headers, source_headers);
 		}
 		declarations.push_back(declaration);
 	}

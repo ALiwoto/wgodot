@@ -151,7 +151,7 @@ public:
 			bool operator()(const T &p_left, const T &p_right) const { return callback.call(p_left, p_right); }
 		};
 		if (writable()) {
-			storage->elements.template sort_custom<Comparator, true>(p_compare);
+			storage->elements.template sort_custom<Comparator, true>(Comparator(p_compare));
 		}
 	}
 	void fill(T p_value) {
