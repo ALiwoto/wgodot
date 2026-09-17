@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include "wgodot_project_check.h"
+
 #include "core/io/packet_peer.h"
 #include "core/io/stream_peer_tcp.h"
 #include "core/io/tcp_server.h"
@@ -37,6 +39,7 @@ class WGodotCLIEditorPlugin : public EditorPlugin {
 		int debug_wait_kind = 0;
 		String game_command;
 		Dictionary debug_options;
+		WGodotProjectCheck project_check;
 		WaitKind wait_kind = WAIT_NONE;
 		bool return_on_debug_break = false;
 		bool game_debug_break_observed = false;

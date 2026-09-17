@@ -13,6 +13,7 @@
 #include "core/string/ustring.h"
 #include "core/templates/list.h"
 #include "core/templates/vector.h"
+#include "core/variant/array.h"
 
 #include "modules/gdscript/gdscript.h"
 #include "modules/gdscript/gdscript_cache.h"
@@ -27,7 +28,17 @@ struct CheckStats {
 	int warning_count = 0;
 	int directory_error_count = 0;
 	int read_error_count = 0;
+	Array diagnostics;
 };
+
+void append_diagnostic(CheckStats &r_stats, const String &p_path, int p_line, const String &p_message, bool p_warning = false) {
+	Dictionary diagnostic;
+	diagnostic["path"] = p_path;
+	diagnostic["line"] = p_line;
+	diagnostic["message"] = p_message;
+	diagnostic["warning"] = p_warning;
+	r_stats.diagnostics.push_back(diagnostic);
+}
 
 String get_error_name(Error p_error) {
 	const int error_index = (int)p_error;
@@ -44,6 +55,7 @@ void collect_script_paths(const String &p_root_dir, Vector<String> &r_paths, Che
 		r_stats.error_count++;
 		r_stats.directory_error_count++;
 		r_output.push_back(vformat("%s: error: Unable to open directory (%s).", p_root_dir, get_error_name(err)));
+		append_diagnostic(r_stats, p_root_dir, 0, vformat("Unable to open directory (%s).", get_error_name(err)));
 		return;
 	}
 
@@ -70,16 +82,18 @@ void collect_script_paths(const String &p_root_dir, Vector<String> &r_paths, Che
 	dir->list_dir_end();
 }
 
-void append_script_error(const EditorLanguage::ScriptError &p_error, const String &p_fallback_path, PackedStringArray &r_output) {
+void append_script_error(const EditorLanguage::ScriptError &p_error, const String &p_fallback_path, CheckStats &r_stats, PackedStringArray &r_output) {
 	const String path = p_error.path.is_empty() ? p_fallback_path : p_error.path;
 	const int line = p_error.start_line > 0 ? p_error.start_line : 0;
 	const int column = p_error.start_column > 0 ? p_error.start_column : 0;
 	r_output.push_back(vformat("%s:%d:%d: error: %s", path, line, column, p_error.message));
+	append_diagnostic(r_stats, path, line, p_error.message);
 }
 
-void append_script_warning(const EditorLanguage::Warning &p_warning, const String &p_path, PackedStringArray &r_output) {
+void append_script_warning(const EditorLanguage::Warning &p_warning, const String &p_path, CheckStats &r_stats, PackedStringArray &r_output) {
 	const int line = p_warning.start_line > 0 ? p_warning.start_line : 0;
 	r_output.push_back(vformat("%s:%d: warning (%s): %s", p_path, line, p_warning.string_code, p_warning.message));
+	append_diagnostic(r_stats, p_path, line, vformat("(%s): %s", p_warning.string_code, p_warning.message), true);
 }
 
 void check_script(const String &p_path, CheckStats &r_stats, PackedStringArray &r_output) {
@@ -91,6 +105,7 @@ void check_script(const String &p_path, CheckStats &r_stats, PackedStringArray &
 		r_stats.error_count++;
 		r_stats.read_error_count++;
 		r_output.push_back(vformat("%s: error: Unable to read script (%s).", p_path, get_error_name(read_error)));
+		append_diagnostic(r_stats, p_path, 0, vformat("Unable to read script (%s).", get_error_name(read_error)));
 		return;
 	}
 
@@ -100,12 +115,12 @@ void check_script(const String &p_path, CheckStats &r_stats, PackedStringArray &
 
 	for (const EditorLanguage::ScriptError &error : errors) {
 		r_stats.error_count++;
-		append_script_error(error, p_path, r_output);
+		append_script_error(error, p_path, r_stats, r_output);
 	}
 
 	for (const EditorLanguage::Warning &warning : warnings) {
 		r_stats.warning_count++;
-		append_script_warning(warning, p_path, r_output);
+		append_script_warning(warning, p_path, r_stats, r_output);
 	}
 }
 
@@ -151,6 +166,7 @@ Dictionary run_project_check_result() {
 			(int64_t)elapsed_msec));
 
 	result["output"] = output;
+	result["diagnostics"] = stats.diagnostics;
 	result["exit_code"] = stats.error_count == 0 ? 0 : 1;
 	result["script_count"] = stats.script_count;
 	result["error_count"] = stats.error_count;

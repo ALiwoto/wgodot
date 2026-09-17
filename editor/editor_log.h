@@ -140,6 +140,10 @@ private:
 	Button *collapse_button = nullptr;
 	bool collapse = false;
 
+	// wgodot-changes::begin
+	void _wgodot_add_reanalyze_button(Control *p_toolbar);
+	// wgodot-changes::end
+
 	LineEdit *search_box = nullptr;
 
 	// Reusable RichTextLabel for BBCode parsing during search

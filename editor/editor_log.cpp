@@ -556,6 +556,10 @@ EditorLog::EditorLog() {
 	collapse_button->connect(SceneStringName(toggled), callable_mp(this, &EditorLog::_set_collapse));
 	bottom_hf->add_child(collapse_button);
 
+	// wgodot-changes::begin
+	_wgodot_add_reanalyze_button(bottom_hf);
+	// wgodot-changes::end
+
 	// Search box
 	search_box = memnew(LineEdit);
 	search_box->set_custom_minimum_size(Vector2(150 * EDSCALE, 0));
