@@ -206,7 +206,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::value_facts(const Parser::ExpressionNo
 			// literal() constructs the engine packed array, before its shared
 			// script-storage wrapper is built at the destination.
 			result.cpp_type = Variant::get_type_name(p_expression->reduced_value.get_type());
-		} else if (p_expression->reduced_value.get_type() == Variant::DICTIONARY && p_expression->type != Parser::Node::DICTIONARY) {
+		} else if (p_expression->reduced_value.get_type() == Variant::DICTIONARY && p_expression->type != Parser::Node::DICTIONARY && !is_wdictionary(datatype)) {
 			result.cpp_type = "Dictionary";
 		} else if (p_expression->reduced_value.get_type() == Variant::OBJECT && !datatype.is_meta_type) {
 			const Resource *resource = Object::cast_to<Resource>(static_cast<Object *>(p_expression->reduced_value));
@@ -372,6 +372,12 @@ WGodotCppEmitter::Value WGodotCppEmitter::lower_converted(const Parser::Expressi
 	if (p_expression->type == Parser::Node::ARRAY && is_warray(p_target)) {
 		return array_literal(static_cast<const Parser::ArrayNode *>(p_expression), p_target);
 	}
+	if (p_expression->type == Parser::Node::DICTIONARY && is_wdictionary(p_target)) {
+		return dictionary_literal(static_cast<const Parser::DictionaryNode *>(p_expression), p_target);
+	}
+	if (!validate_dictionary_conversion(p_expression, p_target, p_target_origin)) {
+		return Value();
+	}
 	if (is_packed(p_target) && (p_expression->type == Parser::Node::ARRAY || is_warray(expression_type(p_expression)))) {
 		return packed_array(p_expression, p_target);
 	}
@@ -432,17 +438,20 @@ WGodotCppEmitter::Value WGodotCppEmitter::lower_engine_argument(const Parser::Ex
 	if (is_packed(target) && (p_expression->type == Parser::Node::ARRAY || is_warray(datatype))) {
 		return packed_array(p_expression, target);
 	}
-	if (!is_warray(datatype) && datatype.builtin_type != Variant::CALLABLE) {
+	if (!is_warray(datatype) && !is_wdictionary(datatype) && datatype.builtin_type != Variant::CALLABLE) {
 		return lower(p_expression);
 	}
 	// These adapters deliberately cross a container/callback representation
 	// boundary. Their result type is the engine type, not the script storage type.
 	Value result(engine_argument(p_expression, p_target));
-	result.cpp_type = datatype.builtin_type == Variant::CALLABLE ? "Callable" : "Array";
+	result.cpp_type = datatype.builtin_type == Variant::CALLABLE ? "Callable" : is_wdictionary(datatype) ? "Dictionary" : "Array";
 	return result;
 }
 
 WGodotCppEmitter::Value WGodotCppEmitter::lower_dictionary(const Parser::DictionaryNode *p_dictionary) {
+	if (is_wdictionary(p_dictionary->type_constraint)) {
+		return dictionary_literal(p_dictionary, p_dictionary->type_constraint);
+	}
 	Vector<Value> operands;
 	for (const auto &element : p_dictionary->elements) {
 		operands.push_back(lower_engine_argument(element.key, Variant::NIL));
@@ -495,6 +504,11 @@ WGodotCppEmitter::Value WGodotCppEmitter::lower_binary(const Parser::BinaryOpNod
 	if (is_warray(left_type) && p_binary->right_operand->type == Parser::Node::ARRAY) {
 		right_type = left_type;
 	} else if (is_warray(right_type) && p_binary->left_operand->type == Parser::Node::ARRAY) {
+		left_type = right_type;
+	}
+	if (is_wdictionary(left_type) && p_binary->right_operand->type == Parser::Node::DICTIONARY) {
+		right_type = left_type;
+	} else if (is_wdictionary(right_type) && p_binary->left_operand->type == Parser::Node::DICTIONARY) {
 		left_type = right_type;
 	}
 	Vector<Value> operands{ lower_converted(p_binary->left_operand, left_type), lower_converted(p_binary->right_operand, right_type) };

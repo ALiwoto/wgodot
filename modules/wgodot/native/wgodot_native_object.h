@@ -33,6 +33,7 @@ public:
 	T *ptr() const { return static_cast<T *>(value.get_validated_object()); }
 	T *operator->() const { return ptr(); }
 	bool operator==(const ObjectValue &p_other) const { return value == p_other.value; }
+	uint32_t hash() const { return value.hash(); }
 };
 
 // Borrows a typed array slot, or the iterator's retained current element when

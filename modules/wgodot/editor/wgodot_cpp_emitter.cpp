@@ -91,16 +91,17 @@ String WGodotCppEmitter::type(const Parser::DataType &p_type, const Parser::Node
 			class_native_headers.insert("modules/wgodot/native/wgodot_native_warray.h");
 			return "WGodotNative::WArray<" + type(element, p_origin) + ">";
 		}
-		if (p_type.builtin_type == Variant::DICTIONARY && p_type.has_container_element_type(0) && p_type.has_container_element_type(1)) {
+		if (is_wdictionary(p_type)) {
 			Vector<String> elements;
 			for (int i = 0; i < 2; i++) {
 				const auto &element = p_type.get_container_element_type(i);
-				if (native_only(element)) {
-					unsupported(p_origin, "WArray stored inside a Godot Dictionary; this requires an explicit container boundary");
+				if (element.is_variant() || (i == 0 && native_only(element))) {
+					unsupported(p_origin, "WDictionary requires concrete entries and a supported non-container key type");
 				}
-				elements.push_back(element.kind == Parser::DataType::CLASS || element.kind == Parser::DataType::NATIVE ? class_name(element, p_origin) : type(element, p_origin));
+				elements.push_back(type(element, p_origin));
 			}
-			return "TypedDictionary<" + String(", ").join(elements) + ">";
+			class_native_headers.insert("modules/wgodot/native/wgodot_native_wdictionary.h");
+			return "WGodotNative::WDictionary<" + String(", ").join(elements) + ">";
 		}
 		switch (p_type.builtin_type) {
 			case Variant::NIL:
@@ -181,7 +182,7 @@ String WGodotCppEmitter::truth(const Parser::ExpressionNode *p_expression) {
 	}
 	const String value = expression(p_expression);
 	const auto datatype = expression_type(p_expression);
-	if (is_warray(datatype)) {
+	if (is_warray(datatype) || is_wdictionary(datatype)) {
 		return "!(" + value + ").is_empty()";
 	}
 	if (datatype.kind == Parser::DataType::BUILTIN && (datatype.builtin_type == Variant::CALLABLE || datatype.builtin_type == Variant::SIGNAL)) {
@@ -220,7 +221,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::member(const Parser::ExpressionNode *p
 		}
 		return signature_type(p_origin) + "::from_callable(Callable::create(" + expression(p_base) + ", SNAME(" + quoted(p_name) + ")))";
 	}
-	if (datatype.kind == Parser::DataType::BUILTIN && Variant::has_member(datatype.builtin_type, p_name)) {
+	if (datatype.kind == Parser::DataType::BUILTIN && (is_wdictionary(datatype) || Variant::has_member(datatype.builtin_type, p_name))) {
 		class_call_headers.insert("modules/wgodot/native/wgodot_native_values.h");
 		return "WGodotNative::get_member<" + type(p_origin->type_constraint, p_origin) + ">(" + expression(p_base) + ", SNAME(" + quoted(p_name) + "))";
 	}
@@ -464,6 +465,18 @@ String WGodotCppEmitter::leaf_expression(const Parser::ExpressionNode *p_express
 		}
 	}
 	if (p_expression->is_constant && p_expression->reduced && !p_expression->type_constraint.is_meta_type && p_expression->type != Parser::Node::ARRAY && p_expression->type != Parser::Node::DICTIONARY) {
+		if (is_wdictionary(p_expression->type_constraint) && p_expression->reduced_value.get_type() == Variant::DICTIONARY) {
+			const Dictionary values = p_expression->reduced_value;
+			Vector<String> entries;
+			const String key_type = type(p_expression->type_constraint.get_container_element_type(0), p_expression);
+			const String value_type = type(p_expression->type_constraint.get_container_element_type(1), p_expression);
+			for (const auto &entry : values) {
+				entries.push_back("{WGodotNative::convert<" + key_type + ">(" + literal(entry.key, p_expression) + "), WGodotNative::convert<" + value_type + ">(" + literal(entry.value, p_expression) + ")}");
+			}
+			class_call_headers.insert("modules/wgodot/native/wgodot_native_calls.h");
+			const String value = type(p_expression->type_constraint, p_expression) + "{" + String(", ").join(entries) + "}";
+			return values.is_read_only() ? "([&]() { auto value = " + value + "; value.make_read_only(); return value; }())" : value;
+		}
 		if (is_warray(p_expression->type_constraint) && p_expression->reduced_value.get_type() == Variant::ARRAY) {
 			const Array values = p_expression->reduced_value;
 			Vector<String> elements;

@@ -191,6 +191,8 @@ WGodotCppEmitter::Value WGodotCppEmitter::native_invoke(const MethodBind *p_meth
 		result.cpp_type = p_result;
 	} else if (array_result) {
 		unsupported(p_origin, "native Array result from " + key + "; this API needs an explicit WArray result handler");
+	} else if (p_method->get_argument_type(-1) == Variant::DICTIONARY) {
+		unsupported(p_origin, "native Dictionary result from " + key + "; this API needs an explicit WDictionary result handler");
 	} else if (p_method->get_argument_type(-1) == Variant::OBJECT && result.cpp_type.ends_with(" *")) {
 		// Keep a borrowed native pointer for immediate member access. A storing
 		// context constructs the owning script handle when it needs one.

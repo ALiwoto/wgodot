@@ -7,6 +7,10 @@ using namespace WGodotCppNames;
 
 WGodotCppEmitter::Value WGodotCppEmitter::native_interface_call(const Parser::CallNode *p_call, const Parser::ExpressionNode *p_base, const WGodotNativeInterfaces::Descriptor &p_interface) {
 	const MethodInfo &method = p_interface.methods[p_call->function_name];
+	if (method.return_val.type == Variant::DICTIONARY) {
+		unsupported(p_call, "native interface Dictionary result from " + String(p_call->function_name) + "; this API needs an explicit WDictionary result handler");
+		return Value();
+	}
 	class_call_headers.insert(p_interface.cpp_header);
 	class_call_headers.insert("modules/wgodot/native/wgodot_native_interface.h");
 	const String result_type = type(p_call->type_constraint, p_call);
@@ -14,8 +18,8 @@ WGodotCppEmitter::Value WGodotCppEmitter::native_interface_call(const Parser::Ca
 	int index = 0;
 	for (const PropertyInfo &parameter : method.arguments) {
 		const bool supplied = index < int(p_call->arguments.size());
-		if ((parameter.type == Variant::ARRAY && !(supplied && is_array_duplicate(p_call->arguments[index]))) || parameter.type == Variant::DICTIONARY) {
-			unsupported(p_call, "native interface container argument " + String(p_call->function_name) + "; use an explicit supported boundary");
+		if ((parameter.type == Variant::ARRAY && !(supplied && is_array_duplicate(p_call->arguments[index]))) || (parameter.type == Variant::DICTIONARY && supplied && !is_dictionary_duplicate(p_call->arguments[index]))) {
+			unsupported(p_call, "native interface container argument " + String(p_call->function_name) + "; pass .duplicate() or add an explicit native handler");
 			return String();
 		}
 		Value value;

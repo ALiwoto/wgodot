@@ -12,8 +12,8 @@ String WGodotCppEmitter::match_condition(const Parser::PatternNode *p_pattern, c
 		case Parser::PatternNode::PT_LITERAL:
 			return "WGodotNative::match_value(" + p_value + ", " + expression(p_pattern->literal) + ")";
 		case Parser::PatternNode::PT_EXPRESSION:
-			if (is_warray(expression_type(p_pattern->expression))) {
-				unsupported(p_pattern, "WArray expression in a Variant match pattern");
+			if (is_warray(expression_type(p_pattern->expression)) || is_wdictionary(expression_type(p_pattern->expression))) {
+				unsupported(p_pattern, "native container expression in a Variant match pattern");
 				return String();
 			}
 			return "WGodotNative::match_value(" + p_value + ", " + expression(p_pattern->expression) + ")";
@@ -77,8 +77,8 @@ String WGodotCppEmitter::suite(const Parser::SuiteNode *p_suite, int p_indent) {
 				break;
 			case Parser::Node::MATCH: {
 				const auto *node = static_cast<const Parser::MatchNode *>(statement);
-				if (is_warray(expression_type(node->test))) {
-					unsupported(node, "matching WArray through the current Variant pattern matcher");
+				if (is_warray(expression_type(node->test)) || is_wdictionary(expression_type(node->test))) {
+					unsupported(node, "matching native containers through the current Variant pattern matcher");
 					break;
 				}
 				class_call_headers.insert("modules/wgodot/native/wgodot_native_values.h");

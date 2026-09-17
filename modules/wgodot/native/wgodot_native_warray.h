@@ -2,6 +2,7 @@
 #pragma once
 
 #include "wgodot_native_callback_fwd.h"
+#include "wgodot_native_dictionary_fwd.h"
 
 #include "core/templates/safe_refcount.h"
 #include "core/templates/vector.h"
@@ -174,7 +175,7 @@ public:
 		result.storage->elements = storage->elements;
 		// Godot's deep Array copy recursively copies nested Arrays/Dictionaries;
 		// objects and the other value types retain their normal copy semantics.
-		if constexpr (std::is_same_v<T, Dictionary> || std::is_base_of_v<Dictionary, T>) {
+		if constexpr (IsWDictionary<T>::value || std::is_base_of_v<Dictionary, T>) {
 			if (p_deep) {
 				for (int64_t i = 0; i < size(); i++) {
 					result.storage->elements.set(i, T(storage->elements[i].duplicate(true)));

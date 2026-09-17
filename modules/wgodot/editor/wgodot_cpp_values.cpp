@@ -39,6 +39,9 @@ WGodotCppEmitter::Value WGodotCppEmitter::builtin_call(const Parser::CallNode *p
 	if (is_warray(base_type) && !base_type.is_meta_type) {
 		return warray_call(p_call);
 	}
+	if (is_wdictionary(base_type) && !base_type.is_meta_type) {
+		return wdictionary_call(p_call);
+	}
 	if (!validate_builtin_arguments(base_type.builtin_type, p_call->function_name, p_call)) {
 		return String();
 	}
@@ -99,8 +102,18 @@ WGodotCppEmitter::Value WGodotCppEmitter::global_call(const Parser::CallNode *p_
 			return packed_array(source, p_call->type_constraint);
 		}
 	}
-	if (name == SNAME("len") && p_call->arguments.size() == 1 && is_warray(expression_type(p_call->arguments[0]))) {
+	if (name == SNAME("len") && p_call->arguments.size() == 1 && (is_warray(expression_type(p_call->arguments[0])) || is_wdictionary(expression_type(p_call->arguments[0])))) {
 		return "(" + expression(p_call->arguments[0]) + ").size()";
+	}
+	if (Parser::get_builtin_type(name) == Variant::DICTIONARY && is_wdictionary(expression_type(p_call))) {
+		if (p_call->arguments.is_empty()) {
+			return Value(type(expression_type(p_call), p_call) + "()", type(expression_type(p_call), p_call));
+		}
+		if (p_call->arguments.size() == 1) {
+			return lower_converted(p_call->arguments[0], expression_type(p_call));
+		}
+		unsupported(p_call, "WDictionary construction with runtime type metadata");
+		return Value();
 	}
 	if (is_warray(expression_type(p_call)) && Parser::get_builtin_type(name) == Variant::ARRAY) {
 		if (p_call->arguments.is_empty()) {

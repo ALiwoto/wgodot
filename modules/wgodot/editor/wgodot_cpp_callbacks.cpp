@@ -20,7 +20,7 @@ bool WGodotCppEmitter::validate_callback(const Parser::ExpressionNode *p_source,
 		const auto &parameter = source->arguments[i];
 		const auto &argument = p_target.arguments[i];
 		const bool compatible = !parameter.type.is_variant() && !argument.type.is_variant() && GDScriptAnalyzer::check_type_compatibility(parameter.type, argument.type, true);
-		if (!compatible || ((is_warray(parameter.type) || is_warray(argument.type)) && type(parameter.type, parameter.origin) != type(argument.type, argument.origin))) {
+		if (!compatible || ((is_warray(parameter.type) || is_warray(argument.type) || is_wdictionary(parameter.type) || is_wdictionary(argument.type)) && type(parameter.type, parameter.origin) != type(argument.type, argument.origin))) {
 			unsupported(p_source, "callback argument " + itos(i + 1) + " cannot accept " + argument.type.to_string() + " as " + parameter.type.to_string());
 			return false;
 		}
@@ -36,7 +36,7 @@ bool WGodotCppEmitter::validate_callback(const Parser::ExpressionNode *p_source,
 }
 
 bool WGodotCppEmitter::native_only(const Parser::DataType &p_type) const {
-	return p_type.is_coroutine || is_warray(p_type) || WGodotCppSignatures::contains_signature(p_type);
+	return p_type.is_coroutine || is_warray(p_type) || is_wdictionary(p_type) || WGodotCppSignatures::contains_signature(p_type);
 }
 
 String WGodotCppEmitter::function_result(const Parser::FunctionNode *p_function) {

@@ -3,6 +3,8 @@
 
 #include "wgodot_native_calls.h"
 
+#include <optional>
+
 namespace WGodotNative {
 
 // Native engine calls use the same Variant value semantics as GDScript, without
@@ -74,6 +76,16 @@ Result get_index(const WArray<T> &p_base, const Key &p_key) {
 	return convert<Result>(p_base.get(p_key));
 }
 
+template <class Result, class K, class V, class Key>
+Result get_index(const WDictionary<K, V> &p_base, const Key &p_key) {
+	return convert<Result>(p_base.at(convert<K>(p_key)));
+}
+
+template <class K, class V, class Key, class Value>
+void set_index(WDictionary<K, V> &p_base, const Key &p_key, const Value &p_value) {
+	p_base.set(convert<K>(p_key), convert<V>(p_value));
+}
+
 template <class T, class Key, class Value>
 void set_index(WArray<T> &p_base, const Key &p_key, const Value &p_value) {
 	p_base.set(p_key, convert<T>(p_value));
@@ -94,6 +106,16 @@ Result get_member(const Base &p_base, const StringName &p_name) {
 	Variant result = Variant(p_base).get_named(p_name, valid);
 	ERR_FAIL_COND_V_MSG(!valid, Result(), "Invalid native game member: " + String(p_name));
 	return convert<Result>(result);
+}
+
+template <class Result, class K, class V>
+Result get_member(const WDictionary<K, V> &p_base, const StringName &p_name) {
+	return get_index<Result>(p_base, p_name);
+}
+
+template <class K, class V, class Value>
+void set_member(WDictionary<K, V> &p_base, const StringName &p_name, const Value &p_value) {
+	set_index(p_base, p_name, p_value);
 }
 
 template <class Base, class Value>
@@ -149,6 +171,32 @@ public:
 	void next() { position++; }
 	template <class Result>
 	Result get() const { return convert<Result>(collection.get(position)); }
+};
+
+// Retain the dictionary and current key, not a map element pointer which an
+// erase/clear in the loop body could invalidate.
+template <class K, class V>
+class WDictionaryIterator {
+	WDictionary<K, V> collection;
+	std::optional<K> key;
+
+public:
+	explicit WDictionaryIterator(const WDictionary<K, V> &p_collection) : collection(p_collection) {
+		if (const K *first = collection.next_key()) {
+			key = *first;
+		}
+	}
+	bool has_value() const { return key.has_value(); }
+	void next() {
+		const K *next = collection.next_key(&*key);
+		if (next) {
+			key = *next;
+		} else {
+			key.reset();
+		}
+	}
+	template <class Result>
+	Result get() const { return convert<Result>(*key); }
 };
 
 // Godot's iterator protocol preserves dictionary keys, integer ranges, and

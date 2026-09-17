@@ -57,8 +57,16 @@ Parser::DataType WGodotCppEmitter::expression_type(const Parser::ExpressionNode 
 			const auto base = expression_type(static_cast<const Parser::SubscriptNode *>(call->callee)->base);
 			// Godot's builtin method metadata erases these element types. Native
 			// code keeps them without changing the editor's cached GDScript AST.
-			if (is_warray(base) && call->function_name == SNAME("duplicate")) {
+			if ((is_warray(base) || is_wdictionary(base)) && call->function_name == SNAME("duplicate")) {
 				return base;
+			}
+			if (is_wdictionary(base)) {
+				if (call->function_name == SNAME("get") || call->function_name == SNAME("get_or_add")) {
+					return base.get_container_element_type(1);
+				}
+				if (call->function_name == SNAME("merged")) {
+					return base;
+				}
 			}
 			if (is_warray(base) && (call->function_name == SNAME("get") || call->function_name == SNAME("front") || call->function_name == SNAME("back") || call->function_name == SNAME("pop_back") || call->function_name == SNAME("pop_front") || call->function_name == SNAME("pop_at"))) {
 				return base.get_container_element_type(0);
@@ -178,6 +186,9 @@ bool WGodotCppEmitter::is_array_duplicate(const Parser::ExpressionNode *p_value)
 
 String WGodotCppEmitter::engine_argument(const Parser::ExpressionNode *p_value, Variant::Type p_target) {
 	const auto value_type = expression_type(p_value);
+	if (is_wdictionary(value_type)) {
+		return dictionary_engine_argument(p_value, p_target);
+	}
 	if (value_type.kind == Parser::DataType::BUILTIN && value_type.builtin_type == Variant::CALLABLE) {
 		const auto *signature = signatures.get(p_value);
 		if (!signature) {
@@ -201,6 +212,10 @@ String WGodotCppEmitter::engine_argument(const Parser::ExpressionNode *p_value, 
 	}
 	if ((p_target == Variant::ARRAY || p_target == Variant::NIL) && is_array_duplicate(p_value)) {
 		const auto &element = value_type.get_container_element_type(0);
+		if (is_wdictionary(element)) {
+			unsupported(p_value, "copying WDictionary elements into a Godot Array; this requires an explicit entry adapter");
+			return String();
+		}
 		if (element.builtin_type == Variant::SIGNAL) {
 			unsupported(p_value, "copying native game signal handles into a Godot Array");
 			return String();

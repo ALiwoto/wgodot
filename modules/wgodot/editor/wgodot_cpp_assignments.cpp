@@ -136,7 +136,11 @@ WGodotCppEmitter::Value WGodotCppEmitter::assignment(const Parser::AssignmentNod
 	}
 	const auto assigned_type = assigned->type == Parser::Node::ARRAY && is_warray(target_type) ? target_type : expression_type(assigned);
 	const bool construct_container = (assigned->type == Parser::Node::ARRAY && is_warray(target_type)) ||
+			(assigned->type == Parser::Node::DICTIONARY && is_wdictionary(target_type)) ||
 			(is_packed(target_type) && (assigned->type == Parser::Node::ARRAY || is_warray(assigned_type)));
+	if (!validate_dictionary_conversion(assigned, target_type, target)) {
+		return Value();
+	}
 	Value assigned_value = construct_container ? lower_converted(assigned, target_type) : lower(assigned);
 	Value result;
 	result.cpp_type = "void";

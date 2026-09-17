@@ -376,6 +376,8 @@ void WGodotCppAsync::suite(const Parser::SuiteNode *p_suite, int p_indent, bool 
 					iterator_type = "WGodotNative::Range";
 				} else if (emitter.is_warray(collection_type)) {
 					iterator_type = "WGodotNative::WArrayIterator<" + emitter.type(collection_type.get_container_element_type(0), node) + ">";
+				} else if (emitter.is_wdictionary(collection_type)) {
+					iterator_type = "WGodotNative::WDictionaryIterator<" + emitter.type(collection_type.get_container_element_type(0), node) + ", " + emitter.type(collection_type.get_container_element_type(1), node) + ">";
 				} else {
 					iterator_type = "WGodotNative::Iterator";
 				}
@@ -407,8 +409,8 @@ void WGodotCppAsync::suite(const Parser::SuiteNode *p_suite, int p_indent, bool 
 				break;
 			case Parser::Node::MATCH: {
 				const auto *node = static_cast<const Parser::MatchNode *>(statement);
-				if (emitter.is_warray(emitter.expression_type(node->test))) {
-					emitter.unsupported(node, "matching WArray through the current Variant pattern matcher");
+				if (emitter.is_warray(emitter.expression_type(node->test)) || emitter.is_wdictionary(emitter.expression_type(node->test))) {
+					emitter.unsupported(node, "matching native containers through the current Variant pattern matcher");
 					break;
 				}
 				const String value = add_field(emitter.type(node->test->type_constraint, node->test), "match_value");

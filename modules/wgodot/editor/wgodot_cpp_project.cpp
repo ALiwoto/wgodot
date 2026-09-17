@@ -106,7 +106,6 @@ Error WGodotCppProject::analyze() {
 			continue;
 		}
 		collect_classes(path, parser->get_parser()->get_tree());
-		validate_container_sharing(path, parser->get_parser()->get_tree());
 		if (!dependencies.walk(parser->get_parser()->get_tree())) {
 			diagnostics.push_back("Native export encountered an unsupported syntax tree node in " + path);
 		}

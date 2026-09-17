@@ -70,6 +70,12 @@ class WGodotCppEmitter {
 	Value callback_call(const GDScriptParser::CallNode *p_call);
 	bool validate_callback(const GDScriptParser::ExpressionNode *p_source, const WGodotCppSignatures::Signature &p_target, bool p_discard_result = false);
 	bool is_warray(const GDScriptParser::DataType &p_type) const;
+	bool is_wdictionary(const GDScriptParser::DataType &p_type) const;
+	bool is_dictionary_duplicate(const GDScriptParser::ExpressionNode *p_value) const;
+	Value dictionary_literal(const GDScriptParser::DictionaryNode *p_dictionary, const GDScriptParser::DataType &p_target);
+	Value wdictionary_call(const GDScriptParser::CallNode *p_call, bool p_to_dictionary = false);
+	String dictionary_engine_argument(const GDScriptParser::ExpressionNode *p_value, Variant::Type p_target);
+	bool validate_dictionary_conversion(const GDScriptParser::ExpressionNode *p_value, const GDScriptParser::DataType &p_target, const GDScriptParser::Node *p_target_origin);
 	bool is_packed(const GDScriptParser::DataType &p_type) const;
 	Value packed_array(const GDScriptParser::ExpressionNode *p_source, const GDScriptParser::DataType &p_target);
 	GDScriptParser::DataType expression_type(const GDScriptParser::ExpressionNode *p_expression) const;

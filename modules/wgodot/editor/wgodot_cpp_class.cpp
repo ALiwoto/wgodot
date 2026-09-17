@@ -146,7 +146,7 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 				const auto datatype = variable_type(variable);
 				const String field_type = type(datatype, variable);
 				if (native_only(datatype) && variable->exported) {
-					unsupported(variable, "exported WArray property " + entry.get_name() + "; scene serialization needs an explicit container adapter");
+					unsupported(variable, "exported native container/callback property " + entry.get_name() + "; scene serialization needs an explicit adapter");
 				}
 				const String field_name = "v_" + symbol(variable->identifier->name);
 				if (variable->is_static) {

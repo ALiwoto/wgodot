@@ -39,6 +39,8 @@ public:
 	operator const Variant &() const { return value; }
 	const ArrayType &native() const { return VariantInternalAccessor<ArrayType>::get(&value); }
 	bool operator==(const Packed &p_other) const { return value == p_other.value; }
+	bool is_same(const Packed &p_other) const { return value.hash_compare(p_other.value); }
+	uint32_t hash() const { return value.hash(); }
 };
 
 template <class T>

@@ -15,6 +15,16 @@ String WGodotCppEmitter::operation(Variant::Operator p_operation, const Parser::
 	if (WGodotCppSignatures::contains_signature(p_left_type) && p_left_type.builtin_type != Variant::ARRAY && (p_operation == Variant::OP_EQUAL || p_operation == Variant::OP_NOT_EQUAL)) {
 		return "(" + p_left + (p_operation == Variant::OP_EQUAL ? " == " : " != ") + p_right + ")";
 	}
+	if (is_wdictionary(p_right_type) && p_operation == Variant::OP_IN) {
+		return "(" + p_right + ").has(WGodotNative::convert<" + type(p_right_type.get_container_element_type(0), p_origin) + ">(" + p_left + "))";
+	}
+	if (is_wdictionary(p_left_type) || is_wdictionary(p_right_type)) {
+		if (is_wdictionary(p_left_type) && is_wdictionary(p_right_type) && type(p_left_type, p_origin) == type(p_right_type, p_origin) && (p_operation == Variant::OP_EQUAL || p_operation == Variant::OP_NOT_EQUAL)) {
+			return "(" + p_left + (p_operation == Variant::OP_EQUAL ? " == " : " != ") + p_right + ")";
+		}
+		unsupported(p_origin, "WDictionary operator " + Variant::get_operator_name(p_operation) + " for these operand types");
+		return String();
+	}
 	if (is_warray(p_left_type) || is_warray(p_right_type)) {
 		if (p_operation == Variant::OP_IN && is_warray(p_right_type) && !is_warray(p_left_type)) {
 			return p_right + ".has(WGodotNative::convert<" + type(p_right_type.get_container_element_type(0), p_origin) + ">(" + p_left + "))";
@@ -77,6 +87,9 @@ String WGodotCppEmitter::operation(Variant::Operator p_operation, const Parser::
 
 String WGodotCppEmitter::cast(const Parser::CastNode *p_cast) {
 	const auto &target = p_cast->type_constraint;
+	if (is_wdictionary(target) || is_wdictionary(expression_type(p_cast->operand))) {
+		return converted(p_cast->operand, target);
+	}
 	if (is_packed(target) && (p_cast->operand->type == Parser::Node::ARRAY || is_warray(expression_type(p_cast->operand)))) {
 		return packed_array(p_cast->operand, target).expression();
 	}
@@ -104,6 +117,10 @@ String WGodotCppEmitter::cast(const Parser::CastNode *p_cast) {
 String WGodotCppEmitter::type_test(const Parser::TypeTestNode *p_test) {
 	const auto &target = p_test->test_datatype;
 	const String value = receiver_expression(p_test->operand);
+	if (is_wdictionary(expression_type(p_test->operand))) {
+		const bool same = target.is_variant() || (target.kind == Parser::DataType::BUILTIN && target.builtin_type == Variant::DICTIONARY && (!target.has_container_element_types() || type(target, p_test) == type(expression_type(p_test->operand), p_test)));
+		return "([&]() { (void)(" + value + "); return " + (same ? "true" : "false") + "; }())";
+	}
 	if (is_warray(expression_type(p_test->operand))) {
 		const bool same = target.is_variant() || (target.kind == Parser::DataType::BUILTIN && target.builtin_type == Variant::ARRAY && (!target.has_container_element_type(0) || type(target, p_test) == type(expression_type(p_test->operand), p_test)));
 		return "([&]() { (void)(" + value + "); return " + (same ? "true" : "false") + "; }())";

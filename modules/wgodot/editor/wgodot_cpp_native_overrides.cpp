@@ -9,14 +9,17 @@ bool WGodotCppEmitter::validate_native_arguments(const MethodBind *p_method, con
 	for (int i = 0; i < p_method->get_argument_count(); i++) {
 		const Variant::Type argument_type = p_method->get_argument_type(i);
 		if (argument_type == Variant::ARRAY || argument_type == Variant::DICTIONARY) {
-			if (argument_type == Variant::ARRAY && p_origin->type == Parser::Node::CALL) {
+			if (p_origin->type == Parser::Node::CALL) {
 				const auto *call = static_cast<const Parser::CallNode *>(p_origin);
-				if (uint32_t(i) < call->arguments.size() && is_array_duplicate(call->arguments[i])) {
-					continue; // Explicit independent copy, never shared WArray storage.
+				if (argument_type == Variant::DICTIONARY && uint32_t(i) >= call->arguments.size()) {
+					continue; // An omitted engine default carries no caller-owned dictionary.
+				}
+				if (uint32_t(i) < call->arguments.size() && (argument_type == Variant::ARRAY ? is_array_duplicate(call->arguments[i]) : is_dictionary_duplicate(call->arguments[i]))) {
+					continue; // Explicit independent copy, never shared native storage.
 				}
 			}
 			const PropertyInfo argument = p_method->get_argument_info(i);
-			unsupported(p_origin, vformat("native call %s.%s: argument %d (%s) uses %s. This API needs an explicit native handler for its container semantics", p_method->get_instance_class(), p_method->get_name(), i + 1, argument.name, Variant::get_type_name(argument_type)));
+			unsupported(p_origin, vformat("native call %s.%s: argument %d (%s) uses %s. Pass .duplicate() or add an explicit native handler for this API", p_method->get_instance_class(), p_method->get_name(), i + 1, argument.name, Variant::get_type_name(argument_type)));
 			return false;
 		}
 	}
@@ -28,13 +31,16 @@ bool WGodotCppEmitter::validate_builtin_arguments(Variant::Type p_type, const St
 	for (int i = 0; i < count; i++) {
 		const Variant::Type argument_type = Variant::get_builtin_method_argument_type(p_type, p_method, i);
 		if (argument_type == Variant::ARRAY || argument_type == Variant::DICTIONARY) {
-			if (argument_type == Variant::ARRAY && p_origin->type == Parser::Node::CALL) {
+			if (p_origin->type == Parser::Node::CALL) {
 				const auto *call = static_cast<const Parser::CallNode *>(p_origin);
-				if (uint32_t(i) < call->arguments.size() && is_array_duplicate(call->arguments[i])) {
+				if (argument_type == Variant::DICTIONARY && uint32_t(i) >= call->arguments.size()) {
+					continue;
+				}
+				if (uint32_t(i) < call->arguments.size() && (argument_type == Variant::ARRAY ? is_array_duplicate(call->arguments[i]) : is_dictionary_duplicate(call->arguments[i]))) {
 					continue;
 				}
 			}
-			unsupported(p_origin, vformat("builtin call %s.%s: argument %d (%s) uses %s. This API needs an explicit native handler for its container semantics", Variant::get_type_name(p_type), p_method, i + 1, Variant::get_builtin_method_argument_name(p_type, p_method, i), Variant::get_type_name(argument_type)));
+			unsupported(p_origin, vformat("builtin call %s.%s: argument %d (%s) uses %s. Pass .duplicate() or add an explicit native handler for this API", Variant::get_type_name(p_type), p_method, i + 1, Variant::get_builtin_method_argument_name(p_type, p_method, i), Variant::get_type_name(argument_type)));
 			return false;
 		}
 	}
