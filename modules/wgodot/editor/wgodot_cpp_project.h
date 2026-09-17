@@ -34,6 +34,7 @@ public:
 	Error analyze();
 	const Vector<Class> &get_classes() const { return classes; }
 	const Class *find_class(const GDScriptParser::ClassNode *p_node) const;
+	GDScriptParser *find_parser(const String &p_script_path) const;
 	const Vector<String> &get_diagnostics() const { return diagnostics; }
 	Dictionary describe() const;
 };

@@ -8,7 +8,6 @@
 #include "export_pass_no_export.h"
 #include "export_timing.h"
 
-#include "modules/gdscript/wgodot_stdlib.h"
 
 #ifdef TOOLS_ENABLED
 #include "editor/file_system/editor_file_system.h"
@@ -60,9 +59,6 @@ Error ExportPipeline::prepare(const HashSet<String> &p_paths, const TransformOpt
 		if (path.get_extension() == "gd") {
 			scripts.insert(path);
 		}
-	}
-	for (int i = 0; i < WGodotGDScriptStdLib::get_builtin_interface_count(); i++) {
-		scripts.insert(WGodotGDScriptStdLib::get_builtin_interface_path(i));
 	}
 	Error error = original.capture(p_paths, scripts, r_error);
 	if (error != OK) {

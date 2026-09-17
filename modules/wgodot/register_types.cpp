@@ -9,12 +9,19 @@
 #include "wgodot_pause_controller.h"
 #include "wgodot_wait_controller.h"
 
+#include "modules/modules_enabled.gen.h"
+#ifdef MODULE_GDSCRIPT_ENABLED
+#include "native/binary_serializable.h"
+
+#include "core/object/wgodot_interface_registry.h"
+#endif
+
 #ifdef TOOLS_ENABLED
-#include "editor/wgodot_cli_editor_plugin.h"
-#include "editor/wgodot_native_export_plugin.h"
 #include "editor/editor_node.h"
 #include "editor/export/editor_export.h"
 #include "editor/plugins/editor_plugin.h"
+#include "editor/wgodot_cli_editor_plugin.h"
+#include "editor/wgodot_native_export_plugin.h"
 
 static void _native_export_editor_init() {
 	Ref<WGodotNativeExportPlugin> plugin;
@@ -25,6 +32,9 @@ static void _native_export_editor_init() {
 
 void initialize_wgodot_module(ModuleInitializationLevel p_level) {
 	if (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {
+#ifdef MODULE_GDSCRIPT_ENABLED
+		WGDREGISTER_INTERFACE(BinarySerializable, "Object", "modules/wgodot/native/binary_serializable.h");
+#endif
 		WGodotPauseController::initialize();
 		WGodotWaitController::initialize();
 		WGodotGameBridge::initialize();

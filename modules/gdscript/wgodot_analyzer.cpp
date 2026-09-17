@@ -7,12 +7,11 @@
 /*                        https://godotengine.org                         */
 /**************************************************************************/
 
-#include "wgodot_gd/script_resolution.h"
-#include "gdscript_analyzer.h"
-
 #include "gdscript.h"
+#include "gdscript_analyzer.h"
 #include "wgodot_gd/interface_helpers.h"
 #include "wgodot_gd/interface_method_aliases.h"
+#include "wgodot_gd/script_resolution.h"
 #include "wgodot_stdlib.h"
 
 #include "core/config/project_settings.h"
@@ -725,6 +724,7 @@ void GDScriptAnalyzer::wgodot_validate_interface_class(GDScriptParser::ClassNode
 void GDScriptAnalyzer::wgodot_validate_implemented_interfaces(GDScriptParser::ClassNode *p_class) {
 	using Member = GDScriptParser::ClassNode::Member;
 	using DataType = GDScriptParser::DataType;
+	wgodot_validate_native_interfaces(p_class);
 	Vector<GDScriptParser::ClassNode *> contracts = p_class->wgodot_resolved_interfaces;
 	if (p_class->wgodot_is_interface) {
 		contracts.push_back(p_class);
@@ -733,7 +733,6 @@ void GDScriptAnalyzer::wgodot_validate_implemented_interfaces(GDScriptParser::Cl
 	}
 	HashSet<StringName> conflicts = wgodot_validate_implemented_interface_conflicts(p_class, contracts);
 	for (GDScriptParser::ClassNode *contract : contracts) {
-		const int builtin_index = WGodotGDScriptStdLib::has_script_path(contract->self_type.script_path) ? WGodotGDScriptStdLib::get_builtin_interface_index(contract->wgodot_interface_name) : -1;
 		for (uint32_t index = 0; index < contract->members.size(); index++) {
 			const Member &required = contract->members[index];
 			if (required.type != Member::FUNCTION && required.type != Member::VARIABLE && required.type != Member::SIGNAL) {
@@ -742,12 +741,6 @@ void GDScriptAnalyzer::wgodot_validate_implemented_interfaces(GDScriptParser::Cl
 			StringName name = required.get_name();
 			if (conflicts.has(name)) {
 				continue;
-			}
-			if (required.type == Member::FUNCTION) {
-				StringName alias = WGodotGDScriptInterfaceMethodAliases::resolve_builtin_alias(builtin_index, index);
-				if (!alias.is_empty()) {
-					name = alias;
-				}
 			}
 			GDScriptParser::ClassNode *owner = wgodot_find_member_owner(p_class, name);
 			String error;
@@ -768,8 +761,8 @@ void GDScriptAnalyzer::wgodot_validate_implemented_interfaces(GDScriptParser::Cl
 				} else if (required.type == Member::VARIABLE) {
 					actual.variable->wgodot_interface_implementation = true;
 					matches = !actual.variable->is_static && !actual.variable->wgodot_private && !actual.variable->wgodot_protected &&
-						wgodot_interface_type_accepts(required.variable->type_constraint, actual.variable->type_constraint) &&
-						(required.variable->wgodot_readonly || (!actual.variable->wgodot_readonly && wgodot_interface_type_accepts(actual.variable->type_constraint, required.variable->type_constraint)));
+							wgodot_interface_type_accepts(required.variable->type_constraint, actual.variable->type_constraint) &&
+							(required.variable->wgodot_readonly || (!actual.variable->wgodot_readonly && wgodot_interface_type_accepts(actual.variable->type_constraint, required.variable->type_constraint)));
 				} else {
 					actual.signal->wgodot_interface_implementation = true;
 					matches = !actual.signal->wgodot_private && !actual.signal->wgodot_protected && required.signal->parameters.size() == actual.signal->parameters.size();
@@ -782,7 +775,8 @@ void GDScriptAnalyzer::wgodot_validate_implemented_interfaces(GDScriptParser::Cl
 			}
 			if (!matches) {
 				push_error(vformat("Class '%s' does not satisfy '%s.%s': %s.", wgodot_get_class_display_name(p_class), wgodot_get_class_display_name(contract), name,
-					error.is_empty() ? String("incompatible type or access") : error), p_class);
+								   error.is_empty() ? String("incompatible type or access") : error),
+						p_class);
 			}
 		}
 	}
@@ -815,7 +809,7 @@ HashSet<StringName> GDScriptAnalyzer::wgodot_validate_implemented_interface_conf
 						break;
 					case Member::VARIABLE:
 						conflict = previous->variable->wgodot_readonly != member.variable->wgodot_readonly ||
-							!WGodotGDScriptInterfaceHelpers::same_type(previous->variable->type_constraint, member.variable->type_constraint);
+								!WGodotGDScriptInterfaceHelpers::same_type(previous->variable->type_constraint, member.variable->type_constraint);
 						break;
 					case Member::SIGNAL:
 						conflict = previous->signal->parameters.size() != member.signal->parameters.size();
@@ -937,37 +931,6 @@ GDScriptParser::ClassNode *GDScriptAnalyzer::wgodot_get_static_class_from_dataty
 
 	(void)p_source;
 	return nullptr;
-}
-
-bool GDScriptAnalyzer::wgodot_try_resolve_stdlib_interface_type(GDScriptParser::TypeNode *p_type, const StringName &p_type_name, GDScriptParser::DataType &r_datatype, bool &r_valid) {
-	ERR_FAIL_NULL_V(p_type, false);
-	r_valid = true;
-
-	if (!WGodotGDScriptStdLib::has_global_interface(p_type_name)) {
-		return false;
-	}
-
-	const String interface_path = WGodotGDScriptStdLib::get_global_interface_path(p_type_name);
-	if (GDScript::is_canonically_equal_paths(interface_path, parser->script_path)) {
-		r_datatype = parser->head->self_type;
-		return true;
-	}
-	Ref<GDScriptParserRef> interface_parser_ref = parser->get_depended_parser_for(interface_path);
-	if (interface_parser_ref.is_null() || interface_parser_ref->raise_status(GDScriptParserRef::INTERFACE_SOLVED) != OK) {
-		push_error(vformat(R"(Could not resolve built-in interface "%s".)", p_type_name), p_type);
-		r_valid = false;
-		return true;
-	}
-
-	GDScriptParser::ClassNode *interface_class = interface_parser_ref->get_parser()->get_tree();
-	if (interface_class == nullptr || !interface_class->wgodot_is_interface) {
-		push_error(vformat(R"(Built-in type "%s" is not an interface.)", p_type_name), p_type);
-		r_valid = false;
-		return true;
-	}
-
-	r_datatype = interface_class->self_type;
-	return true;
 }
 
 bool GDScriptAnalyzer::wgodot_try_resolve_value_container_type_hint(GDScriptParser::TypeNode *p_type, GDScriptParser::DataType &r_datatype, bool &r_valid) {
@@ -1149,14 +1112,7 @@ GDScriptParser::ClassNode *GDScriptAnalyzer::wgodot_resolve_interface_reference(
 		}
 
 		const StringName &interface_name = p_reference.identifiers[0]->name;
-		if (WGodotGDScriptStdLib::has_global_interface(interface_name)) {
-			String interface_path = WGodotGDScriptStdLib::get_global_interface_path(interface_name);
-			interface_parser_ref = parser->get_depended_parser_for(interface_path);
-			if (interface_parser_ref.is_null()) {
-				push_error(vformat(R"(Could not resolve built-in interface "%s".)", interface_name), source);
-				return nullptr;
-			}
-		} else if (WGodotGDScriptResolution::is_global_class(interface_name)) {
+		if (WGodotGDScriptResolution::is_global_class(interface_name)) {
 			String interface_path = WGodotGDScriptResolution::get_global_class_path(interface_name);
 			if (GDScript::is_canonically_equal_paths(interface_path, parser->script_path)) {
 				interface_class = parser->head;

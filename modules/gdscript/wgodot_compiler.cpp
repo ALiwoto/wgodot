@@ -1,8 +1,8 @@
 // wgodot-changes::file
 
-#include "gdscript_compiler.h"
 #include "gdscript.h"
 #include "gdscript_cache.h"
+#include "gdscript_compiler.h"
 #include "wgodot_gd/interface_helpers.h"
 #include "wgodot_stdlib.h"
 
@@ -10,12 +10,7 @@ bool GDScriptCompiler::_wgodot_compile_interface_identifier(CodeGen &p_codegen, 
 	if (!WGodotGDScriptStdLib::has_global_interface(p_name)) {
 		return false;
 	}
-	Ref<GDScript> contract = GDScriptCache::get_shallow_script(WGodotGDScriptStdLib::get_global_interface_path(p_name), r_error);
-	if (r_error != OK) {
-		_set_error(vformat("Cannot load built-in interface '%s'.", p_name), p_source);
-		return true;
-	}
-	r_address = p_codegen.add_constant(contract);
+	r_address = p_codegen.add_constant(GDScriptLanguage::get_singleton()->get_any_global_constant(p_name));
 	return true;
 }
 
@@ -42,6 +37,9 @@ void GDScriptCompiler::_wgodot_prepare_interface_metadata(GDScript *p_script, co
 	p_script->wgodot_is_interface = p_class->wgodot_is_interface;
 	p_script->wgodot_interface_key = p_class->wgodot_is_interface ? _wgodot_make_interface_key(p_script->path, p_class->fqcn) : String();
 	p_script->wgodot_implemented_interfaces.clear();
+	for (const StringName &name : p_class->wgodot_native_interfaces) {
+		p_script->wgodot_implemented_interfaces.insert(name);
+	}
 
 	for (const GDScriptParser::ClassNode *contract : p_class->wgodot_resolved_interfaces) {
 		const String interface_key = WGodotGDScriptInterfaceHelpers::get_interface_id(contract);

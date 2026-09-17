@@ -44,6 +44,7 @@
 class GDScriptAnalyzer {
 	// wgodot-changes::begin
 #ifdef TOOLS_ENABLED
+	friend class WGodotCppEmitter;
 	friend class WGodotCppSignatures;
 #endif
 	// wgodot-changes::end
@@ -154,12 +155,13 @@ class GDScriptAnalyzer {
 	bool wgodot_interface_native_method_matches(const GDScriptParser::FunctionNode *p_method, const MethodInfo &p_native, String &r_error);
 	bool wgodot_interface_native_member_matches(const GDScriptParser::ClassNode::Member &p_member, const StringName &p_native_class, String &r_error);
 	void wgodot_validate_implemented_interfaces(GDScriptParser::ClassNode *p_class);
+	void wgodot_validate_native_interfaces(GDScriptParser::ClassNode *p_class);
+	bool wgodot_reduce_native_interface_member(const GDScriptParser::DataType &p_base, GDScriptParser::IdentifierNode *p_identifier);
 	HashSet<StringName> wgodot_validate_implemented_interface_conflicts(GDScriptParser::ClassNode *p_class, const Vector<GDScriptParser::ClassNode *> &p_interfaces);
 	void wgodot_validate_static_class(GDScriptParser::ClassNode *p_class);
 	bool wgodot_validate_static_class_type_hint(GDScriptParser::TypeNode *p_type, const GDScriptParser::DataType &p_datatype);
 	bool wgodot_validate_static_class_constructor_call(GDScriptParser::CallNode *p_call, const GDScriptParser::DataType &p_base_type);
 	GDScriptParser::ClassNode *wgodot_get_static_class_from_datatype(const GDScriptParser::DataType &p_type, const GDScriptParser::Node *p_source);
-	bool wgodot_try_resolve_stdlib_interface_type(GDScriptParser::TypeNode *p_type, const StringName &p_type_name, GDScriptParser::DataType &r_datatype, bool &r_valid);
 	bool wgodot_type_from_interface_property(const PropertyInfo &p_property, const GDScriptParser::Node *p_source, GDScriptParser::DataType &r_type) const;
 	bool wgodot_reduce_interface_identifier(GDScriptParser::IdentifierNode *p_identifier, const StringName &p_name) const;
 	bool wgodot_try_resolve_value_container_type_hint(GDScriptParser::TypeNode *p_type, GDScriptParser::DataType &r_datatype, bool &r_valid);

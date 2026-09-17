@@ -36,6 +36,7 @@
 #include "gdscript_utility_functions.h"
 // wgodot-changes::begin
 #include "wgodot_gd/editor/interface_completion.h"
+#include "wgodot_stdlib.h"
 // wgodot-changes::end
 
 #ifdef TOOLS_ENABLED
@@ -1126,7 +1127,6 @@ static void _find_built_in_variants(HashMap<String, EditorLanguage::CompletionOp
 	}
 }
 
-
 static void _find_global_enums(HashMap<String, EditorLanguage::CompletionOption> &r_result) {
 	List<StringName> global_enums;
 	CoreConstants::get_global_enums(&global_enums);
@@ -1332,6 +1332,13 @@ static void _find_identifiers_in_class(const GDScriptParser::ClassNode *p_class,
 		}
 	}
 
+	// wgodot-changes::begin
+	if (p_class->wgodot_is_interface) {
+		for (const StringName &name : p_class->wgodot_native_interfaces) {
+			WGodotGDScriptEditor::find_native_interface_members(name, p_static, p_only_functions, p_types_only, p_add_braces, r_result);
+		}
+	}
+	// wgodot-changes::end
 	// Parents.
 	GDScriptCompletionIdentifier base_type;
 	base_type.type = p_class->base_type;
@@ -1438,6 +1445,12 @@ static void _find_identifiers_in_base(const GDScriptCompletionIdentifier &p_base
 			} break;
 			case GDScriptParser::DataType::NATIVE: {
 				StringName type = base_type.native_type;
+				// wgodot-changes::begin
+				if (const auto *contract = WGodotGDScriptStdLib::get_native_interface(type)) {
+					WGodotGDScriptEditor::find_native_interface_members(type, base_type.is_meta_type, p_only_functions, p_types_only, p_add_braces, r_result);
+					type = contract->native_base;
+				}
+				// wgodot-changes::end
 				if (!GDScriptAnalyzer::class_exists(type)) {
 					return;
 				}
@@ -1544,6 +1557,15 @@ static void _find_identifiers_in_base(const GDScriptCompletionIdentifier &p_base
 				}
 
 				String type_str = base_type.native_type;
+				// wgodot-changes::begin
+				if (WGodotGDScriptStdLib::has_global_interface(type_str.get_slicec('.', 0))) {
+					for (const auto &entry : base_type.enum_values) {
+						EditorLanguage::CompletionOption option(entry.key, EditorLanguage::CompletionKind::CONSTANT, EditorLanguage::CompletionLocation::OTHER);
+						r_result.insert(option.display, option);
+					}
+					return;
+				}
+				// wgodot-changes::end
 
 				if (type_str.contains_char('.')) {
 					StringName type = type_str.get_slicec('.', 0);

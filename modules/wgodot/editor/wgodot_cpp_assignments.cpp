@@ -4,6 +4,8 @@
 
 #include "core/object/class_db.h"
 
+#include "modules/gdscript/wgodot_gd/interface_helpers.h"
+
 using Parser = GDScriptParser;
 using namespace WGodotCppNames;
 
@@ -22,25 +24,23 @@ StringName WGodotCppEmitter::accessor_name(const Parser::VariableNode *p_variabl
 String WGodotCppEmitter::property_access(const Parser::DataType &p_base_type, const StringName &p_name, const Parser::ExpressionNode *p_origin, const String &p_receiver, const String &p_value) {
 	class_call_headers.insert("modules/wgodot/native/wgodot_native_values.h");
 	const bool write = !p_value.is_empty();
-	if (p_base_type.kind == Parser::DataType::CLASS && p_base_type.class_type->wgodot_is_interface && p_base_type.class_type->has_member(p_name)) {
-		const StringName metadata = interface_native_metadata(p_base_type.class_type);
-		if (!metadata.is_empty()) {
-			const StringName accessor = write ? ClassDB::get_property_setter(metadata, p_name) : ClassDB::get_property_getter(metadata, p_name);
-			const MethodBind *method = ClassDB::get_method(metadata, accessor);
-			if (!method || !validate_native_arguments(method, p_origin)) {
-				unsupported(p_origin, "native interface property accessor " + String(p_name));
+	if (const auto *contract = WGodotGDScriptInterfaceHelpers::native_interface_for_member(p_base_type, p_name)) {
+		if (const auto *property = contract->properties.getptr(p_name)) {
+			const StringName accessor = write ? property->setter : property->getter;
+			if (accessor.is_empty()) {
+				unsupported(p_origin, "missing native interface property accessor");
 				return String();
 			}
+			class_call_headers.insert(contract->cpp_header);
+			const String traits = "WGodotNative::InterfaceMethod<decltype(&" + contract->cpp_type + "::" + String(accessor) + ")>";
+			const String argument = write ? "WGodotNative::convert<" + traits + "::Argument<0>>(" + p_value + ")" : "";
 			const String result = write ? "void" : type(p_origin->type_constraint, p_origin);
-			const String argument = write ? "WGodotNative::convert<" + native_argument_type(method->get_argument_info(0), p_origin) + ">(" + p_value + ")" : "";
 			const String invoke = "instance->" + String(accessor) + "(" + argument + ")";
 			return "([&]() -> " + result + " { auto &&receiver = " + p_receiver + "; auto *instance = receiver.operator->(); ERR_FAIL_NULL_V(instance, (" + result + "())); return " + (write ? invoke : "WGodotNative::convert<" + result + ">(" + invoke + ")") + "; }())";
 		}
-		if (is_warray(p_origin->type_constraint)) {
-			unsupported(p_origin, "WArray interface property through the current Variant property ABI");
-			return String();
-		}
-		return write ? "WGodotNative::set_member(" + p_receiver + ", SNAME(" + quoted(p_name) + "), " + p_value + ")" : "WGodotNative::get_member<" + type(p_origin->type_constraint, p_origin) + ">(" + p_receiver + ", SNAME(" + quoted(p_name) + "))";
+	}
+	if (p_base_type.kind == Parser::DataType::CLASS && p_base_type.class_type->wgodot_is_interface && p_base_type.class_type->has_member(p_name)) {
+		return "(" + p_receiver + ")->" + String(write ? "set_" : "get_") + symbol(p_name) + "(" + p_value + ")";
 	}
 	if (p_base_type.kind == Parser::DataType::CLASS) {
 		const auto *owner = member_owner(p_base_type.class_type, p_name);

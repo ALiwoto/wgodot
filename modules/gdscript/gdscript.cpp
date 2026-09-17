@@ -78,6 +78,23 @@ GDScriptNativeClass::GDScriptNativeClass(const StringName &p_name) {
 }
 
 bool GDScriptNativeClass::_get(const StringName &p_name, Variant &r_ret) const {
+	// wgodot-changes::begin
+	if (const auto *contract = WGodotGDScriptStdLib::get_native_interface(name)) {
+		if (const int64_t *value = contract->constants.getptr(p_name)) {
+			r_ret = *value;
+			return true;
+		}
+		if (const auto *values = contract->enums.getptr(p_name)) {
+			Dictionary result;
+			for (const auto &entry : *values) {
+				result[entry.key] = entry.value;
+			}
+			r_ret = result;
+			return true;
+		}
+		return false;
+	}
+	// wgodot-changes::end
 	bool ok;
 	int64_t v = ClassDB::get_integer_constant(name, p_name, &ok);
 
@@ -113,6 +130,9 @@ Variant GDScriptNativeClass::_new() {
 }
 
 Object *GDScriptNativeClass::instantiate() {
+	// wgodot-changes::begin
+	ERR_FAIL_COND_V_MSG(WGodotGDScriptStdLib::has_global_interface(name), nullptr, "Interfaces cannot be instantiated.");
+	// wgodot-changes::end
 	return ClassDB::instantiate_no_placeholders(name);
 }
 
@@ -724,7 +744,6 @@ void GDScript::_static_default_init() {
 	}
 }
 
-
 #ifdef TOOLS_ENABLED
 
 void GDScript::_save_old_static_data() {
@@ -1164,20 +1183,6 @@ Error GDScript::load_source_code(const String &p_path) {
 		return OK;
 	}
 
-	// wgodot-changes::begin
-	if (WGodotGDScriptStdLib::has_script_path(p_path)) {
-		source = WGodotGDScriptStdLib::get_script_source(p_path);
-		path = p_path;
-		path_valid = true;
-#ifdef TOOLS_ENABLED
-		source_changed_cache = true;
-		set_edited(false);
-		set_last_modified_time(0);
-#endif // TOOLS_ENABLED
-		return OK;
-	}
-	// wgodot-changes::end
-
 	Vector<uint8_t> sourcef;
 	Error err;
 	Ref<FileAccess> f = FileAccess::open(p_path, FileAccess::READ, &err);
@@ -1439,7 +1444,6 @@ String GDScript::canonicalize_path(const String &p_path) {
 	}
 	return p_path;
 }
-
 
 GDScript::UpdatableFuncPtr::UpdatableFuncPtr(GDScriptFunction *p_function) {
 	if (p_function == nullptr) {
@@ -2183,7 +2187,7 @@ void GDScriptLanguage::remove_named_global_constant(const StringName &p_name) {
 
 void GDScriptLanguage::init() {
 	// wgodot-changes::begin
-	WGodotGDScriptStdLib::register_global_classes();
+	WGodotGDScriptStdLib::register_global_types();
 	// wgodot-changes::end
 
 	// Populate core constants.
@@ -2234,9 +2238,6 @@ void GDScriptLanguage::init() {
 #ifdef TESTS_ENABLED
 	GDScriptTests::GDScriptTestRunner::handle_cmdline();
 #endif // TESTS_ENABLED
-	// wgodot-changes::begin
-	WGodotGDScriptStdLib::initialize_native_interfaces();
-	// wgodot-changes::end
 }
 
 #ifdef TOOLS_ENABLED

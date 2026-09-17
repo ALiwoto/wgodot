@@ -30,8 +30,9 @@
 
 #include "gdscript_analyzer.h"
 // wgodot-changes::begin
-#include "core/profiling/wgodot_startup_profile.h"
 #include "wgodot_gd/script_resolution.h"
+
+#include "core/profiling/wgodot_startup_profile.h"
 // wgodot-changes::end
 
 #include "gdscript.h"
@@ -42,6 +43,8 @@
 #include "wgodot_gd/builtin_class_aliases.h"
 #include "wgodot_gd/interface_helpers.h"
 #include "wgodot_stdlib.h"
+
+#include "core/object/wgodot_native_interfaces.h"
 // wgodot-changes::end
 
 #include "core/config/engine.h"
@@ -172,6 +175,21 @@ static GDScriptParser::DataType make_class_enum_type(const StringName &p_enum_na
 }
 
 static GDScriptParser::DataType make_native_enum_type(const StringName &p_enum_name, const StringName &p_native_class, bool p_meta = true) {
+	// wgodot-changes::begin
+	if (const auto *contract = WGodotGDScriptStdLib::get_native_interface(p_native_class)) {
+		GDScriptParser::DataType type = make_enum_type(p_enum_name, p_native_class, p_meta);
+		if (p_meta) {
+			type.builtin_type = Variant::NIL;
+			type.is_pseudo_type = true;
+		}
+		if (const auto *values = contract->enums.getptr(p_enum_name)) {
+			for (const auto &entry : *values) {
+				type.enum_values[entry.key] = entry.value;
+			}
+		}
+		return type;
+	}
+	// wgodot-changes::end
 	// Find out which base class declared the enum, so the name is always the same even when coming from other contexts.
 	StringName native_base = p_native_class;
 	while (true && native_base != StringName()) {
@@ -548,6 +566,16 @@ Error GDScriptAnalyzer::resolve_class_inheritance(GDScriptParser::ClassNode *p_c
 				base.kind = GDScriptParser::DataType::NATIVE;
 				base.builtin_type = Variant::OBJECT;
 				base.native_type = name;
+				// wgodot-changes::begin
+				if (const auto *contract = WGodotGDScriptStdLib::get_native_interface(name)) {
+					if (!p_class->wgodot_is_interface) {
+						push_error("Use 'implements' for a native interface; 'extends' selects the concrete parent.", id);
+						return ERR_PARSE_ERROR;
+					}
+					p_class->wgodot_native_interfaces.push_back(name);
+					base.native_type = contract->native_base;
+				}
+				// wgodot-changes::end
 			} else {
 				// Look for other classes in script.
 				bool found = false;
@@ -825,14 +853,6 @@ GDScriptParser::DataType GDScriptAnalyzer::resolve_datatype(GDScriptParser::Type
 			result.builtin_type = Variant::OBJECT;
 			result.native_type = first;
 		// wgodot-changes::begin
-		} else if (WGodotGDScriptStdLib::has_global_interface(first)) {
-			bool wgodot_stdlib_interface_type_valid = true;
-			wgodot_try_resolve_stdlib_interface_type(p_type, first, result, wgodot_stdlib_interface_type_valid);
-			if (!wgodot_stdlib_interface_type_valid) {
-				return bad_type;
-			}
-		// wgodot-changes::end
-		// wgodot-changes::begin
 		} else if (WGodotGDScriptResolution::is_global_class(first)) {
 		// wgodot-changes::end
 			// wgodot-changes::begin
@@ -987,7 +1007,10 @@ GDScriptParser::DataType GDScriptAnalyzer::resolve_datatype(GDScriptParser::Type
 			}
 		} else if (result.kind == GDScriptParser::DataType::NATIVE) {
 			// Only enums allowed for native.
-			if (ClassDB::has_enum(result.native_type, p_type->type_chain[1]->name)) {
+			// wgodot-changes::begin
+			const auto *native_interface = WGodotGDScriptStdLib::get_native_interface(result.native_type);
+			if (native_interface ? native_interface->enums.has(p_type->type_chain[1]->name) : ClassDB::has_enum(result.native_type, p_type->type_chain[1]->name)) {
+				// wgodot-changes::end
 				if (p_type->type_chain.size() > 2) {
 					push_error(R"(Enums cannot contain nested types.)", p_type->type_chain[2]);
 					return bad_type;
@@ -4612,7 +4635,15 @@ void GDScriptAnalyzer::reduce_identifier_from_base(GDScriptParser::IdentifierNod
 	}
 
 	// Check native members. No need for native class recursion because Node exposes all Object's properties.
-	const StringName &native = base.native_type;
+	// wgodot-changes::begin
+	if (wgodot_reduce_native_interface_member(p_base ? *p_base : parser->current_class->self_type, p_identifier)) {
+		return;
+	}
+	StringName native = base.native_type;
+	if (const auto *contract = WGodotGDScriptStdLib::get_native_interface(native)) {
+		native = contract->native_base;
+	}
+	// wgodot-changes::end
 
 	if (class_exists(native)) {
 		if (is_constructor) {
@@ -6324,6 +6355,15 @@ bool GDScriptAnalyzer::get_function_signature(GDScriptParser::Node *p_source, bo
 	}
 
 	StringName base_native = p_base_type.native_type;
+	// wgodot-changes::begin
+	if (const auto *contract = WGodotGDScriptStdLib::get_native_interface(base_native)) {
+		if (p_is_constructor) {
+			push_error(vformat("Interface '%s' cannot be constructed.", base_native), p_source);
+			return false;
+		}
+		base_native = contract->native_base;
+	}
+	// wgodot-changes::end
 	if (base_native != StringName()) {
 		// Empty native class might happen in some Script implementations.
 		// Just ignore it.
@@ -6435,6 +6475,13 @@ bool GDScriptAnalyzer::get_function_signature(GDScriptParser::Node *p_source, bo
 		return true;
 	}
 
+	// wgodot-changes::begin
+	if (const auto *contract = WGodotGDScriptInterfaceHelpers::native_interface_for_member(p_base_type, function_name)) {
+		if (const MethodInfo *method = contract->methods.getptr(function_name)) {
+			return function_signature_from_info(*method, r_return_type, r_par_types, r_default_arg_count, r_method_flags, p_source);
+		}
+	}
+	// wgodot-changes::end
 	MethodInfo info;
 	if (ClassDB::get_method_info(base_native, function_name, &info)) {
 		bool valid = function_signature_from_info(info, r_return_type, r_par_types, r_default_arg_count, r_method_flags, p_source);
@@ -6894,8 +6941,16 @@ bool GDScriptAnalyzer::check_type_compatibility(const GDScriptParser::DataType &
 			if (p_target.is_meta_type) {
 				return ClassDB::is_parent_class(src_native, GDScriptNativeClass::get_class_static());
 			}
-			bool valid = ClassDB::is_parent_class(src_native, p_target.native_type);
 			// wgodot-changes::begin
+			if (WGodotGDScriptStdLib::has_global_interface(p_target.native_type)) {
+				if (src_class && WGodotGDScriptInterfaceHelpers::class_implements_native_interface(src_class, p_target.native_type)) {
+					return true;
+				}
+				if (src_script.is_valid() && src_script->wgodot_implements_interface(p_target.native_type)) {
+					return true;
+				}
+			}
+			bool valid = WGodotNativeInterfaces::can_reference(src_native, p_target.native_type);
 			if (valid && wgodot_is_value_container_type(p_target) && wgodot_is_value_container_type(p_source) && p_target.has_container_element_type(0) && p_source.has_container_element_type(0)) {
 				valid = check_type_compatibility(p_target.get_container_element_type(0), p_source.get_container_element_type(0), false, p_source_node);
 			}
@@ -7057,7 +7112,9 @@ void GDScriptAnalyzer::resolve_pending_lambda_bodies() {
 }
 
 bool GDScriptAnalyzer::class_exists(const StringName &p_class) {
-	return ClassDB::class_exists(p_class) && ClassDB::is_class_exposed(p_class);
+	// wgodot-changes::begin
+	return WGodotGDScriptStdLib::has_global_interface(p_class) || (ClassDB::class_exists(p_class) && ClassDB::is_class_exposed(p_class));
+	// wgodot-changes::end
 }
 
 Error GDScriptAnalyzer::resolve_inheritance() {

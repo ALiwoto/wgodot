@@ -8,7 +8,6 @@
 #include "core/io/file_access.h"
 #include "core/templates/hash_set.h"
 
-#include "modules/gdscript/wgodot_stdlib.h"
 
 namespace {
 class ResourceDependencies : public WGodotCppAstVisitor {
@@ -90,11 +89,6 @@ Error WGodotCppProject::analyze() {
 	if (error != OK) {
 		return error;
 	}
-	LocalVector<StringName> interfaces;
-	WGodotGDScriptStdLib::get_global_interface_list(interfaces);
-	for (const StringName &contract : interfaces) {
-		scripts.push_back(WGodotGDScriptStdLib::get_global_interface_path(contract));
-	}
 	scripts.sort();
 	ResourceDependencies dependencies;
 	for (const String &path : scripts) {
@@ -127,6 +121,15 @@ Error WGodotCppProject::analyze() {
 const WGodotCppProject::Class *WGodotCppProject::find_class(const GDScriptParser::ClassNode *p_node) const {
 	const int *index = class_indices.getptr(p_node);
 	return index ? &classes[*index] : nullptr;
+}
+
+GDScriptParser *WGodotCppProject::find_parser(const String &p_script_path) const {
+	for (const auto &parser : parsers) {
+		if (parser->get_path() == p_script_path) {
+			return parser->get_parser();
+		}
+	}
+	return nullptr;
 }
 
 Dictionary WGodotCppProject::describe() const {

@@ -3,7 +3,9 @@
 #include "interface_helpers.h"
 
 #include "../gdscript.h"
+
 #include "core/object/class_db.h"
+#include "core/object/wgodot_native_interfaces.h"
 
 namespace WGodotGDScriptInterfaceHelpers {
 
@@ -70,6 +72,36 @@ bool same_type(const GDScriptParser::DataType &p_first, const GDScriptParser::Da
 
 String get_interface_id(const GDScriptParser::ClassNode *p_interface) {
 	return GDScript::canonicalize_path(p_interface->self_type.script_path) + "::" + p_interface->fqcn;
+}
+
+const WGodotNativeInterfaces::Descriptor *native_interface_for_member(const GDScriptParser::DataType &p_type, const StringName &p_member) {
+	if (p_type.kind == GDScriptParser::DataType::NATIVE) {
+		return WGodotNativeInterfaces::get_descriptor(p_type.native_type);
+	}
+	if (p_type.kind == GDScriptParser::DataType::CLASS && p_type.class_type->wgodot_is_interface) {
+		for (const StringName &name : p_type.class_type->wgodot_native_interfaces) {
+			const auto *type = WGodotNativeInterfaces::get_descriptor(name);
+			if (type && (type->methods.has(p_member) || type->properties.has(p_member) || type->signals.has(p_member) || type->enums.has(p_member) || type->constants.has(p_member))) {
+				return type;
+			}
+		}
+	}
+	return nullptr;
+}
+
+bool class_implements_native_interface(const GDScriptParser::ClassNode *p_class, const StringName &p_interface) {
+	for (const auto *type = p_class; type; type = type->base_type.class_type) {
+		if (type->wgodot_native_interfaces.has(p_interface)) {
+			return true;
+		}
+		if (type->base_type.script_type.is_valid() && type->base_type.script_type->wgodot_implements_interface(p_interface)) {
+			return true;
+		}
+		if (WGodotNativeInterfaces::accepts(type->base_type.native_type, p_interface)) {
+			return true;
+		}
+	}
+	return false;
 }
 
 bool class_implements_interface_type(const GDScriptParser::ClassNode *p_class, const GDScriptParser::ClassNode *p_interface) {

@@ -44,8 +44,16 @@ void GDScriptAnalyzer::wgodot_resolve_implemented_interfaces(ClassNode *p_class)
 		ClassNode *base = p_class->base_type.class_type;
 		resolve_class_interface(base, p_class);
 		direct.append_array(base->wgodot_resolved_interfaces);
+		p_class->wgodot_native_interfaces.append_array(base->wgodot_native_interfaces);
 	}
 	for (const ClassNode::WGodotInterfaceReference &reference : p_class->wgodot_implements) {
+		if (reference.path.is_empty() && reference.identifiers.size() == 1) {
+			const StringName name = reference.identifiers[0]->name;
+			if (WGodotGDScriptStdLib::has_global_interface(name)) {
+				p_class->wgodot_native_interfaces.push_back(name);
+				continue;
+			}
+		}
 		ClassNode *contract = wgodot_resolve_interface_reference(p_class, reference);
 		if (contract != nullptr) {
 			direct.push_back(contract);
@@ -66,6 +74,7 @@ void GDScriptAnalyzer::wgodot_resolve_implemented_interfaces(ClassNode *p_class)
 			continue;
 		}
 		resolve_class_interface(contract, p_class);
+		p_class->wgodot_native_interfaces.append_array(contract->wgodot_native_interfaces);
 		const StringName contract_base = contract->self_type.native_type;
 		if (!ClassDB::is_parent_class(required_base, contract_base)) {
 			if (p_class->wgodot_is_interface && ClassDB::is_parent_class(contract_base, required_base)) {
@@ -84,6 +93,26 @@ void GDScriptAnalyzer::wgodot_resolve_implemented_interfaces(ClassNode *p_class)
 			}
 		}
 	}
+	Vector<StringName> native_interfaces;
+	for (const StringName &name : p_class->wgodot_native_interfaces) {
+		const auto *native = WGodotGDScriptStdLib::get_native_interface(name);
+		if (!ClassDB::is_parent_class(required_base, native->native_base)) {
+			if (p_class->wgodot_is_interface && ClassDB::is_parent_class(native->native_base, required_base)) {
+				required_base = native->native_base;
+			} else {
+				push_error(vformat("Interface '%s' requires native base '%s'.", name, native->native_base), p_class);
+			}
+		}
+		for (const StringName &parent : native->parents) {
+			if (!native_interfaces.has(parent)) {
+				native_interfaces.push_back(parent);
+			}
+		}
+		if (!native_interfaces.has(name)) {
+			native_interfaces.push_back(name);
+		}
+	}
+	p_class->wgodot_native_interfaces = native_interfaces;
 	if (p_class->wgodot_is_interface) {
 		p_class->wgodot_own_member_count = p_class->members.size();
 		if (p_class->base_type.kind == DataType::CLASS && !p_class->base_type.class_type->wgodot_is_interface) {
@@ -175,21 +204,18 @@ bool GDScriptAnalyzer::wgodot_reduce_interface_identifier(GDScriptParser::Identi
 }
 
 bool GDScriptAnalyzer::wgodot_type_from_interface_property(const PropertyInfo &p_property, const GDScriptParser::Node *p_source, GDScriptParser::DataType &r_type) const {
-	if (!WGodotGDScriptStdLib::has_global_interface(p_property.class_name)) {
+	if (p_property.type != Variant::OBJECT) {
 		return false;
 	}
-	const String path = WGodotGDScriptStdLib::get_global_interface_path(p_property.class_name);
-	if (GDScript::is_canonically_equal_paths(path, parser->script_path)) {
-		r_type = type_from_metatype(parser->get_tree()->self_type);
-		return true;
+	const StringName name = p_property.class_name.is_empty() ? StringName(p_property.hint_string) : p_property.class_name;
+	if (!WGodotGDScriptStdLib::has_global_interface(name)) {
+		return false;
 	}
-	Ref<GDScriptParserRef> contract = parser->get_depended_parser_for(path);
-	if (contract.is_null() || contract->raise_status(GDScriptParserRef::INTERFACE_SOLVED) != OK) {
-		push_error(vformat("Could not resolve interface '%s' in a reflected property or signature.", p_property.class_name), p_source);
-		r_type.kind = DataType::VARIANT;
-		return true;
-	}
-	r_type = type_from_metatype(contract->get_parser()->get_tree()->self_type);
+	r_type = DataType();
+	r_type.kind = DataType::NATIVE;
+	r_type.type_source = DataType::ANNOTATED_EXPLICIT;
+	r_type.builtin_type = Variant::OBJECT;
+	r_type.native_type = name;
 	return true;
 }
 

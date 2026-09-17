@@ -32,6 +32,10 @@
 
 #include "gdscript.h"
 
+// wgodot-changes::begin
+#include "core/object/wgodot_native_interfaces.h"
+// wgodot-changes::end
+
 #include "core/object/class_db.h"
 
 bool GDScriptDataType::is_type(const Variant &p_variant, bool p_allow_implicit_conversion) const {
@@ -114,7 +118,9 @@ bool GDScriptDataType::is_type(const Variant &p_variant, bool p_allow_implicit_c
 				return !was_freed;
 			}
 
-			if (!obj->is_class(native_type)) {
+			// wgodot-changes::begin
+			if (!WGodotNativeInterfaces::is_instance(obj, native_type)) {
+				// wgodot-changes::end
 				return false;
 			}
 			return true;

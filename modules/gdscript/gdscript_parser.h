@@ -788,6 +788,7 @@ public:
 		};
 		Vector<WGodotInterfaceReference> wgodot_implements;
 		Vector<ClassNode *> wgodot_resolved_interfaces;
+		Vector<StringName> wgodot_native_interfaces;
 		bool wgodot_interfaces_resolved = false;
 		bool wgodot_has_native_interface_members = false;
 		int wgodot_own_member_count = -1;

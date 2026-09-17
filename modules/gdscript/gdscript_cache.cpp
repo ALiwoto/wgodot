@@ -39,7 +39,6 @@
 #include "gdscript_compiler.h"
 #include "gdscript_parser.h"
 // wgodot-changes::begin
-#include "wgodot_stdlib.h"
 #include "wgodot_gd/script_resolution.h"
 // wgodot-changes::end
 
@@ -73,7 +72,6 @@ GDScriptAnalyzer *GDScriptParserRef::get_analyzer() {
 	}
 	return analyzer;
 }
-
 
 Error GDScriptParserRef::raise_status(Status p_new_status) {
 	ERR_FAIL_COND_V(clearing, ERR_BUG);
@@ -252,7 +250,7 @@ Ref<GDScriptParserRef> GDScriptCache::get_parser(const String &p_path, GDScriptP
 	} else {
 		String remapped_path = ResourceLoader::path_remap(p_path);
 		// wgodot-changes::begin
-		if (!WGodotGDScriptStdLib::has_script_path(remapped_path) && !FileAccess::exists(remapped_path)) {
+		if (!FileAccess::exists(remapped_path)) {
 			r_error = ERR_FILE_NOT_FOUND;
 			return ref;
 		}
@@ -302,9 +300,6 @@ void GDScriptCache::remove_parser(const String &p_path) {
 String GDScriptCache::get_source_code(const String &p_path) {
 	// wgodot-changes::begin
 	WGodotStartupProfile::Scope wgodot_profile("GDScript read source", p_path);
-	if (WGodotGDScriptStdLib::has_script_path(p_path)) {
-		return WGodotGDScriptStdLib::get_script_source(p_path);
-	}
 	// wgodot-changes::end
 
 	Vector<uint8_t> source_file;

@@ -28,6 +28,10 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
+// wgodot-changes::begin
+#include "core/object/wgodot_native_interfaces.h"
+// wgodot-changes::end
+
 #include "gdscript.h"
 #include "gdscript_function.h"
 #include "gdscript_lambda_callable.h"
@@ -952,7 +956,9 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 					OPCODE_BREAK;
 				}
 
-				*dst = object && object->is_class(native_type);
+				// wgodot-changes::begin
+				*dst = object && WGodotNativeInterfaces::is_instance(object, native_type);
+				// wgodot-changes::end
 				ip += 4;
 			}
 			DISPATCH_OPCODE;
@@ -1570,7 +1576,9 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 						OPCODE_BREAK;
 					}
 
-					if (src_obj && !src_obj->is_class(nc->get_name())) {
+					// wgodot-changes::begin
+					if (src_obj && !WGodotNativeInterfaces::is_instance(src_obj, nc->get_name())) {
+						// wgodot-changes::end
 						err_text = "Trying to assign value of type '" + src_obj->get_class_name() +
 								"' to a variable of type '" + nc->get_name() + "'.";
 						OPCODE_BREAK;
@@ -1703,7 +1711,9 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 #endif
 				Object *src_obj = src->operator Object *();
 
-				if (src_obj && !src_obj->is_class(nc->get_name())) {
+				// wgodot-changes::begin
+				if (src_obj && !WGodotNativeInterfaces::is_instance(src_obj, nc->get_name())) {
+					// wgodot-changes::end
 					*dst = Variant(); // invalid cast, assign NULL
 				} else {
 					*dst = *src;
@@ -3005,7 +3015,9 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 #else
 				Object *ret_obj = r->operator Object *();
 #endif // DEBUG_ENABLED
-				if (ret_obj && !ret_obj->is_class(nc->get_name())) {
+	   // wgodot-changes::begin
+				if (ret_obj && !WGodotNativeInterfaces::is_instance(ret_obj, nc->get_name())) {
+					// wgodot-changes::end
 #ifdef DEBUG_ENABLED
 					err_text = vformat(R"(Trying to return a value of type "%s" from a function whose return type is "%s".)",
 							_get_var_type(r), nc->get_name());

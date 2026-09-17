@@ -2,6 +2,7 @@
 
 #include "class_db.h"
 #include "script_language.h"
+#include "wgodot_native_interfaces.h"
 
 bool Script::wgodot_is_interface_type() const {
 	return false;
@@ -67,6 +68,9 @@ Error ClassDB::wgodot_register_interface(const StringName &p_class, const Script
 }
 
 bool ClassDB::wgodot_class_implements_interface(const StringName &p_class, const String &p_interface_id) {
+	if (WGodotNativeInterfaces::accepts(p_class, p_interface_id)) {
+		return true;
+	}
 	Locker::Lock lock(Locker::STATE_READ);
 	for (const ClassInfo *info = classes.getptr(p_class); info != nullptr; info = info->inherits_ptr) {
 		if (info->wgodot_interfaces.has(p_interface_id)) {

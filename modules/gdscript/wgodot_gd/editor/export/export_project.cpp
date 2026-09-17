@@ -5,7 +5,6 @@
 #include "core/io/file_access.h"
 #include "core/object/script_language.h"
 
-#include "modules/gdscript/wgodot_stdlib.h"
 
 namespace WGodotGDScriptExportTransform {
 
@@ -120,15 +119,11 @@ Error ExportProject::capture(const HashSet<String> &p_exported_paths, const Hash
 	captured.script_paths.sort();
 	for (const String &path : captured.script_paths) {
 		ExportSource source;
-		if (WGodotGDScriptStdLib::has_script_path(path)) {
-			source.text = WGodotGDScriptStdLib::get_script_source(path);
-		} else {
-			Error error = OK;
-			source.text = FileAccess::get_file_as_string(path, &error);
-			if (error != OK) {
-				r_error = "Cannot capture GDScript export input: " + path;
-				return error;
-			}
+		Error error = OK;
+		source.text = FileAccess::get_file_as_string(path, &error);
+		if (error != OK) {
+			r_error = "Cannot capture GDScript export input: " + path;
+			return error;
 		}
 		source.original = source.text;
 		if (!source.text.is_empty()) {

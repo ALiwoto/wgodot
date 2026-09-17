@@ -4,6 +4,8 @@
 
 #include "core/object/class_db.h"
 
+#include "modules/gdscript/wgodot_gd/interface_helpers.h"
+
 using Parser = GDScriptParser;
 using namespace WGodotCppNames;
 
@@ -23,21 +25,21 @@ String WGodotCppEmitter::call(const Parser::CallNode *p_call) {
 	}
 	const Parser::DataType &base_type = p_call->is_super ? current_class->node->base_type : base ? base->type_constraint
 																								 : current_class->node->self_type;
+	if (const auto *contract = WGodotGDScriptInterfaceHelpers::native_interface_for_member(base_type, p_call->function_name)) {
+		if (contract->methods.has(p_call->function_name)) {
+			return native_interface_call(p_call, base, *contract);
+		}
+	}
 	if (base_type.kind != Parser::DataType::CLASS) {
 		return native_call(p_call, base, base_type);
 	}
 	if (const auto *contract_method = interface_method(p_call)) {
 		class_call_headers.insert("modules/wgodot/native/wgodot_native_interface.h");
-		const StringName metadata = interface_native_metadata(base_type.class_type);
-		const MethodBind *native_method = metadata.is_empty() ? nullptr : ClassDB::get_method(metadata, p_call->function_name);
-		if (native_method && !validate_native_arguments(native_method, p_call)) {
-			return String();
-		}
 		String body = "([&]() { ";
 		Vector<String> arguments;
 		for (uint32_t i = 0; i < p_call->arguments.size(); i++) {
 			const String argument = "argument_" + itos(i);
-			const String value = native_method ? engine_argument(p_call->arguments[i], native_method->get_argument_type(i)) : converted(p_call->arguments[i], contract_method->parameters[i]->type_constraint);
+			const String value = converted(p_call->arguments[i], contract_method->parameters[i]->type_constraint, contract_method->parameters[i]);
 			body += "auto &&" + argument + " = " + value + "; ";
 			arguments.push_back(argument);
 		}
@@ -47,12 +49,7 @@ String WGodotCppEmitter::call(const Parser::CallNode *p_call) {
 				unsupported(p_call, "missing interface argument");
 				return String();
 			}
-			arguments.push_back(native_method ? literal(native_method->get_default_argument(i), p_call) : converted(parameter->initializer, parameter->type_constraint, parameter));
-		}
-		if (native_method) {
-			for (int i = 0; i < arguments.size(); i++) {
-				arguments.write[i] = "WGodotNative::convert<" + native_argument_type(native_method->get_argument_info(i), p_call) + ">(" + arguments[i] + ")";
-			}
+			arguments.push_back(converted(parameter->initializer, parameter->type_constraint, parameter));
 		}
 		const String result_type = type(p_call->type_constraint, p_call);
 		body += "auto &&receiver = " + expression(base) + "; auto *instance = receiver.operator->(); ERR_FAIL_NULL_V(instance, (" + result_type + "())); ";

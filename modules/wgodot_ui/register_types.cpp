@@ -8,7 +8,12 @@
 #include "modules/modules_enabled.gen.h"
 
 #ifdef MODULE_GDSCRIPT_ENABLED
-#include "modules/gdscript/wgodot_stdlib.h"
+#include "core/object/wgodot_interface_registry.h"
+#include "core/object/wgodot_native_interfaces.h"
+
+void ElementBase::_bind_interface(WGodotNativeInterfaces::Builder &p_builder) {
+	p_builder.import_api("FlatElement");
+}
 #endif
 
 void initialize_wgodot_ui_module(ModuleInitializationLevel p_level) {
@@ -20,9 +25,9 @@ void initialize_wgodot_ui_module(ModuleInitializationLevel p_level) {
 		GDREGISTER_CLASS(TextBoxElement);
 		GDREGISTER_CLASS(SmoothScrollElement);
 #ifdef MODULE_GDSCRIPT_ENABLED
-		WGodotGDScriptStdLib::register_interface({ "ElementBase", "Control", "::ElementBase", "modules/wgodot_ui/element_base.h", "FlatElement", {} });
+		WGDREGISTER_INTERFACE(ElementBase, "Control", "modules/wgodot_ui/element_base.h");
 		for (const char *name : { "FlatElement", "SurfaceElement", "ButtonElement", "TextBoxElement", "SmoothScrollElement" }) {
-			WGodotGDScriptStdLib::register_native_implementation(name, "ElementBase");
+			WGodotNativeInterfaces::add_implementation("ElementBase", name);
 		}
 #endif
 	}

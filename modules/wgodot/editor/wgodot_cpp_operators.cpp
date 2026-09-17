@@ -87,7 +87,7 @@ String WGodotCppEmitter::cast(const Parser::CastNode *p_cast) {
 		return expression(p_cast->operand);
 	}
 	class_call_headers.insert("modules/wgodot/native/wgodot_native_values.h");
-	if (target.kind == Parser::DataType::CLASS && target.class_type->wgodot_is_interface) {
+	if (is_interface_type(target)) {
 		return class_name(target, p_cast) + "::cast(" + expression(p_cast->operand) + ")";
 	}
 	if (target.kind == Parser::DataType::BUILTIN || target.kind == Parser::DataType::ENUM) {
@@ -109,7 +109,7 @@ String WGodotCppEmitter::type_test(const Parser::TypeTestNode *p_test) {
 		return "([&]() { (void)(" + value + "); return true; }())";
 	}
 	class_call_headers.insert("modules/wgodot/native/wgodot_native_values.h");
-	if (target.kind == Parser::DataType::CLASS && target.class_type->wgodot_is_interface) {
+	if (is_interface_type(target)) {
 		return "([&]() { const Variant &value = " + value + "; return value.get_validated_object() && " + class_name(target, p_test) + "::accepts(value); }())";
 	}
 	if (target.kind == Parser::DataType::CLASS || target.kind == Parser::DataType::NATIVE) {

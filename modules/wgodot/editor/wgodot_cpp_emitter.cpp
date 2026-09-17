@@ -12,6 +12,8 @@
 #include "core/object/class_db.h"
 #include "core/string/string_builder.h"
 
+#include "modules/gdscript/wgodot_gd/interface_helpers.h"
+
 #include <charconv>
 
 using Parser = GDScriptParser;
@@ -110,7 +112,7 @@ String WGodotCppEmitter::type(const Parser::DataType &p_type, const Parser::Node
 		}
 	}
 	const String name = class_name(p_type, p_origin);
-	if (p_type.kind == Parser::DataType::CLASS && p_type.class_type->wgodot_is_interface) {
+	if (is_interface_type(p_type)) {
 		return name;
 	}
 	if (ClassDB::is_parent_class(native_base(p_type), "RefCounted")) {
@@ -121,6 +123,11 @@ String WGodotCppEmitter::type(const Parser::DataType &p_type, const Parser::Node
 }
 
 StringName WGodotCppEmitter::native_base(const Parser::DataType &p_type) const {
+	if (p_type.kind == Parser::DataType::NATIVE) {
+		if (const auto *contract = WGodotNativeInterfaces::get_descriptor(p_type.native_type)) {
+			return contract->native_base;
+		}
+	}
 	return p_type.kind == Parser::DataType::CLASS ? native_base(p_type.class_type->base_type) : p_type.native_type;
 }
 
@@ -137,6 +144,15 @@ String WGodotCppEmitter::class_name(const Parser::DataType &p_type, const Parser
 		}
 		return entry->cpp_name;
 	} else if (p_type.kind == Parser::DataType::NATIVE) {
+		if (WGodotNativeInterfaces::get_descriptor(p_type.native_type)) {
+			used_native_interfaces.insert(p_type.native_type);
+			for (const StringName &parent : WGodotNativeInterfaces::get_descriptor(p_type.native_type)->parents) {
+				used_native_interfaces.insert(parent);
+			}
+			const String name = native_interface_name(p_type.native_type);
+			class_native_headers.insert(name + ".h");
+			return name;
+		}
 		const String *header = native_headers.getptr(p_type.native_type);
 		if (!header) {
 			unsupported(p_origin, "native C++ type mapping for " + String(p_type.native_type));
@@ -219,6 +235,11 @@ const WGodotCppProject::Class *WGodotCppEmitter::member_owner(const Parser::Clas
 
 String WGodotCppEmitter::member(const Parser::ExpressionNode *p_base, const StringName &p_name, const Parser::ExpressionNode *p_origin) {
 	const auto datatype = p_base ? expression_type(p_base) : current_class->node->self_type;
+	if (const auto *contract = WGodotGDScriptInterfaceHelpers::native_interface_for_member(datatype, p_name)) {
+		if (contract->methods.has(p_name) || contract->properties.has(p_name) || contract->signals.has(p_name)) {
+			return native_interface_member(p_base, p_name, p_origin, *contract);
+		}
+	}
 	if (datatype.kind == Parser::DataType::BUILTIN && Variant::has_builtin_method(datatype.builtin_type, p_name)) {
 		if (native_only(datatype)) {
 			unsupported(p_origin, "native container/callback/signal method references; use an inline lambda to call the typed method");
@@ -243,8 +264,8 @@ String WGodotCppEmitter::member(const Parser::ExpressionNode *p_base, const Stri
 	class_dependencies.insert(owner->cpp_name);
 	const auto entry = owner->node->get_member(p_name);
 	if (entry.type == Parser::ClassNode::Member::SIGNAL) {
-		if (!interface_native_metadata(owner->node).is_empty()) {
-			return signature_type(p_origin, true) + "(Signal(WGodotNative::object_pointer(" + expression(p_base) + "), SNAME(" + quoted(p_name) + ")))";
+		if (owner->node->wgodot_is_interface) {
+			return "(" + expression(p_base) + ")->signal_" + symbol(p_name) + "()";
 		}
 		return "(" + (p_base ? expression(p_base) : "this") + ")->s_" + symbol(p_name) + ".signal()";
 	}
@@ -621,9 +642,24 @@ Error WGodotCppEmitter::generate() {
 	files.clear();
 	diagnostics.clear();
 	used_native_headers.clear();
+	used_native_interfaces.clear();
 	signatures.analyze();
 	for (const WGodotCppProject::Class &entry : project.get_classes()) {
 		emit_class(entry);
+	}
+	HashSet<StringName> emitted_interfaces;
+	while (emitted_interfaces.size() < used_native_interfaces.size()) {
+		Vector<StringName> pending;
+		for (const StringName &name : used_native_interfaces) {
+			if (!emitted_interfaces.has(name)) {
+				pending.push_back(name);
+			}
+		}
+		pending.sort();
+		for (const StringName &name : pending) {
+			emit_native_interface(*WGodotNativeInterfaces::get_descriptor(name));
+			emitted_interfaces.insert(name);
+		}
 	}
 	if (!diagnostics.is_empty()) {
 		return ERR_UNAVAILABLE;

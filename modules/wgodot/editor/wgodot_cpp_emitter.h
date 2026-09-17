@@ -4,6 +4,8 @@
 #include "wgodot_cpp_project.h"
 #include "wgodot_cpp_signatures.h"
 
+#include "core/object/wgodot_interface_registry.h"
+
 class MethodBind;
 class WGodotCppAsync;
 
@@ -18,6 +20,7 @@ class WGodotCppEmitter {
 	HashMap<StringName, String> native_headers;
 	HashMap<StringName, String> native_cpp_names;
 	HashMap<String, String> native_methods;
+	HashSet<StringName> used_native_interfaces;
 	HashSet<String> used_native_headers;
 	HashSet<String> class_native_headers;
 	HashSet<String> class_dependencies;
@@ -90,8 +93,15 @@ class WGodotCppEmitter {
 	String lambda(const GDScriptParser::LambdaNode *p_lambda);
 	void emit_class(const WGodotCppProject::Class &p_class);
 	void emit_interface(const WGodotCppProject::Class &p_class);
+	bool is_interface_type(const GDScriptParser::DataType &p_type) const;
+	String native_interface_name(const StringName &p_name) const;
+	void emit_native_interface(const WGodotNativeInterfaces::Descriptor &p_interface);
+	String native_interface_signal_type(const MethodInfo &p_signal);
+	String interface_value_definition(const String &p_name, const String &p_base, const String &p_interface) const;
+	String interface_value_traits(const String &p_name) const;
+	String native_interface_call(const GDScriptParser::CallNode *p_call, const GDScriptParser::ExpressionNode *p_base, const WGodotNativeInterfaces::Descriptor &p_interface);
+	String native_interface_member(const GDScriptParser::ExpressionNode *p_base, const StringName &p_name, const GDScriptParser::ExpressionNode *p_origin, const WGodotNativeInterfaces::Descriptor &p_interface);
 	String interface_cpp_type(const GDScriptParser::ClassNode *p_interface);
-	StringName interface_native_metadata(const GDScriptParser::ClassNode *p_interface) const;
 	void emit_interface_inheritance(const WGodotCppProject::Class &p_class, String &r_bases, String &r_declaration, String &r_definitions);
 	String register_interfaces();
 	void emit_virtuals(const WGodotCppProject::Class &p_class, String &r_declaration, String &r_definitions);

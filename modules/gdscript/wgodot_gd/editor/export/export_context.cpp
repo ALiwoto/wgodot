@@ -524,7 +524,7 @@ void ExportContext::index_interface_members(const GDScriptParser::ClassNode *p_c
 	using namespace WGodotGDScriptInterfaceHelpers;
 	for (const GDScriptParser::ClassNode *current = p_class; current != nullptr; current = current->base_type.class_type) {
 		const bool native_contract = current->wgodot_is_interface &&
-				(current->wgodot_has_native_interface_members || WGodotGDScriptStdLib::has_script_path(current->self_type.script_path) ||
+				(current->wgodot_has_native_interface_members || !current->wgodot_native_interfaces.is_empty() ||
 						ClassDB::wgodot_interface_has_native_implementation(get_interface_id(current)));
 		for (const GDScriptParser::ClassNode::Member &member : current->members) {
 			if (member.type == GDScriptParser::ClassNode::Member::CLASS) {
@@ -643,20 +643,29 @@ void ExportContext::reserve_builtin_function_names() {
 }
 
 void ExportContext::reserve_builtin_interface_members() {
-	// These declarations live in the engine, outside the project's export transform.
-	// Keep implementations and typed calls consistent with that fixed interface.
-	for (int i = 0; i < WGodotGDScriptStdLib::get_builtin_interface_count(); i++) {
-		GDScriptParser parser;
-		const String path = WGodotGDScriptStdLib::get_builtin_interface_path(i);
-		ERR_FAIL_COND(parser.parse(WGodotGDScriptStdLib::get_builtin_interface_source(i), path, false) != OK);
-		for (uint32_t method_index = 0; method_index < parser.get_tree()->members.size(); method_index++) {
-			const GDScriptParser::ClassNode::Member &member = parser.get_tree()->members[method_index];
-			if (WGodotGDScriptInterfaceHelpers::is_contract_member(member)) {
-				const StringName name = member.get_name();
-				interface_member_aliases[name] = name;
-				builtin_interface_aliases[(static_cast<uint64_t>(i) << 32) | method_index] = name;
-				reserve_member_name(name);
-			}
+	LocalVector<StringName> names;
+	WGodotGDScriptStdLib::get_global_interface_list(names);
+	for (const StringName &name : names) {
+		reserve_global_class_name(name);
+		const auto *contract = WGodotGDScriptStdLib::get_native_interface(name);
+		auto reserve = [&](const StringName &p_member) {
+			interface_member_aliases[p_member] = p_member;
+			reserve_member_name(p_member);
+		};
+		for (const auto &entry : contract->methods) {
+			reserve(entry.key);
+		}
+		for (const auto &entry : contract->properties) {
+			reserve(entry.key);
+		}
+		for (const auto &entry : contract->signals) {
+			reserve(entry.key);
+		}
+		for (const auto &entry : contract->enums) {
+			reserve(entry.key);
+		}
+		for (const auto &entry : contract->constants) {
+			reserve(entry.key);
 		}
 	}
 }
