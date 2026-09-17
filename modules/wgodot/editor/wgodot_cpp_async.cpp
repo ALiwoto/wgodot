@@ -439,7 +439,12 @@ void WGodotCppAsync::suite(const Parser::SuiteNode *p_suite, int p_indent, bool 
 				break;
 			default:
 				if (statement->is_expression()) {
-					line(p_indent, "(void)(" + expression(static_cast<const Parser::ExpressionNode *>(statement), p_indent) + ");");
+					const auto *value = static_cast<const Parser::ExpressionNode *>(statement);
+					if (!has_await(value)) {
+						code += emitter.lower(value).statement(p_indent);
+					} else {
+						line(p_indent, "(void)(" + expression(value, p_indent) + ");");
+					}
 				} else {
 					emitter.unsupported(statement, "async statement kind " + itos(statement->type));
 				}

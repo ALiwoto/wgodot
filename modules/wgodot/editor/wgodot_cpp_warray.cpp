@@ -139,14 +139,19 @@ bool WGodotCppEmitter::validate_array_conversion(const Parser::ExpressionNode *p
 	return true;
 }
 
-String WGodotCppEmitter::array_literal(const Parser::ArrayNode *p_array, const Parser::DataType &p_target) {
-	Vector<String> elements;
-	const auto &element_type = p_target.get_container_element_type(0);
+WGodotCppEmitter::Value WGodotCppEmitter::array_literal(const Parser::ArrayNode *p_array, const Parser::DataType &p_target) {
+	Vector<Value> operands;
 	for (const auto *element : p_array->elements) {
-		elements.push_back(converted(element, element_type, p_array));
+		operands.push_back(is_warray(p_target) ? lower_converted(element, p_target.get_container_element_type(0), p_array) : lower_engine_argument(element, Variant::NIL));
 	}
-	// Each element is captured before the next expression runs.
-	return type(p_target, p_array) + "{" + String(", ").join(elements) + "}";
+	Value result = sequence(operands);
+	Vector<String> elements;
+	for (const Value &element : operands) {
+		elements.push_back(element.code);
+	}
+	result.cpp_type = type(p_target, p_array);
+	result.code = result.cpp_type + "{" + String(", ").join(elements) + "}";
+	return result;
 }
 
 bool WGodotCppEmitter::is_array_duplicate(const Parser::ExpressionNode *p_value) const {
@@ -208,13 +213,13 @@ String WGodotCppEmitter::engine_argument(const Parser::ExpressionNode *p_value, 
 		if (expression_overrides.has(call)) {
 			return "(" + expression(call) + ").duplicate_to_array()";
 		}
-		return warray_call(call, true);
+		return warray_call(call, true).expression();
 	}
 	unsupported(p_value, "passing WArray to a Godot API without an explicit copy. Use .duplicate() for an Array/Variant argument, or add a native handler for this API");
 	return String();
 }
 
-String WGodotCppEmitter::warray_call(const Parser::CallNode *p_call, bool p_to_array) {
+WGodotCppEmitter::Value WGodotCppEmitter::warray_call(const Parser::CallNode *p_call, bool p_to_array) {
 	const auto *base = static_cast<const Parser::SubscriptNode *>(p_call->callee)->base;
 	const auto base_type = expression_type(base);
 	const auto &element_type = base_type.get_container_element_type(0);
@@ -242,28 +247,44 @@ String WGodotCppEmitter::warray_call(const Parser::CallNode *p_call, bool p_to_a
 		unsupported(p_call, "WArray." + String(name) + "; this method needs a typed native implementation");
 		return String();
 	}
-	String body = "([&]() { ";
+	Vector<Value> operands;
+	for (uint32_t i = 0; i < p_call->arguments.size(); i++) {
+		const auto *source = p_call->arguments[i];
+		operands.push_back(int(i) == value_argument ? lower_converted(source, element_type, base, true) : array_argument ? lower_converted(source, base_type)
+																														 : lower(source));
+	}
+	operands.push_back(lower(base));
+	Value result = sequence(operands);
+	const bool nullable = name == SNAME("pop_back") || name == SNAME("pop_front") || name == SNAME("pop_at") || name == SNAME("front") || name == SNAME("back") || name == SNAME("get");
+	const bool variant_result = nullable && expression_type(p_call).is_variant();
+	if (variant_result) {
+		// The bounds check and invocation share these values; never evaluate an
+		// index or receiver expression a second time inside the check.
+		for (Value &operand : operands) {
+			if (!operand.invariant && !operand.borrowed) {
+				materialize(operand, result.setup);
+			}
+		}
+	}
 	Vector<String> arguments;
 	for (uint32_t i = 0; i < p_call->arguments.size(); i++) {
-		const String argument = "argument_" + itos(i);
-		const auto *source = p_call->arguments[i];
-		const String value = int(i) == value_argument ? converted(source, element_type, base) : array_argument ? converted(source, base_type)
-																											   : expression(source);
-		body += "auto &&" + argument + " = " + value + "; ";
-		arguments.push_back(argument);
+		arguments.push_back(operands[i].code);
 	}
-	body += "auto &&receiver = " + expression(base) + "; ";
-	const String invoke = "receiver." + method + "(" + String(", ").join(arguments) + ")";
-	const bool nullable = name == SNAME("pop_back") || name == SNAME("pop_front") || name == SNAME("pop_at") || name == SNAME("front") || name == SNAME("back") || name == SNAME("get");
-	if (nullable && expression_type(p_call).is_variant()) {
+	const String receiver = "(" + operands[operands.size() - 1].code + ")";
+	const String invoke = receiver + "." + method + "(" + String(", ").join(arguments) + ")";
+	if (variant_result) {
+		String body = "([&]() -> Variant { auto &&receiver = " + receiver + "; ";
 		const bool pop = name == SNAME("pop_back") || name == SNAME("pop_front") || name == SNAME("pop_at");
 		body += "if (receiver.is_empty()" + String(pop ? " || receiver.is_read_only()" : "") + ") { (void)" + invoke + "; return Variant(); } ";
 		if (name == SNAME("pop_at") || name == SNAME("get")) {
-			body += "if (argument_0 < -receiver.size() || argument_0 >= receiver.size()) { (void)" + invoke + "; return Variant(); } ";
+			body += "if (" + arguments[0] + " < -receiver.size() || " + arguments[0] + " >= receiver.size()) { (void)" + invoke + "; return Variant(); } ";
 		}
 		body += "return Variant(" + invoke + "); }())";
+		result.code = body;
 	} else {
-		body += "return " + invoke + "; }())";
+		result.code = invoke;
 	}
-	return body;
+	result.cpp_type = p_to_array ? "Array" : type(expression_type(p_call), p_call);
+	result.effects = true;
+	return result;
 }

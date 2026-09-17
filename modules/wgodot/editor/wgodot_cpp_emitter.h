@@ -1,6 +1,7 @@
 // wgodot-changes::file
 #pragma once
 
+#include "wgodot_cpp_expression.h"
 #include "wgodot_cpp_project.h"
 #include "wgodot_cpp_signatures.h"
 
@@ -11,6 +12,7 @@ class WGodotCppAsync;
 
 class WGodotCppEmitter {
 	friend class WGodotCppAsync;
+	using Value = WGodotCppExpression;
 	const WGodotCppProject &project;
 	WGodotCppSignatures signatures;
 	HashSet<const GDScriptParser::Node *> rendering_signatures;
@@ -37,6 +39,21 @@ class WGodotCppEmitter {
 	const GDScriptParser::ExpressionNode *iterated_expression = nullptr;
 	bool emitted_array_range = false;
 	const GDScriptParser::CallNode *awaited_call = nullptr;
+	uint64_t temporary_index = 0;
+
+	Value lower(const GDScriptParser::ExpressionNode *p_expression);
+	Value lower_call(const GDScriptParser::CallNode *p_call);
+	Value lower_converted(const GDScriptParser::ExpressionNode *p_expression, const GDScriptParser::DataType &p_target, const GDScriptParser::Node *p_target_origin = nullptr, bool p_parameter = false);
+	Value lower_engine_argument(const GDScriptParser::ExpressionNode *p_expression, Variant::Type p_target);
+	Value lower_receiver(const GDScriptParser::ExpressionNode *p_expression);
+	Value lower_binary(const GDScriptParser::BinaryOpNode *p_binary);
+	Value lower_index(const GDScriptParser::SubscriptNode *p_subscript);
+	Value lower_dictionary(const GDScriptParser::DictionaryNode *p_dictionary);
+	Value value_facts(const GDScriptParser::ExpressionNode *p_expression, const String &p_code);
+	Value sequence(Vector<Value> &r_operands);
+	String materialize(Value &r_value, Vector<String> &r_setup);
+	String convert_value(const Value &p_value, const String &p_target) const;
+	String leaf_expression(const GDScriptParser::ExpressionNode *p_expression);
 
 	void unsupported(const GDScriptParser::Node *p_node, const String &p_feature);
 	String source_header(const String &p_path, const String &p_class) const;
@@ -46,15 +63,15 @@ class WGodotCppEmitter {
 	String signature_type(const GDScriptParser::Node *p_origin, bool p_signal = false);
 	String function_result(const GDScriptParser::FunctionNode *p_function);
 	bool native_only(const GDScriptParser::DataType &p_type) const;
-	String callback_call(const GDScriptParser::CallNode *p_call);
+	Value callback_call(const GDScriptParser::CallNode *p_call);
 	bool validate_callback(const GDScriptParser::ExpressionNode *p_source, const WGodotCppSignatures::Signature &p_target, bool p_discard_result = false);
 	bool is_warray(const GDScriptParser::DataType &p_type) const;
 	GDScriptParser::DataType expression_type(const GDScriptParser::ExpressionNode *p_expression) const;
 	GDScriptParser::DataType variable_type(const GDScriptParser::VariableNode *p_variable) const;
 	bool has_native_value_signature(const GDScriptParser::FunctionNode *p_function) const;
 	bool validate_array_conversion(const GDScriptParser::ExpressionNode *p_value, const GDScriptParser::DataType &p_target, const GDScriptParser::Node *p_target_origin = nullptr);
-	String array_literal(const GDScriptParser::ArrayNode *p_array, const GDScriptParser::DataType &p_target);
-	String warray_call(const GDScriptParser::CallNode *p_call, bool p_to_array = false);
+	Value array_literal(const GDScriptParser::ArrayNode *p_array, const GDScriptParser::DataType &p_target);
+	Value warray_call(const GDScriptParser::CallNode *p_call, bool p_to_array = false);
 	String engine_argument(const GDScriptParser::ExpressionNode *p_value, Variant::Type p_target);
 	bool is_array_duplicate(const GDScriptParser::ExpressionNode *p_value) const;
 	String literal(const Variant &p_value, const GDScriptParser::Node *p_origin);
@@ -62,10 +79,10 @@ class WGodotCppEmitter {
 	String truth(const GDScriptParser::ExpressionNode *p_expression);
 	const WGodotCppProject::Class *member_owner(const GDScriptParser::ClassNode *p_class, const StringName &p_name) const;
 	String member(const GDScriptParser::ExpressionNode *p_base, const StringName &p_name, const GDScriptParser::ExpressionNode *p_origin);
-	String call(const GDScriptParser::CallNode *p_call);
+	Value call(const GDScriptParser::CallNode *p_call);
 	const GDScriptParser::FunctionNode *interface_method(const GDScriptParser::CallNode *p_call) const;
-	String builtin_call(const GDScriptParser::CallNode *p_call);
-	String global_call(const GDScriptParser::CallNode *p_call);
+	Value builtin_call(const GDScriptParser::CallNode *p_call);
+	Value global_call(const GDScriptParser::CallNode *p_call);
 	String variant_type(Variant::Type p_type) const;
 	String operation(Variant::Operator p_operation, const GDScriptParser::DataType &p_result, const GDScriptParser::DataType &p_left_type, const GDScriptParser::DataType &p_right_type, const String &p_left, const String &p_right, const GDScriptParser::Node *p_origin);
 	String cast(const GDScriptParser::CastNode *p_cast);
@@ -74,17 +91,17 @@ class WGodotCppEmitter {
 	bool validate_native_arguments(const MethodBind *p_method, const GDScriptParser::Node *p_origin);
 	bool validate_builtin_arguments(Variant::Type p_type, const StringName &p_method, const GDScriptParser::Node *p_origin);
 	bool native_override(const MethodBind *p_method, const String &p_receiver, const Vector<String> &p_arguments, const String &p_result, const GDScriptParser::Node *p_origin, String &r_code);
-	String native_call(const GDScriptParser::CallNode *p_call, const GDScriptParser::ExpressionNode *p_base, const GDScriptParser::DataType &p_base_type);
-	String tween_property_call(const GDScriptParser::CallNode *p_call, const GDScriptParser::ExpressionNode *p_base);
+	Value native_call(const GDScriptParser::CallNode *p_call, const GDScriptParser::ExpressionNode *p_base, const GDScriptParser::DataType &p_base_type);
+	Value tween_property_call(const GDScriptParser::CallNode *p_call, const GDScriptParser::ExpressionNode *p_base);
 	String tween_builtin_property(Variant::Type p_type, const StringName &p_name, const GDScriptParser::Node *p_origin, const String &p_receiver, const String &p_value = String());
 	String native_argument_type(const PropertyInfo &p_info, const GDScriptParser::Node *p_origin);
-	String native_invoke(const MethodBind *p_method, const String &p_receiver, Vector<String> p_arguments, const String &p_result, const GDScriptParser::Node *p_origin);
+	String native_invoke(const MethodBind *p_method, const String &p_receiver, Vector<Value> p_arguments, const String &p_result, const GDScriptParser::Node *p_origin, bool p_nonnull = false);
 	String native_property(const GDScriptParser::ExpressionNode *p_base, const StringName &p_name, const GDScriptParser::ExpressionNode *p_origin, const GDScriptParser::ExpressionNode *p_value = nullptr);
-	String property_access(const GDScriptParser::DataType &p_base_type, const StringName &p_name, const GDScriptParser::ExpressionNode *p_origin, const String &p_receiver, const String &p_value = String());
-	String store_identifier(const GDScriptParser::IdentifierNode *p_target, const String &p_value);
+	String property_access(const GDScriptParser::DataType &p_base_type, const StringName &p_name, const GDScriptParser::ExpressionNode *p_origin, const String &p_receiver, const String &p_value = String(), const String &p_value_type = String());
+	String store_identifier(const GDScriptParser::IdentifierNode *p_target, const Value &p_value);
 	StringName accessor_name(const GDScriptParser::VariableNode *p_variable, bool p_setter) const;
 	const GDScriptParser::Node *local_source(const GDScriptParser::IdentifierNode *p_identifier) const;
-	String assignment(const GDScriptParser::AssignmentNode *p_assignment);
+	Value assignment(const GDScriptParser::AssignmentNode *p_assignment);
 	String expression(const GDScriptParser::ExpressionNode *p_expression);
 	String receiver_expression(const GDScriptParser::ExpressionNode *p_expression);
 	String array_iteration_element(const GDScriptParser::ExpressionNode *p_expression);
@@ -102,7 +119,7 @@ class WGodotCppEmitter {
 	String native_interface_signal_type(const MethodInfo &p_signal);
 	String interface_value_definition(const String &p_name, const String &p_base, const String &p_interface) const;
 	String interface_value_traits(const String &p_name) const;
-	String native_interface_call(const GDScriptParser::CallNode *p_call, const GDScriptParser::ExpressionNode *p_base, const WGodotNativeInterfaces::Descriptor &p_interface);
+	Value native_interface_call(const GDScriptParser::CallNode *p_call, const GDScriptParser::ExpressionNode *p_base, const WGodotNativeInterfaces::Descriptor &p_interface);
 	String native_interface_member(const GDScriptParser::ExpressionNode *p_base, const StringName &p_name, const GDScriptParser::ExpressionNode *p_origin, const WGodotNativeInterfaces::Descriptor &p_interface);
 	String interface_cpp_type(const GDScriptParser::ClassNode *p_interface);
 	void emit_interface_inheritance(const WGodotCppProject::Class &p_class, String &r_bases, String &r_declaration, String &r_definitions);

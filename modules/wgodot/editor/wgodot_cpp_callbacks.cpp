@@ -81,7 +81,7 @@ String WGodotCppEmitter::signature_type(const Parser::Node *p_origin, bool p_sig
 	return "WGodotNative::WCallable<" + type(signature->result.type, signature->result.origin) + "(" + String(", ").join(arguments) + ")>";
 }
 
-String WGodotCppEmitter::callback_call(const Parser::CallNode *p_call) {
+WGodotCppEmitter::Value WGodotCppEmitter::callback_call(const Parser::CallNode *p_call) {
 	const auto *base = static_cast<const Parser::SubscriptNode *>(p_call->callee)->base;
 	const bool signal = expression_type(base).builtin_type == Variant::SIGNAL;
 	const StringName name = p_call->function_name;
@@ -109,21 +109,28 @@ String WGodotCppEmitter::callback_call(const Parser::CallNode *p_call) {
 		unsupported(p_call, "native callback invocation with an incompatible argument count");
 		return String();
 	}
-	String body = "([&]() { ";
-	Vector<String> arguments;
+	Vector<Value> operands;
 	for (uint32_t i = 0; i < p_call->arguments.size(); i++) {
 		const auto *argument = p_call->arguments[i];
 		const int parameter_index = binding ? signature->arguments.size() - p_call->arguments.size() + i : i;
-		String value;
+		Value value;
 		if ((invocation || binding) && parameter_index >= 0 && parameter_index < signature->arguments.size()) {
 			const auto &parameter = signature->arguments[parameter_index];
-			value = converted(argument, parameter.type, parameter.origin);
+			// bind/deferred store a deduced tuple, so those values must already
+			// have their owning parameter type before they leave this expression.
+			value = lower_converted(argument, parameter.type, parameter.origin, name == SNAME("emit") || name == SNAME("call"));
 		} else {
-			value = expression(argument);
+			value = lower(argument);
 		}
-		const String local = "argument_" + itos(i);
-		body += "auto " + local + " = " + value + "; ";
-		arguments.push_back(local);
+		operands.push_back(value);
 	}
-	return body + "auto receiver = " + expression(base) + "; return receiver." + String(name) + "(" + String(", ").join(arguments) + "); }())";
+	operands.push_back(lower(base));
+	Value result = sequence(operands);
+	Vector<String> arguments;
+	for (int i = 0; i < operands.size() - 1; i++) {
+		arguments.push_back(operands[i].code);
+	}
+	result.code = operands[operands.size() - 1].code + "." + String(name) + "(" + String(", ").join(arguments) + ")";
+	result.effects = true;
+	return result;
 }

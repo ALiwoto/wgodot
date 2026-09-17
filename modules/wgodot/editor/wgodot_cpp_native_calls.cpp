@@ -50,7 +50,7 @@ String WGodotCppEmitter::native_argument_type(const PropertyInfo &p_info, const 
 	}
 }
 
-String WGodotCppEmitter::native_call(const Parser::CallNode *p_call, const Parser::ExpressionNode *p_base, const Parser::DataType &p_base_type) {
+WGodotCppEmitter::Value WGodotCppEmitter::native_call(const Parser::CallNode *p_call, const Parser::ExpressionNode *p_base, const Parser::DataType &p_base_type) {
 	if (p_base_type.kind != Parser::DataType::CLASS && p_base_type.kind != Parser::DataType::NATIVE) {
 		unsupported(p_call, "callable invocation " + String(p_call->function_name));
 		return String();
@@ -66,7 +66,8 @@ String WGodotCppEmitter::native_call(const Parser::CallNode *p_call, const Parse
 			return String();
 		}
 		class_call_headers.insert("modules/wgodot/native/wgodot_native_calls.h");
-		return "WGodotNative::instantiate<" + class_name(p_base_type, p_call) + ">()";
+		const String code = "WGodotNative::instantiate<" + class_name(p_base_type, p_call) + ">()";
+		return Value(code, "decltype(" + code + ")");
 	}
 	const MethodBind *method = ClassDB::get_method(base_name, p_call->function_name);
 	if (!method) {
@@ -77,17 +78,15 @@ String WGodotCppEmitter::native_call(const Parser::CallNode *p_call, const Parse
 		return tween_property_call(p_call, p_base);
 	}
 	if (p_call == iterated_expression && (!p_base || p_base->type == Parser::Node::SELF) && p_call->arguments.is_empty() && !method->is_static()) {
-		return native_invoke(method, "this", Vector<String>(), type(p_call->type_constraint, p_call), p_call);
+		return Value(native_invoke(method, "this", {}, type(p_call->type_constraint, p_call), p_call, true), "WGodotNative::ArrayRange<" + array_iteration_element(p_call) + ">");
 	}
-	String body = "([&]() { ";
-	Vector<String> arguments;
+	Vector<Value> operands;
 	for (uint32_t i = 0; i < p_call->arguments.size(); i++) {
-		const String argument = "argument_" + itos(i);
 		const Variant::Type target = int(i) < method->get_argument_count() ? method->get_argument_type(i) : Variant::NIL;
-		body += "auto &&" + argument + " = " + engine_argument(p_call->arguments[i], target) + "; ";
-		arguments.push_back(argument);
+		operands.push_back(lower_engine_argument(p_call->arguments[i], target));
 	}
 	String receiver;
+	bool instance_receiver = false;
 	if (method->is_static()) {
 		Parser::DataType native_type;
 		native_type.kind = Parser::DataType::NATIVE;
@@ -98,17 +97,35 @@ String WGodotCppEmitter::native_call(const Parser::CallNode *p_call, const Parse
 		// generate a runtime singleton-name lookup for its class identifier.
 		receiver = "nullptr";
 	} else if (p_base) {
-		body += "auto &&receiver = " + receiver_expression(p_base) + "; ";
-		receiver = "WGodotNative::object_pointer(receiver)";
+		operands.push_back(lower_receiver(p_base));
+		instance_receiver = true;
 	} else {
 		receiver = "this";
 	}
-	return body + "return " + native_invoke(method, receiver, arguments, type(p_call->type_constraint, p_call), p_call) + "; }())";
+	Value result = sequence(operands);
+	Vector<Value> arguments;
+	for (uint32_t i = 0; i < p_call->arguments.size(); i++) {
+		arguments.push_back(operands[i]);
+	}
+	if (instance_receiver) {
+		receiver = "WGodotNative::object_pointer(" + operands[operands.size() - 1].code + ")";
+	}
+	const bool nonnull = instance_receiver ? operands[operands.size() - 1].nonnull : !p_base;
+	result.code = native_invoke(method, receiver, arguments, type(p_call->type_constraint, p_call), p_call, nonnull);
+	result.effects = true;
+	if (p_call == iterated_expression && method->get_argument_type(-1) == Variant::ARRAY) {
+		result.cpp_type = "WGodotNative::ArrayRange<" + array_iteration_element(p_call) + ">";
+	}
+	return result;
 }
 
-String WGodotCppEmitter::native_invoke(const MethodBind *p_method, const String &p_receiver, Vector<String> p_arguments, const String &p_result, const Parser::Node *p_origin) {
+String WGodotCppEmitter::native_invoke(const MethodBind *p_method, const String &p_receiver, Vector<Value> p_arguments, const String &p_result, const Parser::Node *p_origin, bool p_nonnull) {
+	Vector<String> arguments;
+	for (const Value &argument : p_arguments) {
+		arguments.push_back(argument.code);
+	}
 	String override_code;
-	if (native_override(p_method, p_receiver, p_arguments, p_result, p_origin, override_code)) {
+	if (native_override(p_method, p_receiver, arguments, p_result, p_origin, override_code)) {
 		return override_code;
 	}
 	if (!validate_native_arguments(p_method, p_origin)) {
@@ -139,10 +156,12 @@ String WGodotCppEmitter::native_invoke(const MethodBind *p_method, const String 
 	owner_type.kind = Parser::DataType::NATIVE;
 	owner_type.native_type = p_method->get_instance_class();
 	const String owner = class_name(owner_type, p_origin);
+	arguments.clear();
 	for (int i = 0; i < p_arguments.size(); i++) {
-		p_arguments.write[i] = "WGodotNative::convert<" + native_argument_type(p_method->get_argument_info(i), p_origin) + ">(" + p_arguments[i] + ")";
+		arguments.push_back(convert_value(p_arguments[i], native_argument_type(p_method->get_argument_info(i), p_origin)));
 	}
-	String call = (p_method->is_static() ? owner + "::" : "instance->") + method + "(" + String(", ").join(p_arguments) + ")";
+	const String receiver = p_nonnull ? "static_cast<" + owner + " *>(" + p_receiver + ")->" : "instance->";
+	String call = (p_method->is_static() ? owner + "::" : receiver) + method + "(" + String(", ").join(arguments) + ")";
 	if (array_iteration) {
 		call = array_iteration_result(call, p_origin);
 	} else if (result_type != "void") {
@@ -150,7 +169,7 @@ String WGodotCppEmitter::native_invoke(const MethodBind *p_method, const String 
 	} else {
 		call = "(void)(" + call + ")";
 	}
-	if (p_method->is_static()) {
+	if (p_method->is_static() || p_nonnull) {
 		return call;
 	}
 	// Resolve the pointer after the arguments. Keep the owning receiver in the
@@ -194,14 +213,12 @@ String WGodotCppEmitter::native_property(const Parser::ExpressionNode *p_base, c
 		}
 		return native_type + (signal ? "(Signal(" : "::from_callable(Callable(") + "WGodotNative::object_pointer(" + (p_base ? receiver_expression(p_base) : "this") + "), SNAME(" + quoted(p_name) + ")))";
 	}
-	String body = "([&]() { ";
-	String receiver = "this";
-	if (p_base) {
-		body += "auto &&receiver = " + receiver_expression(p_base) + "; ";
-		receiver = "receiver";
-	}
+	Vector<Value> operands{ lower_receiver(p_base) };
 	if (p_value) {
-		body += "auto &&value = " + expression(p_value) + "; ";
+		operands.push_back(lower(p_value));
 	}
-	return body + "return " + property_access(base_type, p_name, p_origin, receiver, p_value ? "value" : "") + "; }())";
+	Value result = sequence(operands);
+	result.cpp_type = p_value ? "void" : type(p_origin->type_constraint, p_origin);
+	result.code = property_access(base_type, p_name, p_origin, operands[0].code, p_value ? operands[1].code : String(), p_value ? operands[1].cpp_type : String());
+	return result.expression();
 }

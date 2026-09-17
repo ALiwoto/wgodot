@@ -172,41 +172,7 @@ String WGodotCppEmitter::class_name(const Parser::DataType &p_type, const Parser
 }
 
 String WGodotCppEmitter::converted(const Parser::ExpressionNode *p_expression, const Parser::DataType &p_target, const Parser::Node *p_target_origin) {
-	const String target = type(p_target, p_target_origin ? p_target_origin : p_expression);
-	if (p_expression->type == Parser::Node::ARRAY && is_warray(p_target)) {
-		return array_literal(static_cast<const Parser::ArrayNode *>(p_expression), p_target);
-	}
-	if (!validate_array_conversion(p_expression, p_target, p_target_origin)) {
-		return String();
-	}
-	if (p_expression->is_constant && p_expression->reduced && p_expression->reduced_value.get_type() == Variant::NIL) {
-		if (p_target.kind == Parser::DataType::CLASS || p_target.kind == Parser::DataType::NATIVE) {
-			return target + "()";
-		}
-		return "Variant()";
-	}
-	if (p_target.kind == Parser::DataType::BUILTIN && p_target.builtin_type == Variant::CALLABLE) {
-		if (p_expression->is_constant && p_expression->reduced && p_expression->reduced_value.get_type() == Variant::CALLABLE && Callable(p_expression->reduced_value).is_null()) {
-			return target + "()";
-		}
-		if (const auto *signature = signatures.get(p_target_origin ? p_target_origin : p_expression)) {
-			if (!validate_callback(p_expression, *signature)) {
-				return String();
-			}
-		}
-		return target + "::adapt(" + expression(p_expression) + ")";
-	}
-	const String value = expression(p_expression);
-	if (p_target.is_variant()) {
-		return value;
-	}
-	// Flow analysis can narrow an object expression without changing the C++
-	// storage type. Let the native helper preserve exact types or perform the cast.
-	if (p_target.kind == Parser::DataType::CLASS || p_target.kind == Parser::DataType::NATIVE || p_expression->type_constraint.is_variant() || type(p_expression->type_constraint, p_expression) != target) {
-		class_native_headers.insert("modules/wgodot/native/wgodot_native_calls.h");
-		return "WGodotNative::convert<" + target + ">(" + value + ")";
-	}
-	return value;
+	return lower_converted(p_expression, p_target, p_target_origin).expression();
 }
 
 String WGodotCppEmitter::truth(const Parser::ExpressionNode *p_expression) {
@@ -271,7 +237,7 @@ String WGodotCppEmitter::member(const Parser::ExpressionNode *p_base, const Stri
 		if (owner->node->wgodot_is_interface) {
 			return "(" + expression(p_base) + ")->signal_" + symbol(p_name) + "()";
 		}
-		return "(" + (p_base ? expression(p_base) : "this") + ")->s_" + symbol(p_name) + ".signal()";
+		return (p_base ? "(" + expression(p_base) + ")->" : "this->") + "s_" + symbol(p_name) + ".signal()";
 	}
 	if (entry.type == Parser::ClassNode::Member::FUNCTION) {
 		class_call_headers.insert("modules/wgodot/native/wgodot_native_callback.h");
@@ -459,7 +425,7 @@ const Parser::Node *WGodotCppEmitter::local_source(const Parser::IdentifierNode 
 	}
 }
 
-String WGodotCppEmitter::expression(const Parser::ExpressionNode *p_expression) {
+String WGodotCppEmitter::leaf_expression(const Parser::ExpressionNode *p_expression) {
 	if (!p_expression) {
 		return String();
 	}
@@ -535,32 +501,6 @@ String WGodotCppEmitter::expression(const Parser::ExpressionNode *p_expression) 
 					return String();
 			}
 		}
-		case Parser::Node::BINARY_OPERATOR: {
-			const auto *binary = static_cast<const Parser::BinaryOpNode *>(p_expression);
-			if (binary->operation == Parser::BinaryOpNode::OP_LOGIC_AND || binary->operation == Parser::BinaryOpNode::OP_LOGIC_OR) {
-				return "(" + truth(binary->left_operand) + (binary->operation == Parser::BinaryOpNode::OP_LOGIC_AND ? " && " : " || ") + truth(binary->right_operand) + ")";
-			}
-			if (binary->variant_op == Variant::OP_MODULE && binary->left_operand->type_constraint.kind == Parser::DataType::BUILTIN && binary->left_operand->type_constraint.builtin_type == Variant::STRING && binary->right_operand->type == Parser::Node::ARRAY && !expression_overrides.has(binary->right_operand)) {
-				class_call_headers.insert("modules/wgodot/native/wgodot_native_format.h");
-				const auto *array = static_cast<const Parser::ArrayNode *>(binary->right_operand);
-				Vector<String> arguments;
-				for (const auto *element : array->elements) {
-					arguments.push_back("Variant(" + engine_argument(element, Variant::NIL) + ")");
-				}
-				// Initializer-list elements are evaluated and captured in order. Mixed
-				// format arguments need Variants, but no heap-allocated Godot Array.
-				return "([&]() -> String { auto &&format = " + expression(binary->left_operand) + "; const std::array<Variant, " + itos(array->elements.size()) + "> arguments{ " + String(", ").join(arguments) + " }; return WGodotNative::format_string(format, Span<Variant>(arguments.data(), arguments.size())); }())";
-			}
-			auto left_type = expression_type(binary->left_operand);
-			auto right_type = expression_type(binary->right_operand);
-			if (is_warray(left_type) && binary->right_operand->type == Parser::Node::ARRAY) {
-				right_type = left_type;
-			} else if (is_warray(right_type) && binary->left_operand->type == Parser::Node::ARRAY) {
-				left_type = right_type;
-			}
-			const auto result_type = expression_type(binary);
-			return "([&]() -> " + type(result_type, binary) + " { auto &&left = " + converted(binary->left_operand, left_type) + "; auto &&right = " + converted(binary->right_operand, right_type) + "; return " + operation(binary->variant_op, result_type, left_type, right_type, "left", "right", binary) + "; }())";
-		}
 		case Parser::Node::UNARY_OPERATOR: {
 			const auto *unary = static_cast<const Parser::UnaryOpNode *>(p_expression);
 			if (unary->operation == Parser::UnaryOpNode::OP_LOGIC_NOT) {
@@ -578,64 +518,11 @@ String WGodotCppEmitter::expression(const Parser::ExpressionNode *p_expression) 
 			return cast(static_cast<const Parser::CastNode *>(p_expression));
 		case Parser::Node::TYPE_TEST:
 			return type_test(static_cast<const Parser::TypeTestNode *>(p_expression));
-		case Parser::Node::ASSIGNMENT:
-			return assignment(static_cast<const Parser::AssignmentNode *>(p_expression));
 		case Parser::Node::SUBSCRIPT: {
 			const auto *subscript = static_cast<const Parser::SubscriptNode *>(p_expression);
-			if (subscript->is_attribute) {
-				return member(subscript->base, subscript->attribute->name, subscript);
-			}
-			class_call_headers.insert("modules/wgodot/native/wgodot_native_values.h");
-			return "([&]() { auto &&base = " + expression(subscript->base) + "; auto &&index = " + expression(subscript->index) + "; return WGodotNative::get_index<" + type(subscript->type_constraint, subscript) + ">(base, index); }())";
+			return member(subscript->base, subscript->attribute->name, subscript);
 		}
-		case Parser::Node::ARRAY: {
-			const auto *array = static_cast<const Parser::ArrayNode *>(p_expression);
-			if (is_warray(array->type_constraint)) {
-				return array_literal(array, array->type_constraint);
-			}
-			String body = "([&]() { ";
-			Vector<String> elements;
-			for (const auto *element : array->elements) {
-				const String name = "element_" + itos(elements.size());
-				body += "auto &&" + name + " = " + engine_argument(element, Variant::NIL) + "; ";
-				elements.push_back(name);
-			}
-			return body + "return " + type(array->type_constraint, array) + "{" + String(", ").join(elements) + "}; }())";
-		}
-		case Parser::Node::DICTIONARY: {
-			const auto *dictionary = static_cast<const Parser::DictionaryNode *>(p_expression);
-			String body = "([&]() { ";
-			String entries;
-			int index = 0;
-			for (const auto &element : dictionary->elements) {
-				const String suffix = itos(index++);
-				body += "auto &&key_" + suffix + " = " + engine_argument(element.key, Variant::NIL) + "; auto &&value_" + suffix + " = " + engine_argument(element.value, Variant::NIL) + "; ";
-				entries += "dictionary[key_" + suffix + "] = value_" + suffix + "; ";
-			}
-			return body + type(dictionary->type_constraint, dictionary) + " dictionary; " + entries + "return dictionary; }())";
-		}
-		case Parser::Node::CALL: {
-			const auto *call = static_cast<const Parser::CallNode *>(p_expression);
-			if (call->is_super) {
-				return this->call(call);
-			}
-			if (call->get_callee_type() == Parser::Node::SUBSCRIPT) {
-				const auto &base_type = static_cast<const Parser::SubscriptNode *>(call->callee)->base->type_constraint;
-				if (base_type.kind == Parser::DataType::CLASS || base_type.kind == Parser::DataType::NATIVE) {
-					return this->call(call);
-				}
-				return builtin_call(call);
-			}
-			if (call->get_callee_type() == Parser::Node::IDENTIFIER) {
-				const auto *owner = member_owner(current_class->node, call->function_name);
-				if ((owner && owner->node->get_member(call->function_name).type == Parser::ClassNode::Member::FUNCTION) || ClassDB::has_method(native_base(current_class->node->self_type), call->function_name)) {
-					return this->call(call);
-				}
-				return global_call(call);
-			}
-			unsupported(p_expression, "call " + String(call->function_name));
-			return String();
-		}
+
 		default:
 			unsupported(p_expression, "expression kind " + itos(p_expression->type));
 			return String();

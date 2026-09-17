@@ -18,7 +18,7 @@ const Parser::FunctionNode *WGodotCppEmitter::interface_method(const Parser::Cal
 	return nullptr;
 }
 
-String WGodotCppEmitter::call(const Parser::CallNode *p_call) {
+WGodotCppEmitter::Value WGodotCppEmitter::call(const Parser::CallNode *p_call) {
 	const Parser::ExpressionNode *base = nullptr;
 	if (p_call->get_callee_type() == Parser::Node::SUBSCRIPT) {
 		base = static_cast<const Parser::SubscriptNode *>(p_call->callee)->base;
@@ -36,13 +36,9 @@ String WGodotCppEmitter::call(const Parser::CallNode *p_call) {
 	if (const auto *contract_method = interface_method(p_call)) {
 		class_call_headers.insert("modules/wgodot/native/wgodot_native_interface.h");
 		const String result_type = type(p_call->type_constraint, p_call);
-		String body = "([&]() -> " + result_type + " { ";
-		Vector<String> arguments;
+		Vector<Value> operands;
 		for (uint32_t i = 0; i < p_call->arguments.size(); i++) {
-			const String argument = "argument_" + itos(i);
-			const String value = converted(p_call->arguments[i], contract_method->parameters[i]->type_constraint, contract_method->parameters[i]);
-			body += "auto &&" + argument + " = " + value + "; ";
-			arguments.push_back(argument);
+			operands.push_back(lower_converted(p_call->arguments[i], contract_method->parameters[i]->type_constraint, contract_method->parameters[i], true));
 		}
 		for (uint32_t i = p_call->arguments.size(); i < contract_method->parameters.size(); i++) {
 			const auto *parameter = contract_method->parameters[i];
@@ -50,11 +46,20 @@ String WGodotCppEmitter::call(const Parser::CallNode *p_call) {
 				unsupported(p_call, "missing interface argument");
 				return String();
 			}
-			arguments.push_back(converted(parameter->initializer, parameter->type_constraint, parameter));
+			operands.push_back(lower_converted(parameter->initializer, parameter->type_constraint, parameter, true));
 		}
-		body += "auto &&receiver = " + expression(base) + "; auto *instance = receiver.operator->(); ERR_FAIL_NULL_V(instance, (" + result_type + "())); ";
+		operands.push_back(lower(base));
+		Value result = sequence(operands);
+		Vector<String> arguments;
+		for (int i = 0; i < operands.size() - 1; i++) {
+			arguments.push_back(operands[i].code);
+		}
 		const String invoke = "instance->" + String(p_call->function_name) + "(" + String(", ").join(arguments) + ")";
-		return body + "return " + (result_type == "void" ? invoke : "WGodotNative::convert<" + result_type + ">(" + invoke + ")") + "; }())";
+		// The error return belongs to the call, not its enclosing game function.
+		result.code = "([&]() -> " + result_type + " { auto &&receiver = " + operands[operands.size() - 1].code + "; auto *instance = receiver.operator->(); ERR_FAIL_NULL_V(instance, (" + result_type + "())); return " + (result_type == "void" ? invoke : "WGodotNative::convert<" + result_type + ">(" + invoke + ")") + "; }())";
+		result.cpp_type = result_type;
+		result.effects = true;
+		return result;
 	}
 	const bool construct = !p_call->is_super && base && base_type.is_meta_type && p_call->function_name == "new";
 	const StringName name = construct ? SNAME("_init") : p_call->function_name;
@@ -73,30 +78,36 @@ String WGodotCppEmitter::call(const Parser::CallNode *p_call) {
 	if (owner) {
 		class_dependencies.insert(owner->cpp_name);
 	}
-	String body = "([&]() { ";
-	Vector<String> arguments;
+	Vector<Value> operands;
 	// GDScript evaluates arguments before the receiver expression.
 	for (uint32_t i = 0; i < p_call->arguments.size(); i++) {
-		const String argument = "argument_" + itos(i);
 		const auto *source = p_call->arguments[i];
-		body += "auto &&" + argument + " = " + (method && i < method->parameters.size() ? converted(source, method->parameters[i]->type_constraint, method->parameters[i]) : expression(source)) + "; ";
-		arguments.push_back(argument);
+		operands.push_back(method && i < method->parameters.size() ? lower_converted(source, method->parameters[i]->type_constraint, method->parameters[i], true) : lower(source));
+	}
+	const bool evaluate_receiver = base && !base_type.is_meta_type && !p_call->is_super;
+	if (evaluate_receiver) {
+		operands.push_back(lower(base));
+	}
+	Value result = sequence(operands);
+	Vector<String> arguments;
+	for (uint32_t i = 0; i < p_call->arguments.size(); i++) {
+		arguments.push_back(operands[i].code);
 	}
 	String receiver;
 	if (construct || (method && method->is_static)) {
-		if (base && !base_type.is_meta_type) {
-			body += "(void)(" + expression(base) + "); ";
+		if (evaluate_receiver) {
+			result.setup.push_back("(void)(" + operands[operands.size() - 1].code + ");");
 		}
 		receiver = class_name(base_type, p_call) + "::";
 	} else if (p_call->is_super) {
 		receiver = class_name(base_type, p_call) + "::";
 	} else if (base) {
-		// Borrow member references: copying one changes observable reference counts.
-		body += "auto &&receiver = " + expression(base) + "; ";
-		receiver = "receiver->";
+		const Value &value = operands[operands.size() - 1];
+		receiver = "(" + (value.object_pointer ? value.code : convert_value(value, type(base_type, base))) + ")->";
 	} else {
 		receiver = "this->";
 	}
-	body += "return " + receiver + (construct ? "create" : "m_" + symbol(name)) + "(" + String(", ").join(arguments) + "); }())";
-	return body;
+	result.code = receiver + (construct ? "create" : "m_" + symbol(name)) + "(" + String(", ").join(arguments) + ")";
+	result.effects = true;
+	return result;
 }

@@ -47,6 +47,7 @@ String WGodotCppEmitter::function(const Parser::FunctionNode *p_function, String
 
 void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 	current_class = &p_class;
+	temporary_index = 0;
 	current_function = nullptr;
 	function_failed = false;
 	class_dependencies.clear();

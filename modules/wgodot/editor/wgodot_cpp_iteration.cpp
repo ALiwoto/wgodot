@@ -61,14 +61,18 @@ String WGodotCppEmitter::iteration(const Parser::ForNode *p_loop, int p_indent) 
 	bool array_range = false;
 	if (p_loop->list->type == Parser::Node::CALL && static_cast<const Parser::CallNode *>(p_loop->list)->function_name == "range") {
 		const auto *call = static_cast<const Parser::CallNode *>(p_loop->list);
-		collection = "([&]() { ";
-		Vector<String> arguments;
-		for (uint32_t i = 0; i < call->arguments.size(); i++) {
-			const String argument = "argument_" + itos(i);
-			collection += "auto &&" + argument + " = " + expression(call->arguments[i]) + "; ";
-			arguments.push_back(argument);
+		Vector<Value> operands;
+		for (const auto *argument : call->arguments) {
+			operands.push_back(lower(argument));
 		}
-		collection += "return WGodotNative::Range(" + String(", ").join(arguments) + "); }())";
+		Value value = sequence(operands);
+		Vector<String> arguments;
+		for (const Value &argument : operands) {
+			arguments.push_back(argument.code);
+		}
+		value.cpp_type = "WGodotNative::Range";
+		value.code = "WGodotNative::Range(" + String(", ").join(arguments) + ")";
+		collection = value.expression();
 		range = true;
 	} else {
 		const auto *outer_expression = iterated_expression;

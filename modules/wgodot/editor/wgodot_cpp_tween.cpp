@@ -33,7 +33,9 @@ String WGodotCppEmitter::tween_builtin_property(Variant::Type p_type, const Stri
 			}
 			break;
 		case Variant::TRANSFORM2D:
-			member = "columns[" + String(name == "x" ? "0" : name == "y" ? "1" : "2") + "]";
+			member = "columns[" + String(name == "x" ? "0" : name == "y" ? "1"
+																		 : "2") +
+					"]";
 			break;
 		case Variant::PROJECTION:
 			member = "columns[" + itos(String("xyzw").find(name)) + "]";
@@ -65,7 +67,7 @@ String WGodotCppEmitter::tween_builtin_property(Variant::Type p_type, const Stri
 	return p_value.is_empty() ? field : field + " = WGodotNative::convert<std::decay_t<decltype(" + field + ")>>(" + p_value + ")";
 }
 
-String WGodotCppEmitter::tween_property_call(const Parser::CallNode *p_call, const Parser::ExpressionNode *p_base) {
+WGodotCppEmitter::Value WGodotCppEmitter::tween_property_call(const Parser::CallNode *p_call, const Parser::ExpressionNode *p_base) {
 	const GDScriptAnalyzer *analyzer = project.find_analyzer(current_class->script_path);
 	const WGodotGDScriptPropertyPath *path = analyzer ? analyzer->wgodot_get_tween_property_path(p_call) : nullptr;
 	if (!path || path->segments.is_empty() || path->segments.size() != path->path.get_as_property_path().get_subname_count()) {
@@ -135,11 +137,11 @@ String WGodotCppEmitter::tween_property_call(const Parser::CallNode *p_call, con
 
 	// Match native_call's argument/receiver evaluation order, but never emit
 	// the path literal: only its analyzer-resolved property accesses survive.
-	String body = "([&]() { auto &&target = " + expression(p_call->arguments[0]) + "; ";
-	body += "auto &&final_value = " + expression(p_call->arguments[2]) + "; ";
-	body += "auto &&duration = " + expression(p_call->arguments[3]) + "; ";
-	body += "auto &&tween = " + (p_base ? receiver_expression(p_base) : "this") + "; ";
-	body += "return WGodotNative::tween_property(WGodotNative::object_pointer(tween), static_cast<" + target + " *>(WGodotNative::object_pointer(target)),\n";
-	body += accessor(false) + ",\n" + accessor(true) + ", WGodotNative::convert<Variant>(final_value), duration); }())";
-	return body;
+	Vector<Value> operands{ lower(p_call->arguments[0]), lower(p_call->arguments[2]), lower(p_call->arguments[3]), lower_receiver(p_base) };
+	Value result = sequence(operands);
+	result.cpp_type = "Ref<PropertyTweener>";
+	result.effects = true;
+	result.code = "WGodotNative::tween_property(WGodotNative::object_pointer(" + operands[3].code + "), static_cast<" + target + " *>(WGodotNative::object_pointer(" + operands[0].code + ")),\n";
+	result.code += accessor(false) + ",\n" + accessor(true) + ", " + convert_value(operands[1], "Variant") + ", " + operands[2].code + ")";
+	return result;
 }
