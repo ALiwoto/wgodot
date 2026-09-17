@@ -13,31 +13,45 @@ void WGodotCppEmitter::emit_virtuals(const WGodotCppProject::Class &p_class, Str
 	String dispatch;
 	const bool game_parent = p_class.node->base_type.kind == Parser::DataType::CLASS;
 	const String parent = class_name(p_class.node->base_type, p_class.node);
-	if (!game_parent) {
+	const ClassLifecycle &lifecycle = class_lifecycles[p_class.node];
+	const ClassLifecycle inherited = game_parent ? class_lifecycles[p_class.node->base_type.class_type] : ClassLifecycle();
+	// An inherited callback already dispatches overridden initialization helpers.
+	// Replace it only when a descendant introduces another kind of lifecycle work.
+	if (lifecycle.fields != inherited.fields || lifecycle.constructor != inherited.constructor || lifecycle.notifications != inherited.notifications) {
 		r_declaration += "\tstatic Variant callback_initialize_game(Object *p_self, const Variant **p_args, int p_count);\n";
-		r_definitions += "Variant " + p_class.cpp_name + "::callback_initialize_game(Object *p_self, const Variant **p_args, int p_count) {\n\tauto *self = static_cast<" + p_class.cpp_name + " *>(p_self);\n\tself->game_initialized = true;\n\tself->initialize_fields();\n\tif (self->construction_mode == WGodotNative::Construction::SCENE) { self->initialize_default(); }\n\treturn Variant();\n}\n\n";
+		r_definitions += "Variant " + p_class.cpp_name + "::callback_initialize_game(Object *p_self, const Variant **p_args, int p_count) {\n\tauto *self = static_cast<" + p_class.cpp_name + " *>(p_self);\n";
+		if (lifecycle.notifications) {
+			r_definitions += "\tself->game_initialized = true;\n";
+		}
+		if (lifecycle.fields) {
+			r_definitions += "\tself->initialize_fields();\n";
+		}
+		if (lifecycle.constructor) {
+			r_definitions += "\tif (self->construction_mode == WGodotNative::Construction::SCENE) { self->initialize_default(); }\n";
+		}
+		r_definitions += "\treturn Variant();\n}\n\n";
 		dispatch += "\tif (p_name == SNAME(\"@game_initialize\")) { return &callback_initialize_game; }\n";
+	}
+	if (lifecycle.tasks && !inherited.tasks) {
 		r_declaration += "\tstatic Variant callback_clear_game(Object *p_self, const Variant **p_args, int p_count);\n";
 		r_definitions += "Variant " + p_class.cpp_name + "::callback_clear_game(Object *p_self, const Variant **p_args, int p_count) {\n\tstatic_cast<" + p_class.cpp_name + " *>(p_self)->game_tasks.clear();\n\treturn Variant();\n}\n\n";
 		dispatch += "\tif (p_name == SNAME(\"@game_clear\")) { return &callback_clear_game; }\n";
 	}
 	// Script notifications visit every script level. Keep their ordering separate
 	// from native base notifications, just as Object does for ScriptInstance.
-	r_declaration += "protected:\n\tvoid notify_game(int p_what, bool p_reversed);\npublic:\n";
-	r_definitions += "void " + p_class.cpp_name + "::notify_game(int p_what, bool p_reversed) {\n\tif (!game_initialized) { return; }\n";
-	if (game_parent) {
-		r_definitions += "\tif (!p_reversed) { " + parent + "::notify_game(p_what, p_reversed); }\n";
-	}
 	if (p_class.node->has_function(SNAME("_notification"))) {
+		r_declaration += "protected:\n\tvoid notify_game(int p_what, bool p_reversed);\npublic:\n";
+		r_definitions += "void " + p_class.cpp_name + "::notify_game(int p_what, bool p_reversed) {\n\tif (!game_initialized) { return; }\n";
+		if (inherited.notifications) {
+			r_definitions += "\tif (!p_reversed) { " + parent + "::notify_game(p_what, p_reversed); }\n";
+		}
 		r_definitions += "\t" + p_class.cpp_name + "::m_" + symbol(SNAME("_notification")) + "(p_what);\n";
+		if (inherited.notifications) {
+			r_definitions += "\tif (p_reversed) { " + parent + "::notify_game(p_what, p_reversed); }\n";
+		}
+		r_definitions += "}\n\n";
 		r_declaration += "\tstatic Variant callback_notification(Object *p_self, const Variant **p_args, int p_count);\n";
 		dispatch += "\tif (p_name == SNAME(\"_notification\")) { return &callback_notification; }\n";
-	}
-	if (game_parent) {
-		r_definitions += "\tif (p_reversed) { " + parent + "::notify_game(p_what, p_reversed); }\n";
-	}
-	r_definitions += "}\n\n";
-	if (p_class.node->has_function(SNAME("_notification"))) {
 		r_definitions += "Variant " + p_class.cpp_name + "::callback_notification(Object *p_self, const Variant **p_args, int p_count) {\n\tstatic_cast<" + p_class.cpp_name + " *>(p_self)->notify_game(int(*p_args[0]), bool(*p_args[1]));\n\treturn Variant();\n}\n\n";
 	}
 	HashSet<StringName> emitted;

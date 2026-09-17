@@ -497,15 +497,15 @@ String WGodotCppAsync::generate(const Parser::FunctionNode *p_function, const St
 		definition += "\t\tauto *instance = Object::cast_to<" + owner + ">(ObjectDB::get_instance(owner));\n\t\tif (!instance) { task.cancel(); return; }\n\t\tinstance->" + resume_name + "(*this, static_cast<" + task_type + " &>(task));\n";
 	}
 	definition += "\t}\n};\n\n";
-	definition += handle_type + " " + owner + "::" + p_name + "(" + String(", ").join(p_parameters) + ") {\n";
-	if (is_static) {
-		definition += "\tprepare_game_class();\n";
-	}
-	definition += "\tauto *frame = memnew(" + frame_name + ");\n" + initialize;
+	String body = "\tauto *frame = memnew(" + frame_name + ");\n" + initialize;
 	if (!is_static) {
-		definition += "\tframe->owner = get_instance_id();\n";
+		emitter.class_uses_tasks = true;
+		body += "\tframe->owner = get_instance_id();\n";
 	}
-	definition += "\treturn " + handle_type + "::start(frame" + String(is_static ? "" : ", &game_tasks") + ");\n}\n\n";
+	body += "\treturn " + handle_type + "::start(frame" + String(is_static ? "" : ", &game_tasks") + ");\n";
+	// The frame must be complete before emitting the start method. Its static
+	// preparation is decided once all class resources have been lowered.
+	emitter.class_function_definitions.push_back({ handle_type + " " + owner + "::" + p_name + "(" + String(", ").join(p_parameters) + ")", body, is_static });
 	definition += "void " + owner + "::" + resume_name + "(" + frame_name + " &frame, " + task_type + " &task) {\n\tswitch (frame.continuation) {\n";
 	for (int i = 1; i <= resume_count; i++) {
 		definition += "\t\tcase " + itos(i) + ": goto resume_" + itos(i) + ";\n";

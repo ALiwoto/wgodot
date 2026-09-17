@@ -579,6 +579,7 @@ Error WGodotCppEmitter::generate() {
 	diagnostics.clear();
 	used_native_headers.clear();
 	used_native_interfaces.clear();
+	class_lifecycles.clear();
 	signatures.analyze();
 	collect_interface_property_accessors();
 	for (const WGodotCppProject::Class &entry : project.get_classes()) {

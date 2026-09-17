@@ -33,6 +33,22 @@ class WGodotCppEmitter {
 	HashSet<const GDScriptParser::LambdaNode *> class_lambdas;
 	String class_lambda_declarations;
 	String class_lambda_definitions;
+	struct FunctionDefinition {
+		String signature;
+		String body;
+		bool prepare_class = false;
+	};
+	// Decide static preparation after lowering every body and retained resource.
+	Vector<FunctionDefinition> class_function_definitions;
+	bool class_uses_tasks = false;
+	struct ClassLifecycle {
+		bool prepare = false;
+		bool fields = false;
+		bool constructor = false;
+		bool notifications = false;
+		bool tasks = false;
+	};
+	HashMap<const GDScriptParser::ClassNode *, ClassLifecycle> class_lifecycles;
 	const GDScriptParser::FunctionNode *current_function = nullptr;
 	bool function_failed = false;
 	HashMap<const GDScriptParser::ExpressionNode *, String> expression_overrides;
@@ -142,6 +158,7 @@ class WGodotCppEmitter {
 	String function(const GDScriptParser::FunctionNode *p_function, String &r_declaration, const String &p_cpp_name = String());
 	String lambda(const GDScriptParser::LambdaNode *p_lambda);
 	void emit_class(const WGodotCppProject::Class &p_class);
+	void emit_class_lifecycle(const WGodotCppProject::Class &p_class, const String &p_initialization, String p_static_fields, String p_static_initialization, String &r_declaration, String &r_definitions);
 	void emit_interface(const WGodotCppProject::Class &p_class);
 	bool is_interface_type(const GDScriptParser::DataType &p_type) const;
 	String native_interface_name(const StringName &p_name) const;

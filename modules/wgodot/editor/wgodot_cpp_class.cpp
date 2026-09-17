@@ -45,15 +45,24 @@ String WGodotCppEmitter::function(const Parser::FunctionNode *p_function, String
 		WGodotCppAsync async(*this);
 		return async.generate(p_function, name, parameters, r_declaration);
 	}
-	String body = is_static ? "\tprepare_game_class();\n" : "";
-	body += suite(p_function->body, 1);
+	String body = suite(p_function->body, 1);
 	if (return_type == "Variant" && !p_function->body->has_return) {
 		body += "\treturn Variant();\n";
 	}
-	return return_type + " " + current_class->cpp_name + "::" + name + "(" + String(", ").join(parameters) + ") {\n" + body + "}\n\n";
+	class_function_definitions.push_back({ return_type + " " + current_class->cpp_name + "::" + name + "(" + String(", ").join(parameters) + ")", body, is_static });
+	return String();
 }
 
 void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
+	if (files.has(p_class.cpp_name + ".h")) {
+		return;
+	}
+	// Lifecycle requirements are inherited from already emitted base classes.
+	if (p_class.node->base_type.kind == Parser::DataType::CLASS) {
+		if (const auto *parent = project.find_class(p_class.node->base_type.class_type)) {
+			emit_class(*parent);
+		}
+	}
 	current_class = &p_class;
 	temporary_index = 0;
 	current_function = nullptr;
@@ -69,6 +78,8 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 	class_lambdas.clear();
 	class_lambda_declarations.clear();
 	class_lambda_definitions.clear();
+	class_function_definitions.clear();
+	class_uses_tasks = false;
 	const Parser::ClassNode *node = p_class.node;
 	const bool is_static = node->wgodot_static_class;
 	const bool game_parent = node->base_type.kind == Parser::DataType::CLASS;
@@ -93,26 +104,12 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 	String static_fields;
 	String static_initialization;
 	if (!is_static) {
-		declaration += " : public " + parent + interface_bases + " {\n\tGDCLASS(" + name + ", " + parent + ");\n\nprotected:\n\tstatic void _bind_methods();\n";
-		declaration += "\tvirtual void initialize_fields()" + String(game_parent ? " override" : "") + ";\n";
-		declaration += "\tvirtual void initialize_default()" + String(game_parent ? " override" : "") + ";\n";
-		if (!game_parent) {
-			declaration += "\tWGodotNative::Construction construction_mode;\n\tbool game_initialized = false;\n";
-			class_native_headers.insert("modules/wgodot/native/wgodot_native_task.h");
-			declaration += "\tWGodotNative::TaskOwner game_tasks;\n";
-		}
-		declaration += "\npublic:\n\texplicit " + name + "(WGodotNative::Construction p_mode = WGodotNative::Construction::SCENE);\n\t~" + name + "() override;\n";
-		definitions += name + "::" + name + "(WGodotNative::Construction p_mode) : " + (game_parent ? parent + "(p_mode)" : "construction_mode(p_mode)") + " {}\n";
-		definitions += name + "::~" + name + "() = default;\n\n";
-		if (game_parent) {
-			initialization = "\t" + parent + "::initialize_fields();\n";
-		}
+		declaration += " : public " + parent + interface_bases + " {\n\tGDCLASS(" + name + ", " + parent + ");\n\npublic:\n";
 	} else {
 		declaration += " {\npublic:\n";
 	}
 	declaration += interface_declarations;
 	definitions += interface_definitions;
-	declaration += "\tstatic void prepare_game_class();\n";
 	for (const auto &entry : node->members) {
 		function_failed = false;
 		current_function = nullptr;
@@ -229,81 +226,25 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 				break;
 		}
 	}
+	if (!is_static && !property_reads.is_empty()) {
+		declaration += "protected:\n\tbool _get(const StringName &p_name, Variant &r_value) const;\n\tbool _set(const StringName &p_name, const Variant &p_value);\n\tvoid _get_property_list(List<PropertyInfo> *p_list) const;\npublic:\n";
+		definitions += "bool " + name + "::_get(const StringName &p_name, Variant &r_value) const {\n" + property_reads + "\treturn false;\n}\n\n";
+		definitions += "bool " + name + "::_set(const StringName &p_name, const Variant &p_value) {\n" + property_writes + "\treturn false;\n}\n\n";
+		definitions += "void " + name + "::_get_property_list(List<PropertyInfo> *p_list) const {\n" + property_list + "}\n\n";
+	}
+	emit_class_lifecycle(p_class, initialization, static_fields, static_initialization, declaration, definitions);
 	if (!is_static) {
 		emit_virtuals(p_class, declaration, definitions);
-		definitions += "void " + name + "::_bind_methods() {}\n\n";
-		if (!property_reads.is_empty()) {
-			declaration += "protected:\n\tbool _get(const StringName &p_name, Variant &r_value) const;\n\tbool _set(const StringName &p_name, const Variant &p_value);\n\tvoid _get_property_list(List<PropertyInfo> *p_list) const;\npublic:\n";
-			definitions += "bool " + name + "::_get(const StringName &p_name, Variant &r_value) const {\n" + property_reads + "\treturn false;\n}\n\n";
-			definitions += "bool " + name + "::_set(const StringName &p_name, const Variant &p_value) {\n" + property_writes + "\treturn false;\n}\n\n";
-			definitions += "void " + name + "::_get_property_list(List<PropertyInfo> *p_list) const {\n" + property_list + "}\n\n";
-		}
-		definitions += "void " + name + "::initialize_fields() {\n\tprepare_game_class();\n" + initialization + "}\n\n";
-		const auto *owner = member_owner(node, "_init");
-		const auto *initializer = owner ? owner->node->get_member("_init").function : nullptr;
-		Vector<String> parameters;
-		Vector<String> factory_parameters;
-		Vector<String> arguments;
-		bool default_constructible = true;
-		if (initializer) {
-			for (const auto *parameter : initializer->parameters) {
-				String parameter_text = type(parameter->type_constraint, parameter) + " v_" + symbol(parameter->identifier->name);
-				parameters.push_back(parameter_text);
-				arguments.push_back("v_" + symbol(parameter->identifier->name));
-				if (parameter->initializer) {
-					parameter_text += " = " + converted(parameter->initializer, parameter->type_constraint, parameter);
-				} else {
-					default_constructible = false;
-				}
-				factory_parameters.push_back(parameter_text);
-			}
-		}
-		definitions += "void " + name + "::initialize_default() {\n";
-		if (initializer && default_constructible) {
-			definitions += "\tm_" + symbol("_init") + "();\n";
-		} else if (!default_constructible) {
-			definitions += "\tERR_FAIL_MSG(\"This native class requires constructor arguments.\");\n";
-		}
-		definitions += "}\n\n";
-		const String instance_type = type(node->self_type, node);
-		declaration += "\tstatic " + instance_type + " create(" + String(", ").join(factory_parameters) + ");\n";
-		definitions += instance_type + " " + name + "::create(" + String(", ").join(parameters) + ") {\n\tprepare_game_class();\n\tauto instance = memnew(" + name + "(WGodotNative::Construction::EXPLICIT));\n";
-		if (initializer) {
-			definitions += "\tinstance->m_" + symbol("_init") + "(" + String(", ").join(arguments) + ");\n";
-		}
-		definitions += "\treturn instance;\n}\n\n";
 	}
-	String prepare = game_parent ? "\t" + parent + "::prepare_game_class();\n" : "";
-	if (!class_resource_types.is_empty()) {
-		class_call_headers.insert("core/io/resource_loader.h");
-		Vector<String> paths;
-		for (const auto &resource : class_resource_types) {
-			paths.push_back(resource.key);
-		}
-		paths.sort();
-		String resources;
-		for (const String &path : paths) {
-			const String field = "resource_" + path.sha256_text().substr(0, 16);
-			static_fields += "\t\t" + class_resource_types[path] + " " + field + ";\n";
-			resources += "\tfields." + field + " = ::ResourceLoader::load(String::utf8(" + quoted(path) + "));\n";
-			resources += "\tERR_FAIL_COND_MSG(fields." + field + ".is_null(), \"Could not preload native game resource: \" + String::utf8(" + quoted(path) + "));\n";
-		}
-		static_initialization = resources + static_initialization;
-	}
-	const bool has_static_initializer = node->has_function(SNAME("_static_init"));
-	if (!static_fields.is_empty() || has_static_initializer) {
-		class_call_headers.insert("modules/wgodot/native/wgodot_native_static.h");
-		declaration += "\tstruct StaticFields {\n" + static_fields + "\t};\n\tstatic StaticFields &static_fields();\nprivate:\n\tstatic void initialize_static_fields(StaticFields &fields);\npublic:\n";
-		definitions += name + "::StaticFields &" + name + "::static_fields() {\n\treturn WGodotNative::StaticStorage<StaticFields>::get(&initialize_static_fields);\n}\n\n";
-		if (has_static_initializer) {
-			static_initialization += "\tm_" + symbol(SNAME("_static_init")) + "();\n";
-		}
-		definitions += "void " + name + "::initialize_static_fields(StaticFields &fields) {\n" + prepare + static_initialization + "}\n\n";
-		prepare = "\t(void)static_fields();\n";
-	}
-	definitions += "void " + name + "::prepare_game_class() {\n" + prepare + "}\n\n";
-	declaration += fields + class_lambda_declarations + "};\n";
 	definitions += class_lambda_definitions;
+	for (const FunctionDefinition &function : class_function_definitions) {
+		definitions += function.signature + " {\n";
+		if (function.prepare_class && class_lifecycles[node].prepare) {
+			definitions += "\tprepare_game_class();\n";
+		}
+		definitions += function.body + "}\n\n";
+	}
+	declaration += fields + class_lambda_declarations + "};\n";
 	const String origin = source_header(p_class.script_path, node->fqcn);
 	String header = origin + "#pragma once\n#include \"game_types.h\"\n";
 	Vector<String> includes;
