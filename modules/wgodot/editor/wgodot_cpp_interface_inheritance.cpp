@@ -16,6 +16,37 @@ String WGodotCppEmitter::interface_cpp_type(const Parser::ClassNode *p_interface
 	return description->cpp_name + "_Interface";
 }
 
+void WGodotCppEmitter::collect_interface_property_accessors() {
+	interface_property_getters.clear();
+	interface_property_setters.clear();
+	// A subclass can implement an interface using a field owned by an earlier
+	// class. Collect requirements by declaration before emitting any classes.
+	for (const auto &implementation : project.get_classes()) {
+		if (implementation.node->wgodot_is_interface || implementation.node->wgodot_static_class) {
+			continue;
+		}
+		for (const auto &contract : project.get_classes()) {
+			if (!contract.node->wgodot_is_interface || !WGodotGDScriptInterfaceHelpers::class_implements_interface_type(implementation.node, contract.node)) {
+				continue;
+			}
+			for (const auto &entry : contract.node->members) {
+				if (entry.type != Parser::ClassNode::Member::VARIABLE) {
+					continue;
+				}
+				const auto *owner = member_owner(implementation.node, entry.get_name());
+				if (!owner) {
+					continue; // Native properties use their engine accessors directly.
+				}
+				const auto *variable = owner->node->get_member(entry.get_name()).variable;
+				interface_property_getters.insert(variable);
+				if (!entry.variable->wgodot_readonly) {
+					interface_property_setters.insert(variable);
+				}
+			}
+		}
+	}
+}
+
 void WGodotCppEmitter::emit_interface_inheritance(const WGodotCppProject::Class &p_class, String &r_bases, String &r_declaration, String &r_definitions) {
 	String query;
 	HashSet<StringName> forwarded;

@@ -225,10 +225,10 @@ String WGodotCppAsync::expression(const Parser::ExpressionNode *p_expression, in
 		if (node->operation == Parser::BinaryOpNode::OP_LOGIC_AND || node->operation == Parser::BinaryOpNode::OP_LOGIC_OR) {
 			(void)expression(node->left_operand, p_indent);
 			const String result = add_field("bool", "condition");
-			line(p_indent, result + " = " + emitter.truth(node->left_operand) + ";");
+			line(p_indent, result + " = bool(" + emitter.truth(node->left_operand) + ");");
 			line(p_indent, "if (" + String(node->operation == Parser::BinaryOpNode::OP_LOGIC_OR ? "!" : "") + result + ") {");
 			(void)expression(node->right_operand, p_indent + 1);
-			line(p_indent + 1, result + " = " + emitter.truth(node->right_operand) + ";");
+			line(p_indent + 1, result + " = bool(" + emitter.truth(node->right_operand) + ");");
 			line(p_indent, "}");
 			emitter.expression_overrides.insert(p_expression, result);
 			return result;
@@ -283,7 +283,7 @@ String WGodotCppAsync::expression(const Parser::ExpressionNode *p_expression, in
 String WGodotCppAsync::condition(const Parser::ExpressionNode *p_expression, int p_indent) {
 	(void)expression(p_expression, p_indent);
 	const String field = add_field("bool", "branch");
-	line(p_indent, field + " = " + emitter.truth(p_expression) + ";");
+	line(p_indent, field + " = bool(" + emitter.truth(p_expression) + ");");
 	clear_temporaries(p_indent);
 	return field;
 }

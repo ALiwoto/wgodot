@@ -16,10 +16,10 @@ void WGodotCppEmitter::emit_virtuals(const WGodotCppProject::Class &p_class, Str
 	if (!game_parent) {
 		r_declaration += "\tstatic Variant callback_initialize_game(Object *p_self, const Variant **p_args, int p_count);\n";
 		r_definitions += "Variant " + p_class.cpp_name + "::callback_initialize_game(Object *p_self, const Variant **p_args, int p_count) {\n\tauto *self = static_cast<" + p_class.cpp_name + " *>(p_self);\n\tself->game_initialized = true;\n\tself->initialize_fields();\n\tif (self->construction_mode == WGodotNative::Construction::SCENE) { self->initialize_default(); }\n\treturn Variant();\n}\n\n";
-		dispatch += "\tif (p_name == \"@game_initialize\") { return &callback_initialize_game; }\n";
+		dispatch += "\tif (p_name == SNAME(\"@game_initialize\")) { return &callback_initialize_game; }\n";
 		r_declaration += "\tstatic Variant callback_clear_game(Object *p_self, const Variant **p_args, int p_count);\n";
 		r_definitions += "Variant " + p_class.cpp_name + "::callback_clear_game(Object *p_self, const Variant **p_args, int p_count) {\n\tstatic_cast<" + p_class.cpp_name + " *>(p_self)->game_tasks.clear();\n\treturn Variant();\n}\n\n";
-		dispatch += "\tif (p_name == \"@game_clear\") { return &callback_clear_game; }\n";
+		dispatch += "\tif (p_name == SNAME(\"@game_clear\")) { return &callback_clear_game; }\n";
 	}
 	// Script notifications visit every script level. Keep their ordering separate
 	// from native base notifications, just as Object does for ScriptInstance.
@@ -31,7 +31,7 @@ void WGodotCppEmitter::emit_virtuals(const WGodotCppProject::Class &p_class, Str
 	if (p_class.node->has_function(SNAME("_notification"))) {
 		r_definitions += "\t" + p_class.cpp_name + "::m_" + symbol(SNAME("_notification")) + "(p_what);\n";
 		r_declaration += "\tstatic Variant callback_notification(Object *p_self, const Variant **p_args, int p_count);\n";
-		dispatch += "\tif (p_name == \"_notification\") { return &callback_notification; }\n";
+		dispatch += "\tif (p_name == SNAME(\"_notification\")) { return &callback_notification; }\n";
 	}
 	if (game_parent) {
 		r_definitions += "\tif (p_reversed) { " + parent + "::notify_game(p_what, p_reversed); }\n";
@@ -89,9 +89,10 @@ void WGodotCppEmitter::emit_virtuals(const WGodotCppProject::Class &p_class, Str
 		const String invoke = "static_cast<" + p_class.cpp_name + " *>(p_self)->m_" + symbol(method.name) + "(" + String(", ").join(arguments) + ")";
 		r_definitions += returns_void ? "\t" + invoke + ";\n\treturn Variant();\n" : "\treturn " + invoke + ";\n";
 		r_definitions += "}\n\n";
-		dispatch += "\tif (p_name == " + quoted(method.name) + ") { return &" + wrapper + "; }\n";
+		dispatch += "\tif (p_name == SNAME(" + quoted(method.name) + ")) { return &" + wrapper + "; }\n";
 	}
 	if (!dispatch.is_empty()) {
+		class_call_headers.insert("core/string/string_name.h");
 		r_declaration += "protected:\n\tWGodotNativeVirtual _wgodot_get_native_virtual(const StringName &p_name) const override;\npublic:\n";
 		r_definitions += "Object::WGodotNativeVirtual " + p_class.cpp_name + "::_wgodot_get_native_virtual(const StringName &p_name) const {\n" + dispatch + "\treturn " + class_name(p_class.node->base_type, p_class.node) + "::_wgodot_get_native_virtual(p_name);\n}\n\n";
 	}

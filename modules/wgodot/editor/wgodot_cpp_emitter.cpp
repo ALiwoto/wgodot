@@ -187,8 +187,8 @@ String WGodotCppEmitter::truth(const Parser::ExpressionNode *p_expression) {
 		return "!(" + value + ").is_empty()";
 	}
 	if (is_packed(datatype)) {
-		const String array = lowered.cpp_type == Variant::get_type_name(datatype.builtin_type) ? "(" + value + ")" : "(" + value + ").native()";
-		return "!" + array + ".is_empty()";
+		// Reduced constants can still be engine vectors rather than Packed handles.
+		return lowered.cpp_type == Variant::get_type_name(datatype.builtin_type) ? "!(" + value + ").is_empty()" : value;
 	}
 	if (datatype.kind == Parser::DataType::BUILTIN && (datatype.builtin_type == Variant::CALLABLE || datatype.builtin_type == Variant::SIGNAL)) {
 		return "!(" + value + ").is_null()";
@@ -580,6 +580,7 @@ Error WGodotCppEmitter::generate() {
 	used_native_headers.clear();
 	used_native_interfaces.clear();
 	signatures.analyze();
+	collect_interface_property_accessors();
 	for (const WGodotCppProject::Class &entry : project.get_classes()) {
 		emit_class(entry);
 	}

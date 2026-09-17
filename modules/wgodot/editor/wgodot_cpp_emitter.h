@@ -23,6 +23,8 @@ class WGodotCppEmitter {
 	HashMap<StringName, String> native_cpp_names;
 	HashMap<String, String> native_methods;
 	HashSet<StringName> used_native_interfaces;
+	HashSet<const GDScriptParser::VariableNode *> interface_property_getters;
+	HashSet<const GDScriptParser::VariableNode *> interface_property_setters;
 	HashSet<String> used_native_headers;
 	HashSet<String> class_native_headers;
 	HashSet<String> class_dependencies;
@@ -91,6 +93,7 @@ class WGodotCppEmitter {
 	bool is_array_duplicate(const GDScriptParser::ExpressionNode *p_value) const;
 	String literal(const Variant &p_value, const GDScriptParser::Node *p_origin);
 	String converted(const GDScriptParser::ExpressionNode *p_expression, const GDScriptParser::DataType &p_target, const GDScriptParser::Node *p_target_origin = nullptr);
+	// For a C++ boolean context. Use bool(...) when storing the result instead.
 	String truth(const GDScriptParser::ExpressionNode *p_expression);
 	const WGodotCppProject::Class *member_owner(const GDScriptParser::ClassNode *p_class, const StringName &p_name) const;
 	Value member(const GDScriptParser::ExpressionNode *p_base, const StringName &p_name, const GDScriptParser::ExpressionNode *p_origin);
@@ -149,6 +152,7 @@ class WGodotCppEmitter {
 	Value native_interface_call(const GDScriptParser::CallNode *p_call, const GDScriptParser::ExpressionNode *p_base, const WGodotNativeInterfaces::Descriptor &p_interface);
 	Value native_interface_member(const GDScriptParser::ExpressionNode *p_base, const StringName &p_name, const GDScriptParser::ExpressionNode *p_origin, const WGodotNativeInterfaces::Descriptor &p_interface);
 	String interface_cpp_type(const GDScriptParser::ClassNode *p_interface);
+	void collect_interface_property_accessors();
 	void emit_interface_inheritance(const WGodotCppProject::Class &p_class, String &r_bases, String &r_declaration, String &r_definitions);
 	String register_interfaces();
 	void emit_virtuals(const WGodotCppProject::Class &p_class, String &r_declaration, String &r_definitions);

@@ -177,12 +177,18 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 				const String getter_const = !variable->is_static && property_getter.is_empty() ? " const" : "";
 				const String static_modifier = variable->is_static ? "static " : "";
 				const String storage = String(variable->is_static ? "static_fields()." : "") + field_name;
-				declaration += "\t" + static_modifier + field_type + " " + getter + "()" + getter_const + ";\n\t" + static_modifier + "void " + setter + "(" + field_type + " p_value);\n";
-				definitions += field_type + " " + name + "::" + getter + "()" + getter_const + " { return " + (property_getter.is_empty() ? storage : "m_" + symbol(property_getter) + "()") + "; }\n";
-				definitions += "void " + name + "::" + setter + "(" + field_type + " p_value) { " + (property_setter.is_empty() ? storage + " = p_value" : "m_" + symbol(property_setter) + "(p_value)") + "; }\n";
-				// Only explicitly exported fields participate in scene/resource
-				// serialization. Native code and native tweens use typed accessors.
-				if (!is_static && variable->exported && !native_only(datatype)) {
+				// Only serialization and interface forwarding use these wrappers.
+				// Ordinary property access calls script accessors or uses storage directly.
+				const bool serialized = !is_static && variable->exported && !native_only(datatype);
+				if (serialized || interface_property_getters.has(variable)) {
+					declaration += "\t" + static_modifier + field_type + " " + getter + "()" + getter_const + ";\n";
+					definitions += field_type + " " + name + "::" + getter + "()" + getter_const + " { return " + (property_getter.is_empty() ? storage : "m_" + symbol(property_getter) + "()") + "; }\n";
+				}
+				if (serialized || interface_property_setters.has(variable)) {
+					declaration += "\t" + static_modifier + "void " + setter + "(" + field_type + " p_value);\n";
+					definitions += "void " + name + "::" + setter + "(" + field_type + " p_value) { " + (property_setter.is_empty() ? storage + " = p_value" : "m_" + symbol(property_setter) + "(p_value)") + "; }\n";
+				}
+				if (serialized) {
 					const String property = quoted(variable->identifier->name);
 					property_reads += "\tif (p_name == " + property + ") { r_value = const_cast<" + name + " *>(this)->" + getter + "(); return true; }\n";
 					property_writes += "\tif (p_name == " + property + ") { " + setter + "(WGodotNative::convert<" + field_type + ">(p_value)); return true; }\n";
