@@ -42,7 +42,6 @@ WGodotCppEmitter::Value WGodotCppEmitter::property_access(const Parser::DataType
 	}
 	const String p_receiver = p_receiver_value.code;
 	const String p_value = p_assigned.code;
-	const String p_value_type = p_assigned.cpp_type;
 	result.cpp_type = write ? "void" : type(p_origin->type_constraint, p_origin);
 	result.effects = true;
 	auto finish = [&](const String &p_code) { result.code = p_code; return result; };
@@ -58,7 +57,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::property_access(const Parser::DataType
 			if (!p_receiver_value.borrowed && !p_receiver_value.object_pointer) {
 				materialize(p_receiver_value, result.setup);
 			}
-			const String instance = checked_receiver(result, p_receiver_value, p_receiver_value.code + ".operator->()");
+			const String instance = materialize_receiver(result, p_receiver_value, p_receiver_value.code + ".operator->()");
 			const String invoke = instance + "->" + String(accessor) + "(" + argument + ")";
 			result.effects = true;
 			const MethodInfo &method = contract->methods[accessor];
@@ -81,7 +80,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::property_access(const Parser::DataType
 			const StringName accessor = accessor_name(entry.variable, write);
 			const String receiver = entry.variable->is_static ? owner->cpp_name + "::" : p_receiver == "this" ? "this->"
 																											  : "(" + p_receiver + ")->";
-			const String assigned = write ? convert_value(Value(p_value, p_value_type), type(variable_type(entry.variable), entry.variable)) : String();
+			const String assigned = write ? convert_value(p_assigned, type(variable_type(entry.variable), entry.variable)) : String();
 			// A bare property name inside its own getter/setter addresses storage.
 			// Access through another receiver still invokes that receiver's accessor.
 			const bool own_accessor = p_origin->type == Parser::Node::IDENTIFIER && current_function && current_function->identifier && current_function->identifier->name == accessor;
@@ -112,10 +111,10 @@ WGodotCppEmitter::Value WGodotCppEmitter::property_access(const Parser::DataType
 	Vector<Value> arguments;
 	const int index = ClassDB::get_property_index(base_name, p_name);
 	if (index >= 0) {
-		arguments.push_back(Value("int64_t(" + itos(index) + ")", "int64_t"));
+		arguments.push_back(lower_literal(index, p_origin));
 	}
 	if (write) {
-		arguments.push_back(Value(p_value, p_value_type));
+		arguments.push_back(p_assigned);
 	}
 	Value invoked = native_invoke(method, p_receiver_value, arguments, write ? "void" : type(p_origin->type_constraint, p_origin), p_origin);
 	result.setup.append_array(invoked.setup);
@@ -213,8 +212,6 @@ WGodotCppEmitter::Value WGodotCppEmitter::assignment(const Parser::AssignmentNod
 		// ObjectValue, Ref and interface receivers are handles with accessors.
 		p_value.code = base(p_index);
 		p_value.setup.clear();
-		p_value.guard = String();
-		p_value.guard_setup = String();
 		p_value.effects = false;
 		p_value.borrowed = true;
 		receivers.push_back(p_value);

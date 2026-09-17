@@ -16,7 +16,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::javascript_call(const Parser::CallNode
 	if (!receiver.borrowed && !receiver.object_pointer) {
 		materialize(receiver, result.setup);
 	}
-	const String instance = checked_receiver(result, receiver, receiver_pointer(receiver, p_base_type, p_call));
+	const String instance = materialize_receiver(result, receiver, receiver_pointer(receiver, p_base_type, p_call), true);
 	Vector<String> arguments{ instance, convert_value(operands[0], "StringName") };
 	for (uint32_t i = 1; i < p_call->arguments.size(); i++) {
 		arguments.push_back(operands[i].code);

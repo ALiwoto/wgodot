@@ -58,7 +58,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::call(const Parser::CallNode *p_call) {
 		if (!value.borrowed && !value.object_pointer) {
 			materialize(value, result.setup);
 		}
-		const String instance = checked_receiver(result, value, value.code + ".operator->()");
+		const String instance = materialize_receiver(result, value, value.code + ".operator->()");
 		result.code = instance + "->" + String(p_call->function_name) + "(" + String(", ").join(arguments) + ")";
 		result.cpp_type = result_type;
 		result.effects = true;

@@ -55,7 +55,7 @@ class WGodotCppEmitter {
 	Value lower_literal(const Variant &p_value, const GDScriptParser::Node *p_origin);
 	bool receiver_needs_cast(const Value &p_value, const GDScriptParser::DataType &p_type, const GDScriptParser::Node *p_origin);
 	String receiver_pointer(const Value &p_value, const GDScriptParser::DataType &p_type, const GDScriptParser::Node *p_origin);
-	String checked_receiver(Value &r_call, const Value &p_receiver, const String &p_pointer);
+	String materialize_receiver(Value &r_call, const Value &p_receiver, const String &p_pointer, bool p_as_argument = false);
 	Value sequence(Vector<Value> &r_operands);
 	void materialize(Value &r_value, Vector<String> &r_setup);
 	String convert_value(const Value &p_value, const String &p_target) const;

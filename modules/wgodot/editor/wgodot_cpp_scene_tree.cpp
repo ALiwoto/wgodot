@@ -33,7 +33,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::group_call(const Parser::CallNode *p_c
 	Value tree = lower_receiver(p_base);
 	tree.borrowed = false;
 	materialize(tree, result.setup);
-	const String instance = checked_receiver(result, tree, receiver_pointer(tree, p_base_type, p_call));
+	const String instance = materialize_receiver(result, tree, receiver_pointer(tree, p_base_type, p_call), true);
 	const String node_name = "group_node_" + itos(temporary_index++);
 	Value node("static_cast<" + target_class + " *>(" + node_name + ")", target_class + " *");
 	node.object_pointer = node.nonnull = node.invariant = true;

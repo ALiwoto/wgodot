@@ -180,10 +180,15 @@ String WGodotCppEmitter::truth(const Parser::ExpressionNode *p_expression) {
 	if (p_expression->type == Parser::Node::SELF) {
 		return "true";
 	}
-	const String value = expression(p_expression);
+	const Value lowered = lower(p_expression);
+	const String value = lowered.expression();
 	const auto datatype = expression_type(p_expression);
 	if (is_warray(datatype) || is_wdictionary(datatype)) {
 		return "!(" + value + ").is_empty()";
+	}
+	if (is_packed(datatype)) {
+		const String array = lowered.cpp_type == Variant::get_type_name(datatype.builtin_type) ? "(" + value + ")" : "(" + value + ").native()";
+		return "!" + array + ".is_empty()";
 	}
 	if (datatype.kind == Parser::DataType::BUILTIN && (datatype.builtin_type == Variant::CALLABLE || datatype.builtin_type == Variant::SIGNAL)) {
 		return "!(" + value + ").is_null()";
@@ -251,7 +256,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::member(const Parser::ExpressionNode *p
 		}
 		const bool interface = owner->node->wgodot_is_interface;
 		const String pointer = interface ? receiver.code + ".operator->()" : receiver_pointer(receiver, datatype, p_origin);
-		const String instance = checked_receiver(result, receiver, pointer);
+		const String instance = materialize_receiver(result, receiver, pointer);
 		result.cpp_type = signature_type(p_origin, true);
 		result.effects |= !receiver.nonnull;
 		if (owner->node->wgodot_is_interface) {

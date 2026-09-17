@@ -49,6 +49,14 @@ struct IsPacked : std::false_type {};
 template <class T>
 struct IsPacked<Packed<T>> : std::true_type {};
 
+inline String packed_string_from_utf8(const PackedByteArray &p_bytes) {
+	String result;
+	if (!p_bytes.is_empty()) {
+		result.append_utf8(reinterpret_cast<const char *>(p_bytes.ptr()), p_bytes.size());
+	}
+	return result;
+}
+
 } // namespace WGodotNative
 
 template <class T>

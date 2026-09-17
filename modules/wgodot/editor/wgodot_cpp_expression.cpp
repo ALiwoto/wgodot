@@ -15,7 +15,7 @@ String indented(const String &p_code, int p_indent) {
 } //namespace
 
 String WGodotCppExpression::expression() const {
-	if (setup.is_empty() && guard.is_empty()) {
+	if (setup.is_empty()) {
 		return code;
 	}
 	String result = "([&]()" + (cpp_type.is_empty() ? "" : " -> " + cpp_type) + " {\n";
@@ -28,10 +28,6 @@ String WGodotCppExpression::expression() const {
 	return result + "}())";
 }
 
-String WGodotCppExpression::default_value() const {
-	return object_pointer ? "nullptr" : cpp_type + "()";
-}
-
 String WGodotCppExpression::block(const String &p_body, int p_indent) const {
 	String result;
 	const bool scope = !setup.is_empty();
@@ -41,11 +37,7 @@ String WGodotCppExpression::block(const String &p_body, int p_indent) const {
 	for (const String &step : setup) {
 		result += indented(step, p_indent);
 	}
-	if (!guard.is_empty()) {
-		result += indented("if (" + (guard_setup.is_empty() ? "" : guard_setup + "; ") + guard + ") {", p_indent);
-		result += indented(p_body, p_indent + 1);
-		result += indented("}", p_indent);
-	} else if (!p_body.is_empty()) {
+	if (!p_body.is_empty()) {
 		result += indented(p_body, p_indent);
 	}
 	if (scope) {
@@ -59,8 +51,6 @@ String WGodotCppExpression::statement(int p_indent, bool p_return) const {
 	String result = block(code.is_empty() ? String() : String(return_value ? "return " : "") + code + ";", p_indent);
 	if (p_return && !return_value) {
 		result += indented("return;", p_indent);
-	} else if (p_return && !guard.is_empty()) {
-		result += indented("return " + default_value() + ";", p_indent);
 	}
 	return result;
 }
@@ -110,13 +100,17 @@ String WGodotCppEmitter::receiver_pointer(const Value &p_value, const Parser::Da
 	return "static_cast<" + class_name(p_type, p_origin) + " *>(" + pointer + ")";
 }
 
-String WGodotCppEmitter::checked_receiver(Value &r_call, const Value &p_receiver, const String &p_pointer) {
-	if (p_receiver.nonnull) {
+String WGodotCppEmitter::materialize_receiver(Value &r_call, const Value &p_receiver, const String &p_pointer, bool p_as_argument) {
+	// sequence() already orders source evaluations. A member call evaluates its
+	// receiver before C++ argument conversions, so a pure pointer read can stay
+	// inline. Free-function adapters need a capture to preserve that order.
+	if (p_receiver.nonnull || (!p_as_argument && !p_receiver.effects)) {
 		return p_pointer;
 	}
 	const String instance = "instance_" + itos(temporary_index++);
-	r_call.guard_setup = "auto *" + instance + " = " + p_pointer;
-	r_call.guard = "WGodotNative::valid_instance(" + instance + ")";
+	// Capture the receiver once at its evaluation point. Dereferencing it is
+	// unconditional; a null receiver must not produce a fabricated result.
+	r_call.setup.push_back("auto *" + instance + " = " + p_pointer + ";");
 	return instance;
 }
 
@@ -130,16 +124,7 @@ void WGodotCppEmitter::materialize(Value &r_value, Vector<String> &r_setup) {
 		r_value.borrowed = false;
 	}
 	const String name = "temporary_" + itos(temporary_index++);
-	if (!r_value.guard.is_empty()) {
-		if (!r_value.guard_setup.is_empty()) {
-			r_setup.push_back(r_value.guard_setup + ";");
-		}
-		r_setup.push_back("auto " + name + " = " + r_value.guard + " ? " + r_value.code + " : " + r_value.default_value() + ";");
-		r_value.guard = String();
-		r_value.guard_setup = String();
-	} else {
-		r_setup.push_back(String(r_value.borrowed ? "auto &" : "auto ") + name + " = " + r_value.code + ";");
-	}
+	r_setup.push_back(String(r_value.borrowed ? "auto &" : "auto ") + name + " = " + r_value.code + ";");
 	r_value.code = name;
 	r_value.effects = false;
 	r_value.borrowed = true;
@@ -153,13 +138,13 @@ WGodotCppEmitter::Value WGodotCppEmitter::sequence(Vector<Value> &r_operands) {
 	for (const Value &value : r_operands) {
 		dependent += !value.invariant;
 		result.effects |= value.effects;
-		setup |= !value.setup.is_empty() || !value.guard.is_empty();
+		setup |= !value.setup.is_empty();
 	}
 	// C++ argument/operand order is not generally GDScript's order. Locals and
 	// direct fields remain borrowed slots; computed results are retained values.
 	const bool ordered = setup || (result.effects && dependent > 1);
 	for (Value &value : r_operands) {
-		if (ordered && !value.invariant && (!value.borrowed || value.effects || !value.setup.is_empty() || !value.guard.is_empty())) {
+		if (ordered && !value.invariant && (!value.borrowed || value.effects || !value.setup.is_empty())) {
 			materialize(value, result.setup);
 		} else {
 			result.setup.append_array(value.setup);

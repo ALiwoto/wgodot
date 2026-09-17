@@ -35,3 +35,5 @@ in case the entire file is for us, add this at the beginning of the file:
 8. The main goals for GitHub workflows:
   - make sure the build time is reduced because of caches
   - don't bomb github's infrastructure with thousands of repeated caches
+
+9. DO NOT hardcode names into cpp emitter, that's gonna get it bloated, and then tomorrow if godot changes their methods names we will have to constantly rework our cpp emitter. if you CANNOT do something WITHOUT hardcoding the name in the cpp emitter, then stop it and tell me, we will find some solution.

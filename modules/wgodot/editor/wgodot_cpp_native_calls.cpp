@@ -172,11 +172,11 @@ WGodotCppEmitter::Value WGodotCppEmitter::native_invoke(const MethodBind *p_meth
 	String pointer;
 	if (instance_call) {
 		Value receiver = operands[operands.size() - 1];
-		// A temporary Ref must outlive the checked call's if-initializer.
+		// Retain temporary handles through receiver capture and invocation.
 		if (!receiver.borrowed && !receiver.object_pointer) {
 			materialize(receiver, result.setup);
 		}
-		pointer = checked_receiver(result, receiver, receiver.object_pointer ? receiver.code : receiver.code + ".ptr()");
+		pointer = materialize_receiver(result, receiver, receiver.object_pointer ? receiver.code : receiver.code + ".ptr()", call.receiver_argument);
 	}
 	Vector<String> arguments;
 	if (call.receiver_argument) {

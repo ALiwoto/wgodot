@@ -62,6 +62,25 @@ WGodotCppEmitter::Value WGodotCppEmitter::builtin_call(const Parser::CallNode *p
 		arguments.push_back(operands[i].code);
 	}
 	const String receiver = "(" + operands[operands.size() - 1].code + ")";
+	if (!is_static && arguments.is_empty()) {
+		if (is_packed(base_type)) {
+			// Reduced constants are engine vectors; script values use Packed's
+			// shared storage. Borrow either representation without a Variant call.
+			const String array = operands[operands.size() - 1].cpp_type == Variant::get_type_name(base_type.builtin_type) ? receiver : receiver + ".native()";
+			if (p_call->function_name == SNAME("size") || p_call->function_name == SNAME("is_empty")) {
+				result.code = array + "." + String(p_call->function_name) + "()";
+			} else if (base_type.builtin_type == Variant::PACKED_BYTE_ARRAY && p_call->function_name == SNAME("get_string_from_utf8")) {
+				class_call_headers.insert("modules/wgodot/native/wgodot_native_packed.h");
+				result.code = "WGodotNative::packed_string_from_utf8(" + array + ")";
+			}
+		} else if (base_type.builtin_type == Variant::STRING && p_call->function_name == SNAME("to_utf8_buffer")) {
+			result.code = type(expression_type(p_call), p_call) + "(" + receiver + ".to_utf8_buffer())";
+		}
+		if (!result.code.is_empty()) {
+			result.effects = true;
+			return result;
+		}
+	}
 	if (base_type.builtin_type == Variant::STRING && p_call->function_name == SNAME("join") && arguments.size() == 1) {
 		const String strings = is_warray(expression_type(p_call->arguments[0])) ? arguments[0] + ".native()" : "WGodotNative::convert<PackedStringArray>(" + arguments[0] + ")";
 		result.code = receiver + ".join(" + strings + ")";

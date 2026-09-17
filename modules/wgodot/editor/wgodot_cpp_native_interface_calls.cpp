@@ -48,7 +48,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::native_interface_call(const Parser::Ca
 	if (!receiver.borrowed && !receiver.object_pointer) {
 		materialize(receiver, result.setup);
 	}
-	const String instance = checked_receiver(result, receiver, receiver.code + ".operator->()");
+	const String instance = materialize_receiver(result, receiver, receiver.code + ".operator->()");
 	const String invoke = instance + "->" + String(p_call->function_name) + "(" + String(", ").join(arguments) + ")";
 	result.code = result_type == "void" ? invoke : convert_value(native_result_value(invoke, method.return_val, method.get_argument_meta(-1), p_call), result_type);
 	result.cpp_type = result_type;

@@ -382,12 +382,11 @@ void WGodotCppAsync::suite(const Parser::SuiteNode *p_suite, int p_indent, bool 
 					iterator_type = "WGodotNative::Iterator";
 				}
 				const String iterator = add_field("std::optional<" + iterator_type + ">", "iterator");
-				const bool guarded = !collection.guard.is_empty();
 				collection.code = iterator + ".emplace(" + collection.code + ")";
 				code += collection.statement(p_indent);
 				clear_temporaries(p_indent);
 				const String variable = local(node->variable, node->variable->name, node->variable->type_constraint);
-				line(p_indent, "for (; " + (guarded ? iterator + " && " : "") + iterator + "->has_value(); " + iterator + "->next()) {");
+				line(p_indent, "for (; " + iterator + "->has_value(); " + iterator + "->next()) {");
 				line(p_indent + 1, variable + " = " + iterator + (range ? "->get();" : "->get<" + field_types[variable] + ">();"));
 				suite(node->loop, p_indent + 1, false);
 				line(p_indent, "}");
