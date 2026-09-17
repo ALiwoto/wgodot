@@ -19,5 +19,5 @@ runs:
         key: ${{ inputs.cache-name }}
 
     - name: Store unix timestamp
-      shell: sh
+      shell: bash
       run: echo "CACHE_TIMESTAMP=$(date +%s)" >> "$GITHUB_ENV"

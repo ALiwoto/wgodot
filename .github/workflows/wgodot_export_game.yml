@@ -1,0 +1,217 @@
+# wgodot-changes::file
+name: wgodot export game
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag to build and upload game assets to.
+        required: false
+        type: string
+      upload_to_release:
+        description: Upload game archives to the release tag.
+        required: false
+        default: false
+        type: boolean
+  release:
+    types: [published]
+
+concurrency:
+  group: ${{ github.event_name == 'release' && format('wgodot-export-game-dispatch-{0}', github.run_id) || 'wgodot-export-game-build' }}
+  cancel-in-progress: false
+
+permissions:
+  actions: write
+  contents: write
+
+env:
+  PYTHONIOENCODING: utf8
+  GAME_BUILD_DEBUG: ${{ secrets.GAME_BUILD_DEBUG == 'true' }}
+  GAME_BUILD_RELEASE: ${{ secrets.GAME_BUILD_RELEASE != 'false' }}
+
+jobs:
+  dispatch-release-build:
+    name: Dispatch release build on default branch
+    if: github.event_name == 'release'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Dispatch release build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          gh workflow run wgodot_export_game.yml \
+            --ref "$DEFAULT_BRANCH" \
+            -f release_tag="$RELEASE_TAG" \
+            -f upload_to_release=true
+
+  configure:
+    name: Resolve game build
+    if: github.event_name != 'release'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      enabled: ${{ steps.game.outputs.enabled }}
+      repository: ${{ steps.game.outputs.repository }}
+      revision: ${{ steps.game.outputs.revision }}
+    steps:
+      - name: Resolve game repository and revision
+        id: game
+        shell: pwsh
+        env:
+          GAME_REPO_URL: ${{ secrets.GAME_REPO_URL }}
+          GH_TOKEN: ${{ secrets.GAME_REPO_GH_TOKEN }}
+          GAME_CONFIG_CONTENT: ${{ secrets.GAME_CONFIG_CONTENT }}
+          GAME_ANDROID_SIGN_KEY: ${{ secrets.GAME_ANDROID_SIGN_KEY }}
+          GAME_ANDROID_SIGN_JSON: ${{ secrets.GAME_ANDROID_SIGN_JSON }}
+        run: |
+          if ($env:GAME_BUILD_DEBUG -ne 'true' -and $env:GAME_BUILD_RELEASE -ne 'true') {
+            Write-Host 'Both game build variants are disabled.'
+            exit 0
+          }
+          if (!$env:GH_TOKEN) { throw 'Set GAME_REPO_GH_TOKEN to a token with read access to the game repository.' }
+          if (!$env:GAME_CONFIG_CONTENT) { throw 'Set GAME_CONFIG_CONTENT to the game configuration INI contents.' }
+          if ($env:GAME_BUILD_RELEASE -eq 'true' -and (!$env:GAME_ANDROID_SIGN_KEY -or !$env:GAME_ANDROID_SIGN_JSON)) {
+            throw 'Android release builds require GAME_ANDROID_SIGN_KEY (Base64 keystore) and GAME_ANDROID_SIGN_JSON.'
+          }
+          $url = [uri]$env:GAME_REPO_URL
+          if (!$url.IsAbsoluteUri -or $url.Scheme -ne 'https' -or $url.Host -ne 'github.com') {
+            throw 'GAME_REPO_URL must be an HTTPS GitHub repository URL.'
+          }
+          $repository = $url.AbsolutePath.Trim('/') -replace '\.git$', ''
+          if ($repository -notmatch '^[^/]+/[^/]+$') { throw 'GAME_REPO_URL must identify an owner and repository.' }
+          $revision = gh api "repos/$repository/commits/HEAD" --jq .sha
+          if ($LASTEXITCODE -ne 0) { throw 'Could not resolve the game repository default branch.' }
+          "repository=$repository" >> $env:GITHUB_OUTPUT
+          "revision=$revision" >> $env:GITHUB_OUTPUT
+          # Do not return a boolean secret value, which GitHub would redact.
+          'enabled=yes' >> $env:GITHUB_OUTPUT
+
+  build-game:
+    name: ${{ matrix.name }} game
+    needs: configure
+    if: needs.configure.outputs.enabled == 'yes'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            platform: linux
+            runner: ubuntu-22.04
+            editor-platform: linuxbsd
+            editor-flags: accesskit=no
+            cache-name: wgodot-linux-game
+          - name: Windows
+            platform: windows
+            runner: windows-latest
+            editor-platform: windows
+            editor-flags: accesskit=no angle=no d3d12=no windows_subsystem=console
+            cache-name: wgodot-windows-game
+          - name: Android
+            platform: android
+            runner: ubuntu-24.04
+            editor-platform: linuxbsd
+            editor-flags: accesskit=no
+            cache-name: wgodot-android-game
+          - name: Web
+            platform: web
+            runner: ubuntu-24.04
+            editor-platform: linuxbsd
+            editor-flags: accesskit=no
+            cache-name: wgodot-web-game
+
+    steps:
+      - name: Checkout wgodot
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.release_tag || github.ref }}
+          submodules: recursive
+
+      - name: Checkout game
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ needs.configure.outputs.repository }}
+          ref: ${{ needs.configure.outputs.revision }}
+          token: ${{ secrets.GAME_REPO_GH_TOKEN }}
+          path: game-source
+          submodules: recursive
+          lfs: true
+          persist-credentials: false
+
+      - name: Restore game build cache
+        uses: ./.github/actions/wgodot-cache-restore
+        with:
+          cache-name: ${{ matrix.cache-name }}
+        continue-on-error: true
+
+      - name: Setup Python and SCons
+        uses: ./.github/actions/godot-deps
+
+      - name: Set up Java 17
+        if: matrix.platform == 'android'
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Download Swappy
+        if: matrix.platform == 'android'
+        run: python ./misc/scripts/install_swappy_android.py
+
+      - name: Set up Emscripten
+        if: matrix.platform == 'web'
+        uses: emscripten-core/setup-emsdk@v16
+        with:
+          version: 6.0.1
+          no-cache: true
+          actions-cache-folder: .emsdk-cache
+          cache-key: emsdk-6.0.1-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Build host editor for native generation and export
+        uses: ./.github/actions/godot-build
+        with:
+          platform: ${{ matrix.editor-platform }}
+          target: editor
+          scons-flags: debug_symbols=no module_text_server_fb_enabled=yes ${{ matrix.editor-flags }}
+
+      - name: Build and export native game
+        shell: pwsh
+        env:
+          GAME_PLATFORM: ${{ matrix.platform }}
+          GAME_CONFIG_CONTENT: ${{ secrets.GAME_CONFIG_CONTENT }}
+          GAME_ANDROID_SIGN_KEY: ${{ matrix.platform == 'android' && secrets.GAME_ANDROID_SIGN_KEY || '' }}
+          GAME_ANDROID_SIGN_JSON: ${{ matrix.platform == 'android' && secrets.GAME_ANDROID_SIGN_JSON || '' }}
+        run: |
+          ./.github/scripts/wgodot_export_game.ps1 -Platform $env:GAME_PLATFORM `
+            -GameDirectory "$env:GITHUB_WORKSPACE/game-source" `
+            -BuildDebug:($env:GAME_BUILD_DEBUG -eq 'true') `
+            -BuildRelease:($env:GAME_BUILD_RELEASE -eq 'true')
+
+      - name: Save game build cache
+        uses: ./.github/actions/wgodot-cache-save
+        with:
+          cache-name: ${{ matrix.cache-name }}
+        continue-on-error: true
+
+      - name: Upload game archives
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ${{ matrix.cache-name }}
+          path: release_assets/*
+
+      - name: Upload game to release
+        if: inputs.upload_to_release && inputs.release_tag != ''
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          $assets = @(Get-ChildItem release_assets -File | ForEach-Object FullName)
+          gh release upload $env:RELEASE_TAG @assets --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Game release upload failed.' }

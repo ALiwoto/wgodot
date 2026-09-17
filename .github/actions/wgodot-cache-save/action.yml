@@ -13,11 +13,11 @@ runs:
   using: composite
   steps:
     - name: Purge files before timestamp
-      shell: sh
+      shell: bash
       run: misc/scripts/purge_cache.py "${CACHE_TIMESTAMP:-0}" "${{ inputs.scons-cache }}"
 
     - name: Delete previous wgodot cache
-      shell: sh
+      shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
       run: gh cache delete "${{ inputs.cache-name }}" --repo "$GITHUB_REPOSITORY" || true

@@ -26,6 +26,7 @@ permissions:
 
 env:
   PYTHONIOENCODING: utf8
+  BUILD_DEBUG_TEMPLATES: ${{ secrets.BUILD_DEBUG_TEMPLATES == 'true' }}
   SCONS_FLAGS: >-
     production=yes
     debug_symbols=no
@@ -52,9 +53,29 @@ jobs:
             -f release_tag="$RELEASE_TAG" \
             -f upload_to_release=true
 
+  editor-build-option:
+    name: Check editor build option
+    if: github.event_name != 'release'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+
+    steps:
+      - name: Enable editor builds
+        id: check
+        env:
+          BUILD_DEBUG_EDITORS: ${{ secrets.BUILD_DEBUG_EDITORS == 'true' }}
+        run: |
+          if [ "$BUILD_DEBUG_EDITORS" = "true" ]; then
+            # Use a marker so secret masking doesn't discard the job output.
+            echo "enabled=yes" >> "$GITHUB_OUTPUT"
+          fi
+
   linux-editor:
     name: Linux editor
-    if: github.event_name != 'release'
+    needs: editor-build-option
+    if: needs.editor-build-option.outputs.enabled == 'yes'
     runs-on: ubuntu-22.04
     timeout-minutes: 180
 
@@ -109,7 +130,8 @@ jobs:
 
   windows-editor:
     name: Windows editor
-    if: github.event_name != 'release'
+    needs: editor-build-option
+    if: needs.editor-build-option.outputs.enabled == 'yes'
     runs-on: windows-latest
     timeout-minutes: 180
 
@@ -129,7 +151,7 @@ jobs:
         uses: ./.github/actions/godot-deps
 
       - name: Download Direct3D 12 SDK components
-        shell: sh
+        shell: bash
         id: d3d12-sdk
         run: |
           if python ./misc/scripts/install_d3d12_sdk_windows.py; then
@@ -141,7 +163,7 @@ jobs:
         continue-on-error: true
 
       - name: Download pre-built ANGLE
-        shell: sh
+        shell: bash
         id: angle-sdk
         run: |
           if python ./misc/scripts/install_angle.py; then
@@ -152,13 +174,8 @@ jobs:
           fi
         continue-on-error: true
 
-      - name: Download WinRT components
-        shell: sh
-        run: python ./misc/scripts/install_winrt.py
-        continue-on-error: true
-
       - name: Download pre-built AccessKit
-        shell: sh
+        shell: bash
         id: accesskit-sdk
         run: |
           if python ./misc/scripts/install_accesskit.py; then
@@ -246,6 +263,7 @@ jobs:
           scons-flags: ${{ env.SCONS_FLAGS }} swappy=yes arch=arm64
 
       - name: Compilation debug arm64
+        if: env.BUILD_DEBUG_TEMPLATES == 'true'
         uses: ./.github/actions/godot-build
         with:
           platform: android
@@ -260,6 +278,7 @@ jobs:
           scons-flags: ${{ env.SCONS_FLAGS }} swappy=yes arch=arm32
 
       - name: Compilation debug arm32
+        if: env.BUILD_DEBUG_TEMPLATES == 'true'
         uses: ./.github/actions/godot-build
         with:
           platform: android
@@ -274,6 +293,7 @@ jobs:
           scons-flags: ${{ env.SCONS_FLAGS }} swappy=yes arch=x86_64
 
       - name: Compilation debug x86_64
+        if: env.BUILD_DEBUG_TEMPLATES == 'true'
         uses: ./.github/actions/godot-build
         with:
           platform: android
@@ -283,6 +303,7 @@ jobs:
       - name: Generate Godot templates
         run: |
           cd platform/android/java
+          # Gradle builds only variants whose native libraries were compiled above.
           ./gradlew generateGodotTemplates
           cd ../../..
           ls -l bin/android_*.apk bin/android_source.zip
@@ -296,9 +317,11 @@ jobs:
       - name: Prepare export templates
         run: |
           mkdir -p export_templates release_assets
-          cp bin/android_debug.apk export_templates/android_debug.apk
           cp bin/android_release.apk export_templates/android_release.apk
           cp bin/android_source.zip export_templates/android_source.zip
+          if [ "$BUILD_DEBUG_TEMPLATES" = "true" ]; then
+            cp bin/android_debug.apk export_templates/android_debug.apk
+          fi
           tar -czf release_assets/wgodot-android-templates.tar.gz -C export_templates .
 
       - name: Upload Android templates
@@ -343,6 +366,7 @@ jobs:
           scons-flags: ${{ env.SCONS_FLAGS }} accesskit=no
 
       - name: Compilation debug
+        if: env.BUILD_DEBUG_TEMPLATES == 'true'
         uses: ./.github/actions/godot-build
         with:
           platform: linuxbsd
@@ -359,7 +383,9 @@ jobs:
         run: |
           mkdir -p export_templates release_assets
           cp bin/godot.linuxbsd.template_release.x86_64 export_templates/linux_release.x86_64
-          cp bin/godot.linuxbsd.template_debug.x86_64 export_templates/linux_debug.x86_64
+          if [ "$BUILD_DEBUG_TEMPLATES" = "true" ]; then
+            cp bin/godot.linuxbsd.template_debug.x86_64 export_templates/linux_debug.x86_64
+          fi
           chmod +x export_templates/linux_*.x86_64
           tar -czf release_assets/wgodot-linux-templates-x86_64.tar.gz -C export_templates .
 
@@ -398,7 +424,7 @@ jobs:
         uses: ./.github/actions/godot-deps
 
       - name: Download Direct3D 12 SDK components
-        shell: sh
+        shell: bash
         id: d3d12-sdk
         run: |
           if python ./misc/scripts/install_d3d12_sdk_windows.py; then
@@ -410,7 +436,7 @@ jobs:
         continue-on-error: true
 
       - name: Download pre-built ANGLE
-        shell: sh
+        shell: bash
         id: angle-sdk
         run: |
           if python ./misc/scripts/install_angle.py; then
@@ -421,13 +447,8 @@ jobs:
           fi
         continue-on-error: true
 
-      - name: Download WinRT components
-        shell: sh
-        run: python ./misc/scripts/install_winrt.py
-        continue-on-error: true
-
       - name: Download pre-built AccessKit
-        shell: sh
+        shell: bash
         id: accesskit-sdk
         run: |
           if python ./misc/scripts/install_accesskit.py; then
@@ -450,6 +471,7 @@ jobs:
             angle=${{ steps.angle-sdk.outputs.ANGLE_ENABLED }}
 
       - name: Compilation debug
+        if: env.BUILD_DEBUG_TEMPLATES == 'true'
         uses: ./.github/actions/godot-build
         with:
           platform: windows
@@ -472,12 +494,14 @@ jobs:
           New-Item -ItemType Directory -Path export_templates -Force | Out-Null
           New-Item -ItemType Directory -Path release_assets -Force | Out-Null
           Copy-Item bin/godot.windows.template_release.x86_64.exe export_templates/windows_release_x86_64.exe
-          Copy-Item bin/godot.windows.template_debug.x86_64.exe export_templates/windows_debug_x86_64.exe
           if (Test-Path bin/godot.windows.template_release.x86_64.console.exe) {
             Copy-Item bin/godot.windows.template_release.x86_64.console.exe export_templates/windows_release_x86_64.console.exe
           }
-          if (Test-Path bin/godot.windows.template_debug.x86_64.console.exe) {
-            Copy-Item bin/godot.windows.template_debug.x86_64.console.exe export_templates/windows_debug_x86_64.console.exe
+          if ($env:BUILD_DEBUG_TEMPLATES -eq 'true') {
+            Copy-Item bin/godot.windows.template_debug.x86_64.exe export_templates/windows_debug_x86_64.exe
+            if (Test-Path bin/godot.windows.template_debug.x86_64.console.exe) {
+              Copy-Item bin/godot.windows.template_debug.x86_64.console.exe export_templates/windows_debug_x86_64.console.exe
+            }
           }
           Compress-Archive -Path export_templates/* -DestinationPath release_assets/wgodot-windows-templates-x86_64.zip -Force
 
@@ -531,6 +555,7 @@ jobs:
           scons-flags: ${{ env.SCONS_FLAGS }} threads=yes arch=wasm32 use_closure_compiler=yes
 
       - name: Compilation debug
+        if: env.BUILD_DEBUG_TEMPLATES == 'true'
         uses: ./.github/actions/godot-build
         with:
           platform: web
@@ -545,6 +570,7 @@ jobs:
           scons-flags: ${{ env.SCONS_FLAGS }} threads=no arch=wasm32 use_closure_compiler=yes
 
       - name: Compilation debug without threads
+        if: env.BUILD_DEBUG_TEMPLATES == 'true'
         uses: ./.github/actions/godot-build
         with:
           platform: web
@@ -561,9 +587,11 @@ jobs:
         run: |
           mkdir -p export_templates release_assets
           cp bin/godot.web.template_release.wasm32.zip export_templates/web_release.zip
-          cp bin/godot.web.template_debug.wasm32.zip export_templates/web_debug.zip
           cp bin/godot.web.template_release.wasm32.nothreads.zip export_templates/web_nothreads_release.zip
-          cp bin/godot.web.template_debug.wasm32.nothreads.zip export_templates/web_nothreads_debug.zip
+          if [ "$BUILD_DEBUG_TEMPLATES" = "true" ]; then
+            cp bin/godot.web.template_debug.wasm32.zip export_templates/web_debug.zip
+            cp bin/godot.web.template_debug.wasm32.nothreads.zip export_templates/web_nothreads_debug.zip
+          fi
           tar -czf release_assets/wgodot-web-templates-wasm32.tar.gz -C export_templates .
 
       - name: Upload Web templates
