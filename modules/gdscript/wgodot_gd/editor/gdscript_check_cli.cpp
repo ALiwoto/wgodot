@@ -66,7 +66,8 @@ void collect_script_paths(const String &p_root_dir, Vector<String> &r_paths, Che
 	dir->list_dir_begin();
 	String file_name = dir->get_next();
 	while (!file_name.is_empty()) {
-		if (file_name == "." || file_name == ".." || file_name == "./") {
+		// Match EditorFileSystem: skip hidden entries and dot-prefixed directories.
+		if (dir->current_is_hidden() || (dir->current_is_dir() && file_name.begins_with("."))) {
 			file_name = dir->get_next();
 			continue;
 		}
