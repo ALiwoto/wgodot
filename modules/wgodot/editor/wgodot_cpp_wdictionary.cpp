@@ -83,6 +83,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::wdictionary_call(const Parser::CallNod
 	int value_argument = -1;
 	bool dictionary_argument = false;
 	bool array_argument = false;
+	bool import_dictionary = false;
 	if (name == SNAME("get") || name == SNAME("get_or_add") || name == SNAME("set")) {
 		key_argument = 0;
 		value_argument = 1;
@@ -108,6 +109,21 @@ WGodotCppEmitter::Value WGodotCppEmitter::wdictionary_call(const Parser::CallNod
 		const auto *argument = p_call->arguments[i];
 		if (int(i) == key_argument || int(i) == value_argument) {
 			operands.push_back(lower_converted(argument, int(i) == key_argument ? key_type : value_type, base, true));
+		} else if (i == 0 && name == SNAME("assign") && argument->type != Parser::Node::DICTIONARY) {
+			const auto *outer_source = dictionary_assignment_source;
+			dictionary_assignment_source = argument;
+			Value source = lower(argument);
+			dictionary_assignment_source = outer_source;
+			import_dictionary = source.cpp_type == "Variant" || source.cpp_type == "Dictionary";
+			if (import_dictionary) {
+				if (native_only(key_type) || native_only(value_type)) {
+					unsupported(argument, "WDictionary.assign importing native container/callback entries from a Godot Dictionary; this requires an explicit entry adapter");
+					return Value();
+				}
+			} else if (!validate_dictionary_conversion(argument, datatype, base)) {
+				return Value();
+			}
+			operands.push_back(source);
 		} else if (i == 0 && dictionary_argument) {
 			operands.push_back(lower_converted(argument, datatype));
 		} else if (i == 0 && array_argument) {
@@ -130,7 +146,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::wdictionary_call(const Parser::CallNod
 		arguments.push_back(operands[i].code);
 	}
 	const String receiver = "(" + operands[operands.size() - 1].code + ")";
-	const String method = p_to_dictionary ? "duplicate_to_dictionary" : String(name);
+	const String method = p_to_dictionary ? "duplicate_to_dictionary" : import_dictionary ? "assign_from_dictionary" : String(name);
 	result.code = receiver + "." + method + "(" + String(", ").join(arguments) + ")";
 	result.cpp_type = p_to_dictionary ? "Dictionary" : type(expression_type(p_call), p_call);
 	if (name == SNAME("find_key")) {

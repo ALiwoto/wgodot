@@ -120,7 +120,7 @@ String WGodotCppEmitter::checked_receiver(Value &r_call, const Value &p_receiver
 	return instance;
 }
 
-String WGodotCppEmitter::materialize(Value &r_value, Vector<String> &r_setup) {
+void WGodotCppEmitter::materialize(Value &r_value, Vector<String> &r_setup) {
 	r_setup.append_array(r_value.setup);
 	r_value.setup.clear();
 	if (!r_value.storage_type.is_empty() && r_value.storage_type != r_value.cpp_type) {
@@ -143,7 +143,6 @@ String WGodotCppEmitter::materialize(Value &r_value, Vector<String> &r_setup) {
 	r_value.code = name;
 	r_value.effects = false;
 	r_value.borrowed = true;
-	return name;
 }
 
 WGodotCppEmitter::Value WGodotCppEmitter::sequence(Vector<Value> &r_operands) {
@@ -482,7 +481,8 @@ WGodotCppEmitter::Value WGodotCppEmitter::lower_binary(const Parser::BinaryOpNod
 		class_call_headers.insert("modules/wgodot/native/wgodot_native_format.h");
 		Value result;
 		Value format = lower(p_binary->left_operand);
-		const String text = materialize(format, result.setup);
+		materialize(format, result.setup);
+		const String text = format.code;
 		const auto *array = static_cast<const Parser::ArrayNode *>(p_binary->right_operand);
 		Vector<Value> operands;
 		for (const auto *element : array->elements) {

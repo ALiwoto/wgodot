@@ -37,6 +37,7 @@ class WGodotCppEmitter {
 	HashMap<const GDScriptParser::Node *, String> local_overrides;
 	HashMap<const GDScriptParser::Node *, String> object_views;
 	const GDScriptParser::ExpressionNode *iterated_expression = nullptr;
+	const GDScriptParser::ExpressionNode *dictionary_assignment_source = nullptr;
 	bool emitted_array_range = false;
 	const GDScriptParser::CallNode *awaited_call = nullptr;
 	uint64_t temporary_index = 0;
@@ -55,7 +56,7 @@ class WGodotCppEmitter {
 	String receiver_pointer(const Value &p_value, const GDScriptParser::DataType &p_type, const GDScriptParser::Node *p_origin);
 	String checked_receiver(Value &r_call, const Value &p_receiver, const String &p_pointer);
 	Value sequence(Vector<Value> &r_operands);
-	String materialize(Value &r_value, Vector<String> &r_setup);
+	void materialize(Value &r_value, Vector<String> &r_setup);
 	String convert_value(const Value &p_value, const String &p_target) const;
 	String leaf_expression(const GDScriptParser::ExpressionNode *p_expression);
 

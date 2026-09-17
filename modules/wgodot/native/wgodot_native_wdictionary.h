@@ -5,6 +5,10 @@
 #include "wgodot_native_warray.h"
 
 #include "core/templates/hash_map.h"
+#include "core/variant/container_type_validate.h"
+#include "core/variant/variant_caster.h"
+
+#include <utility>
 
 namespace WGodotNative {
 
@@ -108,6 +112,43 @@ public:
 		if (writable() && storage != p_other.storage) {
 			storage->entries = p_other.storage->entries;
 		}
+	}
+	void assign_from_dictionary(const Variant &p_source) {
+		ERR_FAIL_COND_MSG(p_source.get_type() != Variant::DICTIONARY, vformat("WDictionary.assign requires a Dictionary, got %s.", Variant::get_type_name(p_source.get_type())));
+		if (!writable()) {
+			return;
+		}
+		const Dictionary source = p_source;
+		const ContainerTypeValidate targets[] = {
+			{ GetTypeInfo<K>::VARIANT_TYPE, GetTypeInfo<K>::get_class_info().class_name, Ref<Script>(), "WDictionary.Key" },
+			{ GetTypeInfo<V>::VARIANT_TYPE, GetTypeInfo<V>::get_class_info().class_name, Ref<Script>(), "WDictionary.Value" },
+		};
+		const ContainerType sources[] = { source.get_key_type(), source.get_value_type() };
+		bool validate_entries[2];
+		for (int i = 0; i < 2; i++) {
+			const auto &target = targets[i];
+			const ContainerTypeValidate source_type{ sources[i].builtin_type, sources[i].class_name, sources[i].script };
+			// Match Dictionary.assign's handling of typed sources, including empty
+			// dictionaries and object upcasts/downcasts. Untyped entries are checked below.
+			validate_entries[i] = target != source_type && !(source_type.type == Variant::OBJECT && target.can_reference(source_type));
+			const bool object_downcast = target.type == Variant::OBJECT && source_type.type == Variant::OBJECT && source_type.can_reference(target);
+			ERR_FAIL_COND_MSG(validate_entries[i] && source_type.type != Variant::NIL && !object_downcast &&
+					(target.type == Variant::OBJECT || source_type.type == Variant::OBJECT || !Variant::can_convert_strict(source_type.type, target.type)),
+					vformat("WDictionary.assign cannot convert %s from %s to %s.", i == 0 ? "keys" : "values", Variant::get_type_name(source_type.type), Variant::get_type_name(target.type)));
+		}
+
+		Map entries(source.size());
+		for (const auto &entry : source) {
+			Variant key = entry.key;
+			Variant value = entry.value;
+			if ((validate_entries[0] && !targets[0].validate(key, "assign")) || (validate_entries[1] && !targets[1].validate(value, "assign"))) {
+				return;
+			}
+			entries.insert(VariantCaster<K>::cast(key), VariantCaster<V>::cast(value));
+		}
+		// Keep the destination's identity and all aliases. Failed conversions leave
+		// its contents intact; the engine dictionary never becomes its backing storage.
+		storage->entries = std::move(entries);
 	}
 	void merge(const WDictionary &p_other, bool p_overwrite = false) {
 		if (!writable() || storage == p_other.storage) {
