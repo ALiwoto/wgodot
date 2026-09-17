@@ -20,9 +20,9 @@ String WGodotCppEmitter::native_interface_name(const StringName &p_name) const {
 	return "NativeInterface_" + String(p_name).sha256_text().substr(0, 16);
 }
 
-String WGodotCppEmitter::interface_value_definition(const String &p_name, const String &p_base, const String &p_interface) const {
+String WGodotCppEmitter::interface_value_definition(const String &p_name, const String &p_base, const String &p_interface, const String &p_members) const {
 	const String base = "WGodotNative::InterfaceValue<" + p_name + ", " + p_base + ", " + p_interface + ">";
-	return "class " + p_name + " : public " + base + " {\npublic:\n\tusing " + base + "::InterfaceValue;\n\tstatic const StringName &get_class_static() { static const StringName name = \"" + p_name + "\"; return name; }\n};\n";
+	return "class " + p_name + " : public " + base + " {\npublic:\n\tusing " + base + "::InterfaceValue;\n\tstatic const StringName &get_class_static() { static const StringName name = \"" + p_name + "\"; return name; }\n" + p_members + "};\n";
 }
 
 String WGodotCppEmitter::interface_value_traits(const String &p_name) const {
@@ -131,6 +131,9 @@ void WGodotCppEmitter::emit_interface(const WGodotCppProject::Class &p_class) {
 		}
 	}
 	contract += "};\n";
+	String constant_declarations;
+	String constant_definitions;
+	emit_container_constants(p_class, constant_declarations, constant_definitions);
 	String header = source_header(p_class.script_path, p_class.node->fqcn) + "#pragma once\n#include \"game_types.h\"\n#include \"modules/wgodot/native/wgodot_native_interface.h\"\n#include \"" + *native_header + "\"\n";
 	Vector<String> headers;
 	for (const String &include : class_native_headers) {
@@ -151,9 +154,27 @@ void WGodotCppEmitter::emit_interface(const WGodotCppProject::Class &p_class) {
 	for (const String &dependency : dependencies) {
 		header += "class " + dependency + ";\n";
 	}
-	header += contract + interface_value_definition(name, native_cpp_names[native], interface);
+	header += contract + interface_value_definition(name, native_cpp_names[native], interface, constant_declarations);
 	header += "}\n" + interface_value_traits(name);
 	files.insert(name + ".h", header);
+	if (!constant_definitions.is_empty()) {
+		String source = source_header(p_class.script_path, p_class.node->fqcn) + "#include \"" + name + ".h\"\n";
+		headers.clear();
+		for (const String &include : class_call_headers) {
+			headers.push_back(include);
+		}
+		headers.sort();
+		for (const String &include : headers) {
+			source += "#include \"" + include + "\"\n";
+		}
+		for (const String &dependency : dependencies) {
+			if (dependency != name) {
+				source += "#include \"" + dependency + ".h\"\n";
+			}
+		}
+		source += "\nnamespace WGodotGame {\n" + constant_definitions + "}\n";
+		files.insert(name + ".cpp", source);
+	}
 }
 
 String WGodotCppEmitter::register_interfaces() {

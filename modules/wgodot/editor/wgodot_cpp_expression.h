@@ -16,6 +16,7 @@ struct WGodotCppExpression {
 	bool invariant = false;
 	bool object_pointer = false;
 	bool nonnull = false;
+	bool read_only = false; // Container storage is known to be frozen.
 
 	WGodotCppExpression() = default;
 	WGodotCppExpression(const String &p_code, const String &p_type = String()) : code(p_code), cpp_type(p_type) {}

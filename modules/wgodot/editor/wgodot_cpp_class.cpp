@@ -54,7 +54,8 @@ String WGodotCppEmitter::function(const Parser::FunctionNode *p_function, String
 }
 
 void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
-	if (files.has(p_class.cpp_name + ".h")) {
+	// Omitted static classes still have a completed lifecycle analysis.
+	if (files.has(p_class.cpp_name + ".h") || class_lifecycles.has(p_class.node)) {
 		return;
 	}
 	// Lifecycle requirements are inherited from already emitted base classes.
@@ -70,16 +71,16 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 	class_dependencies.clear();
 	class_native_headers.clear();
 	class_call_headers.clear();
-	if (p_class.node->wgodot_is_interface) {
-		emit_interface(p_class);
-		return;
-	}
 	class_resource_types.clear();
 	class_lambdas.clear();
 	class_lambda_declarations.clear();
 	class_lambda_definitions.clear();
 	class_function_definitions.clear();
 	class_uses_tasks = false;
+	if (p_class.node->wgodot_is_interface) {
+		emit_interface(p_class);
+		return;
+	}
 	const Parser::ClassNode *node = p_class.node;
 	const bool is_static = node->wgodot_static_class;
 	const bool game_parent = node->base_type.kind == Parser::DataType::CLASS;
@@ -232,6 +233,7 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 		definitions += "bool " + name + "::_set(const StringName &p_name, const Variant &p_value) {\n" + property_writes + "\treturn false;\n}\n\n";
 		definitions += "void " + name + "::_get_property_list(List<PropertyInfo> *p_list) const {\n" + property_list + "}\n\n";
 	}
+	emit_container_constants(p_class, declaration, definitions);
 	emit_class_lifecycle(p_class, initialization, static_fields, static_initialization, declaration, definitions);
 	if (!is_static) {
 		emit_virtuals(p_class, declaration, definitions);
@@ -243,6 +245,11 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 			definitions += "\tprepare_game_class();\n";
 		}
 		definitions += function.body + "}\n\n";
+	}
+	// Static classes have no runtime type identity. Constants and enums which
+	// lower entirely at their use sites need neither a class nor a source file.
+	if (is_static && definitions.is_empty()) {
+		return;
 	}
 	declaration += fields + class_lambda_declarations + "};\n";
 	const String origin = source_header(p_class.script_path, node->fqcn);

@@ -16,6 +16,9 @@ Parser::DataType WGodotCppEmitter::variable_type(const Parser::VariableNode *p_v
 }
 
 Parser::DataType WGodotCppEmitter::expression_type(const Parser::ExpressionNode *p_expression) const {
+	if (const auto *constant = container_constant_source(p_expression)) {
+		return container_constant_type(constant);
+	}
 	if (p_expression->type == Parser::Node::CALL) {
 		const auto *call = static_cast<const Parser::CallNode *>(p_expression);
 		if (call->get_callee_type() == Parser::Node::IDENTIFIER && call->function_name == SNAME("Array") && call->arguments.size() == 1) {
@@ -173,6 +176,14 @@ WGodotCppEmitter::Value WGodotCppEmitter::array_literal(const Parser::ArrayNode 
 	}
 	result.cpp_type = type(p_target, p_array);
 	result.code = result.cpp_type + "{" + String(", ").join(elements) + "}";
+	if (initializing_container_constant) {
+		// Also freeze literal children, not just the outer declared constant.
+		const String name = "temporary_" + itos(temporary_index++);
+		result.setup.push_back("auto " + name + " = " + result.code + ";");
+		result.setup.push_back(name + ".make_read_only();");
+		result.code = name;
+		result.read_only = true;
+	}
 	return result;
 }
 

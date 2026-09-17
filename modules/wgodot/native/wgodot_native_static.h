@@ -29,10 +29,10 @@ public:
 	}
 };
 
-// A generated class has one holder. A recursive initializer sees its default
-// fields; another thread waits until initialization has finished. The fast path
-// is one acquire load. Engine objects are destroyed by module shutdown, not by
-// C++ global destructors after the engine has already stopped.
+// Fields are constructed once; an optional callback can then populate them.
+// Recursive calls from that callback see the constructed fields; other threads
+// wait until initialization finishes. The fast path is one acquire load.
+// Module shutdown destroys the fields before the engine has stopped.
 template <class Fields>
 class StaticStorage {
 	inline static std::atomic<Fields *> ready{ nullptr };
@@ -46,7 +46,7 @@ class StaticStorage {
 	}
 
 public:
-	static Fields &get(void (*p_initialize)(Fields &)) {
+	static Fields &get(void (*p_initialize)(Fields &) = nullptr) {
 		if (Fields *fields = ready.load(std::memory_order_acquire)) {
 			return *fields;
 		}
@@ -55,7 +55,9 @@ public:
 		if (!initializing) {
 			initializing = memnew(Fields);
 			registry.add(&clear);
-			p_initialize(*initializing);
+			if (p_initialize) {
+				p_initialize(*initializing);
+			}
 			ready.store(initializing, std::memory_order_release);
 		}
 		return *initializing;

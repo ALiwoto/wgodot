@@ -38,7 +38,8 @@ WGodotCppEmitter::Value WGodotCppEmitter::dictionary_literal(const Parser::Dicti
 	}
 	Value result = sequence(operands);
 	result.cpp_type = type(p_target, p_dictionary);
-	if (operands.is_empty() && !(p_dictionary->is_constant && p_dictionary->reduced && Dictionary(p_dictionary->reduced_value).is_read_only())) {
+	const bool read_only = initializing_container_constant || (p_dictionary->is_constant && p_dictionary->reduced && Dictionary(p_dictionary->reduced_value).is_read_only());
+	if (operands.is_empty() && !read_only) {
 		result.code = result.cpp_type + "()";
 		return result;
 	}
@@ -47,8 +48,9 @@ WGodotCppEmitter::Value WGodotCppEmitter::dictionary_literal(const Parser::Dicti
 	for (int i = 0; i < operands.size(); i += 2) {
 		result.setup.push_back(name + ".set(" + operands[i].code + ", " + operands[i + 1].code + ");");
 	}
-	if (p_dictionary->is_constant && p_dictionary->reduced && Dictionary(p_dictionary->reduced_value).is_read_only()) {
+	if (read_only) {
 		result.setup.push_back(name + ".make_read_only();");
+		result.read_only = true;
 	}
 	result.code = name;
 	return result;

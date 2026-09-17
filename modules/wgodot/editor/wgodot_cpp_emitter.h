@@ -30,6 +30,10 @@ class WGodotCppEmitter {
 	HashSet<String> class_dependencies;
 	HashSet<String> class_call_headers;
 	HashMap<String, String> class_resource_types;
+	HashMap<const GDScriptParser::ConstantNode *, const WGodotCppProject::Class *> container_constant_owners;
+	HashMap<const GDScriptParser::ClassNode *, Vector<const GDScriptParser::ConstantNode *>> class_container_constants;
+	HashSet<const GDScriptParser::ConstantNode *> used_container_constants;
+	bool initializing_container_constant = false;
 	HashSet<const GDScriptParser::LambdaNode *> class_lambdas;
 	String class_lambda_declarations;
 	String class_lambda_definitions;
@@ -108,6 +112,13 @@ class WGodotCppEmitter {
 	String engine_argument(const GDScriptParser::ExpressionNode *p_value, Variant::Type p_target);
 	bool is_array_duplicate(const GDScriptParser::ExpressionNode *p_value) const;
 	String literal(const Variant &p_value, const GDScriptParser::Node *p_origin);
+	String resource_load(const String &p_path);
+	void collect_container_constants();
+	const GDScriptParser::ConstantNode *container_constant_source(const GDScriptParser::ExpressionNode *p_expression) const;
+	GDScriptParser::DataType container_constant_type(const GDScriptParser::ConstantNode *p_constant) const;
+	bool can_inline_constant(const GDScriptParser::ExpressionNode *p_expression) const;
+	Value container_constant(const GDScriptParser::ConstantNode *p_constant);
+	void emit_container_constants(const WGodotCppProject::Class &p_class, String &r_declaration, String &r_definitions);
 	String converted(const GDScriptParser::ExpressionNode *p_expression, const GDScriptParser::DataType &p_target, const GDScriptParser::Node *p_target_origin = nullptr);
 	// For a C++ boolean context. Use bool(...) when storing the result instead.
 	String truth(const GDScriptParser::ExpressionNode *p_expression);
@@ -164,7 +175,7 @@ class WGodotCppEmitter {
 	String native_interface_name(const StringName &p_name) const;
 	void emit_native_interface(const WGodotNativeInterfaces::Descriptor &p_interface);
 	String native_interface_signal_type(const MethodInfo &p_signal);
-	String interface_value_definition(const String &p_name, const String &p_base, const String &p_interface) const;
+	String interface_value_definition(const String &p_name, const String &p_base, const String &p_interface, const String &p_members = String()) const;
 	String interface_value_traits(const String &p_name) const;
 	Value native_interface_call(const GDScriptParser::CallNode *p_call, const GDScriptParser::ExpressionNode *p_base, const WGodotNativeInterfaces::Descriptor &p_interface);
 	Value native_interface_member(const GDScriptParser::ExpressionNode *p_base, const StringName &p_name, const GDScriptParser::ExpressionNode *p_origin, const WGodotNativeInterfaces::Descriptor &p_interface);

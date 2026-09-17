@@ -179,7 +179,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::value_facts(const Parser::ExpressionNo
 			return result;
 		}
 	}
-	if (p_expression->is_constant && p_expression->reduced) {
+	if (can_inline_constant(p_expression)) {
 		// Resource constants can initialize another generated class's retained
 		// resources on first access. They are not reorderable literal reads.
 		result.effects = p_expression->reduced_value.get_type() == Variant::OBJECT;
@@ -256,8 +256,11 @@ WGodotCppEmitter::Value WGodotCppEmitter::lower(const Parser::ExpressionNode *p_
 	if (const String *replacement = expression_overrides.getptr(p_expression)) {
 		return value_facts(p_expression, *replacement);
 	}
+	if (const auto *constant = container_constant_source(p_expression)) {
+		return container_constant(constant);
+	}
 	Value result;
-	if (p_expression->is_constant && p_expression->reduced && p_expression->type != Parser::Node::ARRAY && p_expression->type != Parser::Node::DICTIONARY) {
+	if (can_inline_constant(p_expression)) {
 		return value_facts(p_expression, leaf_expression(p_expression));
 	}
 	switch (p_expression->type) {
@@ -411,6 +414,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::lower_converted(const Parser::Expressi
 	result.object_pointer = false;
 	result.storage_type = String();
 	result.effects = true;
+	result.read_only = false;
 	return result;
 }
 
@@ -443,7 +447,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::lower_dictionary(const Parser::Diction
 	}
 	Value result = sequence(operands);
 	result.cpp_type = type(p_dictionary->type_constraint, p_dictionary);
-	if (operands.is_empty()) {
+	if (operands.is_empty() && !initializing_container_constant) {
 		result.code = result.cpp_type + "()";
 		return result;
 	}
@@ -451,6 +455,10 @@ WGodotCppEmitter::Value WGodotCppEmitter::lower_dictionary(const Parser::Diction
 	result.setup.push_back(result.cpp_type + " " + name + ";");
 	for (int i = 0; i < operands.size(); i += 2) {
 		result.setup.push_back(name + "[" + operands[i].code + "] = " + operands[i + 1].code + ";");
+	}
+	if (initializing_container_constant) {
+		result.setup.push_back(name + ".make_read_only();");
+		result.read_only = true;
 	}
 	result.code = name;
 	return result;
