@@ -65,7 +65,7 @@ void SmoothScrollElement::clear_virtual_content() {
 		return;
 	}
 	VirtualGrid *grid = virtual_grid;
-	if (is_inside_tree()) {
+	if (is_inside_tree() && get_viewport()->is_connected(SNAME("gui_focus_changed"), callable_mp(this, &SmoothScrollElement::virtual_focus_changed))) {
 		get_viewport()->disconnect(SNAME("gui_focus_changed"), callable_mp(this, &SmoothScrollElement::virtual_focus_changed));
 	}
 	virtual_grid = nullptr;
@@ -505,7 +505,9 @@ void SmoothScrollElement::virtual_notification(int p_what) {
 			queue_virtual_update();
 			break;
 		case NOTIFICATION_EXIT_TREE:
-			get_viewport()->disconnect(SNAME("gui_focus_changed"), callable_mp(this, &SmoothScrollElement::virtual_focus_changed));
+			if (get_viewport()->is_connected(SNAME("gui_focus_changed"), callable_mp(this, &SmoothScrollElement::virtual_focus_changed))) {
+				get_viewport()->disconnect(SNAME("gui_focus_changed"), callable_mp(this, &SmoothScrollElement::virtual_focus_changed));
+			}
 			virtual_focus_inside = false;
 			virtual_grid->captured_index = -1;
 			break;
