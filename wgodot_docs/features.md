@@ -22,7 +22,7 @@ This file tracks user-facing wgodot features. It intentionally avoids internal e
 
 9. Project GDScript CLI check: `godot --wg check` first asks the matching editor to scan external filesystem changes and finish imports, including required `.uid` creation and script-class metadata updates. When the editor has no unsaved buffers, it reloads externally changed open scripts. It always invalidates cached project parsers so changed class APIs and their transitive dependents are analyzed from current disk sources. It then scans all project `.gd` files under `res://`, respecting `.gdignore` directories, and prints parse errors, analyzer errors, and active GDScript warnings. The editor must be open, but the game need not be running. WGodot CLI searches upward from the current directory for `project.godot`; normal Godot options such as `--path` can be placed before `--wg`.
 
-10. Checked tween property paths: strict type checking validates constant `Tween.tween_property()` paths, property write access, and final-value types. Export updates renamed property references in those paths without changing tween timing.
+10. Checked tween property paths: strict type checking validates constant `Tween.tween_property()` paths, property write access, and final-value types. Script export updates renamed property references; native C++ export replaces paths with typed accessors while preserving Godot's tween timing and interpolation. Native property reflection is emitted only for `@export` fields.
 
 ## GDScript Interfaces
 

@@ -171,7 +171,9 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 				declaration += "\t" + static_modifier + field_type + " " + getter + "()" + getter_const + ";\n\t" + static_modifier + "void " + setter + "(" + field_type + " p_value);\n";
 				definitions += field_type + " " + name + "::" + getter + "()" + getter_const + " { return " + (property_getter.is_empty() ? storage : "m_" + symbol(property_getter) + "()") + "; }\n";
 				definitions += "void " + name + "::" + setter + "(" + field_type + " p_value) { " + (property_setter.is_empty() ? storage + " = p_value" : "m_" + symbol(property_setter) + "(p_value)") + "; }\n";
-				if (!is_static && !native_only(datatype)) {
+				// Only explicitly exported fields participate in scene/resource
+				// serialization. Native code and native tweens use typed accessors.
+				if (!is_static && variable->exported && !native_only(datatype)) {
 					const String property = quoted(variable->identifier->name);
 					property_reads += "\tif (p_name == " + property + ") { r_value = const_cast<" + name + " *>(this)->" + getter + "(); return true; }\n";
 					property_writes += "\tif (p_name == " + property + ") { " + setter + "(WGodotNative::convert<" + field_type + ">(p_value)); return true; }\n";

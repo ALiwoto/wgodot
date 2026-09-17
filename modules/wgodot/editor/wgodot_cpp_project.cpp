@@ -132,6 +132,15 @@ GDScriptParser *WGodotCppProject::find_parser(const String &p_script_path) const
 	return nullptr;
 }
 
+GDScriptAnalyzer *WGodotCppProject::find_analyzer(const String &p_script_path) const {
+	for (const auto &parser : parsers) {
+		if (parser->get_path() == p_script_path) {
+			return parser->get_analyzer();
+		}
+	}
+	return nullptr;
+}
+
 Dictionary WGodotCppProject::describe() const {
 	Dictionary result;
 	result["format"] = 1;

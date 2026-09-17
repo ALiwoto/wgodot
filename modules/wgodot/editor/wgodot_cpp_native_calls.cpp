@@ -73,6 +73,9 @@ String WGodotCppEmitter::native_call(const Parser::CallNode *p_call, const Parse
 		unsupported(p_call, "unbound native method " + String(base_name) + "." + String(p_call->function_name));
 		return String();
 	}
+	if (method->get_instance_class() == SNAME("Tween") && method->get_name() == SNAME("tween_property")) {
+		return tween_property_call(p_call, p_base);
+	}
 	if (p_call == iterated_expression && (!p_base || p_base->type == Parser::Node::SELF) && p_call->arguments.is_empty() && !method->is_static()) {
 		return native_invoke(method, "this", Vector<String>(), type(p_call->type_constraint, p_call), p_call);
 	}
@@ -167,6 +170,10 @@ String WGodotCppEmitter::native_property(const Parser::ExpressionNode *p_base, c
 		return String();
 	}
 	const StringName base_name = native_base(base_type);
+	if (!p_value && p_name == SNAME("tween_property") && ClassDB::is_parent_class(base_name, SNAME("Tween"))) {
+		unsupported(p_origin, "storing Tween.tween_property as a Callable; call it directly with a constant property path so native export can generate typed accessors");
+		return String();
+	}
 	if (!p_value && (ClassDB::has_signal(base_name, p_name) || ClassDB::has_method(base_name, p_name))) {
 		// A stored Callable bypasses native_invoke when it is invoked later.
 		// Do not let it circumvent the generic-container boundary checks.

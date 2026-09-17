@@ -152,6 +152,9 @@ public:
 	RequiredResult<SubtweenTweener> tween_subtween(RequiredParam<Tween> p_subtween);
 	RequiredResult<AwaitTweener> tween_await(const Signal &p_signal);
 	void append(Ref<Tweener> p_tweener);
+	// wgodot-changes::begin
+	bool wgodot_can_append() const;
+	// wgodot-changes::end
 
 	bool custom_step(double p_delta);
 	void stop();
@@ -224,6 +227,11 @@ public:
 
 protected:
 	static void _bind_methods();
+	// wgodot-changes::begin
+	PropertyTweener(const Object *p_target, const Variant &p_initial, const Variant &p_to, double p_duration);
+	virtual Variant wgodot_read_property(Object *p_target) const;
+	virtual void wgodot_write_property(Object *p_target, const Variant &p_value) const;
+	// wgodot-changes::end
 
 private:
 	ObjectID target;

@@ -36,9 +36,12 @@
 #include "scene/main/scene_tree.h"
 #include "scene/resources/animation.h"
 
-#define CHECK_VALID() \
-	ERR_FAIL_COND_V_MSG(!valid, nullptr, "Tween invalid. Either finished or created outside scene tree."); \
-	ERR_FAIL_COND_V_MSG(started, nullptr, "Can't append to a Tween that has started. Use stop() first.");
+// wgodot-changes::begin
+#define CHECK_VALID()                  \
+	if (!wgodot_can_append()) {        \
+		return nullptr;               \
+	}
+// wgodot-changes::end
 
 Tween::interpolater Tween::interpolaters[Tween::TRANS_MAX][Tween::EASE_MAX] = {
 	{ &Linear::in, &Linear::in, &Linear::in, &Linear::in }, // Linear is the same for each easing.
@@ -624,7 +627,9 @@ void PropertyTweener::start() {
 
 	if (do_continue) {
 		if (Math::is_zero_approx(delay)) {
-			initial_val = target_instance->get_indexed(property);
+			// wgodot-changes::begin
+			initial_val = wgodot_read_property(target_instance);
+			// wgodot-changes::end
 		} else {
 			do_continue_delayed = true;
 		}
@@ -654,7 +659,9 @@ bool PropertyTweener::step(double &r_delta) {
 		r_delta = 0;
 		return true;
 	} else if (do_continue_delayed && !Math::is_zero_approx(delay)) {
-		initial_val = target_instance->get_indexed(property);
+		// wgodot-changes::begin
+		initial_val = wgodot_read_property(target_instance);
+		// wgodot-changes::end
 		delta_val = Animation::subtract_variant(final_val, initial_val);
 		do_continue_delayed = false;
 	}
@@ -666,18 +673,26 @@ bool PropertyTweener::step(double &r_delta) {
 		if (custom_method.is_valid()) {
 			const Variant t = tween->interpolate_variant(0.0, 1.0, time, duration, trans_type, ease_type);
 			double result = _get_custom_interpolated_value(t);
-			target_instance->set_indexed(property, Animation::interpolate_variant(initial_val, final_val, result));
+			// wgodot-changes::begin
+			wgodot_write_property(target_instance, Animation::interpolate_variant(initial_val, final_val, result));
+			// wgodot-changes::end
 		} else {
-			target_instance->set_indexed(property, tween->interpolate_variant(initial_val, delta_val, time, duration, trans_type, ease_type));
+			// wgodot-changes::begin
+			wgodot_write_property(target_instance, tween->interpolate_variant(initial_val, delta_val, time, duration, trans_type, ease_type));
+			// wgodot-changes::end
 		}
 		r_delta = 0;
 		return true;
 	} else {
 		if (custom_method.is_valid()) {
 			double final_t = _get_custom_interpolated_value(1.0);
-			target_instance->set_indexed(property, Animation::interpolate_variant(initial_val, final_val, final_t));
+			// wgodot-changes::begin
+			wgodot_write_property(target_instance, Animation::interpolate_variant(initial_val, final_val, final_t));
+			// wgodot-changes::end
 		} else {
-			target_instance->set_indexed(property, final_val);
+			// wgodot-changes::begin
+			wgodot_write_property(target_instance, final_val);
+			// wgodot-changes::end
 		}
 		r_delta = elapsed_time - delay - duration;
 		_finish();
