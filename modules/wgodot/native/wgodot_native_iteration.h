@@ -26,10 +26,11 @@ class ArrayRange {
 	// Object itself can hold RefCounted instances, even though it is not derived
 	// from RefCounted. Both require a retained current element.
 	static constexpr bool can_borrow = ViewObjects && std::is_base_of_v<Object, T> && !std::is_base_of_v<RefCounted, T> && !std::is_base_of_v<T, RefCounted>;
-	bool borrow_slots;
+	bool borrow_slots = false;
 	Array collection;
 
 public:
+	ArrayRange() = default;
 	explicit ArrayRange(const Array &p_array, bool p_temporary = false) :
 			borrow_slots(p_temporary && can_borrow && !array_is_shared(p_array)), collection(p_array) {}
 	typename ArrayElement<T>::Owned read(int64_t p_index) const { return ArrayElement<T>::read(collection[p_index]); }

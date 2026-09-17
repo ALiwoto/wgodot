@@ -9,7 +9,12 @@
 struct WGodotCppExpression {
 	String code;
 	String cpp_type;
+	String storage_type;
 	Vector<String> setup;
+	// A checked operation keeps its success path separate until its use site
+	// decides between a statement, a value, or a loop over the result.
+	String guard;
+	String guard_setup;
 	bool effects = true;
 	bool borrowed = false;
 	bool invariant = false;
@@ -21,4 +26,6 @@ struct WGodotCppExpression {
 
 	String expression() const;
 	String statement(int p_indent, bool p_return = false) const;
+	String block(const String &p_body, int p_indent) const;
+	String default_value() const;
 };

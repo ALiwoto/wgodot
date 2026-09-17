@@ -15,20 +15,24 @@ String indented(const String &p_code, int p_indent) {
 } //namespace
 
 String WGodotCppExpression::expression() const {
-	if (setup.is_empty()) {
+	if (setup.is_empty() && guard.is_empty()) {
 		return code;
 	}
 	String result = "([&]()" + (cpp_type.is_empty() ? "" : " -> " + cpp_type) + " {\n";
 	for (const String &step : setup) {
 		result += indented(step, 1);
 	}
-	if (!code.is_empty()) {
-		result += indented("return " + code + ";", 1);
-	}
+	WGodotCppExpression value = *this;
+	value.setup.clear();
+	result += value.statement(1, true);
 	return result + "}())";
 }
 
-String WGodotCppExpression::statement(int p_indent, bool p_return) const {
+String WGodotCppExpression::default_value() const {
+	return object_pointer ? "nullptr" : cpp_type + "()";
+}
+
+String WGodotCppExpression::block(const String &p_body, int p_indent) const {
 	String result;
 	const bool scope = !setup.is_empty();
 	if (scope) {
@@ -37,11 +41,26 @@ String WGodotCppExpression::statement(int p_indent, bool p_return) const {
 	for (const String &step : setup) {
 		result += indented(step, p_indent);
 	}
-	if (!code.is_empty()) {
-		result += indented(String(p_return ? "return " : "") + code + ";", p_indent);
+	if (!guard.is_empty()) {
+		result += indented("if (" + (guard_setup.is_empty() ? "" : guard_setup + "; ") + guard + ") {", p_indent);
+		result += indented(p_body, p_indent + 1);
+		result += indented("}", p_indent);
+	} else if (!p_body.is_empty()) {
+		result += indented(p_body, p_indent);
 	}
 	if (scope) {
 		result += indented("}", --p_indent);
+	}
+	return result;
+}
+
+String WGodotCppExpression::statement(int p_indent, bool p_return) const {
+	const bool return_value = p_return && cpp_type != "void";
+	String result = block(code.is_empty() ? String() : String(return_value ? "return " : "") + code + ";", p_indent);
+	if (p_return && !return_value) {
+		result += indented("return;", p_indent);
+	} else if (p_return && !guard.is_empty()) {
+		result += indented("return " + default_value() + ";", p_indent);
 	}
 	return result;
 }
@@ -50,11 +69,77 @@ String WGodotCppEmitter::convert_value(const Value &p_value, const String &p_tar
 	return p_value.cpp_type == p_target ? p_value.code : "WGodotNative::convert<" + p_target + ">(" + p_value.code + ")";
 }
 
+WGodotCppEmitter::Value WGodotCppEmitter::lower_literal(const Variant &p_value, const Parser::Node *p_origin) {
+	Value result(literal(p_value, p_origin), native_argument_type(PropertyInfo(p_value.get_type(), String()), p_origin));
+	result.effects = p_value.get_type() == Variant::OBJECT;
+	result.invariant = !result.effects;
+	if (p_value.get_type() == Variant::OBJECT) {
+		Object *object = p_value;
+		if (object) {
+			Parser::DataType datatype;
+			datatype.kind = Parser::DataType::NATIVE;
+			datatype.native_type = object->get_class_name();
+			result.cpp_type = type(datatype, p_origin);
+		} else {
+			result.cpp_type = "Object *";
+			result.object_pointer = true;
+			result.invariant = true;
+			result.effects = false;
+		}
+	} else if (p_value.get_type() == Variant::CALLABLE || p_value.get_type() == Variant::SIGNAL) {
+		result.cpp_type = signature_type(p_origin, p_value.get_type() == Variant::SIGNAL);
+	}
+	return result;
+}
+
+bool WGodotCppEmitter::receiver_needs_cast(const Value &p_value, const Parser::DataType &p_type, const Parser::Node *p_origin) {
+	// Native engine methods operate on the interface handle's Godot base,
+	// while interface methods explicitly use its adjusted interface pointer.
+	if (is_interface_type(p_type)) {
+		return false;
+	}
+	const String target = class_name(p_type, p_origin);
+	return p_value.cpp_type != target + " *" && p_value.cpp_type != type(p_type, p_origin) && p_value.cpp_type != "WGodotNative::ObjectView<" + target + ">";
+}
+
+String WGodotCppEmitter::receiver_pointer(const Value &p_value, const Parser::DataType &p_type, const Parser::Node *p_origin) {
+	const String pointer = p_value.object_pointer ? p_value.code : p_value.code + ".ptr()";
+	if (!receiver_needs_cast(p_value, p_type, p_origin)) {
+		return pointer;
+	}
+	return "static_cast<" + class_name(p_type, p_origin) + " *>(" + pointer + ")";
+}
+
+String WGodotCppEmitter::checked_receiver(Value &r_call, const Value &p_receiver, const String &p_pointer) {
+	if (p_receiver.nonnull) {
+		return p_pointer;
+	}
+	const String instance = "instance_" + itos(temporary_index++);
+	r_call.guard_setup = "auto *" + instance + " = " + p_pointer;
+	r_call.guard = "WGodotNative::valid_instance(" + instance + ")";
+	return instance;
+}
+
 String WGodotCppEmitter::materialize(Value &r_value, Vector<String> &r_setup) {
 	r_setup.append_array(r_value.setup);
 	r_value.setup.clear();
+	if (!r_value.storage_type.is_empty() && r_value.storage_type != r_value.cpp_type) {
+		r_value.code = r_value.storage_type + "(" + r_value.code + ")";
+		r_value.cpp_type = r_value.storage_type;
+		r_value.object_pointer = false;
+		r_value.borrowed = false;
+	}
 	const String name = "temporary_" + itos(temporary_index++);
-	r_setup.push_back(String(r_value.borrowed ? "auto &" : "auto ") + name + " = " + r_value.code + ";");
+	if (!r_value.guard.is_empty()) {
+		if (!r_value.guard_setup.is_empty()) {
+			r_setup.push_back(r_value.guard_setup + ";");
+		}
+		r_setup.push_back("auto " + name + " = " + r_value.guard + " ? " + r_value.code + " : " + r_value.default_value() + ";");
+		r_value.guard = String();
+		r_value.guard_setup = String();
+	} else {
+		r_setup.push_back(String(r_value.borrowed ? "auto &" : "auto ") + name + " = " + r_value.code + ";");
+	}
 	r_value.code = name;
 	r_value.effects = false;
 	r_value.borrowed = true;
@@ -69,13 +154,13 @@ WGodotCppEmitter::Value WGodotCppEmitter::sequence(Vector<Value> &r_operands) {
 	for (const Value &value : r_operands) {
 		dependent += !value.invariant;
 		result.effects |= value.effects;
-		setup |= !value.setup.is_empty();
+		setup |= !value.setup.is_empty() || !value.guard.is_empty();
 	}
 	// C++ argument/operand order is not generally GDScript's order. Locals and
 	// direct fields remain borrowed slots; computed results are retained values.
 	const bool ordered = setup || (result.effects && dependent > 1);
 	for (Value &value : r_operands) {
-		if (ordered && !value.invariant && (!value.borrowed || value.effects || !value.setup.is_empty())) {
+		if (ordered && !value.invariant && (!value.borrowed || value.effects || !value.setup.is_empty() || !value.guard.is_empty())) {
 			materialize(value, result.setup);
 		} else {
 			result.setup.append_array(value.setup);
@@ -203,11 +288,22 @@ WGodotCppEmitter::Value WGodotCppEmitter::lower(const Parser::ExpressionNode *p_
 			return array_literal(static_cast<const Parser::ArrayNode *>(p_expression), expression_type(p_expression));
 		case Parser::Node::DICTIONARY:
 			return lower_dictionary(static_cast<const Parser::DictionaryNode *>(p_expression));
-		case Parser::Node::SUBSCRIPT:
-			if (!static_cast<const Parser::SubscriptNode *>(p_expression)->is_attribute) {
-				return lower_index(static_cast<const Parser::SubscriptNode *>(p_expression));
+		case Parser::Node::SUBSCRIPT: {
+			const auto *subscript = static_cast<const Parser::SubscriptNode *>(p_expression);
+			if (!subscript->is_attribute) {
+				return lower_index(subscript);
 			}
-			[[fallthrough]];
+			result = member(subscript->base, subscript->attribute->name, subscript);
+			break;
+		}
+		case Parser::Node::IDENTIFIER: {
+			const auto *identifier = static_cast<const Parser::IdentifierNode *>(p_expression);
+			if (identifier->source == Parser::IdentifierNode::MEMBER_VARIABLE || identifier->source == Parser::IdentifierNode::INHERITED_VARIABLE || identifier->source == Parser::IdentifierNode::STATIC_VARIABLE || identifier->source == Parser::IdentifierNode::MEMBER_SIGNAL || identifier->source == Parser::IdentifierNode::MEMBER_FUNCTION) {
+				result = member(nullptr, identifier->name, identifier);
+				break;
+			}
+			return value_facts(p_expression, leaf_expression(p_expression));
+		}
 		default:
 			return value_facts(p_expression, leaf_expression(p_expression));
 	}
@@ -320,6 +416,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::lower_converted(const Parser::Expressi
 	result.cpp_type = target;
 	result.borrowed = false;
 	result.object_pointer = false;
+	result.storage_type = String();
 	result.effects = true;
 	return result;
 }

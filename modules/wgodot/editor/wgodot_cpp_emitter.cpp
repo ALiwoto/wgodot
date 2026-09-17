@@ -203,7 +203,7 @@ const WGodotCppProject::Class *WGodotCppEmitter::member_owner(const Parser::Clas
 	return p_class->base_type.kind == Parser::DataType::CLASS ? member_owner(p_class->base_type.class_type, p_name) : nullptr;
 }
 
-String WGodotCppEmitter::member(const Parser::ExpressionNode *p_base, const StringName &p_name, const Parser::ExpressionNode *p_origin) {
+WGodotCppEmitter::Value WGodotCppEmitter::member(const Parser::ExpressionNode *p_base, const StringName &p_name, const Parser::ExpressionNode *p_origin) {
 	const auto datatype = p_base ? expression_type(p_base) : current_class->node->self_type;
 	if (const auto *contract = WGodotGDScriptInterfaceHelpers::native_interface_for_member(datatype, p_name)) {
 		if (contract->methods.has(p_name) || contract->properties.has(p_name) || contract->signals.has(p_name)) {
@@ -234,10 +234,23 @@ String WGodotCppEmitter::member(const Parser::ExpressionNode *p_base, const Stri
 	class_dependencies.insert(owner->cpp_name);
 	const auto entry = owner->node->get_member(p_name);
 	if (entry.type == Parser::ClassNode::Member::SIGNAL) {
-		if (owner->node->wgodot_is_interface) {
-			return "(" + expression(p_base) + ")->signal_" + symbol(p_name) + "()";
+		Vector<Value> operands{ lower_receiver(p_base) };
+		Value result = sequence(operands);
+		Value receiver = operands[0];
+		if (!receiver.borrowed && !receiver.object_pointer) {
+			materialize(receiver, result.setup);
 		}
-		return (p_base ? "(" + expression(p_base) + ")->" : "this->") + "s_" + symbol(p_name) + ".signal()";
+		const bool interface = owner->node->wgodot_is_interface;
+		const String pointer = interface ? receiver.code + ".operator->()" : receiver_pointer(receiver, datatype, p_origin);
+		const String instance = checked_receiver(result, receiver, pointer);
+		result.cpp_type = signature_type(p_origin, true);
+		result.effects |= !receiver.nonnull;
+		if (owner->node->wgodot_is_interface) {
+			result.code = instance + "->signal_" + symbol(p_name) + "()";
+		} else {
+			result.code = instance + "->s_" + symbol(p_name) + ".signal()";
+		}
+		return result;
 	}
 	if (entry.type == Parser::ClassNode::Member::FUNCTION) {
 		class_call_headers.insert("modules/wgodot/native/wgodot_native_callback.h");
@@ -268,13 +281,19 @@ String WGodotCppEmitter::member(const Parser::ExpressionNode *p_base, const Stri
 		return value;
 	}
 	if (entry.type == Parser::ClassNode::Member::CONSTANT) {
-		return expression(entry.constant->initializer);
+		return lower(entry.constant->initializer);
 	}
 	if (entry.type == Parser::ClassNode::Member::VARIABLE) {
 		if (entry.variable->is_static && p_base && !datatype.is_meta_type) {
-			return "([&]() { (void)(" + expression(p_base) + "); return " + property_access(datatype, p_name, p_origin, "") + "; }())";
+			Value receiver = lower_receiver(p_base);
+			Vector<String> setup;
+			materialize(receiver, setup);
+			Value result = property_access(datatype, p_name, p_origin, receiver);
+			setup.append_array(result.setup);
+			result.setup = setup;
+			return result;
 		}
-		return property_access(datatype, p_name, p_origin, p_base ? expression(p_base) : "this");
+		return property_access(datatype, p_name, p_origin, lower_receiver(p_base));
 	}
 	unsupported(p_origin, "member " + String(p_name));
 	return String();
@@ -308,7 +327,7 @@ String WGodotCppEmitter::literal(const Variant &p_value, const Parser::Node *p_o
 			return number;
 		}
 		case Variant::STRING:
-			return "String::utf8(" + quoted(p_value) + ")";
+			return String(p_value).is_empty() ? "String()" : "String::utf8(" + quoted(p_value) + ")";
 		case Variant::STRING_NAME:
 			return "StringName(String::utf8(" + quoted(p_value) + "))";
 		case Variant::NODE_PATH:
@@ -492,7 +511,7 @@ String WGodotCppEmitter::leaf_expression(const Parser::ExpressionNode *p_express
 				case Parser::IdentifierNode::STATIC_VARIABLE:
 				case Parser::IdentifierNode::MEMBER_SIGNAL:
 				case Parser::IdentifierNode::MEMBER_FUNCTION:
-					return member(nullptr, identifier->name, identifier);
+					return member(nullptr, identifier->name, identifier).expression();
 				case Parser::IdentifierNode::LOCAL_CONSTANT:
 				case Parser::IdentifierNode::MEMBER_CONSTANT:
 					return expression(identifier->constant_source->initializer);
@@ -520,7 +539,7 @@ String WGodotCppEmitter::leaf_expression(const Parser::ExpressionNode *p_express
 			return type_test(static_cast<const Parser::TypeTestNode *>(p_expression));
 		case Parser::Node::SUBSCRIPT: {
 			const auto *subscript = static_cast<const Parser::SubscriptNode *>(p_expression);
-			return member(subscript->base, subscript->attribute->name, subscript);
+			return member(subscript->base, subscript->attribute->name, subscript).expression();
 		}
 
 		default:

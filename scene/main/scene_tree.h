@@ -198,7 +198,17 @@ private:
 
 	_FORCE_INLINE_ void _update_group_order(SceneTreeGroup &g);
 
+	// wgodot-changes::begin
+#ifdef WGODOT_NATIVE_GAME
+public:
+#endif
+	// wgodot-changes::end
 	TypedArray<Node> _get_nodes_in_group(const StringName &p_group);
+	// wgodot-changes::begin
+#ifdef WGODOT_NATIVE_GAME
+private:
+#endif
+	// wgodot-changes::end
 
 	Node *current_scene = nullptr;
 	ObjectID prev_scene_id;

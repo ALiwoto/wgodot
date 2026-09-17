@@ -54,9 +54,12 @@ WGodotCppEmitter::Value WGodotCppEmitter::call(const Parser::CallNode *p_call) {
 		for (int i = 0; i < operands.size() - 1; i++) {
 			arguments.push_back(operands[i].code);
 		}
-		const String invoke = "instance->" + String(p_call->function_name) + "(" + String(", ").join(arguments) + ")";
-		// The error return belongs to the call, not its enclosing game function.
-		result.code = "([&]() -> " + result_type + " { auto &&receiver = " + operands[operands.size() - 1].code + "; auto *instance = receiver.operator->(); ERR_FAIL_NULL_V(instance, (" + result_type + "())); return " + (result_type == "void" ? invoke : "WGodotNative::convert<" + result_type + ">(" + invoke + ")") + "; }())";
+		Value value = operands[operands.size() - 1];
+		if (!value.borrowed && !value.object_pointer) {
+			materialize(value, result.setup);
+		}
+		const String instance = checked_receiver(result, value, value.code + ".operator->()");
+		result.code = instance + "->" + String(p_call->function_name) + "(" + String(", ").join(arguments) + ")";
 		result.cpp_type = result_type;
 		result.effects = true;
 		return result;
@@ -108,6 +111,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::call(const Parser::CallNode *p_call) {
 		receiver = "this->";
 	}
 	result.code = receiver + (construct ? "create" : "m_" + symbol(name)) + "(" + String(", ").join(arguments) + ")";
+	result.cpp_type = construct ? type(p_call->type_constraint, p_call) : function_result(method);
 	result.effects = true;
 	return result;
 }

@@ -167,9 +167,9 @@ void WGodotCppEmitter::emit_interface_inheritance(const WGodotCppProject::Class 
 						unsupported(p_class.node, "native interface property " + String(name));
 						continue;
 					}
-					read = native_invoke(get, "this", {}, value_type, entry.variable, true);
+					read = native_invoke(get, lower_receiver(nullptr), {}, value_type, entry.variable).expression();
 					if (set) {
-						write = native_invoke(set, "this", { Value("p_value", value_type) }, "void", entry.variable, true);
+						write = native_invoke(set, lower_receiver(nullptr), { Value("p_value", value_type) }, "void", entry.variable).expression();
 					}
 				}
 				r_declaration += "\t" + value_type + " get_" + symbol(name) + "() override;\n";

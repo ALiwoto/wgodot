@@ -51,6 +51,18 @@ void WGodotCppEmitter::emit_virtuals(const WGodotCppProject::Class &p_class, Str
 		}
 		emitted.insert(method.name);
 		const auto *function = p_class.node->get_member(method.name).function;
+		if (method.name == SNAME("_to_string")) {
+			// Object::to_string() already dispatches this real C++ virtual.
+			// Keep the generated method for direct script calls and super calls;
+			// this bridge also preserves dispatch through generated subclasses.
+			if (function->is_coroutine) {
+				unsupported(function, "asynchronous Object callback _to_string; Object::to_string() requires an immediate String result");
+				continue;
+			}
+			r_declaration += "protected:\n\tString _to_string() override;\npublic:\n";
+			r_definitions += "String " + p_class.cpp_name + "::_to_string() {\n\treturn m_" + symbol(method.name) + "();\n}\n\n";
+			continue;
+		}
 		if (has_native_value_signature(function)) {
 			unsupported(function, "native callback " + String(method.name) + " with a native container/callback/signal signature through the Variant callback ABI");
 			continue;

@@ -41,85 +41,37 @@ bool WGodotCppEmitter::validate_builtin_arguments(Variant::Type p_type, const St
 	return true;
 }
 
-bool WGodotCppEmitter::native_override(const MethodBind *p_method, const String &p_receiver, const Vector<String> &p_arguments, const String &p_result, const Parser::Node *p_origin, String &r_code) {
+void WGodotCppEmitter::configure_native_call(const MethodBind *p_method, const Parser::Node *p_origin, Vector<Value> &r_arguments, NativeCall &r_call) {
 	const StringName owner = p_method->get_instance_class();
 	const StringName method = p_method->get_name();
+	// These APIs return independent snapshots. Stored results need WArray
+	// ownership; iteration can retain the engine array without copying it.
+	r_call.snapshot_result = (owner == SNAME("Node") && method == SNAME("get_children")) ||
+			(owner == SNAME("SmoothScrollElement") && method == SNAME("get_virtual_items")) ||
+			(owner == SNAME("SceneTree") && method == SNAME("get_nodes_in_group"));
 	if (owner == SNAME("ResourceLoader") && method == SNAME("load_threaded_get_status")) {
-		// The script wrapper writes progress through a shared Array. Only the
-		// status-only form has a native translation until out arguments are defined.
-		if (p_arguments.size() != 1) {
+		if (r_arguments.size() != 1) {
 			unsupported(p_origin, "ResourceLoader.load_threaded_get_status with a progress Array. Native export currently supports only load_threaded_get_status(path)");
-			return true;
+			return;
 		}
 		class_call_headers.insert("core/io/resource_loader.h");
-		class_call_headers.insert("modules/wgodot/native/wgodot_native_calls.h");
-		r_code = "static_cast<" + p_result + ">(::ResourceLoader::load_threaded_get_status(WGodotNative::convert<String>(" + p_arguments[0] + "), nullptr))";
-		return true;
-	}
-	if (owner == SNAME("Node") && (method == SNAME("get_children") || method == SNAME("get_child_count") || method == SNAME("get_child"))) {
-		Vector<String> arguments(p_arguments);
-		// In particular, an omitted include_internal is false in GDScript, even
-		// though these C++ declarations default to true.
-		for (int i = arguments.size(); i < p_method->get_argument_count(); i++) {
-			if (!p_method->has_default_argument(i)) {
-				unsupported(p_origin, "missing native argument " + String(method));
-				return true;
-			}
-			arguments.push_back(literal(p_method->get_default_argument(i), p_origin));
-		}
-		class_call_headers.insert("scene/main/node.h");
-		class_call_headers.insert("modules/wgodot/native/wgodot_native_calls.h");
-		const bool children = method == SNAME("get_children");
-		if (children) {
-			const String receiver = p_receiver == "this" ? "this" : "(" + p_receiver + ")";
-			r_code = receiver + "->get_children(" + String(", ").join(arguments) + ")";
-			if (p_origin == iterated_expression) {
-				r_code = array_iteration_result(r_code, p_origin);
-			} else {
-				r_code = "WGodotNative::copy_array<" + p_result + ">(" + r_code + ")";
-			}
-		} else {
-			r_code = "WGodotNative::invoke_member<" + p_result + ">(&Node::" + String(method) + ", " + p_receiver + ", " + String(", ").join(arguments) + ")";
-		}
-		return true;
-	}
-	if (owner == SNAME("SmoothScrollElement") && method == SNAME("get_virtual_items") && p_arguments.is_empty()) {
-		class_call_headers.insert("modules/wgodot_ui/smooth_scroll_element.h");
-		class_call_headers.insert("modules/wgodot/native/wgodot_native_calls.h");
-		r_code = "(" + p_receiver + ")->get_virtual_items()";
-		if (p_origin == iterated_expression) {
-			r_code = array_iteration_result(r_code, p_origin);
-		} else {
-			r_code = "WGodotNative::copy_array<" + p_result + ">(" + r_code + ")";
-		}
-		return true;
-	}
-	if (owner == SNAME("SceneTree") && method == SNAME("get_nodes_in_group") && p_arguments.size() == 1) {
-		class_call_headers.insert("scene/main/scene_tree.h");
-		class_call_headers.insert("modules/wgodot/native/wgodot_native_calls.h");
-		r_code = "WGodotNative::copy_vector<" + p_result + ">(WGodotNative::invoke_member<Vector<Node *>>(&SceneTree::get_nodes_in_group, " + p_receiver + ", " + p_arguments[0] + "))";
-		return true;
-	}
-	if (owner == SNAME("StreamPeer") && method == SNAME("put_data")) {
-		if (p_arguments.size() != 1) {
-			unsupported(p_origin, "StreamPeer.put_data without its byte vector");
-			return true;
-		}
-		// StreamPeer::_put_data is a protected script wrapper. Use the public
-		// pointer/length API and retain its empty-buffer behavior.
+		r_call.owner = "::ResourceLoader";
+		r_call.method = "load_threaded_get_status";
+		r_call.argument_types = { "String", "float *" };
+		Value progress("nullptr", "float *");
+		progress.effects = false;
+		progress.invariant = true;
+		r_arguments.push_back(progress);
+		r_call.is_static = true;
+		r_call.adapted = true;
+	} else if (owner == SNAME("StreamPeer") && method == SNAME("put_data")) {
 		class_call_headers.insert("modules/wgodot/native/wgodot_native_engine.h");
-		class_call_headers.insert("modules/wgodot/native/wgodot_native_calls.h");
-		r_code = "static_cast<" + p_result + ">(WGodotNative::stream_put_data(" + p_receiver + ", WGodotNative::convert<PackedByteArray>(" + p_arguments[0] + ")))";
-		return true;
+		r_call.owner = "WGodotNative";
+		r_call.method = "stream_put_data";
+		r_call.receiver_argument = true;
+		r_call.is_static = true;
+	} else if (owner == SNAME("FileAccess") && (method == SNAME("get_buffer") || method == SNAME("store_buffer"))) {
+		// The argument types select the public vector overloads directly.
+		r_call.method = method;
 	}
-	if (owner == SNAME("FileAccess") && (method == SNAME("get_buffer") || method == SNAME("store_buffer")) && p_arguments.size() == 1) {
-		// Select the public vector overload, rather than the pointer/length API
-		// or an older compatibility binding with a different return type.
-		const String signature = method == SNAME("get_buffer") ? "Vector<uint8_t> (FileAccess::*)(int64_t) const" : "bool (FileAccess::*)(const Vector<uint8_t> &)";
-		class_call_headers.insert("core/io/file_access.h");
-		class_call_headers.insert("modules/wgodot/native/wgodot_native_calls.h");
-		r_code = "WGodotNative::invoke_member<" + p_result + ">(static_cast<" + signature + ">(&FileAccess::" + String(method) + "), " + p_receiver + ", " + p_arguments[0] + ")";
-		return true;
-	}
-	return false;
 }

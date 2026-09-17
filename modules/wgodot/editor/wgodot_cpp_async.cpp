@@ -349,7 +349,7 @@ void WGodotCppAsync::suite(const Parser::SuiteNode *p_suite, int p_indent, bool 
 			case Parser::Node::FOR: {
 				const auto *node = static_cast<const Parser::ForNode *>(statement);
 				const auto collection_type = emitter.expression_type(node->list);
-				String collection;
+				WGodotCppEmitter::Value collection;
 				bool array_range = false;
 				bool range = node->list->type_constraint.kind == Parser::DataType::BUILTIN && node->list->type_constraint.builtin_type == Variant::INT;
 				if (node->list->type == Parser::Node::CALL && static_cast<const Parser::CallNode *>(node->list)->function_name == "range") {
@@ -357,14 +357,14 @@ void WGodotCppAsync::suite(const Parser::SuiteNode *p_suite, int p_indent, bool 
 					for (const auto *argument : static_cast<const Parser::CallNode *>(node->list)->arguments) {
 						arguments.push_back(preserve(argument, p_indent));
 					}
-					collection = String(", ").join(arguments);
+					collection.code = String(", ").join(arguments);
 					range = true;
 				} else {
 					const auto *outer_expression = emitter.iterated_expression;
 					const bool outer_range = emitter.emitted_array_range;
 					emitter.iterated_expression = emitter.is_warray(collection_type) ? node->list : nullptr;
 					emitter.emitted_array_range = false;
-					collection = expression(node->list, p_indent);
+					collection = has_await(node->list) ? WGodotCppEmitter::Value(expression(node->list, p_indent)) : emitter.lower(node->list);
 					array_range = emitter.emitted_array_range;
 					emitter.iterated_expression = outer_expression;
 					emitter.emitted_array_range = outer_range;
@@ -380,10 +380,12 @@ void WGodotCppAsync::suite(const Parser::SuiteNode *p_suite, int p_indent, bool 
 					iterator_type = "WGodotNative::Iterator";
 				}
 				const String iterator = add_field("std::optional<" + iterator_type + ">", "iterator");
-				line(p_indent, iterator + ".emplace(" + collection + ");");
+				const bool guarded = !collection.guard.is_empty();
+				collection.code = iterator + ".emplace(" + collection.code + ")";
+				code += collection.statement(p_indent);
 				clear_temporaries(p_indent);
 				const String variable = local(node->variable, node->variable->name, node->variable->type_constraint);
-				line(p_indent, "for (; " + iterator + "->has_value(); " + iterator + "->next()) {");
+				line(p_indent, "for (; " + (guarded ? iterator + " && " : "") + iterator + "->has_value(); " + iterator + "->next()) {");
 				line(p_indent + 1, variable + " = " + iterator + (range ? "->get();" : "->get<" + field_types[variable] + ">();"));
 				suite(node->loop, p_indent + 1, false);
 				line(p_indent, "}");

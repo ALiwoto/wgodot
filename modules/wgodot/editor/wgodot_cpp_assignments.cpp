@@ -21,26 +21,42 @@ StringName WGodotCppEmitter::accessor_name(const Parser::VariableNode *p_variabl
 	return StringName();
 }
 
-String WGodotCppEmitter::property_access(const Parser::DataType &p_base_type, const StringName &p_name, const Parser::ExpressionNode *p_origin, const String &p_receiver, const String &p_value, const String &p_value_type) {
+WGodotCppEmitter::Value WGodotCppEmitter::property_access(const Parser::DataType &p_base_type, const StringName &p_name, const Parser::ExpressionNode *p_origin, Value p_receiver_value, Value p_assigned) {
 	class_call_headers.insert("modules/wgodot/native/wgodot_native_values.h");
-	const bool write = !p_value.is_empty();
+	const bool write = !p_assigned.code.is_empty();
+	Vector<Value> operands{ p_receiver_value };
+	if (write) {
+		operands.push_back(p_assigned);
+	}
+	Value result = sequence(operands);
+	p_receiver_value = operands[0];
+	const String p_receiver = p_receiver_value.code;
+	const String p_value = write ? operands[1].code : String();
+	const String p_value_type = write ? operands[1].cpp_type : String();
+	result.cpp_type = write ? "void" : type(p_origin->type_constraint, p_origin);
+	result.effects = true;
+	auto finish = [&](const String &p_code) { result.code = p_code; return result; };
 	if (const auto *contract = WGodotGDScriptInterfaceHelpers::native_interface_for_member(p_base_type, p_name)) {
 		if (const auto *property = contract->properties.getptr(p_name)) {
 			const StringName accessor = write ? property->setter : property->getter;
 			if (accessor.is_empty()) {
 				unsupported(p_origin, "missing native interface property accessor");
-				return String();
+				return finish(String());
 			}
 			class_call_headers.insert(contract->cpp_header);
-			const String traits = "WGodotNative::InterfaceMethod<decltype(&" + contract->cpp_type + "::" + String(accessor) + ")>";
-			const String argument = write ? "WGodotNative::convert<" + traits + "::Argument<0>>(" + p_value + ")" : "";
-			const String result = write ? "void" : type(p_origin->type_constraint, p_origin);
-			const String invoke = "instance->" + String(accessor) + "(" + argument + ")";
-			return "([&]() -> " + result + " { auto &&receiver = " + p_receiver + "; auto *instance = receiver.operator->(); ERR_FAIL_NULL_V(instance, (" + result + "())); return " + (write ? invoke : "WGodotNative::convert<" + result + ">(" + invoke + ")") + "; }())";
+			const String argument = write ? convert_value(operands[1], native_argument_type(property->info, p_origin)) : "";
+			if (!p_receiver_value.borrowed && !p_receiver_value.object_pointer) {
+				materialize(p_receiver_value, result.setup);
+			}
+			const String instance = checked_receiver(result, p_receiver_value, p_receiver_value.code + ".operator->()");
+			const String invoke = instance + "->" + String(accessor) + "(" + argument + ")";
+			result.effects = true;
+			const MethodInfo &method = contract->methods[accessor];
+			return finish(write ? invoke : convert_value(native_result_value(invoke, method.return_val, method.get_argument_meta(-1), p_origin), result.cpp_type));
 		}
 	}
 	if (p_base_type.kind == Parser::DataType::CLASS && p_base_type.class_type->wgodot_is_interface && p_base_type.class_type->has_member(p_name)) {
-		return "(" + p_receiver + ")->" + String(write ? "set_" : "get_") + symbol(p_name) + "(" + p_value + ")";
+		return finish("(" + p_receiver + ")->" + String(write ? "set_" : "get_") + symbol(p_name) + "(" + p_value + ")");
 	}
 	if (p_base_type.kind == Parser::DataType::CLASS) {
 		const auto *owner = member_owner(p_base_type.class_type, p_name);
@@ -48,9 +64,10 @@ String WGodotCppEmitter::property_access(const Parser::DataType &p_base_type, co
 			const auto entry = owner->node->get_member(p_name);
 			if (entry.type != Parser::ClassNode::Member::VARIABLE) {
 				unsupported(p_origin, "property " + String(p_name));
-				return String();
+				return finish(String());
 			}
 			class_dependencies.insert(owner->cpp_name);
+			result.cpp_type = write ? "void" : type(variable_type(entry.variable), entry.variable);
 			const StringName accessor = accessor_name(entry.variable, write);
 			const String receiver = entry.variable->is_static ? owner->cpp_name + "::" : p_receiver == "this" ? "this->"
 																											  : "(" + p_receiver + ")->";
@@ -59,26 +76,28 @@ String WGodotCppEmitter::property_access(const Parser::DataType &p_base_type, co
 			// Access through another receiver still invokes that receiver's accessor.
 			const bool own_accessor = p_origin->type == Parser::Node::IDENTIFIER && current_function && current_function->identifier && current_function->identifier->name == accessor;
 			if (!accessor.is_empty() && !own_accessor) {
-				return receiver + "m_" + symbol(accessor) + "(" + assigned + ")";
+				return finish(receiver + "m_" + symbol(accessor) + "(" + assigned + ")");
 			}
 			const String field = receiver + (entry.variable->is_static ? "static_fields()." : "") + "v_" + symbol(p_name);
 			if (entry.variable->is_static && !write) {
 				// GDScript loads a static variable into a temporary, unlike a direct
 				// instance-field address. Preserve that snapshot and reference count.
-				return "([&]() { return " + field + "; }())";
+				return finish(result.cpp_type + "(" + field + ")");
 			}
-			return write ? field + " = " + assigned : field;
+			result.effects = write || !p_receiver_value.nonnull || entry.variable->is_static;
+			result.borrowed = !write && p_receiver_value.nonnull && !entry.variable->is_static;
+			return finish(write ? field + " = " + assigned : field);
 		}
 	}
 	if (p_base_type.is_variant() || p_base_type.kind == Parser::DataType::BUILTIN) {
-		return write ? "WGodotNative::set_member(" + p_receiver + ", SNAME(" + quoted(p_name) + "), " + p_value + ")" : "WGodotNative::get_member<" + type(p_origin->type_constraint, p_origin) + ">(" + p_receiver + ", SNAME(" + quoted(p_name) + "))";
+		return finish(write ? "WGodotNative::set_member(" + p_receiver + ", SNAME(" + quoted(p_name) + "), " + p_value + ")" : "WGodotNative::get_member<" + type(p_origin->type_constraint, p_origin) + ">(" + p_receiver + ", SNAME(" + quoted(p_name) + "))");
 	}
 	const StringName base_name = native_base(p_base_type);
 	const StringName method_name = write ? ClassDB::get_property_setter(base_name, p_name) : ClassDB::get_property_getter(base_name, p_name);
 	const MethodBind *method = ClassDB::get_method(base_name, method_name);
 	if (!method) {
 		unsupported(p_origin, "native property " + String(base_name) + "." + String(p_name));
-		return String();
+		return finish(String());
 	}
 	Vector<Value> arguments;
 	const int index = ClassDB::get_property_index(base_name, p_name);
@@ -88,10 +107,13 @@ String WGodotCppEmitter::property_access(const Parser::DataType &p_base_type, co
 	if (write) {
 		arguments.push_back(Value(p_value, p_value_type));
 	}
-	return native_invoke(method, "WGodotNative::object_pointer(" + p_receiver + ")", arguments, write ? "void" : type(p_origin->type_constraint, p_origin), p_origin);
+	Value invoked = native_invoke(method, p_receiver_value, arguments, write ? "void" : type(p_origin->type_constraint, p_origin), p_origin);
+	result.setup.append_array(invoked.setup);
+	invoked.setup = result.setup;
+	return invoked;
 }
 
-String WGodotCppEmitter::store_identifier(const Parser::IdentifierNode *p_target, const Value &p_value) {
+WGodotCppEmitter::Value WGodotCppEmitter::store_identifier(const Parser::IdentifierNode *p_target, const Value &p_value) {
 	switch (p_target->source) {
 		case Parser::IdentifierNode::FUNCTION_PARAMETER:
 		case Parser::IdentifierNode::LOCAL_VARIABLE:
@@ -99,7 +121,7 @@ String WGodotCppEmitter::store_identifier(const Parser::IdentifierNode *p_target
 		case Parser::IdentifierNode::LOCAL_BIND:
 			return expression(p_target) + " = " + convert_value(p_value, value_facts(p_target, String()).cpp_type);
 		default:
-			return property_access(current_class->node->self_type, p_target->name, p_target, "this", p_value.code, p_value.cpp_type);
+			return property_access(current_class->node->self_type, p_target->name, p_target, lower_receiver(nullptr), p_value);
 	}
 }
 
@@ -122,12 +144,17 @@ WGodotCppEmitter::Value WGodotCppEmitter::assignment(const Parser::AssignmentNod
 			result = sequence(operands);
 			assigned_value = Value(operation(p_assignment->variant_op, target_type, target_type, assigned_type, operands[1].code, operands[0].code, p_assignment), type(target_type, target));
 		} else {
-			result.setup = assigned_value.setup;
+			Vector<Value> operands{ assigned_value };
+			result = sequence(operands);
+			assigned_value = operands[0];
 		}
 		result.cpp_type = "void";
 		result.effects = true;
-		result.code = store_identifier(static_cast<const Parser::IdentifierNode *>(target), assigned_value);
-		return result;
+		Value stored = store_identifier(static_cast<const Parser::IdentifierNode *>(target), assigned_value);
+		result.setup.append_array(stored.setup);
+		stored.setup = result.setup;
+		stored.cpp_type = "void";
+		return stored;
 	}
 	if (target->type != Parser::Node::SUBSCRIPT) {
 		unsupported(target, "assignment target");
@@ -142,9 +169,10 @@ WGodotCppEmitter::Value WGodotCppEmitter::assignment(const Parser::AssignmentNod
 		result = sequence(operands);
 		result.cpp_type = "void";
 		result.effects = true;
-		const String receiver = operands[0].object_pointer ? operands[0].code : convert_value(operands[0], type(base_type, subscript->base));
-		result.code = property_access(base_type, subscript->attribute->name, subscript, receiver, operands[1].code, operands[1].cpp_type);
-		return result;
+		Value stored = property_access(base_type, subscript->attribute->name, subscript, operands[0], operands[1]);
+		result.setup.append_array(stored.setup);
+		stored.setup = result.setup;
+		return stored;
 	}
 	Vector<const Parser::SubscriptNode *> chain;
 	const Parser::ExpressionNode *root = target;
@@ -159,7 +187,9 @@ WGodotCppEmitter::Value WGodotCppEmitter::assignment(const Parser::AssignmentNod
 	// Read the RHS before the final index, and only then read a compound target.
 	if (!root->type_constraint.is_meta_type) {
 		Value root_value = lower(root);
-		result.setup.append_array(root_value.setup);
+		Vector<Value> roots{ root_value };
+		result.setup.append_array(sequence(roots).setup);
+		root_value = roots[0];
 		body += "auto &&" + prefix + "base_0 = " + root_value.code + ";\n";
 	}
 	auto key = [&](int p_index) { return prefix + "key_" + itos(p_index); };
@@ -171,15 +201,18 @@ WGodotCppEmitter::Value WGodotCppEmitter::assignment(const Parser::AssignmentNod
 				return *saved;
 			}
 		}
-		return node->is_attribute ? property_access(node->base->type_constraint, node->attribute->name, node, base(p_index)) : "WGodotNative::get_index<" + type(node->type_constraint, node) + ">(" + base(p_index) + ", " + key(p_index) + ")";
+		return node->is_attribute ? property_access(node->base->type_constraint, node->attribute->name, node, Value(base(p_index), type(node->base->type_constraint, node))).expression() : "WGodotNative::get_index<" + type(node->type_constraint, node) + ">(" + base(p_index) + ", " + key(p_index) + ")";
 	};
 	auto write = [&](int p_index, const String &p_value) {
 		const auto *node = chain[p_index];
-		return node->is_attribute ? property_access(node->base->type_constraint, node->attribute->name, node, base(p_index), p_value) : "WGodotNative::set_index(" + base(p_index) + ", " + key(p_index) + ", " + p_value + ")";
+		return node->is_attribute ? property_access(node->base->type_constraint, node->attribute->name, node, Value(base(p_index), type(node->base->type_constraint, node)), Value(p_value, type(node->type_constraint, node))).expression() : "WGodotNative::set_index(" + base(p_index) + ", " + key(p_index) + ", " + p_value + ")";
 	};
 	for (int i = 0; i < chain.size(); i++) {
 		if (i == chain.size() - 1) {
-			for (const String &step : assigned_value.setup) {
+			Vector<Value> values{ assigned_value };
+			const Value prepared = sequence(values);
+			assigned_value = values[0];
+			for (const String &step : prepared.setup) {
 				body += step + "\n";
 			}
 			body += "auto &&" + prefix + "value = " + assigned_value.code + ";\n";
@@ -214,7 +247,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::assignment(const Parser::AssignmentNod
 		const bool field = identifier->source == Parser::IdentifierNode::MEMBER_VARIABLE || identifier->source == Parser::IdentifierNode::INHERITED_VARIABLE || identifier->source == Parser::IdentifierNode::STATIC_VARIABLE;
 		const auto &datatype = root->type_constraint;
 		if (field && (datatype.is_variant() || (datatype.kind == Parser::DataType::BUILTIN && !Variant::is_type_shared(datatype.builtin_type)))) {
-			body += write_back(datatype, base(0), store_identifier(identifier, Value(base(0), type(datatype, root))));
+			body += write_back(datatype, base(0), store_identifier(identifier, Value(base(0), type(datatype, root))).expression());
 		}
 	}
 	result.setup.push_back(body);

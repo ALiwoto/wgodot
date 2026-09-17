@@ -91,7 +91,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::tween_property_call(const Parser::Call
 	auto access = [&](int p_index, const String &p_receiver, const String &p_value = String()) {
 		const auto &segment = path->segments[p_index];
 		if (segment.base_type.kind == Parser::DataType::BUILTIN) {
-			return tween_builtin_property(segment.base_type.builtin_type, segment.name, p_call, p_receiver, p_value);
+			return Value(tween_builtin_property(segment.base_type.builtin_type, segment.name, p_call, p_receiver, p_value), p_value.is_empty() ? type(segment.datatype, p_call) : String("void"));
 		}
 		// A subscript origin preserves normal getter/setter semantics, including
 		// when the tween was declared inside the property's own accessor.
@@ -99,7 +99,15 @@ WGodotCppEmitter::Value WGodotCppEmitter::tween_property_call(const Parser::Call
 		origin.start_line = p_call->start_line;
 		origin.start_column = p_call->start_column;
 		origin.type_constraint = segment.datatype;
-		return property_access(segment.base_type, segment.name, &origin, p_receiver, p_value);
+		Value receiver(p_receiver, class_name(segment.base_type, &origin) + " *");
+		receiver.object_pointer = true;
+		receiver.nonnull = true; // The generated accessor checks each object before access.
+		receiver.effects = false;
+		receiver.borrowed = true;
+		Value assigned(p_value, type(segment.datatype, &origin));
+		assigned.effects = false;
+		assigned.borrowed = true;
+		return property_access(segment.base_type, segment.name, &origin, receiver, assigned);
 	};
 	auto accessor = [&](bool p_write) {
 		String body = "[](" + target + " *target" + (p_write ? ", " + value + " value" : "") + ") -> " + (p_write ? "void" : value) + " {\n";
@@ -120,16 +128,16 @@ WGodotCppEmitter::Value WGodotCppEmitter::tween_property_call(const Parser::Call
 				break;
 			}
 			if (!p_write && i == path->segments.size() - 1) {
-				body += "\treturn " + access(i, receiver) + ";\n";
+				body += access(i, receiver).statement(1, true);
 				break;
 			}
-			body += "\tauto part_" + itos(i) + " = " + access(i, receiver) + ";\n";
+			body += "\tauto part_" + itos(i) + " = " + access(i, receiver).expression() + ";\n";
 		}
 		if (p_write) {
 			// Object::set_indexed writes EVERY parent back, even Object references.
 			// Retain that order and each setter's side effects, using typed locals.
 			for (int i = path->segments.size() - 1; i >= 0; i--) {
-				body += "\t" + access(i, receivers[i], i == path->segments.size() - 1 ? "value" : "part_" + itos(i)) + ";\n";
+				body += access(i, receivers[i], i == path->segments.size() - 1 ? "value" : "part_" + itos(i)).statement(1);
 			}
 		}
 		return body + "}";
