@@ -258,6 +258,9 @@ private:
 
 	void _call_group_flags(const Variant **p_args, int p_argcount, Callable::CallError &r_error);
 	void _call_group(const Variant **p_args, int p_argcount, Callable::CallError &r_error);
+	// wgodot-changes::begin
+	void _call_group_as(const Variant **p_args, int p_argcount, Callable::CallError &r_error);
+	// wgodot-changes::end
 
 	void _flush_delete_queue();
 	// Optimization.

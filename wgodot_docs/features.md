@@ -24,6 +24,8 @@ This file tracks user-facing wgodot features. It intentionally avoids internal e
 
 10. Checked tween property paths: strict type checking validates constant `Tween.tween_property()` paths, property write access, and final-value types. Script export updates renamed property references; native C++ export replaces paths with typed accessors while preserving Godot's tween timing and interpolation. Native property reflection is emitted only for `@export` fields.
 
+11. Typed tree broadcasts: `SceneTree.call_group_as(NodeType, "method", ...)` checks a constant class/method and its arguments, then calls matching nodes in parent-first tree order, including internal nodes. Arguments are evaluated once; freed or removed nodes are skipped and newly added nodes wait until the next call. It runs on the main thread and discards return values. Native export emits typed calls. Strict checking rejects `call_group`, `call_group_flags`, and stored group method references.
+
 ## GDScript Interfaces
 
 `interface_name` declares a global contract; `implements A, B` adds contracts without changing native inheritance. Interfaces support a native base constraint, interface inheritance, method/property/signal signatures, constants and enums. Type hints, `is`/`as`, typed containers and editor node selection recognize registered native implementations as well as scripts. Export obfuscation keeps contract members consistent across implementations.

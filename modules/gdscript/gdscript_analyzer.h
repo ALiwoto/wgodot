@@ -135,6 +135,8 @@ class GDScriptAnalyzer {
 	void wgodot_validate_strict_signal_parameter(const GDScriptParser::SignalNode *p_signal, const GDScriptParser::ParameterNode *p_parameter);
 #endif
 	void wgodot_validate_strict_object_call(const GDScriptParser::DataType &p_base_type, const GDScriptParser::CallNode *p_call);
+	bool wgodot_get_group_call_signature(GDScriptParser::CallNode *p_call, const GDScriptParser::DataType &p_base, GDScriptParser::DataType &r_return, List<GDScriptParser::DataType> &r_parameters, int &r_defaults, BitField<MethodFlags> &r_flags);
+	void wgodot_validate_group_call_arguments(const GDScriptParser::CallNode *p_call, const List<GDScriptParser::DataType> &p_parameters);
 	void wgodot_validate_strict_dynamic_call(const GDScriptParser::DataType &p_base_type, const GDScriptParser::CallNode *p_call, bool p_is_self);
 	void wgodot_validate_strict_dynamic_property_access(const GDScriptParser::DataType &p_base_type, const GDScriptParser::SubscriptNode *p_subscript);
 	void wgodot_validate_strict_dynamic_index_access(const GDScriptParser::DataType &p_base_type, const GDScriptParser::SubscriptNode *p_subscript);

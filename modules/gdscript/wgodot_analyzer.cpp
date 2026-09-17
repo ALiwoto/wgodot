@@ -264,6 +264,11 @@ void GDScriptAnalyzer::wgodot_validate_strict_signal_parameter(const GDScriptPar
 #endif
 
 void GDScriptAnalyzer::wgodot_validate_strict_object_call(const GDScriptParser::DataType &p_base_type, const GDScriptParser::CallNode *p_call) {
+	if ((p_call->function_name == SNAME("call_group") || p_call->function_name == SNAME("call_group_flags")) &&
+			ClassDB::is_parent_class(p_base_type.native_type, SNAME("SceneTree")) && wgodot_strict_type_checking_enabled()) {
+		push_error("Strict type checking does not allow SceneTree.call_group() or call_group_flags(): group membership cannot establish a method signature. Use call_group_as(NodeType, \"method\", ...) instead.", p_call);
+		return;
+	}
 	if (p_call->function_name != SNAME("call") && p_call->function_name != SNAME("call_deferred")) {
 		return;
 	}

@@ -68,6 +68,15 @@ WGodotCppEmitter::Value WGodotCppEmitter::native_call(const Parser::CallNode *p_
 		return Value();
 	}
 	const StringName base_name = native_base(p_base_type);
+	if (ClassDB::is_parent_class(base_name, SNAME("SceneTree"))) {
+		if (p_call->function_name == SNAME("call_group") || p_call->function_name == SNAME("call_group_flags")) {
+			unsupported(p_call, "SceneTree.call_group()/call_group_flags(); use call_group_as(NodeType, \"method\", ...) for a statically checked target");
+			return Value();
+		}
+		if (p_call->function_name == SNAME("call_group_as")) {
+			return group_call(p_call, p_base, p_base_type);
+		}
+	}
 	if (p_call->function_name == SNAME("call") && !p_base_type.is_meta_type && ClassDB::is_parent_class(base_name, SNAME("JavaScriptObject"))) {
 		return javascript_call(p_call, p_base, p_base_type);
 	}
@@ -220,6 +229,11 @@ WGodotCppEmitter::Value WGodotCppEmitter::native_property(const Parser::Expressi
 		return String();
 	}
 	const StringName base_name = native_base(base_type);
+	if (!p_value && ClassDB::is_parent_class(base_name, SNAME("SceneTree")) &&
+			(p_name == SNAME("call_group") || p_name == SNAME("call_group_flags") || p_name == SNAME("call_group_as"))) {
+		unsupported(p_origin, "SceneTree group method references; call call_group_as(NodeType, \"method\", ...) directly so its target can be checked statically");
+		return Value();
+	}
 	if (!p_value && p_name == SNAME("tween_property") && ClassDB::is_parent_class(base_name, SNAME("Tween"))) {
 		unsupported(p_origin, "storing Tween.tween_property as a Callable; call it directly with a constant property path so native export can generate typed accessors");
 		return String();

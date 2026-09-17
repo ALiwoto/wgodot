@@ -11,6 +11,7 @@
 #include "modules/gdscript/wgodot_gd/interface_helpers.h"
 
 #include "core/error/error_macros.h"
+#include "core/object/class_db.h"
 #include "core/variant/variant.h"
 #include "core/variant/variant_parser.h"
 
@@ -630,6 +631,38 @@ void add_attribute_member_name_reference_replacement(RewriteContext &r_context, 
 	}
 
 	add_replacement(r_context, p_identifier, obfuscated_name);
+}
+
+bool add_group_call_method_replacement(RewriteContext &r_context, const GDScriptParser::CallNode *p_call) {
+	if (p_call->function_name != SNAME("call_group_as") || p_call->arguments.size() < 2 || p_call->get_callee_type() != GDScriptParser::Node::SUBSCRIPT) {
+		return false;
+	}
+	const auto *base = static_cast<const GDScriptParser::SubscriptNode *>(p_call->callee)->base;
+	if (!ClassDB::is_parent_class(base->type_constraint.native_type, SNAME("SceneTree"))) {
+		return false;
+	}
+	const auto *method = p_call->arguments[1];
+	GDScriptParser::IdentifierNode identifier;
+	identifier.name = method->reduced_value;
+	const auto *owner = find_member_class(p_call->arguments[0]->type_constraint.class_type, identifier.name);
+	if (owner && owner->has_function(identifier.name)) {
+		identifier.source = GDScriptParser::IdentifierNode::MEMBER_FUNCTION;
+		identifier.function_source = owner->get_member(identifier.name).function;
+	}
+	identifier.start_line = method->start_line;
+	identifier.start_column = method->start_column;
+	identifier.end_line = method->end_line;
+	identifier.end_column = method->end_column;
+	const int count = r_context.replacements.size();
+	add_attribute_member_name_reference_replacement(r_context, p_call->arguments[0], &identifier);
+	if (r_context.replacements.size() == count) {
+		return false;
+	}
+	auto &replacement = r_context.replacements.write[count];
+	String text;
+	VariantWriter::write_to_string(unwrap_binary_identifier_escape(replacement.text), text);
+	replacement.text = "&" + text;
+	return true;
 }
 
 bool add_tween_property_path_replacement(RewriteContext &r_context, const GDScriptParser::CallNode *p_call, const WGodotGDScriptPropertyPath *p_path) {

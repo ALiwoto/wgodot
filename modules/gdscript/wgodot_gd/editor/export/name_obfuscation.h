@@ -24,6 +24,7 @@ bool add_member_name_reference_replacement(RewriteContext &r_context, const GDSc
 void add_attribute_member_name_reference_replacement(RewriteContext &r_context, const GDScriptParser::ExpressionNode *p_base, const GDScriptParser::IdentifierNode *p_identifier);
 void add_call_member_name_reference_replacement(RewriteContext &r_context, const GDScriptParser::CallNode *p_call);
 bool add_tween_property_path_replacement(RewriteContext &r_context, const GDScriptParser::CallNode *p_call, const WGodotGDScriptPropertyPath *p_path);
+bool add_group_call_method_replacement(RewriteContext &r_context, const GDScriptParser::CallNode *p_call);
 void add_function_pointer_replacement(RewriteContext &r_context, const GDScriptParser::ClassNode *p_class, const GDScriptParser::IdentifierNode *p_identifier);
 
 } // namespace WGodotGDScriptExportTransform

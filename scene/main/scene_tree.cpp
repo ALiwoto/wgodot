@@ -1992,6 +1992,15 @@ void SceneTree::_bind_methods() {
 	mi2.arguments.push_back(PropertyInfo(Variant::STRING_NAME, "method"));
 
 	ClassDB::bind_vararg_method(METHOD_FLAGS_DEFAULT, "call_group", &SceneTree::_call_group, mi2);
+	// wgodot-changes::begin
+	{
+		MethodInfo info;
+		info.name = "call_group_as";
+		info.arguments.push_back(PropertyInfo(Variant::OBJECT, "node_type"));
+		info.arguments.push_back(PropertyInfo(Variant::STRING_NAME, "method"));
+		ClassDB::bind_vararg_method(METHOD_FLAGS_DEFAULT, "call_group_as", &SceneTree::_call_group_as, info);
+	}
+	// wgodot-changes::end
 
 	ClassDB::bind_method(D_METHOD("notify_group", "group", "notification"), &SceneTree::notify_group);
 	ClassDB::bind_method(D_METHOD("set_group", "group", "property", "value"), &SceneTree::set_group);

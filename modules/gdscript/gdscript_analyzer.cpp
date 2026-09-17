@@ -3897,7 +3897,10 @@ void GDScriptAnalyzer::reduce_call(GDScriptParser::CallNode *p_call, bool p_is_a
 		}
 	}
 
-	if (get_function_signature(p_call, is_constructor, base_type, p_call->function_name, return_type, par_types, default_arg_count, method_flags)) {
+	// wgodot-changes::begin
+	const bool wgodot_group_call = wgodot_get_group_call_signature(p_call, base_type, return_type, par_types, default_arg_count, method_flags);
+	if (wgodot_group_call || get_function_signature(p_call, is_constructor, base_type, p_call->function_name, return_type, par_types, default_arg_count, method_flags)) {
+	// wgodot-changes::end
 		p_call->is_static = method_flags.has_flag(METHOD_FLAG_STATIC);
 		// If the method is implemented in the class hierarchy, the virtual/abstract flag will not be set for that `MethodInfo` and the search stops there.
 		// Virtual/abstract check only possible for super calls because class hierarchy is known. Objects may have scripts attached we don't know of at compile-time.
@@ -3927,6 +3930,9 @@ void GDScriptAnalyzer::reduce_call(GDScriptParser::CallNode *p_call, bool p_is_a
 		validate_call_arg(par_types, default_arg_count, method_flags.has_flag(METHOD_FLAG_VARARG), p_call);
 
 		// wgodot-changes::begin
+		if (wgodot_group_call) {
+			wgodot_validate_group_call_arguments(p_call, par_types);
+		}
 		wgodot_validate_value_container_call(base_type, p_call);
 		wgodot_validate_signal_callable_connection(p_call);
 #ifdef TOOLS_ENABLED
@@ -4677,6 +4683,12 @@ void GDScriptAnalyzer::reduce_identifier_from_base(GDScriptParser::IdentifierNod
 			return;
 		}
 		if (ClassDB::get_method_info(native, name, &method_info)) {
+			// wgodot-changes::begin
+			if (wgodot_strict_type_checking_enabled() && ClassDB::is_parent_class(native, SNAME("SceneTree")) &&
+					(name == SNAME("call_group") || name == SNAME("call_group_flags") || name == SNAME("call_group_as"))) {
+				push_error("Strict type checking does not allow storing SceneTree group methods as Callable. Use call_group_as(NodeType, \"method\", ...) directly so its target can be checked statically.", p_identifier);
+			}
+			// wgodot-changes::end
 			// Method is callable.
 			p_identifier->type_constraint = make_callable_type(method_info);
 			p_identifier->source = GDScriptParser::IdentifierNode::INHERITED_VARIABLE;

@@ -117,6 +117,7 @@ class WGodotCppEmitter {
 	void configure_native_call(const MethodBind *p_method, const GDScriptParser::Node *p_origin, Vector<Value> &r_arguments, NativeCall &r_call);
 	Value native_call(const GDScriptParser::CallNode *p_call, const GDScriptParser::ExpressionNode *p_base, const GDScriptParser::DataType &p_base_type);
 	Value javascript_call(const GDScriptParser::CallNode *p_call, const GDScriptParser::ExpressionNode *p_base, const GDScriptParser::DataType &p_base_type);
+	Value group_call(const GDScriptParser::CallNode *p_call, const GDScriptParser::ExpressionNode *p_base, const GDScriptParser::DataType &p_base_type);
 	Value tween_property_call(const GDScriptParser::CallNode *p_call, const GDScriptParser::ExpressionNode *p_base);
 	String tween_builtin_property(Variant::Type p_type, const StringName &p_name, const GDScriptParser::Node *p_origin, const String &p_receiver, const String &p_value = String());
 	String native_argument_type(const PropertyInfo &p_info, const GDScriptParser::Node *p_origin);

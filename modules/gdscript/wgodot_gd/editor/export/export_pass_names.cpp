@@ -107,7 +107,7 @@ protected:
 			} break;
 			case Parser::Node::CALL: {
 				const auto *node = static_cast<const Parser::CallNode *>(p_node);
-				const bool path_replaced = add_tween_property_path_replacement(rewrite, node, analyzer.wgodot_get_tween_property_path(node));
+				const bool path_replaced = add_tween_property_path_replacement(rewrite, node, analyzer.wgodot_get_tween_property_path(node)) || add_group_call_method_replacement(rewrite, node);
 				if (path_replaced) {
 					replaced_path_constants.walk(node->arguments[1]);
 				}

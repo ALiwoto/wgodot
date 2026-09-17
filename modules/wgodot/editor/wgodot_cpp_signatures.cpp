@@ -265,6 +265,18 @@ void WGodotCppSignatures::seed(const Parser::Node *p_node) {
 	} else if (p_node->type == Parser::Node::CALL) {
 		const auto *call = static_cast<const Parser::CallNode *>(p_node);
 		const auto *base = call->get_callee_type() == Parser::Node::SUBSCRIPT ? static_cast<const Parser::SubscriptNode *>(call->callee)->base : nullptr;
+		if (call->function_name == SNAME("call_group_as") && base && ClassDB::is_parent_class(base->type_constraint.native_type, SNAME("SceneTree")) && call->arguments.size() >= 2) {
+			const auto *declaration = member(call->arguments[0]->type_constraint, call->arguments[1]->reduced_value);
+			if (declaration && declaration->type == Parser::Node::FUNCTION) {
+				const auto *method = static_cast<const Parser::FunctionNode *>(declaration);
+				for (uint32_t i = 2; i < call->arguments.size() && i - 2 < method->parameters.size(); i++) {
+					if (contains_signature(method->parameters[i - 2]->type_constraint)) {
+						link(call->arguments[i], method->parameters[i - 2]);
+					}
+				}
+			}
+			return;
+		}
 		if (base && base->type_constraint.builtin_type == Variant::CALLABLE && call->function_name == SNAME("bind")) {
 			producers.insert(call);
 		}
