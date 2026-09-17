@@ -2,6 +2,8 @@
 #include "wgodot_cpp_emitter.h"
 #include "wgodot_cpp_names.h"
 
+#include "core/variant/wgodot_text_arguments.h"
+
 #include "modules/gdscript/wgodot_gd/builtin_alias_resolver.h"
 #include "modules/gdscript/wgodot_gd/builtin_class_aliases.h"
 
@@ -105,9 +107,19 @@ WGodotCppEmitter::Value WGodotCppEmitter::global_call(const Parser::CallNode *p_
 	if ((name == SNAME("Callable") || name == SNAME("Signal")) && p_call->arguments.is_empty()) {
 		return type(p_call->type_constraint, p_call) + "()";
 	}
+	const String *text_utility = WGodotText::find_utility(name);
 	Vector<Value> operands;
 	for (uint32_t i = 0; i < p_call->arguments.size(); i++) {
-		operands.push_back(lower_engine_argument(p_call->arguments[i], Variant::NIL));
+		const auto *argument = p_call->arguments[i];
+		if (text_utility && is_warray(expression_type(argument))) {
+			if (native_only(expression_type(argument).get_container_element_type(0))) {
+				unsupported(argument, "text formatting for this native-only WArray element type; a TextFormat specialization is required");
+				return Value();
+			}
+			operands.push_back(lower(argument));
+		} else {
+			operands.push_back(lower_engine_argument(argument, Variant::NIL));
+		}
 	}
 	Value result = sequence(operands);
 	Vector<String> arguments;
@@ -115,6 +127,13 @@ WGodotCppEmitter::Value WGodotCppEmitter::global_call(const Parser::CallNode *p_
 		arguments.push_back(operand.code);
 	}
 	const String joined = String(", ").join(arguments);
+	if (text_utility) {
+		class_call_headers.insert("core/variant/variant_utility.h");
+		class_call_headers.insert("modules/wgodot/native/wgodot_native_text.h");
+		result.code = *text_utility + "(WGodotNative::text_arguments(" + joined + "))";
+		result.effects = true;
+		return result;
+	}
 	const Variant::Type builtin = Parser::get_builtin_type(name);
 	if (builtin < Variant::VARIANT_MAX) {
 		result.code = "WGodotNative::construct<" + type(p_call->type_constraint, p_call) + ", " + variant_type(builtin) + ">(" + joined + ")";

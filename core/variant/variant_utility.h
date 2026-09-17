@@ -32,6 +32,10 @@
 
 #include "core/variant/variant.h"
 
+// wgodot-changes::begin
+#include "core/variant/wgodot_text_arguments.h"
+// wgodot-changes::end
+
 struct VariantUtilityFunctions {
 	// Math
 	static double sin(double p_arg);
@@ -139,6 +143,18 @@ struct VariantUtilityFunctions {
 	static void printraw(const Variant **p_args, int p_arg_count, Callable::CallError &r_error);
 	static void push_error(const Variant **p_args, int p_arg_count, Callable::CallError &r_error);
 	static void push_warning(const Variant **p_args, int p_arg_count, Callable::CallError &r_error);
+	// wgodot-changes::begin
+	static String str(const WGodotText::Arguments &p_args);
+	static void print(const WGodotText::Arguments &p_args);
+	static void print_rich(const WGodotText::Arguments &p_args);
+	static void _print_verbose(const WGodotText::Arguments &p_args);
+	static void printerr(const WGodotText::Arguments &p_args);
+	static void printt(const WGodotText::Arguments &p_args);
+	static void prints(const WGodotText::Arguments &p_args);
+	static void printraw(const WGodotText::Arguments &p_args);
+	static void push_error(const WGodotText::Arguments &p_args);
+	static void push_warning(const WGodotText::Arguments &p_args);
+	// wgodot-changes::end
 	static String var_to_str(const Variant &p_var);
 	static Variant str_to_var(const String &p_var);
 	static PackedByteArray var_to_bytes(const Variant &p_var);

@@ -942,7 +942,9 @@ String VariantUtilityFunctions::str(const Variant **p_args, int p_arg_count, Cal
 
 	r_error.error = Callable::CallError::CALL_OK;
 
-	return join_string(p_args, p_arg_count);
+	// wgodot-changes::begin
+	return str(WGodotText::Arguments::from_variants(p_args, p_arg_count));
+	// wgodot-changes::end
 }
 
 String VariantUtilityFunctions::error_string(Error p_error) {
@@ -959,59 +961,52 @@ String VariantUtilityFunctions::type_string(Variant::Type p_type) {
 }
 
 void VariantUtilityFunctions::print(const Variant **p_args, int p_arg_count, Callable::CallError &r_error) {
-	print_line(join_string(p_args, p_arg_count));
+	// wgodot-changes::begin
+	print(WGodotText::Arguments::from_variants(p_args, p_arg_count));
+	// wgodot-changes::end
 	r_error.error = Callable::CallError::CALL_OK;
 }
 
 void VariantUtilityFunctions::print_rich(const Variant **p_args, int p_arg_count, Callable::CallError &r_error) {
-	print_line_rich(join_string(p_args, p_arg_count));
+	// wgodot-changes::begin
+	print_rich(WGodotText::Arguments::from_variants(p_args, p_arg_count));
+	// wgodot-changes::end
 	r_error.error = Callable::CallError::CALL_OK;
 }
 
 void VariantUtilityFunctions::_print_verbose(const Variant **p_args, int p_arg_count, Callable::CallError &r_error) {
-	if (OS::get_singleton()->is_stdout_verbose()) {
-		// No need p_to use `print_verbose()` as this call already only happens
-		// when verbose mode is enabled. This avoids performing string argument concatenation
-		// when not needed.
-		print_line(join_string(p_args, p_arg_count));
-	}
+	// wgodot-changes::begin
+	_print_verbose(WGodotText::Arguments::from_variants(p_args, p_arg_count));
+	// wgodot-changes::end
 
 	r_error.error = Callable::CallError::CALL_OK;
 }
 
 void VariantUtilityFunctions::printerr(const Variant **p_args, int p_arg_count, Callable::CallError &r_error) {
-	print_error(join_string(p_args, p_arg_count));
+	// wgodot-changes::begin
+	printerr(WGodotText::Arguments::from_variants(p_args, p_arg_count));
+	// wgodot-changes::end
 	r_error.error = Callable::CallError::CALL_OK;
 }
 
 void VariantUtilityFunctions::printt(const Variant **p_args, int p_arg_count, Callable::CallError &r_error) {
-	String s;
-	for (int i = 0; i < p_arg_count; i++) {
-		if (i) {
-			s += "\t";
-		}
-		s += p_args[i]->operator String();
-	}
-
-	print_line(s);
+	// wgodot-changes::begin
+	printt(WGodotText::Arguments::from_variants(p_args, p_arg_count));
+	// wgodot-changes::end
 	r_error.error = Callable::CallError::CALL_OK;
 }
 
 void VariantUtilityFunctions::prints(const Variant **p_args, int p_arg_count, Callable::CallError &r_error) {
-	String s;
-	for (int i = 0; i < p_arg_count; i++) {
-		if (i) {
-			s += " ";
-		}
-		s += p_args[i]->operator String();
-	}
-
-	print_line(s);
+	// wgodot-changes::begin
+	prints(WGodotText::Arguments::from_variants(p_args, p_arg_count));
+	// wgodot-changes::end
 	r_error.error = Callable::CallError::CALL_OK;
 }
 
 void VariantUtilityFunctions::printraw(const Variant **p_args, int p_arg_count, Callable::CallError &r_error) {
-	print_raw(join_string(p_args, p_arg_count));
+	// wgodot-changes::begin
+	printraw(WGodotText::Arguments::from_variants(p_args, p_arg_count));
+	// wgodot-changes::end
 	r_error.error = Callable::CallError::CALL_OK;
 }
 
@@ -1021,7 +1016,9 @@ void VariantUtilityFunctions::push_error(const Variant **p_args, int p_arg_count
 		r_error.expected = 1;
 	}
 
-	ERR_PRINT(join_string(p_args, p_arg_count));
+	// wgodot-changes::begin
+	push_error(WGodotText::Arguments::from_variants(p_args, p_arg_count));
+	// wgodot-changes::end
 	r_error.error = Callable::CallError::CALL_OK;
 }
 
@@ -1031,7 +1028,9 @@ void VariantUtilityFunctions::push_warning(const Variant **p_args, int p_arg_cou
 		r_error.expected = 1;
 	}
 
-	WARN_PRINT(join_string(p_args, p_arg_count));
+	// wgodot-changes::begin
+	push_warning(WGodotText::Arguments::from_variants(p_args, p_arg_count));
+	// wgodot-changes::end
 	r_error.error = Callable::CallError::CALL_OK;
 }
 
@@ -1151,12 +1150,9 @@ bool VariantUtilityFunctions::is_same(const Variant &p_a, const Variant &p_b) {
 }
 
 String VariantUtilityFunctions::join_string(const Variant **p_args, int p_arg_count) {
-	String s;
-	for (int i = 0; i < p_arg_count; i++) {
-		String os = p_args[i]->operator String();
-		s += os;
-	}
-	return s;
+	// wgodot-changes::begin
+	return WGodotText::Arguments::from_variants(p_args, p_arg_count).join();
+	// wgodot-changes::end
 }
 
 #ifdef DEBUG_ENABLED
@@ -1627,6 +1623,10 @@ static void register_utility_function(const String &p_name, const Vector<String>
 	utility_function_name_table.push_back(sname);
 }
 
+// wgodot-changes::begin
+#include "core/variant/wgodot_text_utility_bind.h"
+// wgodot-changes::end
+
 void Variant::_register_variant_utility_functions() {
 	// Math
 
@@ -1748,18 +1748,22 @@ void Variant::_register_variant_utility_functions() {
 	FUNCBINDVR(weakref, sarray("obj"), Variant::UTILITY_FUNC_TYPE_GENERAL);
 	FUNCBINDR(_typeof, sarray("variable"), Variant::UTILITY_FUNC_TYPE_GENERAL);
 	FUNCBINDR(type_convert, sarray("variant", "type"), Variant::UTILITY_FUNC_TYPE_GENERAL);
-	FUNCBINDVARARGS(str, sarray(), Variant::UTILITY_FUNC_TYPE_GENERAL);
+	// wgodot-changes::begin
+	FUNCBIND_TEXT_VARARGS(str, sarray(), Variant::UTILITY_FUNC_TYPE_GENERAL);
+	// wgodot-changes::end
 	FUNCBINDR(error_string, sarray("error"), Variant::UTILITY_FUNC_TYPE_GENERAL);
 	FUNCBINDR(type_string, sarray("type"), Variant::UTILITY_FUNC_TYPE_GENERAL);
-	FUNCBINDVARARGV(print, sarray(), Variant::UTILITY_FUNC_TYPE_GENERAL);
-	FUNCBINDVARARGV(print_rich, sarray(), Variant::UTILITY_FUNC_TYPE_GENERAL);
-	FUNCBINDVARARGV(printerr, sarray(), Variant::UTILITY_FUNC_TYPE_GENERAL);
-	FUNCBINDVARARGV(printt, sarray(), Variant::UTILITY_FUNC_TYPE_GENERAL);
-	FUNCBINDVARARGV(prints, sarray(), Variant::UTILITY_FUNC_TYPE_GENERAL);
-	FUNCBINDVARARGV(printraw, sarray(), Variant::UTILITY_FUNC_TYPE_GENERAL);
-	FUNCBINDVARARGV_CNAME(print_verbose, _print_verbose, sarray(), Variant::UTILITY_FUNC_TYPE_GENERAL);
-	FUNCBINDVARARGV(push_error, sarray(), Variant::UTILITY_FUNC_TYPE_GENERAL);
-	FUNCBINDVARARGV(push_warning, sarray(), Variant::UTILITY_FUNC_TYPE_GENERAL);
+	// wgodot-changes::begin
+	FUNCBIND_TEXT_VARARG(print, sarray(), Variant::UTILITY_FUNC_TYPE_GENERAL);
+	FUNCBIND_TEXT_VARARG(print_rich, sarray(), Variant::UTILITY_FUNC_TYPE_GENERAL);
+	FUNCBIND_TEXT_VARARG(printerr, sarray(), Variant::UTILITY_FUNC_TYPE_GENERAL);
+	FUNCBIND_TEXT_VARARG(printt, sarray(), Variant::UTILITY_FUNC_TYPE_GENERAL);
+	FUNCBIND_TEXT_VARARG(prints, sarray(), Variant::UTILITY_FUNC_TYPE_GENERAL);
+	FUNCBIND_TEXT_VARARG(printraw, sarray(), Variant::UTILITY_FUNC_TYPE_GENERAL);
+	FUNCBIND_TEXT_VARARG_CNAME(print_verbose, _print_verbose, sarray(), Variant::UTILITY_FUNC_TYPE_GENERAL);
+	FUNCBIND_TEXT_VARARG(push_error, sarray(), Variant::UTILITY_FUNC_TYPE_GENERAL);
+	FUNCBIND_TEXT_VARARG(push_warning, sarray(), Variant::UTILITY_FUNC_TYPE_GENERAL);
+	// wgodot-changes::end
 
 	FUNCBINDR(var_to_str, sarray("variable"), Variant::UTILITY_FUNC_TYPE_GENERAL);
 	FUNCBINDR(str_to_var, sarray("string"), Variant::UTILITY_FUNC_TYPE_GENERAL);
@@ -1783,6 +1787,11 @@ void Variant::_register_variant_utility_functions() {
 }
 
 void Variant::_unregister_variant_utility_functions() {
+	// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+	WGodotText::clear_utilities();
+#endif
+	// wgodot-changes::end
 	utility_function_table.clear();
 	utility_function_name_table.clear();
 }
