@@ -5,6 +5,7 @@
 #include "wgodot_native_connections.h"
 
 #include "core/os/mutex.h"
+#include "core/templates/safe_refcount.h"
 
 namespace WGodotNative {
 
@@ -25,7 +26,8 @@ class WSignal {
 	struct State {
 		Mutex mutex;
 		ObjectID owner;
-		bool active = true;
+		CallbackIdentity emit_identity;
+		SafeFlag active{ true };
 		uint64_t next_id = 1;
 		Vector<Connection> connections;
 	};
@@ -63,6 +65,23 @@ public:
 	ObjectID get_object_id() const { return state ? state->owner : engine_signal.get_object_id(); }
 	bool operator==(const WSignal &p_other) const { return state == p_other.state && engine_signal == p_other.engine_signal; }
 	bool operator!=(const WSignal &p_other) const { return !(*this == p_other); }
+	Callback emit_callable() const {
+		WSignal source = *this;
+		std::shared_ptr<CallbackIdentity> identity;
+		if (state) {
+			// Repeated .emit references share identity without caching a callback
+			// that would retain its own signal state.
+			identity = std::shared_ptr<CallbackIdentity>(state, &state->emit_identity);
+		} else {
+			identity = std::make_shared<EngineCallbackIdentity>(Callable::create(engine_signal, SNAME("emit")));
+		}
+		return Callback::make([source](Args... p_args) { source.emit(p_args...); },
+				[source]() {
+					// Validity can be checked while a different signal holds its mutex.
+					return source.state ? source.state->active.is_set() : source.engine_signal.get_object() != nullptr;
+				},
+				get_object_id(), std::move(identity));
+	}
 	template <class Signature>
 	Error connect(const WCallable<Signature> &p_callback, int64_t p_flags = 0) const {
 		Callback callback = Callback::adapt(p_callback);
@@ -70,7 +89,7 @@ public:
 			return engine_signal.connect(engine_callback(callback), p_flags);
 		}
 		MutexLock lock(state->mutex);
-		ERR_FAIL_COND_V(!state->active || !callback.is_valid(), ERR_INVALID_PARAMETER);
+		ERR_FAIL_COND_V(!state->active.is_set() || !callback.is_valid(), ERR_INVALID_PARAMETER);
 		ERR_FAIL_COND_V(p_flags & ~(Object::CONNECT_DEFERRED | Object::CONNECT_ONE_SHOT | Object::CONNECT_REFERENCE_COUNTED | Object::CONNECT_PERSIST), ERR_INVALID_PARAMETER);
 		for (auto &connection : state->connections) {
 			if (connection.callback.same_connection(callback)) {
@@ -138,7 +157,7 @@ public:
 		Vector<Connection> snapshot;
 		{
 			MutexLock lock(state->mutex);
-			if (!state->active) {
+			if (!state->active.is_set()) {
 				return;
 			}
 			snapshot = state->connections;
@@ -184,7 +203,7 @@ public:
 			};
 		}
 		MutexLock lock(state->mutex);
-		if (!state->active) {
+		if (!state->active.is_set()) {
 			return {};
 		}
 		const uint64_t id = state->next_id++;
@@ -210,7 +229,7 @@ public:
 	WSignal<Args...> signal() const { return value; }
 	~SignalSource() {
 		MutexLock lock(value.state->mutex);
-		value.state->active = false;
+		value.state->active.clear();
 		value.state->connections.clear();
 	}
 };

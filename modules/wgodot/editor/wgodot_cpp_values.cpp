@@ -137,10 +137,17 @@ WGodotCppEmitter::Value WGodotCppEmitter::global_call(const Parser::CallNode *p_
 		return type(p_call->type_constraint, p_call) + "()";
 	}
 	const String *text_utility = WGodotText::find_utility(name);
+	const Variant::Type builtin = Parser::get_builtin_type(name);
+	const bool scalar_conversion = p_call->arguments.size() == 1 &&
+			(builtin == Variant::BOOL || builtin == Variant::INT || builtin == Variant::FLOAT ||
+					builtin == Variant::STRING || builtin == Variant::STRING_NAME || builtin == Variant::NODE_PATH);
 	Vector<Value> operands;
 	for (uint32_t i = 0; i < p_call->arguments.size(); i++) {
 		const auto *argument = p_call->arguments[i];
-		if (text_utility && is_warray(expression_type(argument))) {
+		Value dictionary_value;
+		if (scalar_conversion && try_lower_dictionary_get(argument, dictionary_value)) {
+			operands.push_back(dictionary_value);
+		} else if (text_utility && is_warray(expression_type(argument))) {
 			if (native_only(expression_type(argument).get_container_element_type(0))) {
 				unsupported(argument, "text formatting for this native-only WArray element type; a TextFormat specialization is required");
 				return Value();
@@ -163,7 +170,6 @@ WGodotCppEmitter::Value WGodotCppEmitter::global_call(const Parser::CallNode *p_
 		result.effects = true;
 		return result;
 	}
-	const Variant::Type builtin = Parser::get_builtin_type(name);
 	if (builtin < Variant::VARIANT_MAX) {
 		result.code = "WGodotNative::construct<" + type(p_call->type_constraint, p_call) + ", " + variant_type(builtin) + ">(" + joined + ")";
 	} else if (Variant::has_utility_function(name)) {

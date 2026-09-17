@@ -37,7 +37,8 @@ class WGodotCppEmitter {
 	HashMap<const GDScriptParser::Node *, String> local_overrides;
 	HashMap<const GDScriptParser::Node *, String> object_views;
 	const GDScriptParser::ExpressionNode *iterated_expression = nullptr;
-	const GDScriptParser::ExpressionNode *dictionary_assignment_source = nullptr;
+	// Only this expression may retain an engine Dictionary at an explicit boundary.
+	const GDScriptParser::ExpressionNode *engine_dictionary_source = nullptr;
 	bool emitted_array_range = false;
 	const GDScriptParser::CallNode *awaited_call = nullptr;
 	uint64_t temporary_index = 0;
@@ -75,6 +76,7 @@ class WGodotCppEmitter {
 	bool is_dictionary_duplicate(const GDScriptParser::ExpressionNode *p_value) const;
 	Value dictionary_literal(const GDScriptParser::DictionaryNode *p_dictionary, const GDScriptParser::DataType &p_target);
 	Value wdictionary_call(const GDScriptParser::CallNode *p_call, bool p_to_dictionary = false);
+	bool try_lower_dictionary_get(const GDScriptParser::ExpressionNode *p_expression, Value &r_result);
 	String dictionary_engine_argument(const GDScriptParser::ExpressionNode *p_value, Variant::Type p_target);
 	bool validate_dictionary_conversion(const GDScriptParser::ExpressionNode *p_value, const GDScriptParser::DataType &p_target, const GDScriptParser::Node *p_target_origin);
 	bool is_packed(const GDScriptParser::DataType &p_type) const;

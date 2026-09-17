@@ -19,6 +19,20 @@ Parser::DataType builtin(Variant::Type p_type) {
 	type.builtin_type = p_type;
 	return type;
 }
+
+const Parser::ExpressionNode *signal_emit_source(const Parser::Node *p_node) {
+	if (p_node->type != Parser::Node::SUBSCRIPT) {
+		return nullptr;
+	}
+	const auto *subscript = static_cast<const Parser::SubscriptNode *>(p_node);
+	const auto &base_type = subscript->base->type_constraint;
+	if (subscript->is_attribute && subscript->attribute->name == SNAME("emit") &&
+			base_type.kind == Parser::DataType::BUILTIN && base_type.builtin_type == Variant::SIGNAL && !base_type.is_meta_type) {
+		return subscript->base;
+	}
+	return nullptr;
+}
+
 class Collector : public WGodotCppAstVisitor {
 	std::function<void(const Parser::Node *)> callback;
 	const Parser::Node *root;
@@ -195,6 +209,12 @@ void WGodotCppSignatures::seed(const Parser::Node *p_node) {
 	if (!p_node->is_expression()) {
 		return;
 	}
+	if (signal_emit_source(p_node)) {
+		// Signal.emit's builtin metadata is variadic. Its native callable uses
+		// the signal declaration, which may resolve in a later propagation pass.
+		producers.insert(p_node);
+		return;
+	}
 	const auto *expr = static_cast<const Parser::ExpressionNode *>(p_node);
 	if (const auto *declaration = source(p_node)) {
 		if (declaration->type == Parser::Node::FUNCTION) {
@@ -248,7 +268,7 @@ void WGodotCppSignatures::seed(const Parser::Node *p_node) {
 		if (base && base->type_constraint.builtin_type == Variant::CALLABLE && call->function_name == SNAME("bind")) {
 			producers.insert(call);
 		}
-		if (base && base->type_constraint.builtin_type == Variant::CALLABLE && call->function_name == SNAME("call") && !known.has(base)) {
+		if (base && base->type_constraint.builtin_type == Variant::CALLABLE && call->function_name == SNAME("call") && !known.has(base) && !signal_emit_source(base)) {
 			Signature demand;
 			demand.priority = 2;
 			demand.result = { discarded.has(call) ? builtin(Variant::NIL) : call->type_constraint, call };
@@ -317,7 +337,19 @@ void WGodotCppSignatures::analyze() {
 			}
 		}
 		for (const auto *node : nodes) {
-			if (node->type != Parser::Node::CALL || known.has(node)) {
+			if (known.has(node)) {
+				continue;
+			}
+			if (const auto *signal = signal_emit_source(node)) {
+				if (const Signature *input = get(signal)) {
+					Signature output = *input;
+					output.signal = false;
+					known.insert(node, output);
+					changed = true;
+				}
+				continue;
+			}
+			if (node->type != Parser::Node::CALL) {
 				continue;
 			}
 			const auto *call = static_cast<const Parser::CallNode *>(node);

@@ -110,10 +110,10 @@ WGodotCppEmitter::Value WGodotCppEmitter::wdictionary_call(const Parser::CallNod
 		if (int(i) == key_argument || int(i) == value_argument) {
 			operands.push_back(lower_converted(argument, int(i) == key_argument ? key_type : value_type, base, true));
 		} else if (i == 0 && name == SNAME("assign") && argument->type != Parser::Node::DICTIONARY) {
-			const auto *outer_source = dictionary_assignment_source;
-			dictionary_assignment_source = argument;
+			const auto *outer_source = engine_dictionary_source;
+			engine_dictionary_source = argument;
 			Value source = lower(argument);
-			dictionary_assignment_source = outer_source;
+			engine_dictionary_source = outer_source;
 			import_dictionary = source.cpp_type == "Variant" || source.cpp_type == "Dictionary";
 			if (import_dictionary) {
 				if (native_only(key_type) || native_only(value_type)) {
@@ -159,4 +159,39 @@ WGodotCppEmitter::Value WGodotCppEmitter::wdictionary_call(const Parser::CallNod
 	}
 	result.effects = true;
 	return result;
+}
+
+bool WGodotCppEmitter::try_lower_dictionary_get(const Parser::ExpressionNode *p_expression, Value &r_result) {
+	if (p_expression->type != Parser::Node::CALL || expression_overrides.has(p_expression)) {
+		return false;
+	}
+	const auto *call = static_cast<const Parser::CallNode *>(p_expression);
+	if (call->function_name != SNAME("get") || call->get_callee_type() != Parser::Node::SUBSCRIPT) {
+		return false;
+	}
+	const auto *base = static_cast<const Parser::SubscriptNode *>(call->callee)->base;
+	const auto base_type = expression_type(base);
+	if (base->type != Parser::Node::CALL || base_type.kind != Parser::DataType::BUILTIN ||
+			base_type.builtin_type != Variant::DICTIONARY || is_wdictionary(base_type)) {
+		return false;
+	}
+
+	// The scalar constructor consumes this lookup immediately. Keep the engine
+	// dictionary and its entry as-is; do not infer a value type from the default.
+	Vector<Value> operands;
+	for (const auto *argument : call->arguments) {
+		operands.push_back(lower_engine_argument(argument, Variant::NIL));
+	}
+	if (call->arguments.size() == 1) {
+		operands.push_back(lower_literal(Variant(), call));
+	}
+	const auto *outer_source = engine_dictionary_source;
+	engine_dictionary_source = base;
+	operands.push_back(lower(base));
+	engine_dictionary_source = outer_source;
+	r_result = sequence(operands);
+	r_result.code = "(" + operands[2].code + ").get(" + convert_value(operands[0], "Variant") + ", " + convert_value(operands[1], "Variant") + ")";
+	r_result.cpp_type = "Variant";
+	r_result.effects = true;
+	return true;
 }

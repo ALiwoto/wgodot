@@ -212,6 +212,14 @@ WGodotCppEmitter::Value WGodotCppEmitter::member(const Parser::ExpressionNode *p
 		}
 	}
 	if (datatype.kind == Parser::DataType::BUILTIN && Variant::has_builtin_method(datatype.builtin_type, p_name)) {
+		if (datatype.builtin_type == Variant::SIGNAL && p_name == SNAME("emit")) {
+			Vector<Value> operands{ lower(p_base) };
+			Value result = sequence(operands);
+			result.code = operands[0].code + ".emit_callable()";
+			result.cpp_type = signature_type(p_origin);
+			result.effects = true;
+			return result;
+		}
 		if (native_only(datatype)) {
 			unsupported(p_origin, "native container/callback/signal method references; use an inline lambda to call the typed method");
 			return String();

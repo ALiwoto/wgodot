@@ -192,7 +192,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::native_invoke(const MethodBind *p_meth
 	} else if (array_result) {
 		unsupported(p_origin, "native Array result from " + key + "; this API needs an explicit WArray result handler");
 	} else if (p_method->get_argument_type(-1) == Variant::DICTIONARY) {
-		if (p_origin != dictionary_assignment_source) {
+		if (p_origin != engine_dictionary_source) {
 			unsupported(p_origin, "native Dictionary result from " + key + "; this API needs an explicit WDictionary result handler");
 		}
 	} else if (p_method->get_argument_type(-1) == Variant::OBJECT && result.cpp_type.ends_with(" *")) {
