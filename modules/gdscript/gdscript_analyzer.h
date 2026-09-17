@@ -138,6 +138,7 @@ class GDScriptAnalyzer {
 	void wgodot_validate_strict_dynamic_call(const GDScriptParser::DataType &p_base_type, const GDScriptParser::CallNode *p_call, bool p_is_self);
 	void wgodot_validate_strict_dynamic_property_access(const GDScriptParser::DataType &p_base_type, const GDScriptParser::SubscriptNode *p_subscript);
 	void wgodot_validate_strict_dynamic_index_access(const GDScriptParser::DataType &p_base_type, const GDScriptParser::SubscriptNode *p_subscript);
+	void wgodot_validate_strict_equality(const GDScriptParser::BinaryOpNode *p_binary_op);
 	bool wgodot_try_get_identifier_narrowing_key(const GDScriptParser::IdentifierNode *p_identifier, const GDScriptParser::Node *&r_key) const;
 	bool wgodot_try_extract_type_narrowing(GDScriptParser::ExpressionNode *p_condition, HashMap<const GDScriptParser::Node *, WGodotNarrowedType> &r_narrowing);
 	bool wgodot_try_get_narrowed_type(const GDScriptParser::IdentifierNode *p_identifier, WGodotNarrowedType &r_narrowed_type) const;

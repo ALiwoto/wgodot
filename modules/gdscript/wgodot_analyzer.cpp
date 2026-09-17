@@ -314,6 +314,26 @@ void GDScriptAnalyzer::wgodot_validate_strict_dynamic_index_access(const GDScrip
 	push_error(vformat(R"*(Strict type checking does not allow dynamic index access on base "%s"; the result type must be fully known and non-Variant.)*", p_base_type.to_string()), p_subscript);
 }
 
+void GDScriptAnalyzer::wgodot_validate_strict_equality(const GDScriptParser::BinaryOpNode *p_binary_op) {
+	if ((p_binary_op->variant_op != Variant::OP_EQUAL && p_binary_op->variant_op != Variant::OP_NOT_EQUAL) || !wgodot_strict_type_checking_enabled()) {
+		return;
+	}
+
+	const auto &left_type = p_binary_op->left_operand->type_constraint;
+	const auto &right_type = p_binary_op->right_operand->type_constraint;
+	auto accepts_assignment = [this](const GDScriptParser::DataType &p_target, const GDScriptParser::DataType &p_source) {
+		// Variant's conversion rules accept every type when the target is NIL.
+		// Here NIL represents null, not a Variant destination that can hold anything.
+		const bool target_is_null = p_target.kind == GDScriptParser::DataType::BUILTIN && p_target.builtin_type == Variant::NIL;
+		return is_type_compatible(p_target, p_source, !target_is_null);
+	};
+	if (accepts_assignment(left_type, right_type) || accepts_assignment(right_type, left_type)) {
+		return;
+	}
+
+	push_error(vformat(R"(Strict type checking does not allow comparing "%s" and "%s" with "%s": neither operand's type can be assigned to the other.)", left_type.to_string(), right_type.to_string(), Variant::get_operator_name(p_binary_op->variant_op)), p_binary_op);
+}
+
 bool GDScriptAnalyzer::wgodot_try_get_identifier_narrowing_key(const GDScriptParser::IdentifierNode *p_identifier, const GDScriptParser::Node *&r_key) const {
 	ERR_FAIL_NULL_V(p_identifier, false);
 

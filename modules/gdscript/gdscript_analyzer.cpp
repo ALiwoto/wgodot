@@ -3338,6 +3338,10 @@ void GDScriptAnalyzer::reduce_binary_op(GDScriptParser::BinaryOpNode *p_binary_o
 		return;
 	}
 
+	// wgodot-changes::begin
+	wgodot_validate_strict_equality(p_binary_op);
+	// wgodot-changes::end
+
 #ifdef DEBUG_ENABLED
 	if (p_binary_op->variant_op == Variant::OP_DIVIDE &&
 			(left_type.builtin_type == Variant::INT ||
