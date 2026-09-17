@@ -5,6 +5,7 @@
 #include "core/object/class_db.h"
 
 #include "modules/gdscript/gdscript_analyzer.h"
+#include "modules/gdscript/wgodot_gd/interface_helpers.h"
 #include "modules/gdscript/wgodot_gd/script_resolution.h"
 
 bool GDScriptAnalyzer::wgodot_resolve_property_path_segment(WGodotGDScriptPropertyPath::Segment &r_segment, const GDScriptParser::Node *p_source) {
@@ -60,10 +61,23 @@ bool GDScriptAnalyzer::wgodot_resolve_property_path_segment(WGodotGDScriptProper
 		}
 	}
 
+	// Interfaces declare their own properties separately from ClassDB. Their
+	// required Object base supplies inherited properties such as Control.position.
+	if (const auto *contract = WGodotGDScriptInterfaceHelpers::native_interface_for_member(base, r_segment.name)) {
+		if (const auto *property = contract->properties.getptr(r_segment.name)) {
+			r_segment.datatype = type_from_property(property->info, false, p_source);
+			r_segment.datatype.is_read_only = property->setter.is_empty();
+			return true;
+		}
+	}
+	StringName native = base.native_type;
+	if (const auto *contract = WGodotNativeInterfaces::get_descriptor(native)) {
+		native = contract->native_base;
+	}
 	PropertyInfo property;
-	if (ClassDB::get_property_info(base.native_type, r_segment.name, &property)) {
+	if (ClassDB::get_property_info(native, r_segment.name, &property)) {
 		r_segment.datatype = type_from_property(property, false, p_source);
-		r_segment.datatype.is_read_only = ClassDB::get_property_setter(base.native_type, r_segment.name).is_empty();
+		r_segment.datatype.is_read_only = ClassDB::get_property_setter(native, r_segment.name).is_empty();
 		return true;
 	}
 	return false;
