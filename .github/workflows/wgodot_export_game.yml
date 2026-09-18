@@ -66,6 +66,7 @@ jobs:
           GAME_REPO_URL: ${{ secrets.GAME_REPO_URL }}
           GH_TOKEN: ${{ secrets.GAME_REPO_GH_TOKEN }}
           GAME_CONFIG_CONTENT: ${{ secrets.GAME_CONFIG_CONTENT }}
+          GAME_WEB_CONFIG_CONTENT: ${{ secrets.GAME_WEB_CONFIG_CONTENT }}
           GAME_ANDROID_SIGN_KEY: ${{ secrets.GAME_ANDROID_SIGN_KEY }}
           GAME_ANDROID_SIGN_JSON: ${{ secrets.GAME_ANDROID_SIGN_JSON }}
         run: |
@@ -75,6 +76,7 @@ jobs:
           }
           if (!$env:GH_TOKEN) { throw 'Set GAME_REPO_GH_TOKEN to a token with read access to the game repository.' }
           if (!$env:GAME_CONFIG_CONTENT) { throw 'Set GAME_CONFIG_CONTENT to the game configuration INI contents.' }
+          if (!$env:GAME_WEB_CONFIG_CONTENT) { throw 'Set GAME_WEB_CONFIG_CONTENT to the Web game configuration INI contents.' }
           if ($env:GAME_BUILD_RELEASE -eq 'true' -and (!$env:GAME_ANDROID_SIGN_KEY -or !$env:GAME_ANDROID_SIGN_JSON)) {
             throw 'Android release builds require GAME_ANDROID_SIGN_KEY (Base64 keystore) and GAME_ANDROID_SIGN_JSON.'
           }
@@ -196,7 +198,7 @@ jobs:
         shell: pwsh
         env:
           GAME_PLATFORM: ${{ matrix.platform }}
-          GAME_CONFIG_CONTENT: ${{ secrets.GAME_CONFIG_CONTENT }}
+          GAME_CONFIG_CONTENT: ${{ secrets[matrix.platform == 'web' && 'GAME_WEB_CONFIG_CONTENT' || 'GAME_CONFIG_CONTENT'] }}
           GAME_ANDROID_SIGN_KEY: ${{ matrix.platform == 'android' && secrets.GAME_ANDROID_SIGN_KEY || '' }}
           GAME_ANDROID_SIGN_JSON: ${{ matrix.platform == 'android' && secrets.GAME_ANDROID_SIGN_JSON || '' }}
         run: |
