@@ -31,10 +31,6 @@ ExportAnalysis::ExportAnalysis(const ExportProject &p_project, const ExportConte
 	global_classes = project.get_external_classes();
 	external_native_bases = project.get_external_native_bases();
 	for (const String &path : project.get_script_paths()) {
-		const String exported_path = artifacts.get_exported_script_path(path);
-		if (!exported_path.is_empty()) {
-			path_aliases[exported_path] = path;
-		}
 		GDScriptTokenizerText tokenizer;
 		tokenizer.set_source_code(project.get_source(path)->get_text());
 		for (GDScriptTokenizer::Token token = tokenizer.scan(); token.type != GDScriptTokenizer::Token::TK_EOF; token = tokenizer.scan()) {
@@ -107,9 +103,7 @@ StringName ExportAnalysis::get_global_class_native_base(const StringName &p_name
 }
 
 String ExportAnalysis::resolve_path(const String &p_path) const {
-	const String path = ResourceUID::ensure_path(p_path);
-	const String *original = path_aliases.getptr(path);
-	return original != nullptr ? *original : path;
+	return ResourceUID::ensure_path(p_path);
 }
 
 const ExportSource *ExportAnalysis::get_source(const String &p_path) const {

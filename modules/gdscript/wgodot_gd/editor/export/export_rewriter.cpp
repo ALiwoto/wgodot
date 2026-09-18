@@ -58,24 +58,6 @@ void add_extends_path_replacement(RewriteContext &r_context, const GDScriptParse
 	}
 }
 
-bool has_obfuscate_path_annotation(const GDScriptParser::ClassNode *p_class) {
-	if (p_class == nullptr) {
-		return false;
-	}
-
-	if (p_class->wgodot_obfuscate_path) {
-		return true;
-	}
-
-	for (const GDScriptParser::ClassNode::Member &member : p_class->members) {
-		if (member.type == GDScriptParser::ClassNode::Member::CLASS && has_obfuscate_path_annotation(member.m_class)) {
-			return true;
-		}
-	}
-
-	return false;
-}
-
 void collect_global_class_rename_request(ExportContext *p_context, const GDScriptParser::ClassNode *p_class, const String &p_path, Vector<GlobalClassRenameRequest> &r_requests) {
 	if (p_context == nullptr || p_class == nullptr) {
 		return;

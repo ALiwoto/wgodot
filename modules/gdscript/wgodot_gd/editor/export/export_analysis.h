@@ -18,7 +18,6 @@ class ExportAnalysis {
 	HashMap<String, Ref<GDScript>> scripts;
 	HashMap<StringName, String> global_classes;
 	HashMap<String, StringName> external_native_bases;
-	HashMap<String, String> path_aliases;
 	HashMap<StringName, StringName> native_aliases;
 	HashMap<StringName, StringName> function_aliases;
 	HashMap<StringName, StringName> member_aliases[4];

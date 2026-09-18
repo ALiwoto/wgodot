@@ -58,10 +58,8 @@ void ExportPipeline::export_file(EditorExportPlugin *p_plugin, const String &p_p
 		return;
 	}
 	const String &source = prepared->get_text();
-	const String obfuscated_script_path = artifacts.get_exported_script_path(p_path);
-	const bool script_path_changed = !obfuscated_script_path.is_empty();
 	if (p_script_mode == EditorExportPreset::MODE_SCRIPT_TEXT) {
-		p_plugin->add_file(script_path_changed ? obfuscated_script_path : p_path, source.to_utf8_buffer(), false);
+		p_plugin->add_file(p_path, source.to_utf8_buffer(), false);
 		p_plugin->skip();
 		return;
 	}
@@ -72,15 +70,7 @@ void ExportPipeline::export_file(EditorExportPlugin *p_plugin, const String &p_p
 		return;
 	}
 
-	if (script_path_changed) {
-		const String obfuscated_binary_script_path = artifacts.get_exported_binary_script_path(p_path);
-		const String remap_source = "[remap]\n\npath=\"" + obfuscated_binary_script_path.c_escape() + "\"\n";
-		p_plugin->add_file(obfuscated_binary_script_path, file, false);
-		p_plugin->add_file(obfuscated_script_path + ".remap", remap_source.to_utf8_buffer(), false);
-		p_plugin->skip();
-	} else {
-		p_plugin->add_file(p_path.get_basename() + ".gdc", file, true);
-	}
+	p_plugin->add_file(p_path.get_basename() + ".gdc", file, true);
 }
 
 }

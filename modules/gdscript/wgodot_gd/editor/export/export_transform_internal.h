@@ -26,7 +26,6 @@ struct GlobalClassRenameRequest {
 String get_parser_errors_with_source_text(const GDScriptParser &p_parser, const String &p_source);
 
 void collect_builtin_class_aliases_from_node(ExportContext *p_context, const GDScriptParser::Node *p_node);
-bool has_obfuscate_path_annotation(const GDScriptParser::ClassNode *p_class);
 void collect_global_class_rename_request(ExportContext *p_context, const GDScriptParser::ClassNode *p_class, const String &p_path, Vector<GlobalClassRenameRequest> &r_requests);
 
 void add_builtin_function_alias_call_replacement(RewriteContext &r_context, const GDScriptParser::CallNode *p_call);

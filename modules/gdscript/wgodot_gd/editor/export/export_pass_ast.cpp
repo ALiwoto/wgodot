@@ -26,7 +26,6 @@ void AnalyzedExportPass::setup_rewrite(const ExportPassInput &p_input, ExportPas
 	r_rewrite.options.deconst_exports = false;
 	r_rewrite.options.obfuscate_names = false;
 	r_rewrite.options.obfuscate_builtin_names = false;
-	r_rewrite.options.obfuscate_file_paths = false;
 	r_rewrite.options.obfuscate_strings = false;
 	r_rewrite.options.strip_comments = false;
 	r_rewrite.options.strip_empty_lines = false;

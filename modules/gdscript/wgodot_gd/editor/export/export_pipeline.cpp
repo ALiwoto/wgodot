@@ -3,7 +3,6 @@
 #include "export_pipeline.h"
 
 #include "export_pass_ast.h"
-#include "export_pass_dead_code.h"
 #include "export_pass_diagnostics.h"
 #include "export_pass_no_export.h"
 #include "export_timing.h"
@@ -67,21 +66,17 @@ Error ExportPipeline::prepare(const HashSet<String> &p_paths, const TransformOpt
 
 	NoExportPass no_export;
 	DiagnosticPass diagnostics;
-	DeadCodePass dead_code;
 	ConstantsPass constants;
 	NamesPass names;
 	BuiltinAliasesPass builtin_aliases;
-	PathsPass paths;
 	StringsPass strings;
 	CleanupPass cleanup;
 	ExportTransformationBase *configured_passes[] = {
 		&no_export,
-		&dead_code,
 		&diagnostics,
 		&constants,
 		&builtin_aliases,
 		&names,
-		&paths,
 		&strings,
 		&cleanup,
 	};

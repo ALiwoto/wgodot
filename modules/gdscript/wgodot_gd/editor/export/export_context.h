@@ -32,14 +32,12 @@ class ExportContext {
 	HashMap<StringName, StringName> builtin_static_method_aliases;
 	HashMap<StringName, StringName> builtin_instance_property_aliases;
 	HashMap<StringName, StringName> builtin_static_property_aliases;
-	HashMap<String, String> script_path_renames;
 	HashMap<uint64_t, String> string_resources;
 	HashMap<String, String> obfuscated_string_literals;
 	HashSet<StringName> reserved_member_names;
 	HashMap<StringName, StringName> interface_member_aliases;
 	HashMap<uint64_t, StringName> builtin_interface_aliases;
 	HashSet<StringName> reserved_global_class_names;
-	HashSet<String> reserved_script_paths;
 	uint64_t next_string_resource_id = 1;
 	RandomPCG obfuscation_random;
 
@@ -61,7 +59,6 @@ public:
 	const HashMap<StringName, StringName> &get_interface_member_aliases() const;
 	const HashMap<uint64_t, StringName> &get_builtin_interface_aliases() const { return builtin_interface_aliases; }
 	void reserve_global_class_name(const StringName &p_name);
-	void reserve_script_path(const String &p_path);
 	void reserve_script_global_class_name(const GDScriptParser::ClassNode *p_class);
 	void reserve_script_declaration_names_for_global_classes(const GDScriptParser::ClassNode *p_class);
 	void seed_reserved_obfuscated_names(HashSet<StringName> &r_reserved_names) const;
@@ -79,10 +76,6 @@ public:
 	StringName get_or_create_global_class_rename(const StringName &p_name, const String &p_path);
 	const StringName *get_global_class_rename(const StringName &p_name) const;
 	const StringName *get_global_class_rename_by_path(const String &p_path) const;
-	String get_or_create_script_path_rename(const String &p_path);
-	const String *get_script_path_rename(const String &p_path) const;
-	String get_exported_script_path(const String &p_path) const;
-	String get_exported_binary_script_path(const String &p_path) const;
 	uint32_t get_random_uint(uint32_t p_bounds);
 	uint64_t create_string_resource(const String &p_value);
 	const HashMap<uint64_t, String> &get_string_resources() const;

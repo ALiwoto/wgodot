@@ -223,23 +223,6 @@ This option won't probably be removed because it can still be used in gd2cpp, bu
 
 You can also exclude individual strings with `@no_string_mangle`.
 
-### Dead-code injection
-
-Option: `wgodot/export/dead_code_injection_enabled` injects useless deadcode between members
-
-**IMPORTANT**: this feature is HIGHLY inefficient and will bloat your code and increase your game's startup time, DO NOT abuse it.
-This feature will be removed soon as it's not effective against current LLM models.
-
-OPtion `wgodot/export/max_dead_code_gaps_per_file`: max gap to choose per file (default is 5)
-
-Options `wgodot/export/min_in_class_dead_code_injection` and `wgodot/export/max_in_class_dead_code_injection`: control snippets per selected gap
-
-In case you are interested in seeing what codes are injected as deadcode: [See here](/modules/gdscript/wgodot_gd/editor/export/deadcode/in_class) (note: I never got time to implement `in_func` folder thingy, and now I'm removing this feature, soo)
-
-normal classes use `deadcode*.txt`; `@static_class` classes use `static_deadcode*.txt`.
-
-`@no_mangle` classes and interfaces are excluded. Injected code passes through normal export obfuscation and cleanup (e.g. its strings and names are obfuscated in that pipeline).
-
 ### No-export source blocks
 
 add `#wgodot::no_export::begin` and `#wgodot::no_export::end` to make code not get exported. It's basically like c++'s `#ifndef` thingy.

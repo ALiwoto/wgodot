@@ -7,7 +7,6 @@
 #include "export_transform_internal.h"
 
 #include "core/error/error_macros.h"
-#include "core/variant/variant_parser.h"
 
 #include "modules/gdscript/gdscript_tokenizer.h"
 
@@ -36,25 +35,8 @@ String get_export_string_literal_replacement(RewriteContext &r_context, Variant:
 		return String();
 	}
 
-	String value = p_value;
-	const bool can_obfuscate_path = p_type == Variant::STRING && r_context.options.obfuscate_file_paths && value.begins_with("res://");
-	if (can_obfuscate_path) {
-		const String obfuscated_path = r_context.export_context->get_exported_script_path(value);
-		if (!obfuscated_path.is_empty()) {
-			value = obfuscated_path;
-		}
-	}
-
 	if (r_context.options.obfuscate_strings && !r_context.no_string_mangle_scope) {
-		return r_context.export_context->get_or_create_obfuscated_string_literal(p_type, value);
-	}
-
-	if (value != p_value) {
-		String text;
-		if (VariantWriter::write_to_string(value, text) != OK) {
-			return String();
-		}
-		return text;
+		return r_context.export_context->get_or_create_obfuscated_string_literal(p_type, p_value);
 	}
 
 	return String();
@@ -100,21 +82,13 @@ bool add_string_concat_replacement(RewriteContext &r_context, const GDScriptPars
 		return false;
 	}
 
-	String value = p_binary->reduced_value;
-	if (r_context.options.obfuscate_file_paths && value.begins_with("res://")) {
-		const String obfuscated_path = r_context.export_context->get_exported_script_path(value);
-		if (!obfuscated_path.is_empty()) {
-			value = obfuscated_path;
-		}
-	}
-
 	const int start = get_offset(r_context, p_binary->start_line, p_binary->start_column);
 	const int end = get_offset(r_context, p_binary->end_line, p_binary->end_column);
 	if (start < 0 || end < start || overlaps_existing_replacement(r_context, start, end)) {
 		return false;
 	}
 
-	const String text = r_context.export_context->get_or_create_obfuscated_string_literal(Variant::STRING, value);
+	const String text = r_context.export_context->get_or_create_obfuscated_string_literal(Variant::STRING, p_binary->reduced_value);
 	if (text.is_empty()) {
 		return false;
 	}
@@ -137,7 +111,6 @@ bool should_strip_export_annotation(const GDScriptParser::AnnotationNode *p_anno
 		SNAME("@no_mangle"),
 		SNAME("@no_string_mangle"),
 		SNAME("@obfuscate"),
-		SNAME("@obfuscate_path"),
 		SNAME("@static_class"),
 	};
 

@@ -2,17 +2,12 @@
 # my own personal script for building wgodot on my own local machine.
 
 param(
-	[AllowNull()]
-	[string]$RunTest = $null,
-
-	[switch]$SkipBuild,
 	[switch]$Templates,
 	[switch]$Game,
 	[switch]$Release
 )
 
 $ErrorActionPreference = "Stop"
-$shouldRunTests = $PSBoundParameters.ContainsKey("RunTest")
 
 if ($Game -and $Templates) {
 	throw "Use either -Game or -Templates."
@@ -20,13 +15,6 @@ if ($Game -and $Templates) {
 if ($Release -and !($Game -or $Templates)) {
 	throw "-Release requires -Game or -Templates."
 }
-if ($Game -and $shouldRunTests) {
-	throw "-RunTest requires the editor; it cannot be combined with -Game."
-}
-
-$defaultTests = @(
-	"deadcode"
-)
 
 $target = "editor"
 if ($Templates -or $Game) {
@@ -78,66 +66,34 @@ if ($Release) {
 
 $binaryPath = Join-Path $PSScriptRoot "bin/godot.windows.$target.x86_64$binarySuffix.exe"
 
-if (!$SkipBuild) {
-	$vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-	if (!$vs) {
-		throw "Visual Studio with the C++ x64 build tools was not found."
-	}
-	Import-Module "$vs\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
-	Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments "-arch=x64"
+$vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+if (!$vs) {
+	throw "Visual Studio with the C++ x64 build tools was not found."
+}
+Import-Module "$vs\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
+Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments "-arch=x64"
 
-	# Only the executable being rebuilt needs to close; keep other editors/games open.
-	$processName = [IO.Path]::GetFileNameWithoutExtension($binaryPath)
-	Get-Process -Name $processName -ErrorAction SilentlyContinue |
-		Where-Object { $_.Path -eq $binaryPath } |
-		Stop-Process -Force
+# Only the executable being rebuilt needs to close; keep other editors/games open.
+$processName = [IO.Path]::GetFileNameWithoutExtension($binaryPath)
+Get-Process -Name $processName -ErrorAction SilentlyContinue |
+	Where-Object { $_.Path -eq $binaryPath } |
+	Stop-Process -Force
 
-	Push-Location $PSScriptRoot
-	try {
-		& scons @sconsArgs
-		if ($LASTEXITCODE -ne 0) {
-			exit $LASTEXITCODE
-		}
-	}
-	finally {
-		Pop-Location
-	}
-	Write-Host "Built: $binaryPath"
-	if ($Game) {
-		$buildManifest = @{
-			generation = $gameManifest.generation
-			binary_sha256 = (Get-FileHash -LiteralPath $binaryPath -Algorithm SHA256).Hash.ToLowerInvariant()
-		} | ConvertTo-Json
-		[IO.File]::WriteAllText("$binaryPath.native.json", $buildManifest, [Text.UTF8Encoding]::new($false))
+Push-Location $PSScriptRoot
+try {
+	& scons @sconsArgs
+	if ($LASTEXITCODE -ne 0) {
+		exit $LASTEXITCODE
 	}
 }
-
-if ($shouldRunTests) {
-	$testsToRun = if ([string]::IsNullOrWhiteSpace($RunTest)) {
-		$defaultTests
-	} else {
-		@($RunTest)
-	}
-
-	$godotExe = Join-Path $PSScriptRoot "bin\godot.windows.editor.x86_64.exe"
-	if (!(Test-Path $godotExe)) {
-		throw "Could not find test binary: $godotExe"
-	}
-
-	$testProjectPath = Join-Path $PSScriptRoot "modules\gdscript\tests\scripts"
-	$deadcodeDir = Join-Path $PSScriptRoot "modules\gdscript\wgodot_gd\editor\export\deadcode\in_class"
-
-	foreach ($testName in $testsToRun) {
-		switch ($testName) {
-			"deadcode" {
-				& $godotExe --headless --path $testProjectPath --script "res://wgodot/validate_deadcode_snippets.notest.gd" -- "--deadcode-dir=$deadcodeDir"
-			}
-			default {
-				throw "Unknown WGodot local test: $testName"
-			}
-		}
-		if ($LASTEXITCODE -ne 0) {
-			exit $LASTEXITCODE
-		}
-	}
+finally {
+	Pop-Location
+}
+Write-Host "Built: $binaryPath"
+if ($Game) {
+	$buildManifest = @{
+		generation = $gameManifest.generation
+		binary_sha256 = (Get-FileHash -LiteralPath $binaryPath -Algorithm SHA256).Hash.ToLowerInvariant()
+	} | ConvertTo-Json
+	[IO.File]::WriteAllText("$binaryPath.native.json", $buildManifest, [Text.UTF8Encoding]::new($false))
 }
