@@ -54,6 +54,18 @@ foreach ($variant in @('debug', 'release')) {
     $templates[$variant] = "$EngineDirectory/bin/$templateName"
 }
 
+$webExportBase = ''
+if ($Platform -eq 'web') {
+    $gameRevision = git -C $GameDirectory rev-parse HEAD
+    if ($LASTEXITCODE -ne 0) { throw 'Could not read the game commit for web asset filenames.' }
+    $gameRevision = $gameRevision.Substring(0, 7)
+    $engineRevision = git -C $EngineDirectory rev-parse HEAD
+    if ($LASTEXITCODE -ne 0) { throw 'Could not read the engine commit for web asset filenames.' }
+    $engineRevision = $engineRevision.Substring(0, 7)
+    # Native web binaries change when either the game or the engine changes.
+    $webExportBase = "index-$gameRevision-$engineRevision"
+}
+
 $signingDirectory = $null
 $signingVariables = @(
     'GODOT_ANDROID_KEYSTORE_RELEASE_PATH',
@@ -174,7 +186,7 @@ try {
             linux { 'DarkSurvivors.x86_64' }
             windows { 'DarkSurvivors.exe' }
             android { 'DarkSurvivors.apk' }
-            web { 'index.html' }
+            web { "$webExportBase-$variant.html" }
         }
         $exportPath = Join-Path $variantDirectory $fileName
         Write-Host "Exporting $Platform native game ($variant)..."
@@ -194,6 +206,19 @@ try {
                 Copy-Item -LiteralPath $exportPath -Destination "$releaseDirectory/$assetName.apk"
             }
             web {
+                # Godot generates all asset references from the versioned export basename.
+                # Keep that HTML for the service worker, plus the stable hosting entry point.
+                Copy-Item -LiteralPath $exportPath -Destination "$variantDirectory/index.html"
+                Copy-Item -LiteralPath "$GameDirectory/src/html/telegram-web-app.js" -Destination $variantDirectory
+
+                $webManifestPath = [IO.Path]::ChangeExtension($exportPath, '.manifest.json')
+                if (Test-Path -LiteralPath $webManifestPath) {
+                    # Installed PWAs must open the current game, not a previous commit's HTML.
+                    $webManifest = Get-Content -LiteralPath $webManifestPath -Raw | ConvertFrom-Json
+                    $webManifest.start_url = './index.html'
+                    $webManifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $webManifestPath -Encoding utf8
+                }
+
                 Compress-Archive -Path "$variantDirectory/*" -DestinationPath "$releaseDirectory/$assetName-wasm32.zip" -Force
             }
         }
