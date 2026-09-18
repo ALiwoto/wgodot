@@ -1,89 +1,293 @@
 # WGodot Features
 
-This file tracks user-facing wgodot features. It intentionally avoids internal export-file and C++ implementation details.
+This file lists most of the useful WGodot features, if you want to read their implementations, feel free to explore the codebase.
 
 ## GDScript Safety
 
-1. `@override`: marks a method as intentionally overriding a parent method. When `wgodot/gdscript/strict_override_checking` is enabled, overrides must use it. `wgodot/gdscript/disable_strict_override_checking_for_addons` defaults to `true` and disables this requirement for every script under `res://addons/`.
+It's highly recommended that you keep these features enabled for [gd2cpp](./gd2cpp.md).
+Most of these features are turned on by default.
 
-2. `@private`: limits a variable or function to the current class/file.
+### @override
 
-3. `@protected`: limits a variable or function to the current class and child classes.
+Option: `wgodot/gdscript/strict_override_checking`
 
-4. `@readonly`: allows a variable to be assigned only during initialization or in-place mutation.
+When you override a parent method, you have to use this.
 
-5. `@static_class`: marks a class as static-only and rejects instance-style usage.
+Addon option: `wgodot/gdscript/disable_strict_override_checking_for_addons` (default: true)
+Use it to disable the option under `res://addons/` folder.
 
-6. Strict signal/callable checking: `wgodot/gdscript/strict_signal_callable_checking` catches obvious invalid signal/callable connections.
+### @private
 
-7. Strict type checking: `wgodot/gdscript/strict_type_checking` rejects `Variant` and dynamically typed declarations (`var x = value`; use `:=` or an explicit type), untyped `Array`/`Dictionary` element types, untyped function returns, and dynamic member/call/index access that cannot be resolved to a fully known non-`Variant` type. It also rejects `Object.call("method", ...)` and `Object.call_deferred("method", ...)` because string method names bypass static method checking; use `object.method.call(args)` or `object.method.call_deferred(args)`. `JavaScriptObject.call` is exempt. In `if` branches, strict checking also understands local/parameter narrowing from `is` tests, including `or` alternatives when the same identifier is narrowed to multiple possible types and the accessed property exists with the same non-`Variant` result type on every alternative. These checks are tooling-only and are disabled in non-tools runtime/template builds. `wgodot/gdscript/disable_strict_type_checking_for_addons` defaults to `true` and disables these checks for every script under `res://addons/`.
+Limits a variable or function to the current class/file.
 
-8. Embedded GDScript blocking: `wgodot/gdscript/disable_embedded_gdscript` prevents exported resources from carrying embedded script source.
+### @protected
 
-9. Project GDScript check: `godot --wg check` first asks the matching editor to scan external filesystem changes and finish imports, including required `.uid` creation and script-class metadata updates. When the editor has no unsaved buffers, it reloads externally changed open scripts. It always invalidates cached project parsers so changed class APIs and their transitive dependents are analyzed from current disk sources. It then scans all project `.gd` files under `res://`, respecting `.gdignore` directories, and prints parse errors, analyzer errors, and active GDScript warnings. The Output toolbar's **Re-analyze** button runs the same operation and replaces old output with current diagnostics, including clickable script locations. Save editor changes before checking. The editor must be open, but the game need not be running. WGodot CLI searches upward from the current directory for `project.godot`; normal Godot options such as `--path` can be placed before `--wg`.
+Limits a variable or function to the current class and child classes.
 
-10. Checked tween property paths: strict type checking validates constant `Tween.tween_property()` paths, property write access, and final-value types. Script export updates renamed property references; native C++ export replaces paths with typed accessors while preserving Godot's tween timing and interpolation. Native property reflection is emitted only for `@export` fields.
+### readonly
 
-11. Typed tree broadcasts: `SceneTree.call_group_as(NodeType, "method", ...)` checks a constant class/method and its arguments, then calls matching nodes in parent-first tree order, including internal nodes. Arguments are evaluated once; freed or removed nodes are skipped and newly added nodes wait until the next call. It runs on the main thread and discards return values. Native export emits typed calls. Strict checking rejects `call_group`, `call_group_flags`, and stored group method references.
+Forces a class field to either be assigned inline or at class constructor (_init).
 
-## GDScript Interfaces
+### @static_class
 
-`interface_name` declares a global contract; `implements A, B` adds contracts without changing native inheritance. Interfaces support a native base constraint, interface inheritance, method/property/signal signatures, constants and enums. Type hints, `is`/`as`, typed containers and editor node selection recognize registered native implementations as well as scripts. Export obfuscation keeps contract members consistent across implementations.
+Only allows static members inside of a class (consts are also allowed).
+We highly recommend using this annotation for classes that only has static logic, it will improve the codegen in gd2cpp (e.g. the class won't be registered in godot's ClassDB system).
+
+### Strict signal/callable checking
+
+Option: `wgodot/gdscript/strict_signal_callable_checking`
+
+Catches invalid signal/callable connections.
+Mandatory for using `gd2cpp` feature.
+
+### Strict type checking
+
+Option: `wgodot/gdscript/strict_type_checking`
+
+It rejects EVERYTHING that is not strongly typed.
+for Array / Dictionary you **have** to use types on them: `Array[int]` or `Dictionary[String, int]`.
+
+in gd2cpp these will get converted to [WArray<T>](/modules/wgodot/native/wgodot_native_warray.h) and [WDictionary<K, V>](/modules/wgodot/native/wgodot_native_wdictionary.h) (because original Godot ones will still store Variant under the hood, which compromises performance).
+
+For most of the cases though all you have to do is to convert your vars from:
+`var something = 123`
+to
+`var something := 123`
+
+
+And instead of using `Object.call("method", ...)` and `Object.call_deferred("method", ...)`
+
+use: `object.method.call(args)` or `object.method.call_deferred(args)`.
+
+`JavaScriptObject.call` is exempt.
+
+keywords of `is` and `as` are supposed. You can also use `or` between your ises but don't abuse them too much because I haven't stress tested them.
+
+`wgodot/gdscript/disable_strict_type_checking_for_addons` defaults to `true` and disables these checks for every script under `res://addons/`. (for this one gd2cpp will generate c++, but will route all of them through ClassDB registration and reflection calling, which is extremely bad for performance. however, modifying plugins/addons is really hard, so yeah it's up to you).
+
+**IMPORTANT**: This feature is strictly mandatory for gd2cpp.
+
+
+### Embedded GDScript blocking
+
+Option: `wgodot/gdscript/disable_embedded_gdscript`
+
+Throws error if you embed gdscript into resources (like scenes).
+
+There are a few reasons:
+  - maintainability: scripts embedded inside of scenes or other resources are very hard to find/navigate.
+  - gd2cpp: the entire performance assumption in gd2cpp is that your entire gdscript code is compiled into c++.
+
+### Project GDScript check
+
+`godot --wg check`: basically rescans everything and reports error to you. it's like when you open the editor and it throws lots of errors at you. I had to constantly reopen the editor while fixing bugs, so I made this option.
+
+**UI Option**: The Output toolbar's **Re-analyze** button does the same thing, but flushes out the console first so fresh errors get thrown out.
+
+
+### Checked tween property paths
+
+strict type checking validates constant `Tween.tween_property()` arg, e.g. "modulate:a" is actually analyzed and included as pure strongly typed c++ in gd2cpp.
+
+### Typed tree broadcasts
+
+`SceneTree.call_group_as(NodeType, "method", ...)` iterates through all the nodes with NodeType in scene tree and calls the method on them
+
+if you call a function in your args, they will only be called once.
+
+notes:
+  - invalid nodes (like the ones that are already freed or removed) are skipped.
+  - newly added nodes are also not guaranteed to be included.
+  - We recommend using "queue_*" methods, e.g. queue_redraw to not block the main thread for heavy operation.
+
+gd2cpp flattens this entire call into a single loop iteration.
+
+Strict-type-checking feature entirely rejects `call_group` and `call_group_flags` because they need too much reflections and I don't like reflections.
+
+
+<hr />
+
+## Interface support
+
+Basically: interfaces define what signature members must be inside of a class. they are like a contract.
+You can use the keyword `interface_name` (taken from `class_name`) to define a global interface.
+
+(these used to be only supported inside of gdscript, but now they are fully supported in c++ too).
+As you know, official godot has a "single-hierarchy" system (basically like C# where you can't inherit multiple class).
+However, in wgodot, you can implement as many interfaces as you like (if they conflict you will get a hard error).
+And in the generated c++ code, they will actually be generated as fully pure c++ inheritance! (but they won't be registered as parent in godot's type system)
+
+
+definition example:
+
+```gdscript
+interface_name Destroyable
+
+func destroy_me() -> void
+```
+
+`implements A, B` adds contracts without changing native inheritance.
+
+Interfaces supports all kind of members (however, you can't have a default implementation in them, they have to be bodyless). vars and signals are also supported. All that matters in an interface decleration is the signature.
+
+Type hints, `is`/`as` and all other type system also recognize interfaces.
+
+gd2cpp also fully supports interfaces.
 
 ## Reusable UI
 
-The default-enabled `wgodot_ui` module provides `FlatElement : Label`, `SurfaceElement : Control`, `ButtonElement : Button`, `TextBoxElement : LineEdit` and `SmoothScrollElement : ScrollContainer`. They implement the shared `ElementBase` interface and use native layout, themes, GUI input, focus and accessibility. Custom behavior includes drag movement, tween helpers, scroll momentum/overscroll and texture drawing helpers. Game assets, skins and screen policies remain in the project. Build with `module_wgodot_ui_enabled=no` to omit the module.
+These used to be my custom UI framework stuff, I've ported them into the engine so I can use them everywhere.
 
-`SmoothScrollElement` supports an optional uniform virtual grid: logical extent, buffered view recycling, keyboard navigation, and accessible offscreen items. Games supply create/bind/unbind callbacks and keep selection and item identity in their data model. One column provides a virtual list.
+The `wgodot_ui` module provides:
+  - `FlatElement : Label`: a flat element that doesn't really do anything special, it's just there so I can cast it/use it with ElementBase interface
+  - `ButtonElement : Button`:
+  - `TextBoxElement : LineEdit`
+  - `SmoothScrollElement : ScrollContainer`.
+
+They are highly reusable and stuff.
+
+Build with `module_wgodot_ui_enabled=no` to omit the module.
+
+`SmoothScrollElement` supports an optional uniform virtual grid for performance reason.
+Basically when you have wayyy too many objects in your list, you should use this virtual grid to constantly re-use the controls **only visible to the users**.
 
 ## Agent CLI
 
-See the [WGodot CLI skill](./wgodot-cli/SKILL.md) for agent-oriented usage, commands, and workflow guidance.
+See the [WGodot CLI skill](./wgodot-cli/SKILL.md) for LLM agent stuff.
 
-The `list` command accepts native Godot classes and built-in Variant types such as `Vector3` and `Quaternion`. The `source_info` command returns editor-help signatures, documentation, and status notes for built-in Godot API symbols when no project source declaration exists.
+It supports many features for completely automating the editor from the CLI, humans can also use it easily.
 
-While a WGodot full game pause is active, `godot --wg resume <node-path>` resumes idle processing and input only for the selected runtime node and its descendants. Fixed physics ticks and physics simulation remain paused. `godot --wg pause` clears the selected subtree, and `godot --wg resume` without a path resumes the full game.
+Supports (conditional) breakpoints, pause/step, var inspection, method calling and many other things.
 
-WGodot breakpoints support unique names, live-frame conditions, and one-shot removal. Multiple logical breakpoints may share one physical source line; WGodot evaluates every enabled condition directly from the executing GDScript VM frame before entering Godot's hard-break loop, without requesting debugger/DAP scopes. It exposes all matching names and IDs, removes only matching one-shot records, skips the hard break entirely when none match, and pauses with explicit details when condition evaluation fails. Managed logical-breakpoint stops do not focus the game/editor or change the game's mouse mode. Breakpoint remove, enable, and disable actions accept either an ID or name.
 
-## Export Protection
+## Export Protection (A.K.A Obfuscation)
 
-10. De-const/de-enum: `wgodot/export/deconst_exports` removes exported constant and enum declarations, inlines their values where possible, folds constant indexed uses to the indexed value, keeps dynamic indexed containers as parenthesized literals, and converts stripped enum type hints to `int`.
+**IMPORTANT**: These features are for pre-gd2cpp era, many of these are no longer needed since gd2cpp has all of these features in itself.
+They will soon get deprecated and removed, to remove the code maintainability costs.
 
-11. `@no_mangle`: excludes the annotated declaration from name obfuscation and de-const/de-enum removal. For de-const/de-enum, only `@no_mangle` on the constant or enum declaration itself prevents stripping; containing class/function/property `@no_mangle` does not stop usages from being inlined.
+### De-const/de-enum
 
-12. `@no_string_mangle`: keeps hardcoded strings inside the annotated script, class, or function from export-time string obfuscation. If a constant string is inlined elsewhere by de-const, the usage scope controls whether the inlined string is obfuscated.
+Option: `wgodot/export/deconst_exports`
 
-13. `@obfuscate`: explicitly marks a declaration for configured export-time obfuscation without making it private. On a class, eligible members are obfuscated unless they use `@no_mangle`.
+inlines constants where they are used. so in your exported binary you won't see their name. makes reverse engineering a bit harder.
 
-14. Name obfuscation: `wgodot/export/obfuscate_names` renames exported GDScript locals, parameters, private members including signals, `@obfuscate` declarations, and obfuscated `class_name` entries.
+### @no_mangle
 
-15. Built-in/native name aliasing: `wgodot/export/obfuscate_builtin_names` aliases used engine/native class names, built-in types, built-in functions, and typed native/built-in methods/properties. Dynamic string reflection such as `get("name")`, `set("name", value)`, and `call("name")` is not rewritten.
+excludes the target from being obfuscated. Has to be used on the decleration site.
 
-16. Obfuscation strategy: `wgodot/export/obfuscation_strategy` exposes `Short`, `Hash`, and `Unicode`. Currently only `Short` is implemented.
+### @no_string_mangle
 
-17. Script path obfuscation: `@obfuscate_path` with `wgodot/export/obfuscate_file_paths` renames marked exported scripts using `wgodot/export/obfuscate_file_paths_strategy` (`Short`, `Hash`, or `Unicode`), rewrites string literals and constant string concatenations matching those scripts' `res://...` paths, and updates exported global class paths without preserving original paths as runtime remaps.
+keeps hardcoded strings instead of obfuscating it.
+can to be used on the declaration site, e.g. use it on an entire func/class/etc.
 
-18. String obfuscation: `wgodot/export/obfuscate_strings` replaces exported hardcoded `String`, `StringName`, and `NodePath` literals with resource-backed marker literals, folds constant string concatenations into one marker, and decodes the original values while parsing exported scripts. Dynamic reflection strings are decoded to their original text; declarations referenced through strings still need `@no_mangle` if name obfuscation would otherwise rename them.
+### @obfuscate
 
-19. Dead-code injection: `wgodot/export/dead_code_injection_enabled` injects embedded class-scope snippets at randomly selected member gaps. `wgodot/export/max_dead_code_gaps_per_file` caps selected gaps across the entire file, including nested classes (0–5, default 5). `wgodot/export/min_in_class_dead_code_injection` and `wgodot/export/max_in_class_dead_code_injection` control snippets per selected gap. Normal classes use `deadcode*.txt`; `@static_class` classes use `static_deadcode*.txt`. `@no_mangle` classes and interfaces are excluded. Injected code passes through normal export obfuscation and cleanup.
+makes a class/func go through obfuscation pipeline; this is opt-in because features in this part aren't really that stable (and will soon get replaced by obfuscation on gd2cpp part anyway).
 
-20. No-export source blocks: full-line `#wgodot::no_export::begin` and `#wgodot::no_export::end` comment markers remove editor/debug-only GDScript blocks in the first transformation pass, after the read-only prescan. Leading whitespace and multiple blocks per file are allowed. Nested begin markers are ignored with a warning; nesting is unsupported.
+When used on a class, ALL possible members are obfuscated unless they use `@no_mangle`.
 
-21. Export cleanup: exported GDScript strips export-control annotations, `@private`, `@static_class`, comments, and empty physical lines outside literals. Original project source files are not changed.
+### Name obfuscation
 
-22. Export timing logs: `wgodot/export/timing_logs_enabled` emits UTC-timestamped timings for slow passes and name indexing. `wgodot/export/timing_verbose_logs_enabled` adds checkpoints for each pass's prescan, analysis, and transformation phases. `wgodot/export/timing_slow_threshold_msec` controls the slow-log threshold.
+Option: `wgodot/export/obfuscate_names`
 
-23. Diagnostic redaction: `wgodot/export/redact_diagnostics` (default `false`) replaces single string-literal arguments to `push_error`, `push_warning`, and `printerr` with `[ERZ_1]`, `[ERZ_2]`, etc. in release exports. Supports multiline concatenations of string literals. Writes `<output-basename>.diagnostics.json` with original messages and source locations captured before mangling. Keep this map private and archive it with its matching build; IDs restart on every export. Diagnostic maps are excluded from project packages.
+renames local vars, params and signals.
+if you want the entire class to get obfuscated, use @obfuscate.
+
+### Built-in/native name aliasing
+
+Option: `wgodot/export/obfuscate_builtin_names`
+
+Aliases used builtin stuff; e.g. `print("abc")` becomes `xyzA("abc")`; but the name map is stored in the game resources and restored at startup, so reverse engineers can still find and reverse them.
+
+Dynamic string reflection like `get("name")`, `set("name", value)`, and `call("name")` are not changed.
+
+### Obfuscation strategy
+
+Option: `wgodot/export/obfuscation_strategy`: `Short`, `Hash`, or `Unicode`.
+(Currently only `Short` is implemented, the other two will never get implemented because this feature will get removed soon).
+
+### Script path obfuscation
+
+Option: `wgodot/export/obfuscate_file_paths` and use `@obfuscate_path`.
+strategy option: `wgodot/export/obfuscate_file_paths_strategy`
+
+Renames scripts to obfuscated names, also updates the path refs in `load("res://script.gd")`.
+due to gd2cpp this option is now useless and will be removed soon.
+
+### String obfuscation
+
+Option: `wgodot/export/obfuscate_strings`
+
+Obfuscates hardcoded strings and saves their real value into a file in resources.
+This option won't probably be removed because it can still be used in gd2cpp, but recovering the strings will still be an easy task for an skilled reverse-engineer, so don't rely on it too much (e.g. don't store your API secret stuff in the game client only because this option obfuscates them, they can still dump the entire memory and read everything your game client has).
+
+You can also exclude individual strings with `@no_string_mangle`.
+
+### Dead-code injection
+
+Option: `wgodot/export/dead_code_injection_enabled` injects useless deadcode between members
+
+**IMPORTANT**: this feature is HIGHLY inefficient and will bloat your code and increase your game's startup time, DO NOT abuse it.
+This feature will be removed soon as it's not effective against current LLM models.
+
+OPtion `wgodot/export/max_dead_code_gaps_per_file`: max gap to choose per file (default is 5)
+
+Options `wgodot/export/min_in_class_dead_code_injection` and `wgodot/export/max_in_class_dead_code_injection`: control snippets per selected gap
+
+In case you are interested in seeing what codes are injected as deadcode: [See here](/modules/gdscript/wgodot_gd/editor/export/deadcode/in_class) (note: I never got time to implement `in_func` folder thingy, and now I'm removing this feature, soo)
+
+normal classes use `deadcode*.txt`; `@static_class` classes use `static_deadcode*.txt`.
+
+`@no_mangle` classes and interfaces are excluded. Injected code passes through normal export obfuscation and cleanup (e.g. its strings and names are obfuscated in that pipeline).
+
+### No-export source blocks
+
+add `#wgodot::no_export::begin` and `#wgodot::no_export::end` to make code not get exported. It's basically like c++'s `#ifndef` thingy.
+
+whitespace and multiple blocks per file are fine, nesting is unsupported.
+
+### Export timing logs
+
+Option: `wgodot/export/timing_logs_enabled`
+
+Basically I had to make this feature back when I was hitting my wall to the head trying to figure out what stuff is taking so much time in export pipeline.
+
+Emits UTC timings for slow operations and name indexing.
+
+Other options:
+
+  - `wgodot/export/timing_verbose_logs_enabled`: adds more verbose logs.
+  - `wgodot/export/timing_slow_threshold_msec` controls the slow-log threshold.
+
+### Diagnostic redaction
+
+Option: `wgodot/export/redact_diagnostics` (default `false`)
+
+strips print functions with keywords like ERZ_123 etc.
+
+**#TODO** This is not yet supported in gd2cpp.
+
+Writes the original args to `<output-basename>.diagnostics.json` (keep it private).
+This still need more work is not that stable.
 
 ## Annotation Documentation
 
-WGodot annotations are registered in `modules/gdscript/wgodot_annotations.cpp` and documented in `modules/gdscript/doc_classes/@GDScript_wgodot.xml` for editor help, completion, and language-server users.
+  - `modules/gdscript/wgodot_annotations.cpp`: registration
+  - `modules/gdscript/doc_classes/@GDScript_wgodot.xml`: documentation
 
 ## Core API Helpers
 
-- `StreamPeer.get_data_bytes(bytes)` returns the `PackedByteArray` payload from `get_data(bytes)` directly, avoiding untyped `Array` indexing in strict type checking.
+  - `StreamPeer.get_data_bytes(bytes_count)` returns `PackedByteArray`
 
 ## Startup Diagnosis
 
-`--wgodot-startup-profile` enables native startup timings, including export templates. On Android, put it in the export preset's Extra Args. Logs include resource paths, script processing, texture decode/upload, splash rendering, and the first frame; self time excludes instrumented children on the same thread. Scopes under 1 ms are omitted. Profiling stops after the first frame and does no timing reads or logging when the flag is absent.
+Option: `--wgodot-startup-profile`
+
+enables startup timings (including export templates).
+
+For Android, put it in the export preset's Extra Args.
+
+Behavior:
+  - operations that take less than 1 ms are not logged.
+  - Profiling stops after the first frame
+  - when the flag is not provided, it doesn't do any timing reads or logging

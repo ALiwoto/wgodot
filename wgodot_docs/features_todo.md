@@ -1,23 +1,14 @@
 # WGodot Feature TODO
 
-This is the rough planned order for larger GDScript / WGodot language features.
-We may implement smaller unrelated features between these items as needed.
 
-WGodot strictness features should default to enabled. This fork is meant for projects
-that want stricter correctness and a clearer path toward native-friendly code.
+## null-safety
 
-## `@native`
+Add strict null checking option and mechanisms, to prevent crashes in gd2cpp.
 
-Add a small, practical first version of `@native`.
+## Optimize gd2cpp
 
-Near-term scope:
+Optimize gd2cpp as much as possible, e.g. optimize the cpp codegen or add better cpp type alternatives etc.
 
-- Allow selected scripts/classes/functions to opt into native-friendly restrictions.
-- Reuse strict typing and interface information where available.
-- Start with validation and metadata before trying full native code generation.
+## Diagnostic redaction for gd2cpp
 
-Long-term goal:
-
-- Build toward something like IL2CPP for GDScript: a future GDScript2Native pipeline.
-- Eventually, a project should be able to toggle a setting and compile its entire GDScript codebase to native code.
-- This is a very long-term goal; the first `@native` feature should stay small and doable.
+basically remove print, push_error, push_warning etc stuff that leaks the "game logic" in the code, and instead add vague terms such as ERZ_123 (with IDs stored in a manifest file so runtime logs can be recovered).
