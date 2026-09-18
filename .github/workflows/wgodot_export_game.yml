@@ -97,6 +97,9 @@ jobs:
     if: needs.configure.outputs.enabled == 'yes'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 240
+    env:
+      EM_CACHE: ${{ github.workspace }}/.emsdk-cache/emsdk-main/upstream/emscripten/cache
+      EMSCRIPTEN_CACHE_KEY: wgodot-web-game-emscripten
     strategy:
       fail-fast: false
       matrix:
@@ -173,6 +176,15 @@ jobs:
           actions-cache-folder: .emsdk-cache
           cache-key: emsdk-6.0.1-${{ runner.os }}-${{ runner.arch }}
 
+      - name: Restore Emscripten system libraries
+        if: matrix.platform == 'web'
+        uses: actions/cache/restore@v5
+        with:
+          # Keep sanity.txt so Emscripten can invalidate incompatible libraries.
+          path: ${{ env.EM_CACHE }}
+          key: ${{ env.EMSCRIPTEN_CACHE_KEY }}
+        continue-on-error: true
+
       - name: Build host editor for native generation and export
         uses: ./.github/actions/godot-build
         with:
@@ -199,6 +211,21 @@ jobs:
           cache-name: ${{ matrix.cache-name }}
         continue-on-error: true
 
+      - name: Delete previous Emscripten system library cache
+        if: matrix.platform == 'web'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh cache delete "$EMSCRIPTEN_CACHE_KEY" --repo "$GITHUB_REPOSITORY" || true
+
+      - name: Save Emscripten system libraries
+        if: matrix.platform == 'web'
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ env.EM_CACHE }}
+          key: ${{ env.EMSCRIPTEN_CACHE_KEY }}
+        continue-on-error: true
+
       - name: Upload game archives
         uses: ./.github/actions/upload-artifact
         with:
@@ -215,3 +242,25 @@ jobs:
           $assets = @(Get-ChildItem release_assets -File | ForEach-Object FullName)
           gh release upload $env:RELEASE_TAG @assets --clobber
           if ($LASTEXITCODE -ne 0) { throw 'Game release upload failed.' }
+
+      - name: Publish Web release to itch.io
+        if: matrix.platform == 'web' && env.GAME_BUILD_RELEASE == 'true' && inputs.upload_to_release && inputs.release_tag != '' && vars.ITCH_TARGET != ''
+        shell: bash
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+          ITCH_TARGET: ${{ vars.ITCH_TARGET }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          GAME_REVISION: ${{ needs.configure.outputs.revision }}
+        run: |
+          : "${BUTLER_API_KEY:?Set the BUTLER_API_KEY repository secret.}"
+          butler_dir="$RUNNER_TEMP/butler"
+          mkdir -p "$butler_dir"
+          curl --fail --location --retry 3 \
+            https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default \
+            --output "$RUNNER_TEMP/butler.zip"
+          unzip -q "$RUNNER_TEMP/butler.zip" -d "$butler_dir"
+          chmod +x "$butler_dir/butler"
+          "$butler_dir/butler" push \
+            release_assets/DarkSurvivors-web-release-wasm32.zip \
+            "${ITCH_TARGET}:html5" \
+            --userversion "${RELEASE_TAG}-${GAME_REVISION:0:7}"
