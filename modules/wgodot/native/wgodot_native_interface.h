@@ -8,6 +8,8 @@
 #include "core/object/wgodot_native_interfaces.h"
 
 #include <tuple>
+#include <type_traits>
+#include <utility>
 
 namespace WGodotNative {
 
@@ -19,6 +21,11 @@ class InterfaceValue {
 public:
 	using Interface = NativeInterface;
 	InterfaceValue() = default;
+	// Known implementors need only a C++ pointer conversion. Keep the original
+	// value for reference ownership and the identity of freed non-reference objects.
+	template <class T, class Pointer = decltype(object_pointer(std::declval<const T &>())),
+			std::enable_if_t<std::is_convertible_v<Pointer, NativeBase *> && std::is_convertible_v<Pointer, NativeInterface *>, int> = 0>
+	InterfaceValue(const T &p_value) : value(p_value), interface(static_cast<NativeInterface *>(object_pointer(p_value))) {}
 	InterfaceValue(const Variant &p_value) {
 		ERR_FAIL_COND_MSG(p_value.get_type() != Variant::NIL && p_value.get_type() != Variant::OBJECT, "Native game interface assignment requires an object or null.");
 		if (Object *object = p_value.get_validated_object()) {

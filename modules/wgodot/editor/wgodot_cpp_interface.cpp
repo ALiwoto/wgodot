@@ -196,12 +196,18 @@ String WGodotCppEmitter::register_interfaces() {
 		}
 		contracts += "\tWGodotNativeInterfaces::add_contract(SNAME(" + quoted(id) + "), SNAME(" + quoted(contract->native_base) + "), {" + String(", ").join(parents) + "});\n";
 		for (const StringName &native_class : native_classes) {
-			if (WGodotNativeInterfaces::accepts(native_class, name)) {
+			if (WGodotNativeInterfaces::accepts(native_class, name) && !WGodotNativeInterfaces::accepts(ClassDB::get_parent_class(native_class), name)) {
 				implementations += "\tWGodotNativeInterfaces::add_implementation(SNAME(" + quoted(id) + "), SNAME(" + quoted(native_class) + "));\n";
 			}
 		}
 		for (const auto &candidate : project.get_classes()) {
 			if (!candidate.node->wgodot_is_interface && !candidate.node->wgodot_static_class && WGodotGDScriptInterfaceHelpers::class_implements_native_interface(candidate.node, name)) {
+				// Runtime membership lookup already follows the concrete base class.
+				const auto &base = candidate.node->base_type;
+				const bool inherited = base.kind == Parser::DataType::CLASS ? WGodotGDScriptInterfaceHelpers::class_implements_native_interface(base.class_type, name) : WGodotNativeInterfaces::accepts(base.native_type, name);
+				if (inherited) {
+					continue;
+				}
 				implementations += "\tWGodotNativeInterfaces::add_implementation(SNAME(" + quoted(id) + "), SNAME(" + quoted(candidate.cpp_name) + "));\n";
 			}
 		}
@@ -223,6 +229,10 @@ String WGodotCppEmitter::register_interfaces() {
 		contracts += "\tWGodotNativeInterfaces::add_contract(SNAME(" + quoted(entry.cpp_name) + "), SNAME(" + quoted(native_base(entry.node->self_type)) + "), {" + String(", ").join(parents) + "});\n";
 		for (const auto &candidate : project.get_classes()) {
 			if (!candidate.node->wgodot_is_interface && !candidate.node->wgodot_static_class && WGodotGDScriptInterfaceHelpers::class_implements_interface_type(candidate.node, entry.node)) {
+				const auto &base = candidate.node->base_type;
+				if (base.kind == Parser::DataType::CLASS && WGodotGDScriptInterfaceHelpers::class_implements_interface_type(base.class_type, entry.node)) {
+					continue;
+				}
 				implementations += "\tWGodotNativeInterfaces::add_implementation(SNAME(" + quoted(entry.cpp_name) + "), SNAME(" + quoted(candidate.cpp_name) + "));\n";
 			}
 		}
