@@ -39,6 +39,7 @@ public:
 	NativeInterface *operator->() const { return ptr() ? interface : nullptr; }
 	bool is_valid() const { return ptr() != nullptr; }
 	bool operator==(const InterfaceValue &p_other) const { return value == p_other.value; }
+	uint32_t hash() const { return value.hash(); }
 	static bool accepts(const Variant &p_value) {
 		if (p_value.get_type() == Variant::NIL) {
 			return true;

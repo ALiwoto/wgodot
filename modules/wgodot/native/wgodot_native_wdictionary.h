@@ -206,15 +206,15 @@ public:
 		return iterator ? &iterator->key : nullptr;
 	}
 	WDictionary duplicate(bool p_deep = false) const {
+		return recursive_duplicate(p_deep, RESOURCE_DEEP_DUPLICATE_NONE, 0);
+	}
+	WDictionary recursive_duplicate(bool p_deep, ResourceDeepDuplicateMode p_mode, int p_depth) const {
 		WDictionary result;
+		ERR_FAIL_COND_V_MSG(p_depth > Variant::MAX_RECURSION_DEPTH, result, "Maximum container copy recursion reached.");
+		ContainerDuplicateScope scope(p_deep ? p_depth : 1);
 		for (const auto &entry : native()) {
-			V value = entry.value;
-			if constexpr (IsWArray<V>::value || IsWDictionary<V>::value || std::is_base_of_v<Dictionary, V>) {
-				if (p_deep) {
-					value = value.duplicate(true);
-				}
-			}
-			result.storage->entries.insert(entry.key, value);
+			result.storage->entries.insert(p_deep ? duplicate_container_value(entry.key, p_mode, p_depth + 1) : entry.key,
+					p_deep ? duplicate_container_value(entry.value, p_mode, p_depth + 1) : entry.value);
 		}
 		return result;
 	}

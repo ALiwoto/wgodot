@@ -63,6 +63,7 @@ public:
 	explicit WSignal(Signal p_signal) : engine_signal(std::move(p_signal)) {}
 	bool is_null() const { return !state && engine_signal.is_null(); }
 	ObjectID get_object_id() const { return state ? state->owner : engine_signal.get_object_id(); }
+	uint32_t hash() const { return state ? hash_one_uint64(uint64_t(reinterpret_cast<uintptr_t>(state.get()))) : hash_murmur3_one_64(engine_signal.get_object_id(), engine_signal.get_name().hash()); }
 	bool operator==(const WSignal &p_other) const { return state == p_other.state && engine_signal == p_other.engine_signal; }
 	bool operator!=(const WSignal &p_other) const { return !(*this == p_other); }
 	Callback emit_callable() const {

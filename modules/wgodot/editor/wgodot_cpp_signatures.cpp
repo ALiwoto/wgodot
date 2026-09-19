@@ -1,6 +1,7 @@
 // wgodot-changes::file
 #include "wgodot_cpp_signatures.h"
 
+#include "wgodot_cpp_array_api.h"
 #include "wgodot_cpp_ast.h"
 
 #include "core/object/class_db.h"
@@ -306,12 +307,16 @@ void WGodotCppSignatures::seed(const Parser::Node *p_node) {
 				link(method, call);
 			}
 		} else if (base && base->type_constraint.builtin_type == Variant::ARRAY && contains_signature(base->type_constraint)) {
-			const StringName name = call->function_name;
-			if (name == SNAME("duplicate") || name == SNAME("front") || name == SNAME("back") || name == SNAME("pop_back") || name == SNAME("pop_front") || name == SNAME("get")) {
-				link(base, call);
-			}
-			if ((name == SNAME("append") || name == SNAME("push_back") || name == SNAME("push_front") || name == SNAME("erase") || name == SNAME("find") || name == SNAME("has") || name == SNAME("fill") || name == SNAME("append_array") || name == SNAME("assign")) && !call->arguments.is_empty()) {
-				link(call->arguments[0], base);
+			using APIType = WGodotCppArrayAPI::Type;
+			if (const auto *method = WGodotCppArrayAPI::find(call->function_name, call->arguments.size())) {
+				if (method->result == APIType::ARRAY || method->result == APIType::ELEMENT) {
+					link(base, call);
+				}
+				for (uint32_t i = 0; i < call->arguments.size(); i++) {
+					if (method->arguments[i] == APIType::ELEMENT || method->arguments[i] == APIType::ARRAY) {
+						link(call->arguments[i], base);
+					}
+				}
 			}
 		}
 	}

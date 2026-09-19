@@ -43,4 +43,10 @@ if env.editor_build:
         env.Run(cpp_builders.native_methods),
     )
     env_wgodot.Depends("editor/wgodot_cpp_native_calls.cpp", native_methods)
+    array_api = env_wgodot.CommandNoCache(
+        "editor/wgodot_cpp_array_api.gen.h",
+        ["native/wgodot_native_warray.h", str(root / "core/variant/variant_call.cpp")],
+        env.Run(cpp_builders.array_api),
+    )
+    env_wgodot.Depends(["editor/wgodot_cpp_warray.cpp", "editor/wgodot_cpp_signatures.cpp"], array_api)
     env_wgodot.add_source_files(env.modules_sources, "editor/*.cpp")

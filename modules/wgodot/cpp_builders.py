@@ -1,6 +1,69 @@
 # wgodot-changes::file
+import json
 import pathlib
 import re
+
+
+def array_api(target, source, env):
+    header = pathlib.Path(str(source[0])).read_text(encoding="utf-8").split("\npublic:", 1)[1]
+    declaration = re.compile(
+        r"^\t(?P<result>[\w:<>, &]+?)\b(?P<name>\w+)\((?P<arguments>[^()\n]*)\)"
+        r"(?: const)?(?: -> (?P<trailing>[^\n{]+))?(?: \{|;| = delete;)",
+        re.MULTILINE,
+    )
+    roles = {
+        "T": "ELEMENT",
+        "WArray": "ARRAY",
+        "WArray<U>": "OTHER_ARRAY",
+        "Predicate": "PREDICATE",
+        "Compare": "COMPARATOR",
+        "Mapper": "MAPPER",
+        "Reducer": "REDUCER",
+        "Accumulator": "ACCUMULATOR",
+    }
+    lines = [
+        "// wgodot-changes::file",
+        "// Generated from WArray's public native API.",
+        "inline constexpr Method methods[] = {",
+    ]
+    names = set()
+    for match in declaration.finditer(header):
+        # An annotation belongs to the following declaration, across template lines.
+        prefix = header[: match.start()].splitlines()
+        annotation = ""
+        while prefix and (prefix[-1].startswith("\t//") or prefix[-1].startswith("\ttemplate ")):
+            line = prefix.pop()
+            if line.startswith("\t// native-array: "):
+                annotation = line.split("native-array: ", 1)[1]
+        if annotation == "internal":
+            continue
+        name = match.group("name")
+        arguments = [part.strip() for part in match.group("arguments").split(",") if part.strip()]
+        argument_roles = []
+        for argument in arguments:
+            arg_type = re.sub(r"\s+p_\w+.*$", "", argument.replace("&", " ").replace("const ", "")).strip()
+            argument_roles.append("Type::" + roles.get(arg_type, "BUILTIN"))
+        result = roles.get(match.group("result").strip(), "BUILTIN")
+        if match.group("trailing"):
+            if not match.group("trailing").startswith("WArray<"):
+                raise ValueError(f"Unrecognized native Array result declaration: {name}")
+            result = "MAPPED_ARRAY"
+        required = sum("=" not in argument for argument in arguments)
+        copy = annotation.removeprefix("copy=") if annotation.startswith("copy=") else ""
+        unsupported = annotation.removeprefix("unsupported=") if annotation.startswith("unsupported=") else ""
+        lines.append(
+            f'\t{{ "{name}", Type::{result}, {{ {", ".join(argument_roles)} }}, '
+            f'{required}, {len(arguments)}, {str(annotation == "ordered").lower()}, '
+            f'{json.dumps(copy)}, {json.dumps(unsupported)} }},'
+        )
+        names.add(name)
+    bindings = pathlib.Path(str(source[1])).read_text(encoding="utf-8")
+    exposed = set(re.findall(r"\bbind_(?:method|functionnc|function)\(Array, (\w+),", bindings))
+    missing = exposed - names
+    if missing:
+        raise ValueError("Array methods without a native implementation or explicit rejection: " + ", ".join(sorted(missing)))
+    lines.append("};\n")
+    pathlib.Path(str(target[0])).write_text("\n".join(lines), encoding="utf-8")
 
 
 def native_methods(target, source, env):

@@ -1,5 +1,6 @@
 // wgodot-changes::file
 #include "wgodot_cpp_emitter.h"
+#include "wgodot_cpp_array_api.h"
 
 using Parser = GDScriptParser;
 
@@ -60,7 +61,7 @@ Parser::DataType WGodotCppEmitter::expression_type(const Parser::ExpressionNode 
 			const auto base = expression_type(static_cast<const Parser::SubscriptNode *>(call->callee)->base);
 			// Godot's builtin method metadata erases these element types. Native
 			// code keeps them without changing the editor's cached GDScript AST.
-			if ((is_warray(base) || is_wdictionary(base)) && call->function_name == SNAME("duplicate")) {
+			if (is_wdictionary(base) && call->function_name == SNAME("duplicate")) {
 				return base;
 			}
 			if (is_wdictionary(base)) {
@@ -71,8 +72,33 @@ Parser::DataType WGodotCppEmitter::expression_type(const Parser::ExpressionNode 
 					return base;
 				}
 			}
-			if (is_warray(base) && (call->function_name == SNAME("get") || call->function_name == SNAME("front") || call->function_name == SNAME("back") || call->function_name == SNAME("pop_back") || call->function_name == SNAME("pop_front") || call->function_name == SNAME("pop_at"))) {
-				return base.get_container_element_type(0);
+			if (is_warray(base)) {
+				using APIType = WGodotCppArrayAPI::Type;
+				if (const auto *method = WGodotCppArrayAPI::find(call->function_name, call->arguments.size())) {
+					switch (method->result) {
+						case APIType::ELEMENT:
+							return base.get_container_element_type(0);
+						case APIType::ARRAY:
+							return base;
+						case APIType::ACCUMULATOR:
+							for (int i = 0; i < method->total; i++) {
+								if (method->arguments[i] == APIType::ACCUMULATOR) {
+									const auto accumulator = expression_type(call->arguments[i]);
+									return accumulator.kind == Parser::DataType::BUILTIN && accumulator.builtin_type == Variant::NIL ? base.get_container_element_type(0) : accumulator;
+								}
+							}
+							break;
+						case APIType::MAPPED_ARRAY:
+							if (const auto *callback = signatures.get(call->arguments[method->callback_index()])) {
+								auto result = base;
+								result.set_container_element_type(0, callback->result.type);
+								return result;
+							}
+							break;
+						default:
+							break;
+					}
+				}
 			}
 			if (base.kind == Parser::DataType::BUILTIN && base.builtin_type == Variant::DICTIONARY && (call->function_name == SNAME("keys") || call->function_name == SNAME("values"))) {
 				const int index = call->function_name == SNAME("keys") ? 0 : 1;
@@ -192,7 +218,8 @@ bool WGodotCppEmitter::is_array_duplicate(const Parser::ExpressionNode *p_value)
 		return false;
 	}
 	const auto *call = static_cast<const Parser::CallNode *>(p_value);
-	return call->function_name == SNAME("duplicate") && call->get_callee_type() == Parser::Node::SUBSCRIPT && is_warray(expression_type(static_cast<const Parser::SubscriptNode *>(call->callee)->base));
+	const auto *method = WGodotCppArrayAPI::find(call->function_name, call->arguments.size());
+	return method && method->copy_method[0] && call->get_callee_type() == Parser::Node::SUBSCRIPT && is_warray(expression_type(static_cast<const Parser::SubscriptNode *>(call->callee)->base));
 }
 
 String WGodotCppEmitter::engine_argument(const Parser::ExpressionNode *p_value, Variant::Type p_target) {
@@ -277,71 +304,111 @@ String WGodotCppEmitter::engine_argument(const Parser::ExpressionNode *p_value, 
 }
 
 WGodotCppEmitter::Value WGodotCppEmitter::warray_call(const Parser::CallNode *p_call, bool p_to_array) {
+	using APIType = WGodotCppArrayAPI::Type;
 	const auto *base = static_cast<const Parser::SubscriptNode *>(p_call->callee)->base;
 	const auto base_type = expression_type(base);
 	const auto &element_type = base_type.get_container_element_type(0);
-	const StringName name = p_call->function_name;
-	String method = name;
-	int value_argument = -1;
-	bool array_argument = false;
-	if (name == SNAME("append") || name == SNAME("push_back") || name == SNAME("push_front") || name == SNAME("erase") || name == SNAME("has") || name == SNAME("find") || name == SNAME("rfind") || name == SNAME("count") || name == SNAME("fill")) {
-		value_argument = 0;
-		if (name == SNAME("push_back")) {
-			method = "append";
-		}
-	} else if (name == SNAME("insert") || name == SNAME("set")) {
-		value_argument = 1;
-	} else if (name == SNAME("append_array") || name == SNAME("assign")) {
-		array_argument = true;
-	} else if (name == SNAME("duplicate")) {
-		method = p_to_array ? "duplicate_to_array" : "duplicate";
-	} else if (name == SNAME("sort")) {
-		if (element_type.kind != Parser::DataType::ENUM && !(element_type.kind == Parser::DataType::BUILTIN && (element_type.builtin_type == Variant::INT || element_type.builtin_type == Variant::FLOAT || element_type.builtin_type == Variant::STRING))) {
-			unsupported(p_call, "WArray.sort for this element type; use an explicit comparator");
+	const auto *method = WGodotCppArrayAPI::find(p_call->function_name, p_call->arguments.size());
+	if (!method || method->unsupported[0]) {
+		unsupported(p_call, "WArray." + String(p_call->function_name) + ": " + (method ? String(method->unsupported) : "no native API declaration for this signature"));
+		return String();
+	}
+	if (p_to_array && !method->copy_method[0]) {
+		unsupported(p_call, "this native Array method has no engine copy adapter");
+		return String();
+	}
+	if (method->ordered) {
+		const bool ordered_builtin = element_type.kind == Parser::DataType::BUILTIN &&
+				element_type.builtin_type != Variant::ARRAY &&
+				Variant::get_operator_return_type(Variant::OP_LESS, element_type.builtin_type, element_type.builtin_type) == Variant::BOOL;
+		if (element_type.kind != Parser::DataType::ENUM && !ordered_builtin) {
+			unsupported(p_call, "WArray." + String(p_call->function_name) + " requires a native element ordering; use an explicit typed comparator");
 			return String();
 		}
-	} else if (name != SNAME("size") && name != SNAME("is_empty") && name != SNAME("clear") && name != SNAME("resize") && name != SNAME("reserve") && name != SNAME("remove_at") && name != SNAME("reverse") && name != SNAME("sort_custom") && name != SNAME("front") && name != SNAME("back") && name != SNAME("pop_back") && name != SNAME("pop_front") && name != SNAME("pop_at") && name != SNAME("get") && name != SNAME("is_read_only") && name != SNAME("make_read_only")) {
-		unsupported(p_call, "WArray." + String(name) + "; this method needs a typed native implementation");
-		return String();
+	}
+	const auto result_type = expression_type(p_call);
+	const int callback_index = method->callback_index();
+	if (callback_index >= 0) {
+		const auto *callback_node = p_call->arguments[callback_index];
+		const auto *callback = signatures.get(callback_node);
+		if (!callback) {
+			(void)signature_type(callback_node);
+			return String();
+		}
+		if (callback->result.type.is_variant() || callback->result.type.is_coroutine ||
+				(callback->result.type.kind == Parser::DataType::BUILTIN && callback->result.type.builtin_type == Variant::NIL)) {
+			unsupported(callback_node, "native Array callbacks require a concrete, synchronous result");
+			return String();
+		}
+		WGodotCppSignatures::Signature expected;
+		expected.arguments.push_back({ element_type, base });
+		const APIType role = method->arguments[callback_index];
+		if (role == APIType::REDUCER) {
+			expected.arguments.write[0] = { result_type, p_call };
+			expected.arguments.push_back({ element_type, base });
+			expected.result = { result_type, p_call };
+		} else if (role == APIType::MAPPER) {
+			expected.result = callback->result;
+		} else {
+			if (role == APIType::COMPARATOR) {
+				expected.arguments.push_back({ element_type, base });
+			}
+			expected.result.type.kind = Parser::DataType::BUILTIN;
+			expected.result.type.type_source = Parser::DataType::ANNOTATED_EXPLICIT;
+			expected.result.type.builtin_type = Variant::BOOL;
+			expected.result.origin = p_call;
+		}
+		if (!validate_callback(callback_node, expected)) {
+			return String();
+		}
+		if (type(callback->result.type, callback->result.origin) != type(expected.result.type, expected.result.origin)) {
+			unsupported(callback_node, "native Array predicates/comparators must return bool, and reducers must preserve the accumulator type");
+			return String();
+		}
 	}
 	Vector<Value> operands;
 	for (uint32_t i = 0; i < p_call->arguments.size(); i++) {
 		const auto *source = p_call->arguments[i];
-		operands.push_back(int(i) == value_argument ? lower_converted(source, element_type, base, true) : array_argument ? lower_converted(source, base_type)
-																														 : lower(source));
+		switch (method->arguments[i]) {
+			case APIType::ELEMENT:
+				operands.push_back(lower_converted(source, element_type, base, true));
+				break;
+			case APIType::ARRAY:
+				operands.push_back(lower_converted(source, base_type, base));
+				break;
+			case APIType::OTHER_ARRAY:
+				if (!is_warray(expression_type(source))) {
+					unsupported(source, "native Array type comparison with a dynamic Array");
+					return String();
+				}
+				operands.push_back(lower(source));
+				break;
+			case APIType::ACCUMULATOR: {
+				const auto source_type = expression_type(source);
+				// An explicit null has the same semantics as omitting the seed.
+				if (source_type.kind == Parser::DataType::BUILTIN && source_type.builtin_type == Variant::NIL) {
+					if (!source->is_constant) {
+						unsupported(source, "a dynamically computed null accumulator; use a concrete initial accumulator or omit it");
+						return String();
+					}
+				} else {
+					operands.push_back(lower_converted(source, result_type, p_call));
+				}
+			} break;
+			default:
+				operands.push_back(lower(source));
+				break;
+		}
 	}
 	operands.push_back(lower(base));
 	Value result = sequence(operands);
-	const bool nullable = name == SNAME("pop_back") || name == SNAME("pop_front") || name == SNAME("pop_at") || name == SNAME("front") || name == SNAME("back") || name == SNAME("get");
-	const bool variant_result = nullable && expression_type(p_call).is_variant();
-	if (variant_result) {
-		// The bounds check and invocation share these values; never evaluate an
-		// index or receiver expression a second time inside the check.
-		for (Value &operand : operands) {
-			if (!operand.invariant && !operand.borrowed) {
-				materialize(operand, result.setup);
-			}
-		}
-	}
 	Vector<String> arguments;
-	for (uint32_t i = 0; i < p_call->arguments.size(); i++) {
+	for (int i = 0; i < operands.size() - 1; i++) {
 		arguments.push_back(operands[i].code);
 	}
 	const String receiver = "(" + operands[operands.size() - 1].code + ")";
-	const String invoke = receiver + "." + method + "(" + String(", ").join(arguments) + ")";
-	if (variant_result) {
-		String body = "([&]() -> Variant { auto &&receiver = " + receiver + "; ";
-		const bool pop = name == SNAME("pop_back") || name == SNAME("pop_front") || name == SNAME("pop_at");
-		body += "if (receiver.is_empty()" + String(pop ? " || receiver.is_read_only()" : "") + ") { (void)" + invoke + "; return Variant(); } ";
-		if (name == SNAME("pop_at") || name == SNAME("get")) {
-			body += "if (" + arguments[0] + " < -receiver.size() || " + arguments[0] + " >= receiver.size()) { (void)" + invoke + "; return Variant(); } ";
-		}
-		body += "return Variant(" + invoke + "); }())";
-		result.code = body;
-	} else {
-		result.code = invoke;
-	}
-	result.cpp_type = p_to_array ? "Array" : type(expression_type(p_call), p_call);
+	result.code = receiver + "." + (p_to_array ? String(method->copy_method) : String(method->name)) + "(" + String(", ").join(arguments) + ")";
+	result.cpp_type = p_to_array ? "Array" : type(result_type, p_call);
 	result.effects = true;
 	return result;
 }
