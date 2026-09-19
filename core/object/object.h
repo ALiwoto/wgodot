@@ -524,8 +524,9 @@ protected:
 
 	// wgodot-changes::begin
 #ifdef WGODOT_NATIVE_GAME
-	using WGodotNativeVirtual = Variant (*)(Object *, const Variant **, int);
-	virtual WGodotNativeVirtual _wgodot_get_native_virtual(const StringName &p_name) const { return nullptr; }
+	virtual void _wgodot_native_initialize() {}
+	virtual void _wgodot_native_clear() {}
+	virtual void _wgodot_native_notification(int p_what, bool p_reversed) {}
 #endif
 	// wgodot-changes::end
 

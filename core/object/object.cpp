@@ -153,9 +153,7 @@ bool Object::_predelete() {
 
 	// wgodot-changes::begin
 #ifdef WGODOT_NATIVE_GAME
-	if (auto callback = _wgodot_get_native_virtual(SNAME("@game_clear"))) {
-		callback(this, nullptr, 0);
-	}
+	_wgodot_native_clear();
 	if (WGodotNativeLifetime::object_deleted) {
 		WGodotNativeLifetime::object_deleted(get_instance_id());
 	}
@@ -212,9 +210,7 @@ void Object::_postinitialize() {
 	notification(NOTIFICATION_POSTINITIALIZE);
 	// wgodot-changes::begin
 #ifdef WGODOT_NATIVE_GAME
-	if (auto callback = _wgodot_get_native_virtual(SNAME("@game_initialize"))) {
-		callback(this, nullptr, 0);
-	}
+	_wgodot_native_initialize();
 #endif
 	// wgodot-changes::end
 }
@@ -1030,12 +1026,7 @@ void Object::_notification_forward(int p_notification) {
 	}
 	// wgodot-changes::begin
 #ifdef WGODOT_NATIVE_GAME
-	if (auto callback = _wgodot_get_native_virtual(SNAME("_notification"))) {
-		Variant what = p_notification;
-		Variant reversed = false;
-		const Variant *arguments[] = { &what, &reversed };
-		callback(this, arguments, 2);
-	}
+	_wgodot_native_notification(p_notification, false);
 #endif
 	// wgodot-changes::end
 }
@@ -1043,12 +1034,7 @@ void Object::_notification_forward(int p_notification) {
 void Object::_notification_backward(int p_notification) {
 	// wgodot-changes::begin
 #ifdef WGODOT_NATIVE_GAME
-	if (auto callback = _wgodot_get_native_virtual(SNAME("_notification"))) {
-		Variant what = p_notification;
-		Variant reversed = true;
-		const Variant *arguments[] = { &what, &reversed };
-		callback(this, arguments, 2);
-	}
+	_wgodot_native_notification(p_notification, true);
 #endif
 	// wgodot-changes::end
 	if (script_instance) {

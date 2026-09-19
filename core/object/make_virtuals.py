@@ -70,7 +70,7 @@ proto = """#define GDVIRTUAL$VER($ALIAS $RET m_name $ARG)\\
 
 def generate_version(argcount, const=False, returns=False, required=False, compat=False):
     # wgodot-changes::begin
-    s = wgodot_native_virtuals.add_native_variant(proto, compat)
+    s = wgodot_native_virtuals.add_native_variant(proto, compat, argcount, returns)
     # wgodot-changes::end
     if compat:
         s = s.replace("$SCRIPTCALL", "")

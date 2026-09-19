@@ -6,13 +6,25 @@
 
 #include "core/object/callable_mp.h"
 #include "core/object/class_db.h"
+#include "core/object/gdvirtual.gen.h"
 
 // C++ sharing only: ClassDB still sees each concrete Control/Button/LineEdit parent.
 template <class NativeControl>
 class ElementControl : public NativeControl, public ElementBase {
 protected:
+	// GDVIRTUAL needs these Object members visible through the dependent base.
+	using NativeControl::_gdvirtual_init_method_ptr;
+	using NativeControl::_get_extension;
+	using NativeControl::_get_extension_instance;
+	GDVIRTUAL0(_refresh_locale)
+
 	ElementBehavior element;
-	void element_notification(int p_what) { element.notification(p_what); }
+	void element_notification(int p_what) {
+		element.notification(p_what);
+		if (p_what == Node::NOTIFICATION_TRANSLATION_CHANGED && this->is_ready()) {
+			GDVIRTUAL_CALL(_refresh_locale);
+		}
+	}
 	void _rect_changed() { element.rect_changed(); }
 	void _pressed() { element.pressed(); }
 	void _moving_finished() { element.animation_finished(true); }
@@ -29,6 +41,9 @@ protected:
 
 	template <class Derived>
 	static void bind_element_methods() {
+#ifdef DEBUG_ENABLED
+		ClassDB::add_virtual_method(Derived::get_class_static(), _gdvirtual__refresh_locale_get_method_info());
+#endif
 		bind_element_method<Derived>(D_METHOD("change_text_translation", "key", "arguments"), &ElementControl::change_text_translation, DEFVAL(TypedArray<String>()));
 		bind_element_method<Derived>(D_METHOD("append_text", "text"), &ElementControl::append_text);
 		bind_element_method<Derived>(D_METHOD("change_parent", "parent"), &ElementControl::change_parent);
