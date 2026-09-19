@@ -179,6 +179,9 @@ void Button::_notification(int p_what) {
 		} break;
 
 		case NOTIFICATION_LAYOUT_DIRECTION_CHANGED: {
+			// wgodot-changes::begin
+			font_fit_dirty = true;
+			// wgodot-changes::end
 			queue_redraw();
 		} break;
 
@@ -431,13 +434,16 @@ void Button::_notification(int p_what) {
 
 			// Draw the text.
 			if (!xl_text.is_empty()) {
-				text_buf->set_alignment(align_rtl_checked);
+				// wgodot-changes::begin
+				Ref<TextParagraph> rendered_text = _get_fitted_text(drawable_size_remained);
+				rendered_text->set_alignment(align_rtl_checked);
 
 				float text_buf_width = Math::ceil(MAX(1.0f, drawable_size_remained.width)); // The space's width filled by the text_buf.
-				if (autowrap_mode != TextServer::AUTOWRAP_OFF && !Math::is_equal_approx(text_buf_width, text_buf->get_width())) {
+				if (!resize_font_to_fit && autowrap_mode != TextServer::AUTOWRAP_OFF && !Math::is_equal_approx(text_buf_width, rendered_text->get_width())) {
 					update_minimum_size();
 				}
-				text_buf->set_width(text_buf_width);
+				rendered_text->set_width(text_buf_width);
+				// wgodot-changes::end
 
 				Point2 text_ofs;
 
@@ -458,17 +464,21 @@ void Button::_notification(int p_what) {
 					} break;
 				}
 
-				text_ofs.y = (drawable_size_remained.height - text_buf->get_size().height) / 2.0f + style_margin_top;
+				// wgodot-changes::begin
+				text_ofs.y = (drawable_size_remained.height - rendered_text->get_size().height) / 2.0f + style_margin_top;
+				// wgodot-changes::end
 				if (vertical_icon_alignment == VERTICAL_ALIGNMENT_TOP) {
 					text_ofs.y += custom_element_size.height - drawable_size_remained.height; // Offset by the icon's height.
 				}
 
 				Color font_outline_color = theme_cache.font_outline_color;
 				int outline_size = theme_cache.outline_size;
+				// wgodot-changes::begin
 				if (outline_size > 0 && font_outline_color.a > 0.0f) {
-					text_buf->draw_outline(ci, text_ofs, outline_size, font_outline_color);
+					rendered_text->draw_outline(ci, text_ofs, outline_size, font_outline_color);
 				}
-				text_buf->draw(ci, text_ofs, font_color);
+				rendered_text->draw(ci, text_ofs, font_color);
+				// wgodot-changes::end
 			}
 		} break;
 	}
@@ -498,6 +508,11 @@ Size2 Button::get_minimum_size_for_text_and_icon(const String &p_text, Ref<Textu
 	}
 
 	Size2 minsize = paragraph->get_size();
+	// wgodot-changes::begin
+	if (resize_font_to_fit) {
+		minsize = Size2(1, 1);
+	}
+	// wgodot-changes::end
 	if (clip_text || overrun_behavior != TextServer::OVERRUN_NO_TRIMMING || autowrap_mode != TextServer::AUTOWRAP_OFF) {
 		minsize.width = 0;
 	}
@@ -523,6 +538,11 @@ Size2 Button::get_minimum_size_for_text_and_icon(const String &p_text, Ref<Textu
 	if (!xl_text.is_empty() || !p_text.is_empty()) {
 		Ref<Font> font = theme_cache.font;
 		float font_height = font->get_height(theme_cache.font_size);
+		// wgodot-changes::begin
+		if (resize_font_to_fit) {
+			font_height = font->get_height(minimum_font_size);
+		}
+		// wgodot-changes::end
 		if (vertical_icon_alignment == VERTICAL_ALIGNMENT_CENTER) {
 			minsize.height = MAX(font_height, minsize.height);
 		} else {
@@ -533,9 +553,14 @@ Size2 Button::get_minimum_size_for_text_and_icon(const String &p_text, Ref<Textu
 	return (theme_cache.align_to_largest_stylebox ? _get_largest_stylebox_size() : _get_current_stylebox()->get_minimum_size()) + minsize;
 }
 
-void Button::_shape(Ref<TextParagraph> p_paragraph, String p_text) const {
+// wgodot-changes::begin
+void Button::_shape(Ref<TextParagraph> p_paragraph, String p_text, int p_font_size) const {
+	// wgodot-changes::end
 	if (p_paragraph.is_null()) {
 		p_paragraph = text_buf;
+		// wgodot-changes::begin
+		font_fit_dirty = true;
+		// wgodot-changes::end
 	}
 
 	if (p_text.is_empty()) {
@@ -546,6 +571,11 @@ void Button::_shape(Ref<TextParagraph> p_paragraph, String p_text) const {
 
 	Ref<Font> font = theme_cache.font;
 	int font_size = theme_cache.font_size;
+	// wgodot-changes::begin
+	if (p_font_size > 0) {
+		font_size = p_font_size;
+	}
+	// wgodot-changes::end
 	if (font.is_null() || font_size == 0) {
 		// Can't shape without a valid font and a non-zero size.
 		return;
@@ -825,6 +855,9 @@ void Button::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "autowrap_mode", PROPERTY_HINT_ENUM, "Off,Arbitrary,Word,Word (Smart)"), "set_autowrap_mode", "get_autowrap_mode");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "autowrap_trim_flags", PROPERTY_HINT_FLAGS, vformat("Trim Spaces After Break:%d,Trim Spaces Before Break:%d", TextServer::BREAK_TRIM_START_EDGE_SPACES, TextServer::BREAK_TRIM_END_EDGE_SPACES)), "set_autowrap_trim_flags", "get_autowrap_trim_flags");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "clip_text"), "set_clip_text", "get_clip_text");
+	// wgodot-changes::begin
+	_bind_font_fit_methods();
+	// wgodot-changes::end
 
 	ADD_GROUP("Icon Behavior", "");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "icon_alignment", PROPERTY_HINT_ENUM, "Left,Center,Right"), "set_icon_alignment", "get_icon_alignment");

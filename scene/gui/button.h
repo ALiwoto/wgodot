@@ -41,6 +41,19 @@ private:
 	String text;
 	String xl_text;
 	Ref<TextParagraph> text_buf;
+	// wgodot-changes::begin
+	bool resize_font_to_fit = false;
+	int minimum_font_size = 10;
+	int maximum_font_size = 60;
+	int current_fitted_font_size = -1;
+	mutable bool font_fit_dirty = true;
+	Size2 font_fit_size;
+	Ref<TextParagraph> fitted_text_buf;
+
+	Ref<TextParagraph> _get_fitted_text(const Size2 &p_available_size);
+	void _font_fit_changed();
+	static void _bind_font_fit_methods();
+	// wgodot-changes::end
 
 	String language;
 	TextDirection text_direction = TEXT_DIRECTION_AUTO;
@@ -103,7 +116,9 @@ private:
 		int line_spacing = 0;
 	} theme_cache;
 
-	void _shape(Ref<TextParagraph> p_paragraph = Ref<TextParagraph>(), String p_text = "") const;
+	// wgodot-changes::begin
+	void _shape(Ref<TextParagraph> p_paragraph = Ref<TextParagraph>(), String p_text = "", int p_font_size = -1) const;
+	// wgodot-changes::end
 	void _texture_changed();
 	void _update_style_margins(const Ref<StyleBox> &p_stylebox);
 
@@ -129,6 +144,15 @@ public:
 
 	void set_text(const String &p_text);
 	String get_text() const;
+	// wgodot-changes::begin
+	void set_resize_font_to_fit(bool p_enabled);
+	bool is_resize_font_to_fit_enabled() const;
+	void set_minimum_font_size(int p_size);
+	int get_minimum_font_size() const;
+	void set_maximum_font_size(int p_size);
+	int get_maximum_font_size() const;
+	int get_rendered_font_size() const;
+	// wgodot-changes::end
 
 	void set_text_overrun_behavior(TextServer::OverrunBehavior p_behavior);
 	TextServer::OverrunBehavior get_text_overrun_behavior() const;
