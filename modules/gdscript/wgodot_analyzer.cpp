@@ -901,6 +901,39 @@ void GDScriptAnalyzer::wgodot_validate_static_class(GDScriptParser::ClassNode *p
 	ERR_FAIL_NULL(p_class);
 
 	if (!p_class->wgodot_static_class) {
+#ifdef DEBUG_ENABLED
+		if (p_class->wgodot_is_interface || p_class->extends_used || !p_class->wgodot_implements.is_empty()) {
+			return;
+		}
+
+		bool has_members = false;
+		for (const GDScriptParser::ClassNode::Member &member : p_class->members) {
+			switch (member.type) {
+				case GDScriptParser::ClassNode::Member::CONSTANT:
+				case GDScriptParser::ClassNode::Member::ENUM:
+				case GDScriptParser::ClassNode::Member::ENUM_VALUE:
+					break;
+				case GDScriptParser::ClassNode::Member::FUNCTION:
+					if (!member.function->is_static) {
+						return;
+					}
+					break;
+				case GDScriptParser::ClassNode::Member::VARIABLE:
+					if (!member.variable->is_static) {
+						return;
+					}
+					break;
+				case GDScriptParser::ClassNode::Member::GROUP:
+					continue;
+				default:
+					return;
+			}
+			has_members = true;
+		}
+		if (has_members) {
+			parser->push_warning(p_class, GDScriptWarning::MISSING_STATIC_CLASS);
+		}
+#endif // DEBUG_ENABLED
 		return;
 	}
 
