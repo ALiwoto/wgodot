@@ -897,7 +897,8 @@ void GDScriptAnalyzer::wgodot_validate_static_class(GDScriptParser::ClassNode *p
 
 	if (!p_class->wgodot_static_class) {
 #ifdef DEBUG_ENABLED
-		if (p_class->wgodot_is_interface || p_class->extends_used || !p_class->wgodot_implements.is_empty() || WGodotGDScriptInlineConstants::can_omit_class(p_class)) {
+		const bool extends_default_base = p_class->base_type.kind == GDScriptParser::DataType::NATIVE && p_class->base_type.native_type == SNAME("RefCounted");
+		if (p_class->wgodot_is_interface || (p_class->extends_used && !extends_default_base) || !p_class->wgodot_implements.is_empty() || WGodotGDScriptInlineConstants::can_omit_class(p_class)) {
 			return;
 		}
 
@@ -907,6 +908,7 @@ void GDScriptAnalyzer::wgodot_validate_static_class(GDScriptParser::ClassNode *p
 				case GDScriptParser::ClassNode::Member::CONSTANT:
 				case GDScriptParser::ClassNode::Member::ENUM:
 				case GDScriptParser::ClassNode::Member::ENUM_VALUE:
+				case GDScriptParser::ClassNode::Member::CLASS:
 					break;
 				case GDScriptParser::ClassNode::Member::FUNCTION:
 					if (!member.function->is_static) {
@@ -926,7 +928,7 @@ void GDScriptAnalyzer::wgodot_validate_static_class(GDScriptParser::ClassNode *p
 			has_members = true;
 		}
 		if (has_members) {
-			parser->push_warning(p_class, GDScriptWarning::MISSING_STATIC_CLASS);
+			parser->push_warning(p_class, GDScriptWarning::MISSING_STATIC_CLASS, p_class->extends_used ? String(p_class->base_type.native_type) : String());
 		}
 #endif // DEBUG_ENABLED
 		return;
@@ -946,6 +948,10 @@ void GDScriptAnalyzer::wgodot_validate_static_class(GDScriptParser::ClassNode *p
 			case GDScriptParser::ClassNode::Member::ENUM_VALUE:
 			case GDScriptParser::ClassNode::Member::GROUP:
 				break;
+			case GDScriptParser::ClassNode::Member::CLASS:
+				// A nested type does not need an outer instance. Its own members
+				// are validated separately and may use ordinary instance state.
+				break;
 			case GDScriptParser::ClassNode::Member::FUNCTION:
 				if (!member.function->is_static) {
 					push_error(vformat(R"*(@static_class class members must be static or const, but function "%s()" is not static.)*", member.function->identifier->name), member.function);
@@ -955,9 +961,6 @@ void GDScriptAnalyzer::wgodot_validate_static_class(GDScriptParser::ClassNode *p
 				if (!member.variable->is_static) {
 					push_error(vformat(R"*(@static_class class members must be static or const, but variable "%s" is not static.)*", member.variable->identifier->name), member.variable);
 				}
-				break;
-			case GDScriptParser::ClassNode::Member::CLASS:
-				push_error(vformat(R"*(@static_class class members must be static or const, but nested class "%s" is not static.)*", member.m_class->identifier->name), member.m_class);
 				break;
 			case GDScriptParser::ClassNode::Member::SIGNAL:
 				push_error(vformat(R"*(@static_class class members must be static or const, but signal "%s" is not static.)*", member.signal->identifier->name), member.signal);

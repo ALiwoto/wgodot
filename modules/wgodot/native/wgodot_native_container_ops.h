@@ -24,21 +24,25 @@ struct ContainerDuplicateScope {
 };
 
 template <class T, class = void>
-struct IsContainerObject : std::false_type {};
+struct CanContainResource : std::false_type {};
 
 template <class T>
-struct IsContainerObject<T, std::void_t<decltype(std::declval<const T &>().ptr())>> :
-		std::is_convertible<decltype(std::declval<const T &>().ptr()), Object *> {};
+struct CanContainResource<T, std::void_t<decltype(std::declval<const T &>().ptr())>> {
+	using ObjectType = std::remove_pointer_t<decltype(std::declval<const T &>().ptr())>;
+	// Object/RefCounted handles may hold a Resource; unrelated subclasses (such
+	// as Node) cannot. Exclude those before instantiating Godot's static casts.
+	static constexpr bool value = std::is_base_of_v<ObjectType, Resource> || std::is_base_of_v<Resource, ObjectType>;
+};
 
 template <class T>
 inline constexpr bool container_needs_deep_copy = IsWArray<T>::value || IsWDictionary<T>::value ||
-		std::is_same_v<T, Array> || std::is_same_v<T, Dictionary> || IsContainerObject<T>::value;
+		std::is_same_v<T, Array> || std::is_same_v<T, Dictionary> || CanContainResource<T>::value;
 
 template <class T>
 T duplicate_container_value(const T &p_value, ResourceDeepDuplicateMode p_mode, int p_depth) {
 	if constexpr (IsWArray<T>::value || IsWDictionary<T>::value || std::is_same_v<T, Array> || std::is_same_v<T, Dictionary>) {
 		return p_value.recursive_duplicate(true, p_mode, p_depth);
-	} else if constexpr (IsContainerObject<T>::value) {
+	} else if constexpr (CanContainResource<T>::value) {
 		if (p_mode != RESOURCE_DEEP_DUPLICATE_NONE) {
 			if (Resource *resource = Object::cast_to<Resource>(p_value.ptr())) {
 				if (p_mode == RESOURCE_DEEP_DUPLICATE_ALL || resource->is_built_in()) {

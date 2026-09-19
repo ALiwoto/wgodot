@@ -175,7 +175,9 @@ String GDScriptWarning::get_message() const {
 			return vformat(R"("as" will silently return "null" if the type of "%s" is wrong. Prefer assigning the node directly to an explicitly typed variable to get an error in such cases.)", symbols[0]);
 		// wgodot-changes::begin
 		case MISSING_STATIC_CLASS:
-			return "this class only contains static members, consider marking it with @static_class annotation";
+			CHECK_SYMBOLS(1);
+			return String("This class declares no instance members; consider marking it with @static_class.") +
+					(symbols[0].is_empty() ? String() : vformat(" Remove the redundant \"extends %s\" declaration when adding the annotation.", symbols[0]));
 		// wgodot-changes::end
 #ifndef DISABLE_DEPRECATED
 		// Never produced. These warnings migrated from 3.x by mistake.
