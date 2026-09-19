@@ -18,9 +18,6 @@ class ExportAnalysis {
 	HashMap<String, Ref<GDScript>> scripts;
 	HashMap<StringName, String> global_classes;
 	HashMap<String, StringName> external_native_bases;
-	HashMap<StringName, StringName> native_aliases;
-	HashMap<StringName, StringName> function_aliases;
-	HashMap<StringName, StringName> member_aliases[4];
 	HashMap<uint64_t, String> decoded_string_resources;
 	bool strings_decoded = false;
 	static thread_local ExportAnalysis *active;
@@ -43,7 +40,6 @@ public:
 	ExportAnalysis(const ExportAnalysis &) = delete;
 	ExportAnalysis &operator=(const ExportAnalysis &) = delete;
 	static ExportAnalysis *get_active() { return active; }
-	const ExportContext &get_artifacts() const { return artifacts; }
 	const HashMap<uint64_t, String> &get_decoded_string_resources();
 	bool is_global_class(const StringName &p_name) const { return global_classes.has(p_name); }
 	String get_global_class_path(const StringName &p_name) const;
@@ -53,9 +49,6 @@ public:
 	Ref<GDScriptParserRef> get_parser(const String &p_path, GDScriptParserRef::Status p_status, Error &r_error);
 	Ref<GDScript> get_shallow_script(const String &p_path, Error &r_error);
 	Error analyze_scripts(bool p_bodies, String &r_error);
-	StringName resolve_native_alias(const StringName &p_name) const;
-	StringName resolve_function_alias(const StringName &p_name) const;
-	StringName resolve_member_alias(const StringName &p_name, bool p_static, bool p_property) const;
 };
 
 } // namespace WGodotGDScriptExportTransform

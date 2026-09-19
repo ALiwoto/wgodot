@@ -32,7 +32,6 @@
 
 // wgodot-changes::begin
 #include "core/profiling/wgodot_startup_profile.h"
-#include "wgodot_gd/binary_identifier.h"
 // wgodot-changes::end
 
 #include "core/io/compression.h"
@@ -48,9 +47,7 @@ int GDScriptTokenizerBuffer::_token_to_binary(const Token &p_token, Vector<uint8
 		case GDScriptTokenizer::Token::IDENTIFIER: {
 			// Add identifier to map.
 			int identifier_pos;
-			// wgodot-changes::begin
-			StringName id(WGodotGDScript::unwrap_binary_identifier_escape(String(p_token.get_identifier())));
-			// wgodot-changes::end
+			StringName id = p_token.get_identifier();
 			if (r_identifiers_map.has(id)) {
 				identifier_pos = r_identifiers_map[id];
 			} else {

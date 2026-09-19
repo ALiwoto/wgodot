@@ -24,10 +24,6 @@ bool get_parser_override(const String &p_path, GDScriptParserRef::Status p_statu
 bool has_parser_override(const String &p_path, bool &r_exists);
 bool get_shallow_script_override(const String &p_path, Error &r_error, Ref<GDScript> &r_script);
 Ref<GDScriptParserRef> get_global_class_parser_override(const StringName &p_name);
-bool resolve_native_alias_override(const StringName &p_name, StringName &r_name);
-bool resolve_function_alias_override(const StringName &p_name, StringName &r_name);
-bool resolve_member_alias_override(const StringName &p_name, bool p_static, bool p_property, StringName &r_name);
-bool resolve_interface_alias_override(int p_interface_index, int p_method_index, StringName &r_name);
 const HashMap<uint64_t, String> *get_string_resources_override();
 #else
 inline bool is_global_class(const StringName &p_name) {

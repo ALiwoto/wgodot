@@ -144,6 +144,7 @@ String WGodotCppEmitter::class_name(const Parser::DataType &p_type, const Parser
 			return "Variant";
 		}
 		class_dependencies.insert(entry->cpp_name);
+		required_classes.insert(entry->node);
 		if (p_type.class_type->wgodot_is_interface) {
 			class_native_headers.insert(entry->cpp_name + ".h");
 		}
@@ -564,12 +565,19 @@ Error WGodotCppEmitter::generate() {
 	used_native_headers.clear();
 	used_native_interfaces.clear();
 	class_lifecycles.clear();
+	required_classes.clear();
 	signatures.analyze();
 	collect_interface_property_accessors();
 	collect_container_constants();
-	for (const WGodotCppProject::Class &entry : project.get_classes()) {
-		emit_class(entry);
-	}
+	// Lowering may discover runtime type uses of an otherwise inlined class
+	// after its position in the project list. Emit those on the next pass.
+	uint32_t required_count;
+	do {
+		required_count = required_classes.size();
+		for (const WGodotCppProject::Class &entry : project.get_classes()) {
+			emit_class(entry);
+		}
+	} while (required_classes.size() != required_count);
 	HashSet<StringName> emitted_interfaces;
 	while (emitted_interfaces.size() < used_native_interfaces.size()) {
 		Vector<StringName> pending;
@@ -595,13 +603,13 @@ Error WGodotCppEmitter::generate() {
 	String body = "\tWGodotNative::NativeConnections::initialize();\n\tGDREGISTER_ABSTRACT_CLASS(WGodotNative::NativeTask);\n" + register_interfaces();
 	HashSet<String> registered;
 	for (const auto &entry : project.get_classes()) {
-		if (!entry.node->wgodot_static_class) {
+		if (!entry.node->wgodot_static_class && files.has(entry.cpp_name + ".h")) {
 			registration += "#include \"" + entry.cpp_name + ".h\"\n";
 			register_class(entry, registered, body);
 		}
 	}
 	registration += "\nusing namespace WGodotGame;\nvoid initialize_main_game_module(ModuleInitializationLevel p_level) {\n\tif (p_level != MODULE_INITIALIZATION_LEVEL_SCENE) { return; }\n" + body + "}\nvoid uninitialize_main_game_module(ModuleInitializationLevel p_level) {\n\tif (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {\n\t\tWGodotNative::NativeTask::clear_all();\n\t\tWGodotNative::StaticRegistry::get().clear();\n\t\tWGodotNative::NativeConnections::clear();\n\t\tWGodotNativeInterfaces::clear();\n\t}\n}\n";
-	// A project containing only static classes needs no class namespace here.
+	// No class namespace is needed when there are no runtime classes.
 	if (registered.is_empty()) {
 		registration = registration.replace("using namespace WGodotGame;\n", "");
 	}
@@ -668,7 +676,7 @@ Error WGodotCppEmitter::write(const String &p_directory) const {
 		if (entry.script_path.begins_with("res://") && !sources.has(entry.script_path)) {
 			sources[entry.script_path] = FileAccess::get_sha256(entry.script_path);
 		}
-		if (!entry.node->outer && !entry.node->wgodot_static_class && !entry.node->wgodot_is_interface) {
+		if (!entry.node->outer && !entry.node->wgodot_static_class && !entry.node->wgodot_is_interface && files.has(entry.cpp_name + ".h")) {
 			Dictionary native_class;
 			native_class["class"] = entry.cpp_name;
 			native_class["base"] = native_base(entry.node->self_type);

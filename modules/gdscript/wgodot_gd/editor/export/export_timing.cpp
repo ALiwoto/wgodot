@@ -13,9 +13,6 @@ namespace WGodotGDScriptExportTransform {
 
 namespace {
 
-ObfuscationNameProbe obfuscation_name_probe;
-bool obfuscation_name_probe_enabled = false;
-
 String get_utc_timestamp() {
 	return Time::get_singleton() != nullptr ? Time::get_singleton()->get_datetime_string_from_system(true, true) + "Z" : String("unknown");
 }
@@ -65,34 +62,6 @@ void export_timing_log_slow_phase(const TransformOptions &p_options, const Strin
 	}
 
 	WARN_PRINT(export_timing_prefix() + vformat("%s %s took %s ms.", p_context, p_phase, export_timing_format_msec(p_usec)));
-}
-
-void reset_obfuscation_name_probe() {
-	obfuscation_name_probe = ObfuscationNameProbe();
-}
-
-ObfuscationNameProbe get_obfuscation_name_probe() {
-	return obfuscation_name_probe;
-}
-
-void set_obfuscation_name_probe_enabled(bool p_enabled) {
-	obfuscation_name_probe_enabled = p_enabled;
-}
-
-bool is_obfuscation_name_probe_enabled() {
-	return obfuscation_name_probe_enabled;
-}
-
-void record_obfuscation_name_probe(int p_attempts, uint64_t p_usec) {
-	if (!obfuscation_name_probe_enabled) {
-		return;
-	}
-
-	obfuscation_name_probe.calls++;
-	obfuscation_name_probe.attempts += p_attempts;
-	obfuscation_name_probe.collisions += MAX(p_attempts - 1, 0);
-	obfuscation_name_probe.max_attempts = MAX(obfuscation_name_probe.max_attempts, p_attempts);
-	obfuscation_name_probe.usec += p_usec;
 }
 
 } // namespace WGodotGDScriptExportTransform

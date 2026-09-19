@@ -28,6 +28,7 @@ class WGodotCppEmitter {
 	HashSet<String> used_native_headers;
 	HashSet<String> class_native_headers;
 	HashSet<String> class_dependencies;
+	HashSet<const GDScriptParser::ClassNode *> required_classes;
 	HashSet<String> class_call_headers;
 	HashMap<String, String> class_resource_types;
 	HashMap<const GDScriptParser::ConstantNode *, const WGodotCppProject::Class *> container_constant_owners;

@@ -94,7 +94,6 @@ void GDScriptAnalyzer::wgodot_validate_native_interfaces(Parser::ClassNode *p_cl
 				continue;
 			}
 			Parser::FunctionNode *function = actual.function;
-			function->wgodot_interface_implementation = true;
 			const MethodInfo &required = entry.value;
 			bool valid = !function->is_static && !function->wgodot_private && !function->wgodot_protected && !function->is_coroutine;
 			const int required_min = required.arguments.size() - required.default_arguments.size();
@@ -122,7 +121,6 @@ void GDScriptAnalyzer::wgodot_validate_native_interfaces(Parser::ClassNode *p_cl
 				continue;
 			}
 			Parser::VariableNode *variable = actual.variable;
-			variable->wgodot_interface_implementation = true;
 			const DataType required = type_from_property(entry.value.info, false, variable);
 			bool valid = !variable->is_static && !variable->wgodot_private && !variable->wgodot_protected && wgodot_interface_type_accepts(required, variable->type_constraint);
 			if (!entry.value.setter.is_empty()) {

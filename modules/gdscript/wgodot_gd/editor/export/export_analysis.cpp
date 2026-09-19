@@ -4,7 +4,6 @@
 
 #include "export_context.h"
 #include "export_transform_internal.h"
-#include "obfuscation_names.h"
 
 #include "core/io/resource_loader.h"
 #include "core/io/resource_uid.h"
@@ -41,27 +40,6 @@ ExportAnalysis::ExportAnalysis(const ExportProject &p_project, const ExportConte
 				}
 				break;
 			}
-		}
-	}
-	for (const KeyValue<StringName, StringName> &entry : artifacts.get_builtin_class_aliases()) {
-		native_aliases[entry.value] = entry.key;
-		native_aliases[StringName(unwrap_binary_identifier_escape(entry.value))] = entry.key;
-	}
-	for (const KeyValue<StringName, StringName> &entry : artifacts.get_builtin_function_aliases()) {
-		function_aliases[entry.value] = entry.key;
-		function_aliases[StringName(unwrap_binary_identifier_escape(entry.value))] = entry.key;
-	}
-	const HashMap<StringName, StringName> *members[] = {
-		&artifacts.get_builtin_instance_method_aliases(),
-		&artifacts.get_builtin_static_method_aliases(),
-		&artifacts.get_builtin_instance_property_aliases(),
-		&artifacts.get_builtin_static_property_aliases(),
-	};
-	for (int i = 0; i < 4; i++) {
-		for (const KeyValue<StringName, StringName> &entry : *members[i]) {
-			const String qualified = entry.key;
-			member_aliases[i][entry.value] = StringName(qualified.substr(qualified.rfind("::") + 2));
-			member_aliases[i][StringName(unwrap_binary_identifier_escape(entry.value))] = StringName(qualified.substr(qualified.rfind("::") + 2));
 		}
 	}
 }
@@ -166,21 +144,6 @@ Error ExportAnalysis::analyze_scripts(bool p_bodies, String &r_error) {
 		}
 	}
 	return OK;
-}
-
-StringName ExportAnalysis::resolve_native_alias(const StringName &p_name) const {
-	const StringName *name = native_aliases.getptr(p_name);
-	return name != nullptr ? *name : StringName();
-}
-
-StringName ExportAnalysis::resolve_function_alias(const StringName &p_name) const {
-	const StringName *name = function_aliases.getptr(p_name);
-	return name != nullptr ? *name : StringName();
-}
-
-StringName ExportAnalysis::resolve_member_alias(const StringName &p_name, bool p_static, bool p_property) const {
-	const StringName *name = member_aliases[(p_property ? 2 : 0) + (p_static ? 1 : 0)].getptr(p_name);
-	return name != nullptr ? *name : StringName();
 }
 
 } // namespace WGodotGDScriptExportTransform

@@ -4,9 +4,6 @@
 
 #include "core/variant/wgodot_text_arguments.h"
 
-#include "modules/gdscript/wgodot_gd/builtin_alias_resolver.h"
-#include "modules/gdscript/wgodot_gd/builtin_class_aliases.h"
-
 using Parser = GDScriptParser;
 using namespace WGodotCppNames;
 
@@ -21,7 +18,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::builtin_call(const Parser::CallNode *p
 	// The analyzer resolves a builtin class name locally for static calls; it
 	// intentionally leaves the receiver IdentifierNode's datatype unresolved.
 	if (base->type == Parser::Node::IDENTIFIER) {
-		const StringName name = WGodotGDScriptBuiltinAliasResolver::resolve_class_alias_or_name(static_cast<const Parser::IdentifierNode *>(base)->name);
+		const StringName name = static_cast<const Parser::IdentifierNode *>(base)->name;
 		const Variant::Type builtin = Parser::get_builtin_type(name);
 		if (builtin < Variant::VARIANT_MAX) {
 			base_type.kind = Parser::DataType::BUILTIN;
@@ -107,13 +104,6 @@ WGodotCppEmitter::Value WGodotCppEmitter::builtin_call(const Parser::CallNode *p
 
 WGodotCppEmitter::Value WGodotCppEmitter::global_call(const Parser::CallNode *p_call) {
 	StringName name = p_call->function_name;
-	const StringName function_alias = WGodotGDScriptBuiltinClassAliases::resolve_function_alias(name);
-	const StringName type_alias = WGodotGDScriptBuiltinClassAliases::resolve_alias(name);
-	if (!function_alias.is_empty()) {
-		name = function_alias;
-	} else if (!type_alias.is_empty()) {
-		name = type_alias;
-	}
 	class_call_headers.insert("modules/wgodot/native/wgodot_native_values.h");
 	if (is_packed(p_call->type_constraint) && Parser::get_builtin_type(name) == p_call->type_constraint.builtin_type && p_call->arguments.size() == 1) {
 		const auto *source = p_call->arguments[0];

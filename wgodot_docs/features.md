@@ -173,46 +173,12 @@ inlines constants where they are used. so in your exported binary you won't see 
 
 ### @no_mangle
 
-excludes the target from being obfuscated. Has to be used on the decleration site.
+will be removed soon due to gd2cpp.
 
 ### @no_string_mangle
 
 keeps hardcoded strings instead of obfuscating it.
 can to be used on the declaration site, e.g. use it on an entire func/class/etc.
-
-### @obfuscate
-
-makes a class/func go through obfuscation pipeline; this is opt-in because features in this part aren't really that stable (and will soon get replaced by obfuscation on gd2cpp part anyway).
-
-When used on a class, ALL possible members are obfuscated unless they use `@no_mangle`.
-
-### Name obfuscation
-
-Option: `wgodot/export/obfuscate_names`
-
-renames local vars, params and signals.
-if you want the entire class to get obfuscated, use @obfuscate.
-
-### Built-in/native name aliasing
-
-Option: `wgodot/export/obfuscate_builtin_names`
-
-Aliases used builtin stuff; e.g. `print("abc")` becomes `xyzA("abc")`; but the name map is stored in the game resources and restored at startup, so reverse engineers can still find and reverse them.
-
-Dynamic string reflection like `get("name")`, `set("name", value)`, and `call("name")` are not changed.
-
-### Obfuscation strategy
-
-Option: `wgodot/export/obfuscation_strategy`: `Short`, `Hash`, or `Unicode`.
-(Currently only `Short` is implemented, the other two will never get implemented because this feature will get removed soon).
-
-### Script path obfuscation
-
-Option: `wgodot/export/obfuscate_file_paths` and use `@obfuscate_path`.
-strategy option: `wgodot/export/obfuscate_file_paths_strategy`
-
-Renames scripts to obfuscated names, also updates the path refs in `load("res://script.gd")`.
-due to gd2cpp this option is now useless and will be removed soon.
 
 ### String obfuscation
 
@@ -235,7 +201,7 @@ Option: `wgodot/export/timing_logs_enabled`
 
 Basically I had to make this feature back when I was hitting my wall to the head trying to figure out what stuff is taking so much time in export pipeline.
 
-Emits UTC timings for slow operations and name indexing.
+Emits UTC timings for slow operations.
 
 Other options:
 

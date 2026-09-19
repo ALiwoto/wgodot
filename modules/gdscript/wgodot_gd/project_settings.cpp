@@ -15,9 +15,6 @@ void register_project_settings() {
 	GLOBAL_DEF("wgodot/gdscript/strict_signal_callable_checking", true);
 	GLOBAL_DEF("wgodot/export/deconst_exports", true);
 #ifdef TOOLS_ENABLED
-	GLOBAL_DEF("wgodot/export/obfuscate_names", true);
-	GLOBAL_DEF("wgodot/export/obfuscate_builtin_names", true);
-	GLOBAL_DEF(PropertyInfo(Variant::INT, "wgodot/export/obfuscation_strategy", PROPERTY_HINT_ENUM, "Short,Hash,Unicode"), 0);
 	GLOBAL_DEF("wgodot/export/obfuscate_strings", true);
 	GLOBAL_DEF("wgodot/export/redact_diagnostics", false);
 	GLOBAL_DEF("wgodot/export/timing_logs_enabled", false);

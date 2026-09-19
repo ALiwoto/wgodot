@@ -14,9 +14,6 @@ namespace WGodotGDScriptInterfaceHelpers {
 
 String get_interface_id(const GDScriptParser::ClassNode *p_interface);
 
-bool is_contract_member(const GDScriptParser::ClassNode::Member &p_member);
-bool is_implemented_member(const GDScriptParser::ClassNode::Member &p_member);
-bool member_has_no_mangle(const GDScriptParser::ClassNode::Member &p_member);
 bool same_type(const GDScriptParser::DataType &p_first, const GDScriptParser::DataType &p_second);
 
 const WGodotNativeInterfaces::Descriptor *native_interface_for_member(const GDScriptParser::DataType &p_type, const StringName &p_member);

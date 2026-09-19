@@ -774,9 +774,7 @@ public:
 		bool wgodot_private = false;
 		bool wgodot_protected = false;
 		bool wgodot_static_class = false;
-		bool wgodot_no_mangle = false;
 		bool wgodot_no_string_mangle = false;
-		bool wgodot_obfuscate = false;
 		bool wgodot_is_interface = false;
 		bool wgodot_interface_global_name = false;
 		StringName wgodot_interface_name;
@@ -789,7 +787,6 @@ public:
 		Vector<ClassNode *> wgodot_resolved_interfaces;
 		Vector<StringName> wgodot_native_interfaces;
 		bool wgodot_interfaces_resolved = false;
-		bool wgodot_has_native_interface_members = false;
 		int wgodot_own_member_count = -1;
 		uint32_t wgodot_get_own_member_count() const { return wgodot_own_member_count < 0 ? members.size() : uint32_t(wgodot_own_member_count); }
 		bool wgodot_resolving_interfaces = false;
@@ -924,10 +921,7 @@ public:
 		bool wgodot_private = false;
 		bool wgodot_protected = false;
 		bool wgodot_override = false;
-		bool wgodot_no_mangle = false;
 		bool wgodot_no_string_mangle = false;
-		bool wgodot_obfuscate = false;
-		bool wgodot_interface_implementation = false;
 		// wgodot-changes::end
 		Variant rpc_config;
 		MethodInfo info;
@@ -1142,7 +1136,6 @@ public:
 		// wgodot-changes::begin
 		bool wgodot_private = false;
 		bool wgodot_protected = false;
-		bool wgodot_no_mangle = false;
 		bool wgodot_interface_implementation = false;
 		// wgodot-changes::end
 #ifdef TOOLS_ENABLED
@@ -1356,9 +1349,6 @@ public:
 		bool wgodot_private = false;
 		bool wgodot_protected = false;
 		bool wgodot_readonly = false;
-		bool wgodot_no_mangle = false;
-		bool wgodot_obfuscate = false;
-		bool wgodot_interface_implementation = false;
 		// wgodot-changes::end
 		PropertyInfo export_info;
 		int assignments = 0;
@@ -1698,7 +1688,6 @@ private:
 	bool wgodot_static_class_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	bool wgodot_no_mangle_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	bool wgodot_no_string_mangle_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
-	bool wgodot_obfuscate_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	// wgodot-changes::end
 	// Statements.
 	Node *parse_statement();

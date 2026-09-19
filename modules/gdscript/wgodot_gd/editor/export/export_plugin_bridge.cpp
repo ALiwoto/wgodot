@@ -4,8 +4,6 @@
 
 #include "editor/export/editor_export_plugin.h"
 #include "modules/gdscript/gdscript_tokenizer_buffer.h"
-#include "modules/gdscript/wgodot_gd/builtin_class_aliases.h"
-#include "modules/gdscript/wgodot_gd/interface_method_aliases.h"
 #include "modules/gdscript/wgodot_gd/string_obfuscation.h"
 
 namespace WGodotGDScriptExportTransform {
@@ -16,14 +14,6 @@ void ExportPipeline::prepare_export(EditorExportPlugin *p_plugin, const HashSet<
 	if (error != OK) {
 		p_plugin->set_export_error(error, details);
 		return;
-	}
-	const Vector<uint8_t> builtin_class_aliases = WGodotGDScriptBuiltinClassAliases::serialize_alias_map(artifacts);
-	if (!builtin_class_aliases.is_empty()) {
-		p_plugin->add_file(WGodotGDScriptBuiltinClassAliases::get_alias_map_path(), builtin_class_aliases, false);
-	}
-	const Vector<uint8_t> interface_method_aliases = WGodotGDScriptInterfaceMethodAliases::serialize_alias_map(artifacts);
-	if (!interface_method_aliases.is_empty()) {
-		p_plugin->add_file(WGodotGDScriptInterfaceMethodAliases::get_alias_map_path(), interface_method_aliases, false);
 	}
 	const Vector<uint8_t> string_map = WGodotGDScriptStringObfuscation::serialize_string_map(artifacts);
 	if (!string_map.is_empty()) {

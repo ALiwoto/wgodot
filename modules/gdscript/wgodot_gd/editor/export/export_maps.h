@@ -9,12 +9,6 @@ namespace WGodotGDScriptExportTransform {
 class ExportContext;
 }
 
-namespace WGodotGDScriptBuiltinClassAliases {
-Vector<uint8_t> serialize_alias_map(const WGodotGDScriptExportTransform::ExportContext &p_context);
-}
-namespace WGodotGDScriptInterfaceMethodAliases {
-Vector<uint8_t> serialize_alias_map(const WGodotGDScriptExportTransform::ExportContext &p_context);
-}
 namespace WGodotGDScriptStringObfuscation {
 Vector<uint8_t> serialize_string_map(const WGodotGDScriptExportTransform::ExportContext &p_context);
 }

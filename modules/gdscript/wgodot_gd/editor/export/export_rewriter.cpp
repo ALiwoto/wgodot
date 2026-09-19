@@ -58,27 +58,4 @@ void add_extends_path_replacement(RewriteContext &r_context, const GDScriptParse
 	}
 }
 
-void collect_global_class_rename_request(ExportContext *p_context, const GDScriptParser::ClassNode *p_class, const String &p_path, Vector<GlobalClassRenameRequest> &r_requests) {
-	if (p_context == nullptr || p_class == nullptr) {
-		return;
-	}
-
-	p_context->reserve_script_global_class_name(p_class);
-	p_context->reserve_script_declaration_names_for_global_classes(p_class);
-
-	if (p_class->outer != nullptr ||
-			p_class->identifier == nullptr ||
-			p_class->identifier->name.is_empty() ||
-			!p_class->wgodot_obfuscate ||
-			p_class->wgodot_no_mangle ||
-			p_class->fqcn.begins_with("res://")) {
-		return;
-	}
-
-	GlobalClassRenameRequest request;
-	request.name = p_class->identifier->name;
-	request.path = p_path;
-	r_requests.push_back(request);
-}
-
 } // namespace WGodotGDScriptExportTransform

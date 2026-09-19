@@ -9,8 +9,8 @@
 
 #include "gdscript.h"
 #include "gdscript_analyzer.h"
+#include "wgodot_gd/inline_constants.h"
 #include "wgodot_gd/interface_helpers.h"
-#include "wgodot_gd/interface_method_aliases.h"
 #include "wgodot_gd/script_resolution.h"
 #include "wgodot_stdlib.h"
 
@@ -802,19 +802,14 @@ void GDScriptAnalyzer::wgodot_validate_implemented_interfaces(GDScriptParser::Cl
 			bool matches = false;
 			if (owner == nullptr) {
 				matches = wgodot_interface_native_member_matches(required, p_class->self_type.native_type, error);
-				if (matches) {
-					contract->wgodot_has_native_interface_members = true;
-				}
 			} else {
 				resolve_class_member(owner, name, p_class);
 				const Member actual = owner->get_member(name);
 				if (actual.type != required.type) {
 					error = "member kind differs from the interface";
 				} else if (required.type == Member::FUNCTION) {
-					actual.function->wgodot_interface_implementation = true;
 					matches = !actual.function->wgodot_private && !actual.function->wgodot_protected && wgodot_interface_method_signature_matches(required.function, actual.function, error);
 				} else if (required.type == Member::VARIABLE) {
-					actual.variable->wgodot_interface_implementation = true;
 					matches = !actual.variable->is_static && !actual.variable->wgodot_private && !actual.variable->wgodot_protected &&
 							wgodot_interface_type_accepts(required.variable->type_constraint, actual.variable->type_constraint) &&
 							(required.variable->wgodot_readonly || (!actual.variable->wgodot_readonly && wgodot_interface_type_accepts(actual.variable->type_constraint, required.variable->type_constraint)));
@@ -902,7 +897,7 @@ void GDScriptAnalyzer::wgodot_validate_static_class(GDScriptParser::ClassNode *p
 
 	if (!p_class->wgodot_static_class) {
 #ifdef DEBUG_ENABLED
-		if (p_class->wgodot_is_interface || p_class->extends_used || !p_class->wgodot_implements.is_empty()) {
+		if (p_class->wgodot_is_interface || p_class->extends_used || !p_class->wgodot_implements.is_empty() || WGodotGDScriptInlineConstants::can_omit_class(p_class)) {
 			return;
 		}
 

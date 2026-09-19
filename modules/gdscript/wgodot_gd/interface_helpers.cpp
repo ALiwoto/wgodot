@@ -9,39 +9,6 @@
 
 namespace WGodotGDScriptInterfaceHelpers {
 
-bool is_contract_member(const GDScriptParser::ClassNode::Member &p_member) {
-	using Member = GDScriptParser::ClassNode::Member;
-	return p_member.type == Member::FUNCTION || p_member.type == Member::VARIABLE || p_member.type == Member::SIGNAL;
-}
-
-bool is_implemented_member(const GDScriptParser::ClassNode::Member &p_member) {
-	using Member = GDScriptParser::ClassNode::Member;
-	switch (p_member.type) {
-		case Member::FUNCTION:
-			return p_member.function->wgodot_interface_implementation;
-		case Member::VARIABLE:
-			return p_member.variable->wgodot_interface_implementation;
-		case Member::SIGNAL:
-			return p_member.signal->wgodot_interface_implementation;
-		default:
-			return false;
-	}
-}
-
-bool member_has_no_mangle(const GDScriptParser::ClassNode::Member &p_member) {
-	using Member = GDScriptParser::ClassNode::Member;
-	switch (p_member.type) {
-		case Member::FUNCTION:
-			return p_member.function->wgodot_no_mangle;
-		case Member::VARIABLE:
-			return p_member.variable->wgodot_no_mangle;
-		case Member::SIGNAL:
-			return p_member.signal->wgodot_no_mangle;
-		default:
-			return false;
-	}
-}
-
 bool same_type(const GDScriptParser::DataType &p_first, const GDScriptParser::DataType &p_second) {
 	using DataType = GDScriptParser::DataType;
 	if (p_first.has_no_type() || p_second.has_no_type()) {

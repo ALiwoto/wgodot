@@ -8,7 +8,6 @@ namespace WGodotGDScriptExportTransform {
 
 struct ExportScope {
 	const GDScriptParser::ClassNode *current_class = nullptr;
-	bool no_mangle = false;
 	bool no_string_mangle = false;
 };
 

@@ -26,10 +26,6 @@ bool GDScriptAnalyzer::wgodot_resolve_property_path_segment(WGodotGDScriptProper
 	for (Parser::ClassNode *owner = base.class_type; owner != nullptr; owner = owner->base_type.class_type) {
 		resolve_class_inheritance(owner, p_source);
 		StringName name = r_segment.name;
-		if (!owner->has_member(name) && WGodotGDScriptResolution::is_export_analysis()) {
-			// Export text escapes binary identifiers; property paths contain their runtime names.
-			name = StringName("${{" + String(name) + "}}");
-		}
 		if (!owner->has_member(name)) {
 			continue;
 		}
@@ -130,8 +126,7 @@ void GDScriptAnalyzer::wgodot_analyze_tween_property_call(const GDScriptParser::
 		}
 	}
 
-	// Retain resolved references for export even when strict checking is disabled.
-	// An unresolved suffix must not prevent renaming the known prefix of a path.
+	// Retain resolved references for native emission even when strict checking is disabled.
 	wgodot_tween_property_paths.insert(p_call, resolved);
 	if (!strict) {
 		return;

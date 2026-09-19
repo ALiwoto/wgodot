@@ -3,9 +3,6 @@
 #include "modules/gdscript/wgodot_gd/script_resolution.h"
 
 #include "export_analysis.h"
-#include "export_context.h"
-
-#include "modules/gdscript/wgodot_gd/obfuscation_format.h"
 
 namespace WGodotGDScriptResolution {
 using WGodotGDScriptExportTransform::ExportAnalysis;
@@ -90,39 +87,6 @@ Ref<GDScriptParserRef> get_global_class_parser_override(const StringName &p_name
 		}
 	}
 	return Ref<GDScriptParserRef>();
-}
-
-bool resolve_native_alias_override(const StringName &p_name, StringName &r_name) {
-	if (auto *analysis = ExportAnalysis::get_active()) {
-		r_name = analysis->resolve_native_alias(p_name);
-		return true;
-	}
-	return false;
-}
-
-bool resolve_function_alias_override(const StringName &p_name, StringName &r_name) {
-	if (auto *analysis = ExportAnalysis::get_active()) {
-		r_name = analysis->resolve_function_alias(p_name);
-		return true;
-	}
-	return false;
-}
-
-bool resolve_member_alias_override(const StringName &p_name, bool p_static, bool p_property, StringName &r_name) {
-	if (auto *analysis = ExportAnalysis::get_active()) {
-		r_name = analysis->resolve_member_alias(p_name, p_static, p_property);
-		return true;
-	}
-	return false;
-}
-
-bool resolve_interface_alias_override(int p_interface_index, int p_method_index, StringName &r_name) {
-	if (auto *analysis = ExportAnalysis::get_active()) {
-		const StringName *alias = analysis->get_artifacts().get_builtin_interface_aliases().getptr(WGodotGDScriptFormat::interface_slot(p_interface_index, p_method_index));
-		r_name = alias != nullptr ? *alias : StringName();
-		return true;
-	}
-	return false;
 }
 
 const HashMap<uint64_t, String> *get_string_resources_override() {

@@ -25,25 +25,6 @@ public:
 	Error transform(const ExportPassInput &p_input, ExportPassOutput &r_output, String &r_error) override;
 };
 
-class NamesPass : public AnalyzedExportPass {
-public:
-	const char *get_name() const override { return "names"; }
-	Vector<StringName> get_predecessors() const override { return { SNAME("no_export"), SNAME("constants"), SNAME("builtin_aliases") }; }
-	bool is_enabled(const TransformOptions &p_options) const override { return p_options.obfuscate_names; }
-	Error transform(const ExportPassInput &p_input, ExportPassOutput &r_output, String &r_error) override;
-};
-
-class BuiltinAliasesPass : public AnalyzedExportPass {
-	HashSet<StringName> identifiers;
-
-public:
-	const char *get_name() const override { return "builtin_aliases"; }
-	Vector<StringName> get_predecessors() const override { return { SNAME("no_export"), SNAME("constants") }; }
-	bool is_enabled(const TransformOptions &p_options) const override { return p_options.obfuscate_builtin_names; }
-	Error analyze(const ExportAnalysisInput &p_input, String &r_error) override;
-	Error transform(const ExportPassInput &p_input, ExportPassOutput &r_output, String &r_error) override;
-};
-
 class StringsPass : public AnalyzedExportPass {
 public:
 	const char *get_name() const override { return "strings"; }
@@ -52,7 +33,6 @@ public:
 			SNAME("no_export"),
 			SNAME("diagnostics"),
 			SNAME("constants"),
-			SNAME("names")
 		};
 	}
 	bool is_enabled(const TransformOptions &p_options) const override { return p_options.obfuscate_strings; }
@@ -62,7 +42,7 @@ public:
 class CleanupPass : public AnalyzedExportPass {
 public:
 	const char *get_name() const override { return "cleanup"; }
-	Vector<StringName> get_predecessors() const override { return { SNAME("no_export"), SNAME("diagnostics"), SNAME("constants"), SNAME("builtin_aliases"), SNAME("names"), SNAME("strings") }; }
+	Vector<StringName> get_predecessors() const override { return { SNAME("no_export"), SNAME("diagnostics"), SNAME("constants"), SNAME("strings") }; }
 	bool is_enabled(const TransformOptions &p_options) const override { return true; }
 	Error transform(const ExportPassInput &p_input, ExportPassOutput &r_output, String &r_error) override;
 };

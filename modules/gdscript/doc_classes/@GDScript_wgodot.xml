@@ -5,10 +5,7 @@
 		<annotation name="@no_mangle">
 			<return type="void" />
 			<description>
-				Excludes the following named declaration from export-time name obfuscation and de-const/de-enum removal.
-				For constants and enums, only [annotation @no_mangle] on the constant or enum declaration itself prevents de-const/de-enum export processing from inlining values and removing metadata. Class/function/property [annotation @no_mangle] does not protect constant or enum usages inside that scope from being inlined.
-				For classes, functions, and properties with getter/setter bodies, this acts recursively for name obfuscation of declarations inside that subtree. Usages inside the subtree still follow the declaration they reference; for example, a use of an outside private field is renamed if that outside field declaration is renamed.
-				This annotation can be used on classes, constants, functions, enums, signals, and variables. It is also accepted on local constants and variables inside functions.
+				Excludes the following constant or enum from de-const/de-enum export processing, preserving its declaration and metadata. This annotation also applies to local constants.
 				[codeblock]
 				@no_mangle
 				const API_ENDPOINT = "https://example.com"
@@ -46,26 +43,6 @@
 				[/codeblock]
 			</description>
 		</annotation>
-		<annotation name="@obfuscate">
-			<return type="void" />
-			<description>
-				Marks the following class, function, or variable/property declaration as eligible for configured export-time obfuscation passes without changing its access rules.
-				When [code]wgodot/export/obfuscate_names[/code] is enabled, exported GDScript rewrites this declaration and analyzed usages to the same obfuscated name. On a class, all eligible members in that class are obfuscated unless their declarations use [annotation @no_mangle]. On a global [code]class_name[/code], the exported global class name and exported global script class cache entry are also rewritten.
-				This is intentionally explicit and does not rewrite string-reflection calls such as [code]get("member_name")[/code], or resource/string references to global class names; use [annotation @no_mangle] when a dynamically accessed member or class must keep its original name.
-				This annotation can be combined with [annotation @no_mangle]; in that case, [annotation @no_mangle] wins and the declaration keeps its original name.
-				[codeblock]
-				@obfuscate
-				class_name PlayerAccount
-
-				@obfuscate
-				var public_cache: Dictionary[String, int]
-
-				@obfuscate
-				func rebuild_cache() -> void:
-					pass
-				[/codeblock]
-			</description>
-		</annotation>
 		<annotation name="@partial" qualifiers="vararg">
 			<return type="void" />
 			<param index="0" name="path" type="String" />
@@ -86,7 +63,7 @@
 			<return type="void" />
 			<description>
 				Marks the following class-level member as private to the current class.
-				Private members cannot be accessed from outside the class that declares them. Private fields, properties, and functions are also eligible for export-time name obfuscation when wgodot name obfuscation is enabled. Combine this annotation with [annotation @no_mangle] to keep the private access rule while opting that declaration out of export-time name obfuscation. This annotation can be used on nested classes, constants, functions, signals, and variables, and cannot be combined with [annotation @protected].
+				Private members cannot be accessed from outside the class that declares them. This annotation can be used on nested classes, constants, functions, signals, and variables, and cannot be combined with [annotation @protected].
 				[codeblock]
 				@private
 				var inventory_cache: Dictionary[String, int]

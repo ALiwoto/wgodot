@@ -1542,11 +1542,6 @@ GDScriptTokenizer::Token GDScriptTokenizerText::scan() {
 		case ';':
 			return make_token(Token::SEMICOLON);
 		case '$':
-			// wgodot-changes::begin
-			if (_peek() == '{' && _peek(1) == '{') {
-				return wgodot_escaped_identifier();
-			}
-			// wgodot-changes::end
 			return make_token(Token::DOLLAR);
 		case '?':
 			return make_token(Token::QUESTION_MARK);

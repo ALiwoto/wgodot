@@ -94,7 +94,7 @@ public:
 		ONREADY_WITH_EXPORT, // The `@onready` annotation will set the value after `@export` which is likely not intended.
 		ONREADY_WITH_CAST, // The cast will silently assign `null` if the node has a wrong type. This is likely not intended.
 		// wgodot-changes::begin
-		MISSING_STATIC_CLASS, // A class containing only static or const members is not marked as @static_class.
+		MISSING_STATIC_CLASS, // A class with only static or const members needs runtime code but lacks @static_class.
 		// wgodot-changes::end
 #ifndef DISABLE_DEPRECATED
 		PROPERTY_USED_AS_FUNCTION, // Function not found, but there's a property with the same name.

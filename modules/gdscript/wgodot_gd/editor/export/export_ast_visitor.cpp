@@ -19,17 +19,10 @@ void ExportASTVisitor::walk_node(const Parser::Node *p_node, ExportScope p_scope
 	if (p_node->type == Parser::Node::CLASS) {
 		const auto *node = static_cast<const Parser::ClassNode *>(p_node);
 		p_scope.current_class = node;
-		p_scope.no_mangle |= node->wgodot_no_mangle;
 		p_scope.no_string_mangle |= node->wgodot_no_string_mangle;
 	} else if (p_node->type == Parser::Node::FUNCTION) {
 		const auto *node = static_cast<const Parser::FunctionNode *>(p_node);
-		p_scope.no_mangle |= node->wgodot_no_mangle;
 		p_scope.no_string_mangle |= node->wgodot_no_string_mangle;
-	} else if (p_node->type == Parser::Node::SIGNAL) {
-		p_scope.no_mangle |= static_cast<const Parser::SignalNode *>(p_node)->wgodot_no_mangle;
-	} else if (p_node->type == Parser::Node::VARIABLE) {
-		const auto *node = static_cast<const Parser::VariableNode *>(p_node);
-		p_scope.no_mangle |= node->wgodot_no_mangle && node->property != Parser::VariableNode::PROP_NONE;
 	}
 	if (!enter(p_node, p_scope)) {
 		return;

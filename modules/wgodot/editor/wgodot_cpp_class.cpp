@@ -5,6 +5,8 @@
 
 #include "core/object/class_db.h"
 
+#include "modules/gdscript/wgodot_gd/inline_constants.h"
+
 using Parser = GDScriptParser;
 using namespace WGodotCppNames;
 
@@ -54,13 +56,16 @@ String WGodotCppEmitter::function(const Parser::FunctionNode *p_function, String
 }
 
 void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
-	// Omitted static classes still have a completed lifecycle analysis.
 	if (files.has(p_class.cpp_name + ".h") || class_lifecycles.has(p_class.node)) {
+		return;
+	}
+	if (!required_classes.has(p_class.node) && WGodotGDScriptInlineConstants::can_omit_class(p_class.node)) {
 		return;
 	}
 	// Lifecycle requirements are inherited from already emitted base classes.
 	if (p_class.node->base_type.kind == Parser::DataType::CLASS) {
 		if (const auto *parent = project.find_class(p_class.node->base_type.class_type)) {
+			required_classes.insert(parent->node);
 			emit_class(*parent);
 		}
 	}
@@ -246,11 +251,6 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 		}
 		definitions += function.body + "}\n\n";
 	}
-	// Static classes have no runtime type identity. Constants and enums which
-	// lower entirely at their use sites need neither a class nor a source file.
-	if (is_static && definitions.is_empty()) {
-		return;
-	}
 	declaration += fields + class_lambda_declarations + "};\n";
 	const String origin = source_header(p_class.script_path, node->fqcn);
 	String header = origin + "#pragma once\n#include \"game_types.h\"\n";
@@ -297,7 +297,7 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 }
 
 void WGodotCppEmitter::register_class(const WGodotCppProject::Class &p_class, HashSet<String> &r_registered, String &r_code) {
-	if (r_registered.has(p_class.cpp_name) || p_class.node->wgodot_static_class || p_class.node->wgodot_is_interface) {
+	if (r_registered.has(p_class.cpp_name) || p_class.node->wgodot_static_class || p_class.node->wgodot_is_interface || !files.has(p_class.cpp_name + ".h")) {
 		return;
 	}
 	if (p_class.node->base_type.kind == Parser::DataType::CLASS) {

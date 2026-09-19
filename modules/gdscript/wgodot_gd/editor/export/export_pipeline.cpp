@@ -67,16 +67,12 @@ Error ExportPipeline::prepare(const HashSet<String> &p_paths, const TransformOpt
 	NoExportPass no_export;
 	DiagnosticPass diagnostics;
 	ConstantsPass constants;
-	NamesPass names;
-	BuiltinAliasesPass builtin_aliases;
 	StringsPass strings;
 	CleanupPass cleanup;
 	ExportTransformationBase *configured_passes[] = {
 		&no_export,
 		&diagnostics,
 		&constants,
-		&builtin_aliases,
-		&names,
 		&strings,
 		&cleanup,
 	};

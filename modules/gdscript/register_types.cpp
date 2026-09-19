@@ -37,12 +37,10 @@
 #include "gdscript_tokenizer_buffer.h"
 #include "gdscript_utility_functions.h"
 // wgodot-changes::begin
-#include "wgodot_gd/builtin_class_aliases.h"
 #ifdef TOOLS_ENABLED
 #include "wgodot_gd/editor/export/export_pipeline.h"
 #include "wgodot_gd/editor/export/export_maps.h"
 #endif
-#include "wgodot_gd/interface_method_aliases.h"
 #include "wgodot_gd/string_obfuscation.h"
 #include "wgodot_stdlib.h"
 // wgodot-changes::end
@@ -121,7 +119,6 @@ protected:
 		// wgodot-changes::begin
 		WGodotGDScriptExportTransform::TransformOptions options = WGodotGDScriptExportTransform::setup_params();
 		options.redact_diagnostics = options.redact_diagnostics && !p_debug;
-		options.binary_tokens_export = script_mode != EditorExportPreset::MODE_SCRIPT_TEXT;
 		transform_options = options;
 		diagnostic_map_path = p_path.get_basename() + ".diagnostics.json";
 		// wgodot-changes::end
@@ -133,13 +130,6 @@ protected:
 			return;
 		}
 		pipeline.prepare_export(this, p_paths, transform_options);
-	}
-
-	virtual void _export_global_class_list(Array &r_global_class_list) override {
-		if (native_game) {
-			return;
-		}
-		WGodotGDScriptExportTransform::transform_global_class_list(&pipeline.get_artifacts(), &r_global_class_list);
 	}
 
 	virtual Error _export_completed() override {
@@ -183,8 +173,6 @@ static void _editor_init() {
 void initialize_gdscript_module(ModuleInitializationLevel p_level) {
 	if (p_level == MODULE_INITIALIZATION_LEVEL_SERVERS) {
 		// wgodot-changes::begin
-		WGodotGDScriptBuiltinClassAliases::clear_runtime_cache();
-		WGodotGDScriptInterfaceMethodAliases::clear_runtime_cache();
 		WGodotGDScriptStringObfuscation::clear_runtime_cache();
 		// wgodot-changes::end
 
@@ -244,8 +232,6 @@ void uninitialize_gdscript_module(ModuleInitializationLevel p_level) {
 		GDScriptParser::cleanup();
 		// wgodot-changes::begin
 		WGodotGDScriptStdLib::clear_module_interfaces();
-		WGodotGDScriptBuiltinClassAliases::clear_runtime_cache();
-		WGodotGDScriptInterfaceMethodAliases::clear_runtime_cache();
 		WGodotGDScriptStringObfuscation::clear_runtime_cache();
 		// wgodot-changes::end
 		GDScriptUtilityFunctions::unregister_functions();

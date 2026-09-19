@@ -39,8 +39,6 @@
 #include "gdscript_utility_callable.h"
 #include "gdscript_utility_functions.h"
 // wgodot-changes::begin
-#include "wgodot_gd/builtin_alias_resolver.h"
-#include "wgodot_gd/builtin_class_aliases.h"
 #include "wgodot_gd/interface_helpers.h"
 #include "wgodot_stdlib.h"
 
@@ -496,10 +494,7 @@ Error GDScriptAnalyzer::resolve_class_inheritance(GDScriptParser::ClassNode *p_c
 				return ERR_PARSE_ERROR;
 			}
 			GDScriptParser::IdentifierNode *id = p_class->extends[extends_index++];
-			// wgodot-changes::begin
 			StringName name = id->name;
-			name = WGodotGDScriptBuiltinAliasResolver::resolve_class_alias_or_name(name);
-			// wgodot-changes::end
 			base.type_source = GDScriptParser::DataType::ANNOTATED_EXPLICIT;
 
 			// wgodot-changes::begin
@@ -786,9 +781,6 @@ GDScriptParser::DataType GDScriptAnalyzer::resolve_datatype(GDScriptParser::Type
 	}
 
 	if (!type_found) {
-		// wgodot-changes::begin
-		first = WGodotGDScriptBuiltinAliasResolver::resolve_class_alias_or_name(first);
-		// wgodot-changes::end
 		if (first == SNAME("Variant")) {
 			if (p_type->type_chain.size() == 2) {
 				// May be nested enum.
@@ -3487,19 +3479,6 @@ void GDScriptAnalyzer::reduce_call(GDScriptParser::CallNode *p_call, bool p_is_a
 	if (!p_call->is_super && callee_type == GDScriptParser::Node::IDENTIFIER) {
 		// Call to name directly.
 		StringName function_name = p_call->function_name;
-		// wgodot-changes::begin
-		const StringName wgodot_function_alias_target = WGodotGDScriptBuiltinClassAliases::resolve_function_alias(function_name);
-		if (!wgodot_function_alias_target.is_empty()) {
-			function_name = wgodot_function_alias_target;
-			p_call->function_name = function_name;
-		} else {
-			const StringName wgodot_class_alias_target = WGodotGDScriptBuiltinClassAliases::resolve_alias(function_name);
-			if (!wgodot_class_alias_target.is_empty()) {
-				function_name = wgodot_class_alias_target;
-				p_call->function_name = function_name;
-			}
-		}
-		// wgodot-changes::end
 
 		if (function_name == SNAME("Object")) {
 			push_error(R"*(Invalid constructor "Object()", use "Object.new()" instead.)*", p_call);
@@ -3836,11 +3815,8 @@ void GDScriptAnalyzer::reduce_call(GDScriptParser::CallNode *p_call, bool p_is_a
 		if (subscript->base->type == GDScriptParser::Node::IDENTIFIER) {
 			base_id = static_cast<GDScriptParser::IdentifierNode *>(subscript->base);
 		}
-		// wgodot-changes::begin
-		const StringName wgodot_base_name = base_id != nullptr ? WGodotGDScriptBuiltinAliasResolver::resolve_class_alias_or_name(base_id->name) : StringName();
-		if (base_id && GDScriptParser::get_builtin_type(wgodot_base_name) < Variant::VARIANT_MAX) {
-			base_type = make_builtin_meta_type(GDScriptParser::get_builtin_type(wgodot_base_name));
-		// wgodot-changes::end
+		if (base_id && GDScriptParser::get_builtin_type(base_id->name) < Variant::VARIANT_MAX) {
+			base_type = make_builtin_meta_type(GDScriptParser::get_builtin_type(base_id->name));
 		} else {
 			reduce_expression(subscript->base);
 			base_type = subscript->base->type_constraint;
@@ -3866,16 +3842,6 @@ void GDScriptAnalyzer::reduce_call(GDScriptParser::CallNode *p_call, bool p_is_a
 	bool is_constructor = (base_type.is_meta_type || (p_call->callee && p_call->callee->type == GDScriptParser::Node::IDENTIFIER)) && p_call->function_name == SNAME("new");
 
 	// wgodot-changes::begin
-	if (!p_call->is_super && !is_constructor && callee_type == GDScriptParser::Node::SUBSCRIPT) {
-		const StringName resolved_method = WGodotGDScriptBuiltinClassAliases::resolve_member_alias(p_call->function_name, base_type.is_meta_type, false);
-		if (!resolved_method.is_empty()) {
-			p_call->function_name = resolved_method;
-			GDScriptParser::SubscriptNode *subscript = static_cast<GDScriptParser::SubscriptNode *>(p_call->callee);
-			if (subscript->attribute != nullptr) {
-				subscript->attribute->name = resolved_method;
-			}
-		}
-	}
 	wgodot_validate_strict_object_call(base_type, p_call);
 	// wgodot-changes::end
 
@@ -4359,16 +4325,6 @@ void GDScriptAnalyzer::reduce_identifier_from_base(GDScriptParser::IdentifierNod
 	}
 
 	StringName name = p_identifier->name;
-	// wgodot-changes::begin
-	StringName wgodot_member_alias_target = WGodotGDScriptBuiltinClassAliases::resolve_member_alias(name, base.is_meta_type, true);
-	if (wgodot_member_alias_target.is_empty()) {
-		wgodot_member_alias_target = WGodotGDScriptBuiltinClassAliases::resolve_member_alias(name, base.is_meta_type, false);
-	}
-	if (!wgodot_member_alias_target.is_empty()) {
-		name = wgodot_member_alias_target;
-		p_identifier->name = name;
-	}
-	// wgodot-changes::end
 
 	if (base.kind == GDScriptParser::DataType::ENUM) {
 		if (base.is_meta_type) {
@@ -4900,12 +4856,6 @@ void GDScriptAnalyzer::reduce_identifier(GDScriptParser::IdentifierNode *p_ident
 	}
 
 	StringName name = p_identifier->name;
-	// wgodot-changes::begin
-	const StringName wgodot_builtin_alias_target = WGodotGDScriptBuiltinClassAliases::resolve_alias(name);
-	if (!wgodot_builtin_alias_target.is_empty()) {
-		name = wgodot_builtin_alias_target;
-	}
-	// wgodot-changes::end
 	p_identifier->source = GDScriptParser::IdentifierNode::UNDEFINED_SOURCE;
 
 	// Not a local or a member, so check globals.
@@ -5013,12 +4963,6 @@ void GDScriptAnalyzer::reduce_identifier(GDScriptParser::IdentifierNode *p_ident
 		return;
 	}
 
-	// wgodot-changes::begin
-	const StringName wgodot_function_alias_target = WGodotGDScriptBuiltinClassAliases::resolve_function_alias(name);
-	if (!wgodot_function_alias_target.is_empty()) {
-		name = wgodot_function_alias_target;
-	}
-	// wgodot-changes::end
 	if (Variant::has_utility_function(name) || GDScriptUtilityFunctions::function_exists(name)) {
 		p_identifier->is_constant = true;
 		p_identifier->reduced_value = Callable(memnew(GDScriptUtilityCallable(name)));

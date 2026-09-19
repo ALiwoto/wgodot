@@ -110,7 +110,6 @@ bool should_strip_export_annotation(const GDScriptParser::AnnotationNode *p_anno
 		SNAME("@private"),
 		SNAME("@no_mangle"),
 		SNAME("@no_string_mangle"),
-		SNAME("@obfuscate"),
 		SNAME("@static_class"),
 	};
 
