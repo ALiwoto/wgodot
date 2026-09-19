@@ -34,10 +34,16 @@
 #include "core/variant/variant.h"
 #include "core/variant/variant_internal.h"
 
+// wgodot-changes::begin
+#include "core/variant/wgodot_native_members.h"
+// wgodot-changes::end
+
 /**** NAMED SETTERS AND GETTERS ****/
 
+// wgodot-changes::begin
 #define SETGET_STRUCT(m_base_type, m_member_type, m_member) \
 	struct VariantSetGet_##m_base_type##_##m_member { \
+		WGODOT_NATIVE_MEMBER(m_base_type, m_member_type, m_member, p_base.m_member, r_base.m_member = p_value) \
 		static void get(const Variant *p_base, Variant *r_member) { \
 			VariantTypeAdjust<m_member_type>::adjust(r_member); \
 			VariantInternalAccessor<m_member_type>::get(r_member) = VariantInternalAccessor<m_base_type>::get(p_base).m_member; \
@@ -69,8 +75,12 @@
 		} \
 	};
 
+// wgodot-changes::end
+
+// wgodot-changes::begin
 #define SETGET_NUMBER_STRUCT(m_base_type, m_member_type, m_member) \
 	struct VariantSetGet_##m_base_type##_##m_member { \
+		WGODOT_NATIVE_NUMBER_MEMBER(m_base_type, m_member_type, m_member, p_base.m_member, r_base.m_member = p_value) \
 		static void get(const Variant *p_base, Variant *r_member) { \
 			VariantTypeAdjust<m_member_type>::adjust(r_member); \
 			VariantInternalAccessor<m_member_type>::get(r_member) = VariantInternalAccessor<m_base_type>::get(p_base).m_member; \
@@ -105,8 +115,12 @@
 		} \
 	};
 
+// wgodot-changes::end
+
+// wgodot-changes::begin
 #define SETGET_STRUCT_CUSTOM(m_base_type, m_member_type, m_member, m_custom) \
 	struct VariantSetGet_##m_base_type##_##m_member { \
+		WGODOT_NATIVE_MEMBER(m_base_type, m_member_type, m_member, p_base.m_custom, r_base.m_custom = p_value) \
 		static void get(const Variant *p_base, Variant *r_member) { \
 			VariantTypeAdjust<m_member_type>::adjust(r_member); \
 			VariantInternalAccessor<m_member_type>::get(r_member) = VariantInternalAccessor<m_base_type>::get(p_base).m_custom; \
@@ -138,8 +152,12 @@
 		} \
 	};
 
+// wgodot-changes::end
+
+// wgodot-changes::begin
 #define SETGET_NUMBER_STRUCT_CUSTOM(m_base_type, m_member_type, m_member, m_custom) \
 	struct VariantSetGet_##m_base_type##_##m_member { \
+		WGODOT_NATIVE_NUMBER_MEMBER(m_base_type, m_member_type, m_member, p_base.m_custom, r_base.m_custom = p_value) \
 		static void get(const Variant *p_base, Variant *r_member) { \
 			VariantTypeAdjust<m_member_type>::adjust(r_member); \
 			VariantInternalAccessor<m_member_type>::get(r_member) = VariantInternalAccessor<m_base_type>::get(p_base).m_custom; \
@@ -174,8 +192,12 @@
 		} \
 	};
 
+// wgodot-changes::end
+
+// wgodot-changes::begin
 #define SETGET_STRUCT_FUNC(m_base_type, m_member_type, m_member, m_setter, m_getter) \
 	struct VariantSetGet_##m_base_type##_##m_member { \
+		WGODOT_NATIVE_MEMBER(m_base_type, m_member_type, m_member, p_base.m_getter(), r_base.m_setter(p_value)) \
 		static void get(const Variant *p_base, Variant *r_member) { \
 			VariantTypeAdjust<m_member_type>::adjust(r_member); \
 			VariantInternalAccessor<m_member_type>::get(r_member) = VariantInternalAccessor<m_base_type>::get(p_base).m_getter(); \
@@ -207,8 +229,12 @@
 		} \
 	};
 
+// wgodot-changes::end
+
+// wgodot-changes::begin
 #define SETGET_NUMBER_STRUCT_FUNC(m_base_type, m_member_type, m_member, m_setter, m_getter) \
 	struct VariantSetGet_##m_base_type##_##m_member { \
+		WGODOT_NATIVE_NUMBER_MEMBER(m_base_type, m_member_type, m_member, p_base.m_getter(), r_base.m_setter(p_value)) \
 		static void get(const Variant *p_base, Variant *r_member) { \
 			VariantTypeAdjust<m_member_type>::adjust(r_member); \
 			VariantInternalAccessor<m_member_type>::get(r_member) = VariantInternalAccessor<m_base_type>::get(p_base).m_getter(); \
@@ -243,8 +269,12 @@
 		} \
 	};
 
+// wgodot-changes::end
+
+// wgodot-changes::begin
 #define SETGET_STRUCT_FUNC_INDEX(m_base_type, m_member_type, m_member, m_setter, m_getter, m_index) \
 	struct VariantSetGet_##m_base_type##_##m_member { \
+		WGODOT_NATIVE_MEMBER(m_base_type, m_member_type, m_member, p_base.m_getter(m_index), r_base.m_setter(m_index, p_value)) \
 		static void get(const Variant *p_base, Variant *r_member) { \
 			VariantTypeAdjust<m_member_type>::adjust(r_member); \
 			VariantInternalAccessor<m_member_type>::get(r_member) = VariantInternalAccessor<m_base_type>::get(p_base).m_getter(m_index); \
@@ -275,6 +305,8 @@
 			return GetTypeInfo<m_member_type>::VARIANT_TYPE; \
 		} \
 	};
+
+// wgodot-changes::end
 
 SETGET_NUMBER_STRUCT(Vector2, double, x)
 SETGET_NUMBER_STRUCT(Vector2, double, y)

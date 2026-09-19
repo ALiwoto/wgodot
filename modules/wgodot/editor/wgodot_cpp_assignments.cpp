@@ -98,6 +98,9 @@ WGodotCppEmitter::Value WGodotCppEmitter::property_access(const Parser::DataType
 			return finish(write ? field + " = " + assigned : field);
 		}
 	}
+	if (p_base_type.kind == Parser::DataType::BUILTIN && Variant::has_member(p_base_type.builtin_type, p_name)) {
+		return finish(builtin_member(p_base_type.builtin_type, p_name, p_origin, p_receiver, p_value));
+	}
 	if (p_base_type.is_variant() || p_base_type.kind == Parser::DataType::BUILTIN) {
 		return finish(write ? "WGodotNative::set_member(" + p_receiver + ", SNAME(" + quoted(p_name) + "), " + p_value + ")" : "WGodotNative::get_member<" + type(p_origin->type_constraint, p_origin) + ">(" + p_receiver + ", SNAME(" + quoted(p_name) + "))");
 	}

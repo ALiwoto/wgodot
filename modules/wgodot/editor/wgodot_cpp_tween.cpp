@@ -6,67 +6,6 @@
 
 using Parser = GDScriptParser;
 
-String WGodotCppEmitter::tween_builtin_property(Variant::Type p_type, const StringName &p_name, const Parser::Node *p_origin, const String &p_receiver, const String &p_value) {
-	// These are the native members/accessors registered in variant_setget.h.
-	// Do not fall back to get_named/set_named: a missing mapping is an export error.
-	const String name = p_name;
-	String member = name;
-	String getter;
-	String setter;
-	String index;
-	switch (p_type) {
-		case Variant::VECTOR2:
-		case Variant::VECTOR2I:
-		case Variant::VECTOR3:
-		case Variant::VECTOR3I:
-		case Variant::VECTOR4:
-		case Variant::VECTOR4I:
-		case Variant::QUATERNION:
-		case Variant::TRANSFORM3D:
-			break;
-		case Variant::RECT2:
-		case Variant::RECT2I:
-		case Variant::AABB:
-			if (name == "end") {
-				getter = "get_end";
-				setter = "set_end";
-			}
-			break;
-		case Variant::TRANSFORM2D:
-			member = "columns[" + String(name == "x" ? "0" : name == "y" ? "1"
-																		 : "2") +
-					"]";
-			break;
-		case Variant::PROJECTION:
-			member = "columns[" + itos(String("xyzw").find(name)) + "]";
-			break;
-		case Variant::PLANE:
-			if (name == "x" || name == "y" || name == "z") {
-				member = "normal." + name;
-			}
-			break;
-		case Variant::BASIS:
-			getter = "get_column";
-			setter = "set_column";
-			index = itos(String("xyz").find(name));
-			break;
-		case Variant::COLOR:
-			if (name != "r" && name != "g" && name != "b" && name != "a") {
-				getter = "get_" + name;
-				setter = "set_" + name;
-			}
-			break;
-		default:
-			unsupported(p_origin, "native tween access to " + Variant::get_type_name(p_type) + "." + name);
-			return String();
-	}
-	if (!getter.is_empty()) {
-		return p_receiver + "." + (p_value.is_empty() ? getter + "(" + index : setter + "(" + (index.is_empty() ? "" : index + ", ") + p_value) + ")";
-	}
-	const String field = p_receiver + "." + member;
-	return p_value.is_empty() ? field : field + " = WGodotNative::convert<std::decay_t<decltype(" + field + ")>>(" + p_value + ")";
-}
-
 WGodotCppEmitter::Value WGodotCppEmitter::tween_property_call(const Parser::CallNode *p_call, const Parser::ExpressionNode *p_base) {
 	const GDScriptAnalyzer *analyzer = project.find_analyzer(current_class->script_path);
 	const WGodotGDScriptPropertyPath *path = analyzer ? analyzer->wgodot_get_tween_property_path(p_call) : nullptr;
@@ -88,7 +27,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::tween_property_call(const Parser::Call
 	auto access = [&](int p_index, const String &p_receiver, const String &p_value = String()) {
 		const auto &segment = path->segments[p_index];
 		if (segment.base_type.kind == Parser::DataType::BUILTIN) {
-			return Value(tween_builtin_property(segment.base_type.builtin_type, segment.name, p_call, p_receiver, p_value), p_value.is_empty() ? type(segment.datatype, p_call) : String("void"));
+			return Value(builtin_member(segment.base_type.builtin_type, segment.name, p_call, p_receiver, p_value), p_value.is_empty() ? type(segment.datatype, p_call) : String("void"));
 		}
 		// A subscript origin preserves normal getter/setter semantics, including
 		// when the tween was declared inside the property's own accessor.

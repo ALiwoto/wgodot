@@ -236,8 +236,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::member(const Parser::ExpressionNode *p
 		return signature_type(p_origin) + "::from_callable(Callable::create(" + expression(p_base) + ", SNAME(" + quoted(p_name) + ")))";
 	}
 	if (datatype.kind == Parser::DataType::BUILTIN && (is_wdictionary(datatype) || Variant::has_member(datatype.builtin_type, p_name))) {
-		class_call_headers.insert("modules/wgodot/native/wgodot_native_values.h");
-		return "WGodotNative::get_member<" + type(p_origin->type_constraint, p_origin) + ">(" + expression(p_base) + ", SNAME(" + quoted(p_name) + "))";
+		return property_access(datatype, p_name, p_origin, lower(p_base));
 	}
 	if (datatype.kind != Parser::DataType::CLASS) {
 		return native_property(p_base, p_name, p_origin);

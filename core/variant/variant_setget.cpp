@@ -42,10 +42,28 @@ struct VariantSetterGetterInfo {
 	Variant::PTRSetter ptr_setter;
 	Variant::PTRGetter ptr_getter;
 	Variant::Type member_type;
+	// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+	const char *wgodot_cpp_accessor;
+#endif
+	// wgodot-changes::end
 };
 
 static LocalVector<VariantSetterGetterInfo> variant_setters_getters[Variant::VARIANT_MAX];
 static LocalVector<StringName> variant_setters_getters_names[Variant::VARIANT_MAX]; //one next to another to make it cache friendly
+
+// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+const char *WGodotNativeMembers::get_accessor(Variant::Type p_type, const StringName &p_member) {
+	for (uint32_t i = 0; i < variant_setters_getters_names[p_type].size(); i++) {
+		if (variant_setters_getters_names[p_type][i] == p_member) {
+			return variant_setters_getters[p_type][i].wgodot_cpp_accessor;
+		}
+	}
+	return nullptr;
+}
+#endif
+// wgodot-changes::end
 
 template <typename T>
 static void register_member(Variant::Type p_type, const StringName &p_member) {
@@ -59,6 +77,11 @@ static void register_member(Variant::Type p_type, const StringName &p_member) {
 	sgi.ptr_getter = T::ptr_get;
 
 	sgi.member_type = T::get_type();
+	// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+	sgi.wgodot_cpp_accessor = T::wgodot_cpp_accessor();
+#endif
+	// wgodot-changes::end
 
 	variant_setters_getters[p_type].push_back(sgi);
 	variant_setters_getters_names[p_type].push_back(p_member);
