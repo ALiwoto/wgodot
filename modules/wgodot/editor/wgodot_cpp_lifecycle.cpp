@@ -55,7 +55,8 @@ void WGodotCppEmitter::emit_class_lifecycle(const WGodotCppProject::Class &p_cla
 	lifecycle.prepare |= prepare;
 	lifecycle.fields |= initialize_fields;
 	lifecycle.constructor |= initializer != nullptr;
-	lifecycle.notifications |= !is_static && node->has_function(SNAME("_notification"));
+	lifecycle.virtual_initializer |= initializer && initializer->is_abstract;
+	lifecycle.notifications |= !is_static && node->has_function(SNAME("_notification")) && !node->get_member(SNAME("_notification")).function->is_abstract;
 	lifecycle.tasks |= class_uses_tasks;
 	class_lifecycles.insert(node, lifecycle);
 
@@ -99,8 +100,12 @@ void WGodotCppEmitter::emit_class_lifecycle(const WGodotCppProject::Class &p_cla
 		class_native_headers.insert("modules/wgodot/native/wgodot_native_task.h");
 		protected_members += "\tWGodotNative::TaskOwner game_tasks;\n";
 	}
-	if (!protected_members.is_empty()) {
-		r_declaration += "protected:\n" + protected_members + "public:\n";
+	// Abstract classes without pure virtual methods must also reject direct construction.
+	if (!protected_members.is_empty() || node->is_abstract) {
+		r_declaration += "protected:\n" + protected_members;
+		if (!node->is_abstract) {
+			r_declaration += "public:\n";
+		}
 	}
 	if (lifecycle.constructor) {
 		r_declaration += "\texplicit " + name + "(WGodotNative::Construction p_mode = WGodotNative::Construction::SCENE);\n";
@@ -111,9 +116,17 @@ void WGodotCppEmitter::emit_class_lifecycle(const WGodotCppProject::Class &p_cla
 	}
 	// Keep construction/destruction out of line: field types may only have forward
 	// declarations in this header, notably Ref<T> inside native containers.
+	if (node->is_abstract) {
+		r_declaration += "public:\n";
+	}
 	r_declaration += "\t~" + name + "() override;\n";
 	r_definitions += name + "::~" + name + "() = default;\n\n";
 	const String instance_type = type(node->self_type, node);
+	if (node->is_abstract) {
+		// Hide any inherited concrete factory without emitting an allocation or runtime check.
+		r_declaration += "\tstatic " + instance_type + " create(" + String(", ").join(factory_parameters) + ") = delete;\n";
+		return;
+	}
 	r_declaration += "\tstatic " + instance_type + " create(" + String(", ").join(factory_parameters) + ");\n";
 	r_definitions += instance_type + " " + name + "::create(" + String(", ").join(parameters) + ") {\n";
 	if (lifecycle.prepare) {

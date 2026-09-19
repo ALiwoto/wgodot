@@ -29,6 +29,7 @@ class WGodotCppEmitter {
 	HashSet<String> class_native_headers;
 	HashSet<String> class_dependencies;
 	HashSet<const GDScriptParser::ClassNode *> required_classes;
+	HashSet<const GDScriptParser::ClassNode *> inherited_classes;
 	HashSet<String> class_call_headers;
 	HashMap<String, String> class_resource_types;
 	HashMap<const GDScriptParser::ConstantNode *, const WGodotCppProject::Class *> container_constant_owners;
@@ -50,6 +51,7 @@ class WGodotCppEmitter {
 		bool prepare = false;
 		bool fields = false;
 		bool constructor = false;
+		bool virtual_initializer = false;
 		bool notifications = false;
 		bool tasks = false;
 	};

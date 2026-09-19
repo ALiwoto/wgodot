@@ -13,8 +13,8 @@ using namespace WGodotCppNames;
 String WGodotCppEmitter::function(const Parser::FunctionNode *p_function, String &r_declaration, const String &p_cpp_name) {
 	function_failed = false;
 	current_function = p_function;
-	if (p_function->is_vararg() || p_function->is_abstract) {
-		unsupported(p_function, p_function->is_vararg() ? "variadic functions" : "abstract methods");
+	if (p_function->is_vararg()) {
+		unsupported(p_function, "variadic functions");
 		return String();
 	}
 	Vector<String> parameters;
@@ -40,6 +40,10 @@ String WGodotCppEmitter::function(const Parser::FunctionNode *p_function, String
 	const String return_type = initializer ? "void"
 										   : function_result(p_function);
 	const String name = p_cpp_name.is_empty() ? "m_" + symbol(p_function->identifier->name) : p_cpp_name;
+	if (p_function->is_abstract) {
+		r_declaration = "\tvirtual " + return_type + " " + name + "(" + String(", ").join(declarations) + ") = 0;\n";
+		return String();
+	}
 	r_declaration = "\t" + String(is_static ? "static " : initializer || !p_cpp_name.is_empty() ? ""
 																								: "virtual ") +
 			return_type + " " + name + "(" + String(", ").join(declarations) + ");\n";
@@ -91,9 +95,6 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 	const bool game_parent = node->base_type.kind == Parser::DataType::CLASS;
 	const String parent = is_static ? "" : class_name(node->base_type, node);
 	const String &name = p_class.cpp_name;
-	if (node->is_abstract) {
-		unsupported(node, "abstract class registration");
-	}
 	String interface_bases;
 	String interface_declarations;
 	String interface_definitions;
@@ -101,6 +102,11 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 		emit_interface_inheritance(p_class, interface_bases, interface_declarations, interface_definitions);
 	}
 	String declaration = "class " + name;
+	// Native export includes the whole script hierarchy. Leaf classes cannot
+	// acquire script subclasses at runtime, so their virtual calls can be devirtualized.
+	if (!is_static && !node->is_abstract && !inherited_classes.has(node)) {
+		declaration += " final";
+	}
 	String definitions;
 	String fields;
 	String property_reads;
@@ -123,15 +129,18 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 			case Parser::ClassNode::Member::FUNCTION: {
 				const auto *method = entry.function;
 				const String method_name = method->identifier->name;
+				const bool initializer = method_name == "_init";
 				String signature;
 				definitions += function(method, signature);
 				declaration += signature;
-				if (!method->is_static && method_name != "_init" && game_parent) {
+				// An abstract initializer introduces a C++ virtual even though ordinary
+				// constructors may otherwise change their signature between script levels.
+				if (!method->is_static && game_parent && (!initializer || class_lifecycles[node->base_type.class_type].virtual_initializer)) {
 					const auto *owner = member_owner(node->base_type.class_type, method_name);
 					if (owner && owner->node->get_member(method_name).type == Parser::ClassNode::Member::FUNCTION) {
 						const auto *inherited = owner->node->get_member(method_name).function;
-						const String method_result = function_result(method);
-						const String inherited_result = function_result(inherited);
+						const String method_result = initializer ? "void" : function_result(method);
+						const String inherited_result = initializer ? "void" : function_result(inherited);
 						bool same_signature = method->parameters.size() == inherited->parameters.size() && method_result == inherited_result;
 						for (uint32_t i = 0; same_signature && i < method->parameters.size(); i++) {
 							const auto *parameter = method->parameters[i];
@@ -307,5 +316,5 @@ void WGodotCppEmitter::register_class(const WGodotCppProject::Class &p_class, Ha
 		}
 	}
 	r_registered.insert(p_class.cpp_name);
-	r_code += "\tGDREGISTER_CLASS(" + p_class.cpp_name + ");\n";
+	r_code += String(p_class.node->is_abstract ? "\tGDREGISTER_ABSTRACT_CLASS(" : "\tGDREGISTER_CLASS(") + p_class.cpp_name + ");\n";
 }

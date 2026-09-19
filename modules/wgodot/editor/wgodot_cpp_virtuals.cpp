@@ -39,7 +39,7 @@ void WGodotCppEmitter::emit_virtuals(const WGodotCppProject::Class &p_class, Str
 	}
 	// Script notifications visit every script level. Keep their ordering separate
 	// from native base notifications, just as Object does for ScriptInstance.
-	if (p_class.node->has_function(SNAME("_notification"))) {
+	if (p_class.node->has_function(SNAME("_notification")) && !p_class.node->get_member(SNAME("_notification")).function->is_abstract) {
 		r_declaration += "protected:\n\tvoid notify_game(int p_what, bool p_reversed);\npublic:\n";
 		r_definitions += "void " + p_class.cpp_name + "::notify_game(int p_what, bool p_reversed) {\n\tif (!game_initialized) { return; }\n";
 		if (inherited.notifications) {

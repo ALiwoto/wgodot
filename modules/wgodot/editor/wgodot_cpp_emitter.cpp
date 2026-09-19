@@ -566,6 +566,12 @@ Error WGodotCppEmitter::generate() {
 	used_native_interfaces.clear();
 	class_lifecycles.clear();
 	required_classes.clear();
+	inherited_classes.clear();
+	for (const auto &entry : project.get_classes()) {
+		if (entry.node->base_type.kind == Parser::DataType::CLASS) {
+			inherited_classes.insert(entry.node->base_type.class_type);
+		}
+	}
 	signatures.analyze();
 	collect_interface_property_accessors();
 	collect_container_constants();
