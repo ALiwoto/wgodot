@@ -6,6 +6,10 @@ param(
     [string]$Platform,
     [Parameter(Mandatory)]
     [string]$GameDirectory,
+    [Parameter(Mandatory)]
+    [ValidateSet('ir', 'global')]
+    [string]$Edition,
+    [string]$AndroidPackageId,
     [string]$EngineDirectory = "$PSScriptRoot/../..",
     [switch]$BuildDebug,
     [switch]$BuildRelease = $true
@@ -24,13 +28,17 @@ $editorName = if ($IsWindows) { 'godot.windows.editor.x86_64.exe' } else { 'godo
 $editorPath = "$EngineDirectory/bin/$editorName"
 $moduleDirectory = "$EngineDirectory/generated/main_game"
 $configPath = "$GameDirectory/configs/config.ini"
-$outputDirectory = "$EngineDirectory/game_build"
+$outputDirectory = "$EngineDirectory/game_build/$Edition"
 $releaseDirectory = "$EngineDirectory/release_assets"
 $variants = @()
 if ($BuildRelease) { $variants += 'release' }
 if ($BuildDebug) { $variants += 'debug' }
 if (!$variants) { throw 'Enable at least one game build variant.' }
-if (!$env:GAME_CONFIG_CONTENT) { throw 'GAME_CONFIG_CONTENT is required.' }
+$configSecretName = if ($Edition -eq 'ir') { 'GAME_IR_CONFIG_CONTENT' } else { 'GAME_GLOBAL_CONFIG_CONTENT' }
+$configContent = [Environment]::GetEnvironmentVariable($configSecretName, 'Process')
+if (!$configContent) { throw "$configSecretName is required." }
+if ($Platform -eq 'web' -and $Edition -ne 'global') { throw 'Web exports must use the global instance.' }
+if ($Platform -eq 'android' -and !$AndroidPackageId) { throw 'AndroidPackageId is required for Android editions.' }
 
 # Match the project's wg wrapper while using the editor built in this job.
 function wg {
@@ -105,7 +113,8 @@ try {
     }
 
     New-Item -ItemType Directory -Path "$GameDirectory/configs", $outputDirectory, $releaseDirectory -Force | Out-Null
-    [IO.File]::WriteAllText($configPath, $env:GAME_CONFIG_CONTENT, [Text.UTF8Encoding]::new($false))
+    # The edition's secret owns the complete configuration compiled into the game.
+    [IO.File]::WriteAllText($configPath, $configContent, [Text.UTF8Encoding]::new($false))
     try {
         & "$GameDirectory/scripts/gen_startup_config.ps1" -TargetConfigPath $configPath `
             -TargetScriptPath "$GameDirectory/src/core/game_config/game_startup_config.gd"
@@ -116,10 +125,12 @@ try {
 
     Write-Host 'Importing game resources...'
     Invoke-Checked $editorPath @('--headless', '--path', $GameDirectory, '--editor', '--import')
-    Invoke-Checked $editorPath @(
+    $presetArguments = @(
         '--headless', '--path', $GameDirectory, '--script', "$PSScriptRoot/wgodot_game_preset.gd", '--',
         $presetName, $moduleDirectory, $templates.debug, $templates.release
     )
+    if ($Platform -eq 'android') { $presetArguments += $AndroidPackageId }
+    Invoke-Checked $editorPath $presetArguments
 
     Write-Host 'Generating native game code...'
     wg export-cpp $moduleDirectory
@@ -192,7 +203,7 @@ try {
         Write-Host "Exporting $Platform native game ($variant)..."
         Invoke-Checked $editorPath @('--headless', '--path', $GameDirectory, "--export-$variant", $presetName, $exportPath)
 
-        $assetName = "DarkSurvivors-$Platform-$variant"
+        $assetName = "DarkSurvivors-$Edition-$Platform-$variant"
         switch ($Platform) {
             linux {
                 Invoke-Checked 'chmod' @('+x', $exportPath)

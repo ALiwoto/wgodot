@@ -65,8 +65,8 @@ jobs:
         env:
           GAME_REPO_URL: ${{ secrets.GAME_REPO_URL }}
           GH_TOKEN: ${{ secrets.GAME_REPO_GH_TOKEN }}
-          GAME_CONFIG_CONTENT: ${{ secrets.GAME_CONFIG_CONTENT }}
-          GAME_WEB_CONFIG_CONTENT: ${{ secrets.GAME_WEB_CONFIG_CONTENT }}
+          GAME_GLOBAL_CONFIG_CONTENT: ${{ secrets.GAME_GLOBAL_CONFIG_CONTENT }}
+          GAME_IR_CONFIG_CONTENT: ${{ secrets.GAME_IR_CONFIG_CONTENT }}
           GAME_ANDROID_SIGN_KEY: ${{ secrets.GAME_ANDROID_SIGN_KEY }}
           GAME_ANDROID_SIGN_JSON: ${{ secrets.GAME_ANDROID_SIGN_JSON }}
         run: |
@@ -75,8 +75,8 @@ jobs:
             exit 0
           }
           if (!$env:GH_TOKEN) { throw 'Set GAME_REPO_GH_TOKEN to a token with read access to the game repository.' }
-          if (!$env:GAME_CONFIG_CONTENT) { throw 'Set GAME_CONFIG_CONTENT to the game configuration INI contents.' }
-          if (!$env:GAME_WEB_CONFIG_CONTENT) { throw 'Set GAME_WEB_CONFIG_CONTENT to the Web game configuration INI contents.' }
+          if (!$env:GAME_GLOBAL_CONFIG_CONTENT) { throw 'Set GAME_GLOBAL_CONFIG_CONTENT to the global game configuration INI contents.' }
+          if (!$env:GAME_IR_CONFIG_CONTENT) { throw 'Set GAME_IR_CONFIG_CONTENT to the IR game configuration INI contents.' }
           if ($env:GAME_BUILD_RELEASE -eq 'true' -and (!$env:GAME_ANDROID_SIGN_KEY -or !$env:GAME_ANDROID_SIGN_JSON)) {
             throw 'Android release builds require GAME_ANDROID_SIGN_KEY (Base64 keystore) and GAME_ANDROID_SIGN_JSON.'
           }
@@ -198,14 +198,22 @@ jobs:
         shell: pwsh
         env:
           GAME_PLATFORM: ${{ matrix.platform }}
-          GAME_CONFIG_CONTENT: ${{ secrets[matrix.platform == 'web' && 'GAME_WEB_CONFIG_CONTENT' || 'GAME_CONFIG_CONTENT'] }}
+          GAME_GLOBAL_CONFIG_CONTENT: ${{ secrets.GAME_GLOBAL_CONFIG_CONTENT }}
+          GAME_IR_CONFIG_CONTENT: ${{ matrix.platform == 'android' && secrets.GAME_IR_CONFIG_CONTENT || '' }}
           GAME_ANDROID_SIGN_KEY: ${{ matrix.platform == 'android' && secrets.GAME_ANDROID_SIGN_KEY || '' }}
           GAME_ANDROID_SIGN_JSON: ${{ matrix.platform == 'android' && secrets.GAME_ANDROID_SIGN_JSON || '' }}
         run: |
-          ./.github/scripts/wgodot_export_game.ps1 -Platform $env:GAME_PLATFORM `
-            -GameDirectory "$env:GITHUB_WORKSPACE/game-source" `
-            -BuildDebug:($env:GAME_BUILD_DEBUG -eq 'true') `
-            -BuildRelease:($env:GAME_BUILD_RELEASE -eq 'true')
+          # Both Android editions reuse the host editor and SCons cache in this job.
+          # Desktop and Web distributions use the global instance.
+          $editions = if ($env:GAME_PLATFORM -eq 'android') { @('ir', 'global') } else { @('global') }
+          foreach ($edition in $editions) {
+            $packageId = if ($edition -eq 'ir') { 'com.wotoTeam.DarkSurvivors' } else { 'com.wotoTeam.DarkSurvivors.global' }
+            ./.github/scripts/wgodot_export_game.ps1 -Platform $env:GAME_PLATFORM `
+              -GameDirectory "$env:GITHUB_WORKSPACE/game-source" `
+              -Edition $edition -AndroidPackageId $packageId `
+              -BuildDebug:($env:GAME_BUILD_DEBUG -eq 'true') `
+              -BuildRelease:($env:GAME_BUILD_RELEASE -eq 'true')
+          }
 
       - name: Save game build cache
         uses: ./.github/actions/wgodot-cache-save
@@ -263,6 +271,6 @@ jobs:
           unzip -q "$RUNNER_TEMP/butler.zip" -d "$butler_dir"
           chmod +x "$butler_dir/butler"
           "$butler_dir/butler" push \
-            release_assets/DarkSurvivors-web-release-wasm32.zip \
+            release_assets/DarkSurvivors-global-web-release-wasm32.zip \
             "${ITCH_TARGET}:html5" \
             --userversion "${RELEASE_TAG}-${GAME_REVISION:0:7}"

@@ -5,8 +5,8 @@ extends SceneTree
 @override
 func _initialize() -> void:
 	var args: PackedStringArray = OS.get_cmdline_user_args()
-	if args.size() != 4:
-		push_error("Expected preset name, native module directory, debug template, and release template.")
+	if args.size() != 4 and args.size() != 5:
+		push_error("Expected preset name, native module directory, debug template, release template, and optional Android package ID.")
 		quit(1)
 		return
 	var presets: ConfigFile = ConfigFile.new()
@@ -27,6 +27,12 @@ func _initialize() -> void:
 		presets.set_value(options, "wgodot/native_module", args[1])
 		presets.set_value(options, "custom_template/debug", args[2])
 		presets.set_value(options, "custom_template/release", args[3])
+		if args.size() == 5:
+			if presets.get_value(section, "platform", "") != "Android":
+				push_error("Package ID is only supported for Android presets.")
+				quit(1)
+				return
+			presets.set_value(options, "package/unique_name", args[4])
 		error = presets.save("res://export_presets.cfg")
 		if error != OK:
 			push_error("Cannot save export presets: %s" % error_string(error))
