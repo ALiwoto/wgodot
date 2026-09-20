@@ -1476,6 +1476,14 @@ void AudioServer::finish() {
 		AudioDriverManager::get_driver(i)->finish();
 	}
 
+	// wgodot-changes::begin
+	// The stopped drivers cannot mix another frame to retire pending playbacks.
+	for (AudioStreamPlaybackListNode *playback : playback_list) {
+		_delete_stream_playback_list_node(playback);
+	}
+	playback_list.maybe_cleanup();
+	// wgodot-changes::end
+
 	for (int i = 0; i < buses.size(); i++) {
 		memdelete(buses[i]);
 	}
