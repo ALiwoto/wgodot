@@ -4392,14 +4392,15 @@ static Error _lookup_symbol_from_base(const GDScriptParser::DataType &p_base, co
 
 	// Allows class functions with the names like built-ins to be handled properly.
 	if (context.type != GDScriptParser::COMPLETION_ATTRIBUTE) {
-		// Need special checks for `assert` and `preload` as they are technically
-		// keywords, so are not registered in `GDScriptUtilityFunctions`.
-		if (GDScriptUtilityFunctions::function_exists(p_symbol) || p_symbol == "assert" || p_symbol == "preload") {
+		// wgodot-changes::begin
+		// Function-like keywords are not registered in GDScriptUtilityFunctions.
+		if (GDScriptUtilityFunctions::function_exists(p_symbol) || p_symbol == "assert" || p_symbol == "preload" || p_symbol == "async_preload") {
 			r_result.type = LookupResult::Type::CLASS_METHOD;
 			r_result.class_name = "@GDScript";
 			r_result.class_member = p_symbol;
 			return OK;
 		}
+		// wgodot-changes::end
 	}
 
 	GDScriptAnalyzer analyzer(&parser);
