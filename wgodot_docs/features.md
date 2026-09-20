@@ -2,6 +2,17 @@
 
 This file lists most of the useful WGodot features, if you want to read their implementations, feel free to explore the codebase.
 
+**Table of Contents:**
+  - [GDScript Safety](#gdscript-safety)
+  - [Interface support](#interface-support)
+  - [Reusable UI](#reusable-ui)
+  - [Agents CLI](#agents-cli)
+  - [Export Protection](#export-protection-aka-obfuscation)
+  - [Annotations](#annotation-documentation)
+  - [Core API helpers](#core-api-helpers)
+  - [Startup Diagnosis](#startup-diagnosis)
+  - [Resource loading](#resource-loading)
+
 ## GDScript Safety
 
 It's highly recommended that you keep these features enabled for [gd2cpp](./gd2cpp.md).
@@ -151,7 +162,7 @@ Build with `module_wgodot_ui_enabled=no` to omit the module.
 `SmoothScrollElement` supports an optional uniform virtual grid for performance reason.
 Basically when you have wayyy too many objects in your list, you should use this virtual grid to constantly re-use the controls **only visible to the users**.
 
-## Agent CLI
+## Agents CLI
 
 See the [WGodot CLI skill](./wgodot-cli/SKILL.md) for LLM agent stuff.
 
@@ -170,6 +181,7 @@ They will soon get deprecated and removed, to remove the code maintainability co
 Option: `wgodot/export/deconst_exports`
 
 inlines constants where they are used. so in your exported binary you won't see their name. makes reverse engineering a bit harder.
+Will be removed in future versions as gd2cpp has it builtin.
 
 ### @no_mangle
 
@@ -240,3 +252,32 @@ Behavior:
   - operations that take less than 1 ms are not logged.
   - Profiling stops after the first frame
   - when the flag is not provided, it doesn't do any timing reads or logging
+
+## Resource Loading
+
+
+## async_preload
+
+in official godot, we have 3 main ways of loading resources:
+
+  1. with `load`: runs at place, sync load, blocks your code/current thread until it loads
+  2. with `preload`: runs when that certain script is loaded first
+  3. with `ResourceLoader.load_threaded_request`: explicitly use it to load res in background thread and check for their status.
+
+wgodot adds a new function in middle of these: `async_preload`; which is only effective in gd2cpp. in normal gdscript run it's just a simple alias to `preload`.
+
+When the gd2cpp transpiler sees this function, it will generate special c++ code (with getter methods), in short the order of loading resources will be like this:
+
+  1. `preload`: all resources with call to preload will be loaded **before** your game's first frame starts (and before your main scene's code runs). Basically: only put very lightweight assets for these, only the assets that your first loading screen would need. If a preload request fails, the engine will display a simple error text to the user and will not run your main code.
+  2. `async_preload`: once all preloads are finished, all these assets will be dispatched in background thread and loaded async. Meanwhile your main code is already running (and should probably be showing "loading" to the user).
+  3. `load`: no behavioral changes. These assets are loaded on-site, when requested (if they are already cached, they will stay cached).
+
+**important notes**:
+  - all assets loaded with `preload` and `async_preload` are kept until shutdown. so you should put only assets that are truly useful throughout your entire game. such as common icons, textures, ui sfx etc.
+  - for `async_preload`, it's your code's responsibility to poll for results: use `WGodotPreloads.is_finished()` and `WGodotPreloads.has_failed()` in your `_process` method override.
+
+### what happens if code accesses an asynchronously preloaded resource before it’s ready?
+
+The c++ getter will return `null` while printing an error.
+
+

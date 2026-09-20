@@ -80,7 +80,6 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 	class_dependencies.clear();
 	class_native_headers.clear();
 	class_call_headers.clear();
-	class_resource_types.clear();
 	class_lambdas.clear();
 	class_lambda_declarations.clear();
 	class_lambda_definitions.clear();

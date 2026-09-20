@@ -160,6 +160,9 @@ static const char *token_names[] = {
 	// Special
 	"Error", // ERROR,
 	"End of file", // EOF,
+	// wgodot-changes::begin
+	"async_preload",
+	// wgodot-changes::end
 };
 
 // Avoid desync.
@@ -253,6 +256,9 @@ bool GDScriptTokenizer::Token::is_node_name() const {
 		case OR:
 		case PASS:
 		case PRELOAD:
+		// wgodot-changes::begin
+		case ASYNC_PRELOAD:
+		// wgodot-changes::end
 		case RETURN:
 		case SELF:
 		case SIGNAL:
@@ -495,6 +501,9 @@ GDScriptTokenizer::Token GDScriptTokenizerText::annotation() {
 
 #define KEYWORDS(KEYWORD_GROUP, KEYWORD) \
 	KEYWORD_GROUP('a') \
+	/* wgodot-changes::begin */ \
+	KEYWORD("async_preload", Token::ASYNC_PRELOAD) \
+	/* wgodot-changes::end */ \
 	KEYWORD("as", Token::AS) \
 	KEYWORD("and", Token::AND) \
 	KEYWORD("assert", Token::ASSERT) \

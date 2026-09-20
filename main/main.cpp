@@ -157,6 +157,9 @@
 #include "modules/wgodot/wgodot_pause_controller.h"
 #include "modules/wgodot/wgodot_wait_controller.h"
 #endif
+#if defined(MODULE_WGODOT_ENABLED) || defined(WGODOT_NATIVE_GAME)
+#include "modules/wgodot/wgodot_preloads.h"
+#endif
 // wgodot-changes::end
 
 #if defined(MODULE_MONO_ENABLED) && defined(TOOLS_ENABLED)
@@ -3916,6 +3919,17 @@ Error Main::setup2(bool p_show_boot_logo) {
 
 #endif
 
+	// wgodot-changes::begin
+#if defined(MODULE_WGODOT_ENABLED) || defined(WGODOT_NATIVE_GAME)
+	if (!editor && !project_manager) {
+		Error preload_error = WGodotPreloads::get_singleton()->start();
+		if (preload_error != OK) {
+			OS::get_singleton()->alert("Game load failed. A required resource could not be loaded. Please contact customer support.", "Game load failed");
+			return preload_error;
+		}
+	}
+#endif
+	// wgodot-changes::end
 	theme_db->initialize_theme();
 	audio_server->load_default_bus_layout();
 
@@ -4975,6 +4989,9 @@ static uint64_t navigation_process_max = 0;
 bool Main::iteration() {
 // wgodot-changes::begin
 	WGodotStartupProfile::Scope wgodot_profile("First frame", String(), true);
+#if defined(MODULE_WGODOT_ENABLED) || defined(WGODOT_NATIVE_GAME)
+	WGodotPreloads::get_singleton()->poll();
+#endif
 // wgodot-changes::end
 	GodotProfileZone("Main::iteration");
 	GodotProfileZoneGroupedFirst(_profile_zone, "prepare");
@@ -5302,6 +5319,13 @@ void Main::force_redraw() {
  */
 void Main::cleanup(bool p_force) {
 	Thread::make_main_thread();
+	// wgodot-changes::begin
+#if defined(MODULE_WGODOT_ENABLED) || defined(WGODOT_NATIVE_GAME)
+	if (WGodotPreloads::get_singleton()) {
+		WGodotPreloads::get_singleton()->finish();
+	}
+#endif
+	// wgodot-changes::end
 
 	GodotProfileZone("cleanup");
 	OS::get_singleton()->benchmark_begin_measure("Shutdown", "Main::Cleanup");

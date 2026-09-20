@@ -7,7 +7,9 @@
 
 #include "wgodot_game_bridge.h"
 #include "wgodot_pause_controller.h"
+#include "wgodot_preloads.h"
 #include "wgodot_wait_controller.h"
+
 
 #include "modules/modules_enabled.gen.h"
 #ifdef MODULE_GDSCRIPT_ENABLED
@@ -32,6 +34,7 @@ static void _native_export_editor_init() {
 
 void initialize_wgodot_module(ModuleInitializationLevel p_level) {
 	if (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {
+		WGodotPreloads::initialize();
 #ifdef MODULE_GDSCRIPT_ENABLED
 		WGDREGISTER_INTERFACE(BinarySerializable, "Object", "modules/wgodot/native/binary_serializable.h");
 #endif
@@ -49,6 +52,7 @@ void initialize_wgodot_module(ModuleInitializationLevel p_level) {
 
 void uninitialize_wgodot_module(ModuleInitializationLevel p_level) {
 	if (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {
+		WGodotPreloads::deinitialize();
 		WGodotGameBridge::deinitialize();
 		WGodotWaitController::deinitialize();
 		WGodotPauseController::deinitialize();

@@ -841,6 +841,9 @@ void GDScriptSyntaxHighlighter::_update_cache() {
 	// "assert" and "preload" are not utility functions, but are global nonetheless, so insert them.
 	global_functions.insert(SNAME("assert"));
 	global_functions.insert(SNAME("preload"));
+	// wgodot-changes::begin
+	global_functions.insert(SNAME("async_preload"));
+	// wgodot-changes::end
 	for (const StringName &E : global_function_list) {
 		global_functions.insert(E);
 	}

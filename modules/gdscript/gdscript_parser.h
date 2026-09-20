@@ -1099,6 +1099,9 @@ public:
 		}
 	};
 	struct PreloadNode : public ExpressionNode {
+		// wgodot-changes::begin
+		bool wgodot_async = false;
+		// wgodot-changes::end
 		ExpressionNode *path = nullptr;
 		String resolved_path;
 		Ref<Resource> resource;

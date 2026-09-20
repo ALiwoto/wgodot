@@ -6,6 +6,7 @@
 #include "core/config/project_settings.h"
 #include "core/io/dir_access.h"
 #include "core/io/file_access.h"
+#include "core/object/script_language.h"
 #include "core/templates/hash_set.h"
 
 
@@ -13,16 +14,21 @@ namespace {
 class ResourceDependencies : public WGodotCppAstVisitor {
 	bool visit(const GDScriptParser::Node *p_node) override {
 		if (p_node->type == GDScriptParser::Node::PRELOAD) {
-			const String path = static_cast<const GDScriptParser::PreloadNode *>(p_node)->resolved_path;
-			if (path.get_extension() != "gd") {
-				paths.insert(path);
+			const auto *preload = static_cast<const GDScriptParser::PreloadNode *>(p_node);
+			if (preload->resource.is_valid() && !Object::cast_to<Script>(preload->resource.ptr())) {
+				const String path = preload->resource->get_path();
+				if (auto *existing = paths.getptr(path)) {
+					existing->asynchronous &= preload->wgodot_async;
+				} else {
+					paths.insert(path, { path, preload->resource->get_class(), preload->wgodot_async });
+				}
 			}
 		}
 		return true;
 	}
 
 public:
-	HashSet<String> paths;
+	HashMap<String, WGodotCppProject::Preload> paths;
 };
 } // namespace
 
@@ -78,6 +84,7 @@ Error WGodotCppProject::analyze() {
 	classes.clear();
 	class_indices.clear();
 	resource_dependencies.clear();
+	preloads.clear();
 	diagnostics.clear();
 	parsers.clear();
 	if (!GLOBAL_GET("wgodot/gdscript/strict_type_checking")) {
@@ -114,10 +121,13 @@ Error WGodotCppProject::analyze() {
 			diagnostics.push_back("Native export encountered an unsupported syntax tree node in " + path);
 		}
 	}
-	for (const String &dependency : dependencies.paths) {
-		resource_dependencies.push_back(dependency);
+	for (const auto &dependency : dependencies.paths) {
+		resource_dependencies.push_back(dependency.key);
 	}
 	resource_dependencies.sort();
+	for (const String &path : resource_dependencies) {
+		preloads.push_back(dependencies.paths[path]);
+	}
 	return diagnostics.is_empty() ? OK : ERR_PARSE_ERROR;
 }
 
@@ -149,6 +159,15 @@ Dictionary WGodotCppProject::describe() const {
 	result["format"] = 1;
 	result["script_count"] = parsers.size();
 	result["resource_dependencies"] = resource_dependencies;
+	Array preload_list;
+	for (const Preload &preload : preloads) {
+		Dictionary entry;
+		entry["path"] = preload.path;
+		entry["type"] = preload.type;
+		entry["async"] = preload.asynchronous;
+		preload_list.push_back(entry);
+	}
+	result["preloads"] = preload_list;
 	result["diagnostics"] = diagnostics;
 	Array class_list;
 	for (const Class &entry : classes) {

@@ -130,11 +130,6 @@ WGodotCppEmitter::Value WGodotCppEmitter::container_constant(const Parser::Const
 	return value;
 }
 
-String WGodotCppEmitter::resource_load(const String &p_path) {
-	class_call_headers.insert("core/io/resource_loader.h");
-	return "::ResourceLoader::load(String::utf8(" + quoted(p_path) + "))";
-}
-
 void WGodotCppEmitter::emit_container_constants(const WGodotCppProject::Class &p_class, String &r_declaration, String &r_definitions) {
 	const auto *constants = class_container_constants.getptr(p_class.node);
 	if (!constants) {
@@ -159,9 +154,25 @@ void WGodotCppEmitter::emit_container_constants(const WGodotCppProject::Class &p
 		}
 		class_call_headers.insert("modules/wgodot/native/wgodot_native_static.h");
 		const String name = constant_name(constant);
+		HashSet<int> resources;
+		collect_resource_indices(constant->initializer->reduced_value, resources);
+		Vector<int> sorted_resources;
+		for (int index : resources) {
+			sorted_resources.push_back(index);
+		}
+		sorted_resources.sort();
+		Vector<String> indices;
+		for (int index : sorted_resources) {
+			indices.push_back(itos(index));
+		}
+		String readiness;
+		if (!indices.is_empty()) {
+			class_call_headers.insert("modules/wgodot/wgodot_preloads.h");
+			readiness = "\tif (!WGodotNative::StaticStorage<Storage>::is_ready() && !WGodotPreloads::get_singleton()->require_resources({" + String(", ").join(indices) + "})) {\n\t\treturn {};\n\t}\n";
+		}
 		r_declaration += "\tstatic " + value_type + " " + name + "();\n";
 		// Direct member initialization avoids allocating an empty container only
 		// to replace it. Constant dependencies are acyclic, unlike static fields.
-		r_definitions += value_type + " " + p_class.cpp_name + "::" + name + "() {\n\tstruct Storage {\n\t\t" + value_type + " value = " + value.expression().replace("\n", "\n\t\t") + ";\n\t};\n\treturn WGodotNative::StaticStorage<Storage>::get().value;\n}\n\n";
+		r_definitions += value_type + " " + p_class.cpp_name + "::" + name + "() {\n\tstruct Storage {\n\t\t" + value_type + " value = " + value.expression().replace("\n", "\n\t\t") + ";\n\t};\n" + readiness + "\treturn WGodotNative::StaticStorage<Storage>::get().value;\n}\n\n";
 	}
 }

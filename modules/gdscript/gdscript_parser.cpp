@@ -3754,6 +3754,9 @@ GDScriptParser::ExpressionNode *GDScriptParser::parse_get_node(ExpressionNode *p
 
 GDScriptParser::ExpressionNode *GDScriptParser::parse_preload(ExpressionNode *p_previous_operand, bool p_can_assign) {
 	PreloadNode *preload = alloc_node<PreloadNode>();
+	// wgodot-changes::begin
+	preload->wgodot_async = previous.type == GDScriptTokenizer::Token::ASYNC_PRELOAD;
+	// wgodot-changes::end
 	preload->resolved_path = "<missing path>";
 
 	push_multiline(true);
@@ -4446,6 +4449,9 @@ GDScriptParser::ParseRule *GDScriptParser::get_rule(GDScriptTokenizer::Token::Ty
 		// Special
 		{ nullptr,                                          nullptr,                                        PREC_NONE }, // ERROR,
 		{ nullptr,                                          nullptr,                                        PREC_NONE }, // TK_EOF,
+		// wgodot-changes::begin
+		{ &GDScriptParser::parse_preload,                     nullptr,                                        PREC_NONE }, // ASYNC_PRELOAD,
+		// wgodot-changes::end
 	};
 	/* clang-format on */
 	// Avoid desync.

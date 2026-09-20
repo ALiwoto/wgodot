@@ -31,7 +31,8 @@ class WGodotCppEmitter {
 	HashSet<const GDScriptParser::ClassNode *> required_classes;
 	HashSet<const GDScriptParser::ClassNode *> inherited_classes;
 	HashSet<String> class_call_headers;
-	HashMap<String, String> class_resource_types;
+	HashMap<String, int> preload_indices;
+	Vector<WGodotCppProject::Preload> preloads;
 	HashMap<const GDScriptParser::ConstantNode *, const WGodotCppProject::Class *> container_constant_owners;
 	HashMap<const GDScriptParser::ClassNode *, Vector<const GDScriptParser::ConstantNode *>> class_container_constants;
 	HashSet<const GDScriptParser::ConstantNode *> used_container_constants;
@@ -115,7 +116,9 @@ class WGodotCppEmitter {
 	String engine_argument(const GDScriptParser::ExpressionNode *p_value, Variant::Type p_target);
 	bool is_array_duplicate(const GDScriptParser::ExpressionNode *p_value) const;
 	String literal(const Variant &p_value, const GDScriptParser::Node *p_origin);
-	String resource_load(const String &p_path);
+	int resource_index(const Resource *p_resource);
+	void collect_resource_indices(const Variant &p_value, HashSet<int> &r_indices);
+	void emit_preloads();
 	void collect_container_constants();
 	const GDScriptParser::ConstantNode *container_constant_source(const GDScriptParser::ExpressionNode *p_expression) const;
 	GDScriptParser::DataType container_constant_type(const GDScriptParser::ConstantNode *p_constant) const;

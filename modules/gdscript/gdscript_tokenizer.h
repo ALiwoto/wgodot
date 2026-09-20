@@ -165,6 +165,9 @@ public:
 			// Special
 			ERROR,
 			TK_EOF, // "EOF" is reserved
+			// wgodot-changes::begin
+			ASYNC_PRELOAD,
+			// wgodot-changes::end
 			TK_MAX
 		};
 

@@ -521,6 +521,10 @@ void GDScriptLanguage::get_public_functions(List<MethodInfo> *r_functions) const
 		mi.arguments.push_back(PropertyInfo(Variant::STRING, "path"));
 		mi.return_val = PropertyInfo(Variant::OBJECT, "", PROPERTY_HINT_RESOURCE_TYPE, Resource::get_class_static());
 		r_functions->push_back(mi);
+		// wgodot-changes::begin
+		mi.name = "async_preload";
+		r_functions->push_back(mi);
+		// wgodot-changes::end
 	}
 	{
 		MethodInfo mi;
@@ -1727,6 +1731,9 @@ static void _find_identifiers(const GDScriptParser::CompletionContext &p_context
 
 	static const char *_keywords_with_args[] = {
 		"assert", "preload",
+		// wgodot-changes::begin
+		"async_preload",
+		// wgodot-changes::end
 		nullptr
 	};
 
@@ -3414,6 +3421,11 @@ static void _find_call_arguments(GDScriptParser::CompletionContext &p_context, c
 		}
 
 		MethodInfo mi(PropertyInfo(Variant::OBJECT, "resource", PROPERTY_HINT_RESOURCE_TYPE, Resource::get_class_static()), "preload", PropertyInfo(Variant::STRING, "path"));
+		// wgodot-changes::begin
+		if (static_cast<const GDScriptParser::PreloadNode *>(p_call)->wgodot_async) {
+			mi.name = "async_preload";
+		}
+		// wgodot-changes::end
 		r_arghint = _make_arguments_hint(mi, p_argidx);
 		return;
 	} else if (p_call->type != GDScriptParser::Node::CALL) {

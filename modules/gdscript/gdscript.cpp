@@ -2731,6 +2731,9 @@ Vector<String> GDScriptLanguage::get_reserved_words() const {
 		// Functions (highlighter uses global function color instead).
 		"assert",
 		"preload",
+		// wgodot-changes::begin
+		"async_preload",
+		// wgodot-changes::end
 		// Types (highlighter uses type color instead).
 		"void",
 	};

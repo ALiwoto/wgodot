@@ -46,6 +46,7 @@ class StaticStorage {
 	}
 
 public:
+	static bool is_ready() { return ready.load(std::memory_order_acquire) != nullptr; }
 	static Fields &get(void (*p_initialize)(Fields &) = nullptr) {
 		if (Fields *fields = ready.load(std::memory_order_acquire)) {
 			return *fields;

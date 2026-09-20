@@ -13,6 +13,11 @@ class WGodotCppProject {
 	friend class WGodotCppSignatures;
 
 public:
+	struct Preload {
+		String path;
+		String type;
+		bool asynchronous = false;
+	};
 	struct Class {
 		String script_path;
 		String cpp_name;
@@ -24,6 +29,7 @@ private:
 	Vector<Class> classes;
 	HashMap<const GDScriptParser::ClassNode *, int> class_indices;
 	Vector<String> resource_dependencies;
+	Vector<Preload> preloads;
 	Vector<String> diagnostics;
 
 	Error collect_scripts(const String &p_directory, Vector<String> &r_scripts);
@@ -32,6 +38,7 @@ private:
 public:
 	Error analyze();
 	const Vector<Class> &get_classes() const { return classes; }
+	const Vector<Preload> &get_preloads() const { return preloads; }
 	const Class *find_class(const GDScriptParser::ClassNode *p_node) const;
 	GDScriptParser *find_parser(const String &p_script_path) const;
 	GDScriptAnalyzer *find_analyzer(const String &p_script_path) const;

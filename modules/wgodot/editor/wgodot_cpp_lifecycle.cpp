@@ -31,23 +31,6 @@ void WGodotCppEmitter::emit_class_lifecycle(const WGodotCppProject::Class &p_cla
 			factory_parameters.push_back(parameter_text);
 		}
 	}
-	// Constructor defaults can also retain resources. Finish lowering them before
-	// deciding whether this class needs its own static storage and preparation.
-	if (!class_resource_types.is_empty()) {
-		Vector<String> paths;
-		for (const auto &resource : class_resource_types) {
-			paths.push_back(resource.key);
-		}
-		paths.sort();
-		String resources;
-		for (const String &path : paths) {
-			const String field = "resource_" + path.sha256_text().substr(0, 16);
-			p_static_fields += "\t\t" + class_resource_types[path] + " " + field + ";\n";
-			resources += "\tfields." + field + " = " + resource_load(path) + ";\n";
-			resources += "\tERR_FAIL_COND_MSG(fields." + field + ".is_null(), \"Could not preload native game resource: \" + String::utf8(" + quoted(path) + "));\n";
-		}
-		p_static_initialization = resources + p_static_initialization;
-	}
 	const bool has_static_initializer = node->has_function(SNAME("_static_init"));
 	const bool prepare = !p_static_fields.is_empty() || has_static_initializer;
 	const bool initialize_fields = !is_static && (!p_initialization.is_empty() || prepare);
