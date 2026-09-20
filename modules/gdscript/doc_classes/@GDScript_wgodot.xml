@@ -1,6 +1,29 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <!-- wgodot-changes::file -->
 <class name="@GDScript">
+	<methods>
+		<method name="async_preload">
+			<return type="Resource" />
+			<param index="0" name="path" type="String" />
+			<description>
+				Declares a resource to load during startup. Like [method preload], [param path] must be a constant [String], and the result can be used in a typed constant. This is a keyword and cannot be used as a [Callable].
+				[b]Normal GDScript, including the editor:[/b] Behaves exactly like [method preload]. The resource is loaded synchronously when the script is parsed, with the same type checking and load errors. No background request is created. Parsing a script can happen after the game has started; this mode does not provide a project-wide startup barrier.
+				[b]GD2CPP (native C++ export):[/b] The exporter collects resource declarations across the exported scripts. After engine services are initialized, all synchronous [method preload] resources finish loading before game autoloads and the main scene are initialized. WGodot then dispatches the [method async_preload] resources through [method ResourceLoader.load_threaded_request] and allows the game to start while loading continues. Loading may execute custom resource constructors or setters. On builds without thread support, loading runs synchronously.
+				Generated accesses read the retained resource through a readiness check. Access before completion, or after failure, reports an error and returns [code]null[/code]; it does not wait or supply a placeholder. Poll [method WGodotPreloads.is_finished] and check [method WGodotPreloads.has_failed] before using these resources. The engine collects completed requests on the main thread each frame; reading status does not block until loading finishes.
+				Constant arrays and dictionaries are materialized as a whole on first access. All resources in a container must be ready before its cached storage is created. An early access reports an error and returns an empty container without caching it. Keep synchronous loading-screen assets in a separate constant container from asynchronous assets.
+				In GD2CPP, successful synchronous and asynchronous preloads retain strong references until application shutdown. Repeated declarations of the same resource path share one entry; if any declaration uses [method preload], it is loaded synchronously. Later [method load] or threaded loads using [constant ResourceLoader.CACHE_MODE_REUSE] reuse the cached resource. Explicit cache-ignore or cache-replace modes have different behavior. Use preloads for frequently needed resources whose memory should remain resident.
+				A synchronous preload failure stops native game startup and displays an engine-owned error prompt. An asynchronous failure allows game logic to continue and is reported by [method WGodotPreloads.get_failures], so the loading screen can handle it. Resource-load completion does not guarantee that all GPU shader or rendering pipeline compilation has finished.
+				[codeblock]
+				const IMPACT_SHADER: Shader = async_preload("res://shaders/impact.gdshader")
+
+				func startup_ready(api_ready: bool) -> bool:
+					return api_ready and WGodotPreloads.is_finished() and not WGodotPreloads.has_failed()
+				[/codeblock]
+				Use [method WGodotPreloads.get_failures] to display loading errors separately from the readiness condition above. Assets needed to draw that loading screen should use [method preload].
+				[b]Note:[/b] In GD2CPP, script preloads resolve to generated classes, not asynchronous resource entries. Use this keyword for resource assets; it does not defer native class registration.
+			</description>
+		</method>
+	</methods>
 	<annotations>
 		<annotation name="@no_mangle">
 			<return type="void" />

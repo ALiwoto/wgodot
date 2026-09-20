@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!-- wgodot-changes::file -->
+<class name="WGodotPreloads" inherits="Object" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		Reports the progress and failures of the native startup's asynchronous resource loading.
+	</brief_description>
+	<description>
+		This singleton tracks the startup batch declared with [method @GDScript.async_preload] in GD2CPP exports. The engine starts and updates the batch automatically. Status methods do not start loads or wait for pending requests.
+		Counts describe unique asynchronous resource paths only. Synchronous preloads, resource dependencies without their own asynchronous entry, and ordinary [method @GDScript.load] or [ResourceLoader] requests are excluded. A path declared with both preload keywords belongs to the synchronous batch.
+		A loading screen should wait for [method is_finished], handle [method has_failed] using [method get_failures], and only then use asynchronous assets or enter screens that need them. Combine this condition with any other startup work, such as API requests. There is no retry or reset operation for this startup batch.
+		In normal GDScript, including editor runs, [method @GDScript.async_preload] is synchronous. This singleton reports an empty batch: all counts are [code]0[/code], progress is [code]1.0[/code], [method is_finished] is [code]true[/code], and [method has_failed] is [code]false[/code]. Script parsing reports load errors in that mode.
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="get_failed_count" qualifiers="const">
+			<return type="int" />
+			<description>
+				Returns the number of asynchronous entries whose request or resource load failed.
+			</description>
+		</method>
+		<method name="get_failures" qualifiers="const">
+			<return type="Dictionary[]" />
+			<description>
+				Returns the asynchronous failures recorded so far. Each dictionary contains [code]path[/code] ([String], resource path), [code]type[/code] ([String], resource class requested by the exporter), and [code]error[/code] ([enum @GlobalScope.Error], request or loading error code).
+				The list may grow until [method is_finished] returns [code]true[/code]. Returns an empty array when no failures have been recorded. Synchronous preload failures stop startup and are not included here.
+			</description>
+		</method>
+		<method name="get_loaded_count" qualifiers="const">
+			<return type="int" />
+			<description>
+				Returns the number of asynchronous entries successfully loaded and available to generated code.
+			</description>
+		</method>
+		<method name="get_pending_count" qualifiers="const">
+			<return type="int" />
+			<description>
+				Returns the number of entries still pending: [method get_total_count] minus [method get_loaded_count] and [method get_failed_count].
+			</description>
+		</method>
+		<method name="get_progress" qualifiers="const">
+			<return type="float" />
+			<description>
+				Returns the fraction of entries that have finished, from [code]0.0[/code] to [code]1.0[/code]. Both successful and failed entries count as finished. Each entry has equal weight; this does not measure bytes loaded or partial progress within a resource. Returns [code]1.0[/code] for an empty batch.
+			</description>
+		</method>
+		<method name="get_total_count" qualifiers="const">
+			<return type="int" />
+			<description>
+				Returns the total number of asynchronous entries in the startup batch, including pending, successful, and failed entries.
+			</description>
+		</method>
+		<method name="has_failed" qualifiers="const">
+			<return type="bool" />
+			<description>
+				Returns [code]true[/code] if at least one asynchronous entry has failed. Other entries may still be loading. Failure does not stop game execution or automatically display a prompt.
+			</description>
+		</method>
+		<method name="is_finished" qualifiers="const">
+			<return type="bool" />
+			<description>
+				Returns [code]true[/code] when every asynchronous entry has either loaded successfully or failed, or when the batch is empty. This indicates completion, not success; check [method has_failed] before using the resources.
+			</description>
+		</method>
+	</methods>
+</class>
