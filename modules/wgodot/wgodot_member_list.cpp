@@ -1096,8 +1096,8 @@ Dictionary execute(const Dictionary &p_options) {
 		}
 		SceneTree *scene_tree = SceneTree::get_singleton();
 		Node *root = scene_tree ? scene_tree->get_root() : nullptr;
-		if (root == nullptr) {
-			return make_error("scene_tree_unavailable", "The running game has no scene tree.");
+		if (root == nullptr || !root->is_inside_tree()) {
+			return make_error("scene_tree_unavailable", "The running game's scene tree is not ready.");
 		}
 		Node *node = root->get_node_or_null(NodePath(target_name));
 		if (node == nullptr) {

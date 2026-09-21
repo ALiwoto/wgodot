@@ -148,8 +148,9 @@ Variant get_nested_property(Object *p_object, const String &p_property_path, boo
 Node *get_target_node(const String &p_command, const Dictionary &p_options, Dictionary &r_error) {
 	SceneTree *scene_tree = SceneTree::get_singleton();
 	Node *root = scene_tree ? scene_tree->get_root() : nullptr;
-	if (root == nullptr) {
-		r_error = make_error(p_command, "scene_tree_unavailable", "The running game has no scene tree.");
+	// Debugger commands can arrive during autoload construction, before the root enters the tree.
+	if (root == nullptr || !root->is_inside_tree()) {
+		r_error = make_error(p_command, "scene_tree_unavailable", "The running game's scene tree is not ready.");
 		return nullptr;
 	}
 
@@ -463,12 +464,12 @@ Dictionary call_static_method(const Dictionary &p_options) {
 Array collect_tree(const Dictionary &p_options, Dictionary &r_error) {
 	Array result;
 	SceneTree *scene_tree = SceneTree::get_singleton();
-	if (scene_tree == nullptr || scene_tree->get_root() == nullptr) {
-		r_error = make_error("tree", "scene_tree_unavailable", "The running game has no scene tree.");
+	Node *root = scene_tree ? scene_tree->get_root() : nullptr;
+	if (root == nullptr || !root->is_inside_tree()) {
+		r_error = make_error("tree", "scene_tree_unavailable", "The running game's scene tree is not ready.");
 		return result;
 	}
 
-	Node *root = scene_tree->get_root();
 	const String requested_root = p_options.get("root", String());
 	if (!requested_root.is_empty()) {
 		root = root->get_node_or_null(NodePath(requested_root));
@@ -796,6 +797,9 @@ Dictionary pointer_input(const String &p_command, const Dictionary &p_options) {
 	Vector2 position;
 	String target_path;
 	if (p_options.has("target")) {
+		if (!window->is_inside_tree()) {
+			return make_error(p_command, "scene_tree_unavailable", "The running game's scene tree is not ready.");
+		}
 		target_path = p_options.get("target", String());
 		Node *node = window->get_node_or_null(NodePath(target_path));
 		if (node == nullptr) {
