@@ -58,6 +58,14 @@ String WGodotCppEmitter::signature_type(const Parser::Node *p_origin, bool p_sig
 	rendering_signatures.insert(p_origin);
 	const auto *signature = signatures.get(p_origin);
 	if (!signature) {
+		if (p_origin->type == Parser::Node::CALL) {
+			const auto *call = static_cast<const Parser::CallNode *>(p_origin);
+			if (call->function_name == SNAME("unbind") && call->get_callee_type() == Parser::Node::SUBSCRIPT &&
+					expression_type(static_cast<const Parser::SubscriptNode *>(call->callee)->base).builtin_type == Variant::CALLABLE) {
+				unsupported(p_origin, "native unbind() without a positive constant count and a concrete connection, invocation, or assignment signature");
+				return String();
+			}
+		}
 		unsupported(p_origin, "a concrete native callback/signal signature at this use; no typed declaration, lambda, method reference, or assignment resolves it");
 		return String();
 	}
@@ -89,6 +97,30 @@ WGodotCppEmitter::Value WGodotCppEmitter::callback_call(const Parser::CallNode *
 	if (!signature) {
 		(void)signature_type(base, signal);
 		return String();
+	}
+	if (!signal && name == SNAME("unbind")) {
+		const auto *output = signatures.get(p_call);
+		if (!output) {
+			(void)signature_type(p_call);
+			return String();
+		}
+		const auto *count = p_call->arguments[0];
+		if (!count->is_constant || !count->reduced || count->reduced_value.get_type() != Variant::INT || int64_t(count->reduced_value) <= 0 || int64_t(count->reduced_value) > output->arguments.size()) {
+			unsupported(p_call, "native unbind() without a positive constant count within the supplied argument count");
+			return String();
+		}
+		const int64_t ignored = count->reduced_value;
+		auto forwarded = *output;
+		forwarded.arguments.resize(forwarded.arguments.size() - ignored);
+		if (!validate_callback(base, forwarded)) {
+			return String();
+		}
+		Value result = lower(base);
+		result.cpp_type = signature_type(p_call);
+		result.code = result.cpp_type + "::unbind<" + itos(ignored) + ">(" + result.code + ")";
+		result.effects = true;
+		result.borrowed = false;
+		return result;
 	}
 	const bool invocation = name == SNAME("call") || name == SNAME("call_deferred") || name == SNAME("emit");
 	const bool binding = !signal && name == SNAME("bind");

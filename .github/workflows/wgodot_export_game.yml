@@ -200,6 +200,8 @@ jobs:
           GAME_PLATFORM: ${{ matrix.platform }}
           GAME_GLOBAL_CONFIG_CONTENT: ${{ secrets.GAME_GLOBAL_CONFIG_CONTENT }}
           GAME_IR_CONFIG_CONTENT: ${{ matrix.platform == 'android' && secrets.GAME_IR_CONFIG_CONTENT || '' }}
+          GAME_PACKAGE_ID_IR: ${{ secrets.GAME_PACKAGE_ID_IR }}
+          GAME_PACKAGE_ID_GLOBAL: ${{ secrets.GAME_PACKAGE_ID_GLOBAL }}
           GAME_ANDROID_SIGN_KEY: ${{ matrix.platform == 'android' && secrets.GAME_ANDROID_SIGN_KEY || '' }}
           GAME_ANDROID_SIGN_JSON: ${{ matrix.platform == 'android' && secrets.GAME_ANDROID_SIGN_JSON || '' }}
         run: |
@@ -207,7 +209,7 @@ jobs:
           # Desktop and Web distributions use the global instance.
           $editions = if ($env:GAME_PLATFORM -eq 'android') { @('ir', 'global') } else { @('global') }
           foreach ($edition in $editions) {
-            $packageId = if ($edition -eq 'ir') { 'com.wotoTeam.DarkSurvivors' } else { 'com.wotoTeam.DarkSurvivors.global' }
+            $packageId = if ($edition -eq 'ir') { $env:GAME_PACKAGE_ID_IR } else { $env:GAME_PACKAGE_ID_GLOBAL }
             ./.github/scripts/wgodot_export_game.ps1 -Platform $env:GAME_PLATFORM `
               -GameDirectory "$env:GITHUB_WORKSPACE/game-source" `
               -Edition $edition -AndroidPackageId $packageId `

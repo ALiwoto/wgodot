@@ -34,6 +34,7 @@ private:
 	};
 	const WGodotCppProject &project;
 	HashMap<const Parser::Node *, Signature> known;
+	HashMap<const Parser::Node *, Signature> demands;
 	HashMap<const Parser::Node *, Scope> scopes;
 	Vector<const Parser::Node *> nodes;
 	Vector<Link> links;
@@ -45,6 +46,7 @@ private:
 	void collect(const Parser::Node *p_node, Scope p_scope);
 	Signature function(const Parser::FunctionNode *p_function) const;
 	void seed(const Parser::Node *p_node);
+	bool demand(const Parser::Node *p_node, const Signature &p_signature);
 
 public:
 	explicit WGodotCppSignatures(const WGodotCppProject &p_project) : project(p_project) {}

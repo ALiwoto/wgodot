@@ -90,8 +90,14 @@ void WGodotCppEmitter::emit_interface_inheritance(const WGodotCppProject::Class 
 			invoke = String(constant ? "const_cast<" + p_class.cpp_name + " *>(this)->" : "this->") + "m_" + symbol(p_name) + "(" + String(", ").join(arguments) + ")";
 		} else {
 			const MethodBind *binding = ClassDB::get_method(native_base(base), p_name);
-			const String *cpp_name = binding ? native_methods.getptr(String(binding->get_instance_class()) + "::" + String(p_name)) : nullptr;
-			invoke = base_cpp + "::" + (cpp_name ? *cpp_name : String(p_name)) + "(" + String(", ").join(arguments) + ")";
+			if (!binding) {
+				unsupported(p_class.node, "unbound native interface implementation for " + String(p_name));
+				return;
+			}
+			if (!binding->is_static()) {
+				arguments.insert(0, "static_cast<" + String(constant ? "const " : "") + base_cpp + " *>(this)");
+			}
+			invoke = native_access(binding, p_class.node, true) + "(" + String(", ").join(arguments) + ")";
 		}
 		const bool returns_value = p_required ? function_result(p_required) != "void" : p_native->return_val.type != Variant::NIL || (p_native->return_val.usage & PROPERTY_USAGE_NIL_IS_VARIANT);
 		if (returns_value) {

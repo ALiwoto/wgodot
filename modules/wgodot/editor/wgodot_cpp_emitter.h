@@ -22,6 +22,7 @@ class WGodotCppEmitter {
 	HashMap<StringName, String> native_headers;
 	HashMap<StringName, String> native_cpp_names;
 	HashMap<String, String> native_methods;
+	HashMap<StringName, HashMap<String, String>> native_access_methods;
 	HashSet<StringName> used_native_interfaces;
 	HashSet<const GDScriptParser::VariableNode *> interface_property_getters;
 	HashSet<const GDScriptParser::VariableNode *> interface_property_setters;
@@ -139,6 +140,8 @@ class WGodotCppEmitter {
 	String cast(const GDScriptParser::CastNode *p_cast);
 	String type_test(const GDScriptParser::TypeTestNode *p_test);
 	void initialize_native_methods();
+	String native_access(const MethodBind *p_method, const GDScriptParser::Node *p_origin, bool p_qualified = false);
+	void emit_native_access();
 	bool validate_native_arguments(const MethodBind *p_method, const GDScriptParser::Node *p_origin);
 	bool validate_builtin_arguments(Variant::Type p_type, const StringName &p_method, const GDScriptParser::Node *p_origin);
 	struct NativeCall {
@@ -146,7 +149,6 @@ class WGodotCppEmitter {
 		String method;
 		Vector<String> argument_types;
 		bool is_static = false;
-		bool receiver_argument = false;
 		bool adapted = false;
 		bool snapshot_result = false;
 	};

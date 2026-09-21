@@ -68,15 +68,61 @@ def array_api(target, source, env):
 
 def native_methods(target, source, env):
     bindings = {}
-    declaration = re.compile(
-        r'\bClassDB::bind_(?:static_)?method\([^;]*?\bD_METHOD\(\s*"(\w+)"[^)]*\)\s*,\s*&([A-Za-z_]\w*)::(\w+)\s*[,)]'
+    forwarded = {}
+    parents = {}
+    registered = set()
+    binding_arguments = (
+        r'\(\s*D_METHOD\(\s*"(\w+)"[^)]*\)\s*,'
+        r'[^;]*?&\s*([A-Za-z_]\w*(?:::[A-Za-z_]\w*)*)\s*::\s*(\w+)\s*[,)]'
     )
+    declaration = re.compile(
+        r'\bClassDB::bind_(?:static_)?method\([^;]*?\bD_METHOD\(\s*"(\w+)"[^)]*\)\s*,'
+        # Overload bindings can cast the member pointer before naming it.
+        r'[^;]*?&\s*([A-Za-z_]\w*(?:::[A-Za-z_]\w*)*)\s*::\s*(\w+)\s*[,)]'
+    )
+    template_binding = re.compile(r'\b\w+<[^;{}()]+>\s*' + binding_arguments)
+    inheritance = re.compile(r'\bclass\s+(\w+)\s*(?:final\s*)?:\s*([^;{}]+)\{')
     comments = re.compile(r'("(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\')|//[^\n]*|/\*.*?\*/', re.DOTALL)
     for implementation in source:
         text = pathlib.Path(str(implementation)).read_text(encoding="utf-8")
         text = comments.sub(lambda match: match.group(1) or " ", text)
         for name, owner, method in declaration.findall(text):
+            owner = owner.rsplit("::", 1)[-1]  # ClassDB uses the unqualified class name.
             bindings.setdefault((owner, name), set()).add(method)
+        # Shared C++ templates can bind their members on a concrete GDCLASS.
+        # Read the forwarding declarations and follow C++ inheritance, which
+        # may include template bases absent from the ClassDB inheritance tree.
+        for name, owner, method in template_binding.findall(text):
+            forwarded.setdefault(owner.rsplit("::", 1)[-1], {}).setdefault(name, set()).add(method)
+        registered.update(re.findall(r'\bGDCLASS\(\s*(\w+)\s*,', text))
+        for owner, bases in inheritance.findall(text):
+            depth = 0
+            names = ""
+            for char in bases:
+                if char == "<":
+                    depth += 1
+                elif char == ">":
+                    depth -= 1
+                elif depth == 0:
+                    names += char
+            for base in names.split(","):
+                base = re.sub(r'\b(public|protected|private|virtual)\b', '', base).strip().rsplit("::", 1)[-1]
+                if base.isidentifier():
+                    parents.setdefault(owner, set()).add(base)
+    for owner in registered:
+        pending = list(parents.get(owner, ()))
+        visited = set()
+        inherited = {}
+        while pending:
+            base = pending.pop()
+            if base in visited or base in registered:
+                continue
+            visited.add(base)
+            for name, methods in forwarded.get(base, {}).items():
+                inherited.setdefault(name, set()).update(methods)
+            pending.extend(parents.get(base, ()))
+        for name, methods in inherited.items():
+            bindings.setdefault((owner, name), methods)
     lines = [
         "// wgodot-changes::file",
         "// Generated native binding/C++ method map. Editor only.",

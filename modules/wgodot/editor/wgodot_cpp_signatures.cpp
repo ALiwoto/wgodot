@@ -278,20 +278,19 @@ void WGodotCppSignatures::seed(const Parser::Node *p_node) {
 			}
 			return;
 		}
-		if (base && base->type_constraint.builtin_type == Variant::CALLABLE && call->function_name == SNAME("bind")) {
+		if (base && base->type_constraint.builtin_type == Variant::CALLABLE && (call->function_name == SNAME("bind") || call->function_name == SNAME("unbind"))) {
 			producers.insert(call);
 		}
-		if (base && base->type_constraint.builtin_type == Variant::CALLABLE && call->function_name == SNAME("call") && !known.has(base) && !signal_emit_source(base)) {
+		if (base && base->type_constraint.builtin_type == Variant::CALLABLE && (call->function_name == SNAME("call") || call->function_name == SNAME("call_deferred")) && !known.has(base) && !signal_emit_source(base)) {
 			Signature demand;
 			demand.priority = 2;
 			demand.result = { discarded.has(call) ? builtin(Variant::NIL) : call->type_constraint, call };
 			for (const auto *argument : call->arguments) {
 				demand.arguments.push_back({ argument->type_constraint, argument });
 			}
-			// An unresolved return remains inferred from the supplied method/lambda.
-			if (!demand.result.type.is_variant()) {
-				known.insert(base, demand);
-			}
+			// Even a Variant result supplies concrete invocation argument types.
+			// The producer still resolves the actual callback return type.
+			this->demand(base, demand);
 		}
 		const auto *declaration = member(call->is_super ? scopes[p_node].owner->node->base_type : base ? base->type_constraint
 																									   : scopes[p_node].owner->node->self_type,
@@ -322,8 +321,19 @@ void WGodotCppSignatures::seed(const Parser::Node *p_node) {
 	}
 }
 
+bool WGodotCppSignatures::demand(const Parser::Node *p_node, const Signature &p_signature) {
+	const auto *previous = demands.getptr(p_node);
+	if (previous && previous->priority >= p_signature.priority) {
+		return false;
+	}
+	Signature copy = p_signature;
+	demands.insert(p_node, copy);
+	return true;
+}
+
 void WGodotCppSignatures::analyze() {
 	known.clear();
+	demands.clear();
 	scopes.clear();
 	nodes.clear();
 	links.clear();
@@ -341,8 +351,22 @@ void WGodotCppSignatures::analyze() {
 	do {
 		changed = false;
 		for (const Link &edge : links) {
+			if (const auto *usage = demands.getptr(edge.target); usage && edge.reverse) {
+				changed |= demand(edge.source, *usage);
+			}
+			if (const auto *usage = demands.getptr(edge.source)) {
+				changed |= demand(edge.target, *usage);
+			}
 			const auto *a = known.getptr(edge.source);
 			const auto *b = known.getptr(edge.target);
+			// Declarations and assignments can supply the missing argument types
+			// of an unbind expression, without replacing its actual return type.
+			if (a) {
+				changed |= demand(edge.target, *a);
+			}
+			if (b && edge.reverse) {
+				changed |= demand(edge.source, *b);
+			}
 			if (a && (!b || (!producers.has(edge.target) && a->priority > b->priority))) {
 				Signature copy = *a;
 				known.insert(edge.target, copy);
@@ -354,11 +378,14 @@ void WGodotCppSignatures::analyze() {
 			}
 		}
 		for (const auto *node : nodes) {
-			if (known.has(node)) {
-				continue;
+			if (!known.has(node) && !producers.has(node)) {
+				if (const auto *usage = demands.getptr(node); usage && !usage->result.type.is_variant()) {
+					known.insert(node, *usage);
+					changed = true;
+				}
 			}
 			if (const auto *signal = signal_emit_source(node)) {
-				if (const Signature *input = get(signal)) {
+				if (const Signature *input = get(signal); input && !known.has(node)) {
 					Signature output = *input;
 					output.signal = false;
 					known.insert(node, output);
@@ -374,6 +401,38 @@ void WGodotCppSignatures::analyze() {
 				continue;
 			}
 			const auto *base = static_cast<const Parser::SubscriptNode *>(call->callee)->base;
+			if (base->type_constraint.builtin_type == Variant::SIGNAL && !call->arguments.is_empty() &&
+					(call->function_name == SNAME("connect") || call->function_name == SNAME("disconnect") || call->function_name == SNAME("is_connected"))) {
+				if (const auto *input = get(base)) {
+					Signature usage = *input;
+					usage.signal = false;
+					usage.priority = 2;
+					changed |= demand(call->arguments[0], usage);
+				}
+			}
+			if (base->type_constraint.builtin_type != Variant::CALLABLE || known.has(node)) {
+				continue;
+			}
+			const auto *usage = demands.getptr(node);
+			if (call->function_name == SNAME("bind") && usage) {
+				Signature input = *usage;
+				for (const auto *argument : call->arguments) {
+					input.arguments.push_back({ argument->type_constraint, argument });
+				}
+				changed |= demand(base, input);
+			}
+			if (call->function_name == SNAME("unbind") && usage && call->arguments.size() == 1) {
+				const auto *count = call->arguments[0];
+				if (count->is_constant && count->reduced && count->reduced_value.get_type() == Variant::INT) {
+					const int64_t ignored = count->reduced_value;
+					if (ignored > 0 && ignored <= usage->arguments.size()) {
+						Signature input = *usage;
+						input.arguments.resize(input.arguments.size() - ignored);
+						changed |= demand(base, input);
+					}
+				}
+				usage = demands.getptr(node);
+			}
 			const Signature *input = get(base);
 			if (!input) {
 				continue;
@@ -382,6 +441,23 @@ void WGodotCppSignatures::analyze() {
 				Signature output = *input;
 				output.arguments.resize(output.arguments.size() - call->arguments.size());
 				output.defaults = MAX(0, input->defaults - int(call->arguments.size()));
+				known.insert(call, output);
+				changed = true;
+			} else if (call->function_name == SNAME("unbind") && usage && call->arguments.size() == 1) {
+				const auto *count = call->arguments[0];
+				if (!count->is_constant || !count->reduced || count->reduced_value.get_type() != Variant::INT) {
+					continue;
+				}
+				const int64_t ignored = count->reduced_value;
+				if (ignored <= 0 || ignored > usage->arguments.size()) {
+					continue;
+				}
+				Signature output = *usage;
+				output.result = input->result;
+				output.defaults = 0;
+				output.signal = false;
+				// The source owns the result; the use only supplies argument types.
+				output.priority = 3;
 				known.insert(call, output);
 				changed = true;
 			}

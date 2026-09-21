@@ -53,6 +53,23 @@ struct BoundIdentity : CallbackIdentity {
 	}
 };
 
+struct UnboundIdentity : CallbackIdentity {
+	inline static char tag = 0;
+	std::shared_ptr<CallbackIdentity> source;
+	size_t count;
+	UnboundIdentity(std::shared_ptr<CallbackIdentity> p_source, size_t p_count) : source(std::move(p_source)), count(p_count) {}
+	const void *type_tag() const override { return &tag; }
+	uint32_t hash() const override { return source->hash(); }
+	const CallbackIdentity &base() const override { return source->base(); }
+	bool equals(const CallbackIdentity &p_other) const override {
+		if (p_other.type_tag() != &tag) {
+			return false;
+		}
+		const auto &other = static_cast<const UnboundIdentity &>(p_other);
+		return count == other.count && source->equals(*other.source);
+	}
+};
+
 struct EngineCallbackIdentity : CallbackIdentity {
 	inline static char tag = 0;
 	Callable callback;
@@ -95,6 +112,10 @@ class WCallable<R(Args...)> {
 	template <class Tuple, size_t... I>
 	R call_tuple(Tuple &p_args, std::index_sequence<I...>) const {
 		return invocation->invoke(argument<I>(p_args)...);
+	}
+	template <class Source, class Tuple, size_t... I>
+	static R call_unbound(const Source &p_source, Tuple &p_args, std::index_sequence<I...>) {
+		return p_source.call(std::get<I>(p_args)...);
 	}
 	template <class Tuple, size_t... I>
 	void set_defaults(Tuple &&p_defaults, std::index_sequence<I...>) {
@@ -199,6 +220,18 @@ public:
 	auto bind(Bound... p_bound) const {
 		static_assert(sizeof...(Bound) <= sizeof...(Args));
 		return bind_tuple(std::make_tuple(std::move(p_bound)...), std::make_index_sequence<sizeof...(Args) - sizeof...(Bound)>());
+	}
+	template <size_t Count, class SourceSignature>
+	static WCallable unbind(const WCallable<SourceSignature> &p_source) {
+		static_assert(Count > 0 && Count <= sizeof...(Args));
+		if (p_source.is_null()) {
+			return {};
+		}
+		return make([p_source](Args... p_args) -> R {
+			auto args = std::forward_as_tuple(p_args...);
+			return call_unbound(p_source, args, std::make_index_sequence<sizeof...(Args) - Count>());
+		},
+				[p_source]() { return p_source.is_valid(); }, p_source.owner, std::make_shared<UnboundIdentity>(p_source.identity, Count));
 	}
 	static WCallable from_callable(Callable p_callable) {
 		return make([p_callable](Args... p_args) -> R {

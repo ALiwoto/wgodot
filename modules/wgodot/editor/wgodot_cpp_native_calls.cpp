@@ -12,9 +12,6 @@ void WGodotCppEmitter::initialize_native_methods() {
 	for (const auto &entry : native_cpp_methods) {
 		native_methods.insert(String(entry.owner) + "::" + entry.name, entry.method);
 	}
-	// These binding wrappers only forward to the public API.
-	native_methods.insert("Object::get", "get");
-	native_methods.insert("Object::set", "set");
 }
 
 String WGodotCppEmitter::native_argument_type(const PropertyInfo &p_info, const Parser::Node *p_origin) {
@@ -116,19 +113,6 @@ WGodotCppEmitter::Value WGodotCppEmitter::native_call(const Parser::CallNode *p_
 	const bool core_loader = method->get_instance_class() == SNAME("ResourceLoader") && method->get_name() == SNAME("load_threaded_get_status");
 	if (!method->is_static() && !core_loader) {
 		receiver = lower_receiver(p_base);
-		// Preserve any narrowing separately from its storage representation.
-		if (receiver_needs_cast(receiver, p_base_type, p_call)) {
-			if (!receiver.borrowed && !receiver.object_pointer) {
-				Vector<String> setup;
-				materialize(receiver, setup);
-				receiver.setup = setup;
-			}
-			receiver.code = receiver_pointer(receiver, p_base_type, p_call);
-			receiver.cpp_type = class_name(p_base_type, p_call) + " *";
-			receiver.storage_type = type(p_base_type, p_call);
-			receiver.object_pointer = true;
-			receiver.borrowed = false;
-		}
 	}
 	return native_invoke(method, receiver, arguments, type(p_call->type_constraint, p_call), p_call);
 }
@@ -141,8 +125,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::native_invoke(const MethodBind *p_meth
 	NativeCall call;
 	call.owner = class_name(owner_type, p_origin);
 	const String key = String(p_method->get_instance_class()) + "::" + String(p_method->get_name());
-	const String *mapped_method = native_methods.getptr(key);
-	call.method = mapped_method ? *mapped_method : String(p_method->get_name());
+	call.method = p_method->get_name();
 	call.is_static = p_method->is_static();
 	for (int i = 0; i < p_method->get_argument_count(); i++) {
 		call.argument_types.push_back(native_argument_type(p_method->get_argument_info(i), p_origin));
@@ -163,7 +146,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::native_invoke(const MethodBind *p_meth
 		}
 		p_arguments.push_back(lower_literal(p_method->get_default_argument(i), p_origin));
 	}
-	const bool instance_call = !call.is_static || call.receiver_argument;
+	const bool instance_call = !call.is_static;
 	Vector<Value> operands(p_arguments);
 	if (instance_call) {
 		operands.push_back(p_receiver);
@@ -176,16 +159,19 @@ WGodotCppEmitter::Value WGodotCppEmitter::native_invoke(const MethodBind *p_meth
 		if (!receiver.borrowed && !receiver.object_pointer) {
 			materialize(receiver, result.setup);
 		}
-		pointer = materialize_receiver(result, receiver, receiver.object_pointer ? receiver.code : receiver.code + ".ptr()", call.receiver_argument);
+		// Methods and property accessors can use a narrowed type while the
+		// receiver's retained storage still has its original base type.
+		pointer = materialize_receiver(result, receiver, receiver_pointer(receiver, owner_type, p_origin), true);
 	}
 	Vector<String> arguments;
-	if (call.receiver_argument) {
+	if (instance_call && !call.adapted) {
 		arguments.push_back(pointer);
 	}
 	for (int i = 0; i < p_arguments.size(); i++) {
 		arguments.push_back(convert_value(operands[i], call.argument_types[i]));
 	}
-	result.code = (call.is_static ? call.owner + "::" : pointer + "->") + call.method + "(" + String(", ").join(arguments) + ")";
+	const String target = call.adapted ? (call.is_static ? call.owner + "::" : pointer + "->") + call.method : native_access(p_method, p_origin);
+	result.code = target + "(" + String(", ").join(arguments) + ")";
 	result.effects = true;
 	if (p_result == "void") {
 		result.cpp_type = "void";

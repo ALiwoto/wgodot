@@ -39,7 +39,7 @@ if env.editor_build:
     env_wgodot.Depends("editor/wgodot_cpp_emitter.cpp", native_headers)
     native_methods = env_wgodot.CommandNoCache(
         "editor/wgodot_cpp_native_methods.gen.h",
-        sorted(set(implementations)),
+        sorted(set(implementations + headers)),
         env.Run(cpp_builders.native_methods),
     )
     env_wgodot.Depends("editor/wgodot_cpp_native_calls.cpp", native_methods)

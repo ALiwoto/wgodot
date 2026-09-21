@@ -70,14 +70,5 @@ void WGodotCppEmitter::configure_native_call(const MethodBind *p_method, const P
 		r_arguments.push_back(progress);
 		r_call.is_static = true;
 		r_call.adapted = true;
-	} else if (owner == SNAME("StreamPeer") && method == SNAME("put_data")) {
-		class_call_headers.insert("modules/wgodot/native/wgodot_native_engine.h");
-		r_call.owner = "WGodotNative";
-		r_call.method = "stream_put_data";
-		r_call.receiver_argument = true;
-		r_call.is_static = true;
-	} else if (owner == SNAME("FileAccess") && (method == SNAME("get_buffer") || method == SNAME("store_buffer"))) {
-		// The argument types select the public vector overloads directly.
-		r_call.method = method;
 	}
 }

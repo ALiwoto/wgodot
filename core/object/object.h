@@ -43,6 +43,10 @@
 #include "core/templates/safe_refcount.h"
 #include "core/variant/variant.h"
 
+// wgodot-changes::begin
+#include "core/object/wgodot_native_access.h"
+// wgodot-changes::end
+
 #define ADD_SIGNAL(m_signal) get_gdtype_static_mutable().add_signal(m_signal)
 #define ADD_PROPERTY(m_property, m_setter, m_getter) ::ClassDB::add_property(get_class_static(), m_property, StringName(m_setter), StringName(m_getter))
 #define ADD_PROPERTYI(m_property, m_setter, m_getter, m_index) ::ClassDB::add_property(get_class_static(), m_property, StringName(m_setter), StringName(m_getter), m_index)
@@ -247,6 +251,9 @@ private:
 private: \
 	void operator=(const m_class &p_rval) = delete; \
 	friend class ::ClassDB; \
+	/* wgodot-changes::begin */ \
+	friend struct ::WGodotNative::EngineAccess<m_class>; \
+	/* wgodot-changes::end */ \
 \
 	static GDType &get_gdtype_static_mutable() { \
 		static GDType *gdtype = nullptr; \
@@ -599,6 +606,9 @@ protected:
 	void _clear_internal_resource_paths(const Variant &p_var);
 
 	friend class ::ClassDB;
+	// wgodot-changes::begin
+	friend struct ::WGodotNative::EngineAccess<Object>;
+	// wgodot-changes::end
 	friend class PlaceholderExtensionInstance;
 
 	static void _add_class_to_classdb(GDType &p_class, const GDType *p_inherits);
