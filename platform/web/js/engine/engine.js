@@ -99,7 +99,9 @@ const Engine = (function () {
 					return new Promise(function (resolve, reject) {
 						promise.then(function (response) {
 							const cloned = new Response(response.clone().body, { 'headers': [['content-type', 'application/wasm']] });
-							Godot(me.config.getModuleConfig(loadPath, cloned)).then(function (module) {
+							// wgodot-changes::begin
+							Godot(me.config.getModuleConfig(loadPath, cloned, reject)).then(function (module) {
+							// wgodot-changes::end
 								const paths = me.config.persistentPaths;
 								module['initFS'](paths).then(function (err) {
 									me.rtenv = module;
@@ -107,9 +109,11 @@ const Engine = (function () {
 										Engine.unload();
 									}
 									resolve();
-								});
-							});
-						});
+								// wgodot-changes::begin
+								}).catch(reject);
+							}).catch(reject);
+						}).catch(reject);
+						// wgodot-changes::end
 					});
 				}
 				preloader.setProgressFunc(this.config.onProgress);

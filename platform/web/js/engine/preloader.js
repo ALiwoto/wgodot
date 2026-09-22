@@ -19,9 +19,13 @@ const Preloader = /** @constructor */ function () { // eslint-disable-line no-un
 		const reader = response.body.getReader();
 		return new Response(new ReadableStream({
 			start: function (controller) {
+				// wgodot-changes::begin
 				onloadprogress(reader, controller).then(function () {
 					controller.close();
+				}).catch(function (error) {
+					controller.error(error);
 				});
+				// wgodot-changes::end
 			},
 		}), { headers: response.headers });
 	}
@@ -36,7 +40,13 @@ const Preloader = /** @constructor */ function () { // eslint-disable-line no-un
 			if (!response.ok) {
 				return Promise.reject(new Error(`Failed loading file '${file}'`));
 			}
-			const tr = getTrackedResponse(response, tracker[file]);
+			// wgodot-changes::begin
+			// Count downloaded bytes before any application-level decompression.
+			const tracked = getTrackedResponse(response, tracker[file]);
+			const decode = globalThis['WGodotDecompress'];
+			return Promise.resolve(decode ? decode(tracked) : tracked);
+		}).then(function (tr) {
+			// wgodot-changes::end
 			if (raw) {
 				return Promise.resolve(tr);
 			}

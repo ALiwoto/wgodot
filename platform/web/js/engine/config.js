@@ -288,7 +288,9 @@ const InternalConfig = function (initConfig) { // eslint-disable-line no-unused-
 	 * @param {string} loadPath
 	 * @param {Response} response
 	 */
-	Config.prototype.getModuleConfig = function (loadPath, response) {
+	// wgodot-changes::begin
+	Config.prototype.getModuleConfig = function (loadPath, response, onError) {
+	// wgodot-changes::end
 		let r = response;
 		const gdext = this.gdextensionLibs;
 		// wgodot-changes::begin
@@ -305,11 +307,15 @@ const InternalConfig = function (initConfig) { // eslint-disable-line no-unused-
 					onSuccess(result['instance'], result['module']);
 				}
 				if (typeof (WebAssembly.instantiateStreaming) !== 'undefined') {
-					WebAssembly.instantiateStreaming(Promise.resolve(r), imports).then(done);
+					// wgodot-changes::begin
+					WebAssembly.instantiateStreaming(Promise.resolve(r), imports).then(done).catch(onError);
+					// wgodot-changes::end
 				} else {
+					// wgodot-changes::begin
 					r.arrayBuffer().then(function (buffer) {
-						WebAssembly.instantiate(buffer, imports).then(done);
-					});
+						return WebAssembly.instantiate(buffer, imports).then(done);
+					}).catch(onError);
+					// wgodot-changes::end
 				}
 				r = null;
 				return {};

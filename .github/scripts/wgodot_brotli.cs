@@ -16,21 +16,29 @@ public static class WGodotBrotli
             throw new InvalidOperationException("Brotli compression failed: " + path);
         }
 
-        string destination = path + ".br";
+        // An application-level container, not HTTP Content-Encoding. The loader
+        // recognizes WGB1 and leaves untagged files alone, regardless of filename.
+        string destination = path + ".br.bin";
         using (FileStream stream = File.Create(destination))
+        using (var writer = new BinaryWriter(stream))
         {
-            stream.Write(output, 0, written);
+            writer.Write(new byte[] { (byte)'W', (byte)'G', (byte)'B', (byte)'1' });
+            writer.Write((uint)input.Length);
+            writer.Write(output, 0, written);
         }
 
         using (FileStream stream = File.OpenRead(destination))
-        using (var decoded = new BrotliStream(stream, CompressionMode.Decompress))
-        using (SHA256 hash = SHA256.Create())
         {
-            if (!CryptographicOperations.FixedTimeEquals(hash.ComputeHash(input), hash.ComputeHash(decoded)))
+            stream.Position = 8;
+            using (var decoded = new BrotliStream(stream, CompressionMode.Decompress))
+            using (SHA256 hash = SHA256.Create())
             {
-                throw new InvalidDataException("Brotli verification failed: " + path);
+                if (!CryptographicOperations.FixedTimeEquals(hash.ComputeHash(input), hash.ComputeHash(decoded)))
+                {
+                    throw new InvalidDataException("Brotli verification failed: " + path);
+                }
             }
         }
-        return written;
+        return written + 8;
     }
 }
