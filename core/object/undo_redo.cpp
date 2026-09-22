@@ -377,7 +377,9 @@ void UndoRedo::_process_operation_list(List<Operation>::Element *r_elements, boo
 				if (method_callback) {
 					Vector<Variant> binds;
 					if (op.callable.is_custom()) {
-						CallableCustomBind *ccb = dynamic_cast<CallableCustomBind *>(op.callable.get_custom());
+						// wgodot-changes::begin
+						CallableCustomBind *ccb = op.callable.get_custom()->as_bind();
+						// wgodot-changes::end
 						if (ccb) {
 							binds = ccb->get_binds();
 						}

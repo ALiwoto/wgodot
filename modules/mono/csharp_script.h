@@ -47,12 +47,13 @@ class CSharpScript;
 class CSharpInstance;
 class CSharpLanguage;
 
-template <typename TScriptInstance, typename TScriptLanguage>
-TScriptInstance *cast_script_instance(ScriptInstance *p_inst) {
-	return dynamic_cast<TScriptInstance *>(p_inst);
+// wgodot-changes::begin
+inline CSharpInstance *cast_csharp_instance(ScriptInstance *p_instance) {
+	return p_instance ? p_instance->get_csharp_instance() : nullptr;
 }
 
-#define CAST_CSHARP_INSTANCE(m_inst) (cast_script_instance<CSharpInstance, CSharpLanguage>(m_inst))
+#define CAST_CSHARP_INSTANCE(m_inst) (cast_csharp_instance(m_inst))
+// wgodot-changes::end
 
 class CSharpScript : public Script {
 	GDCLASS(CSharpScript, Script);
@@ -334,6 +335,10 @@ class CSharpInstance : public ScriptInstance {
 	static CSharpInstance *create_for_managed_type(Object *p_owner, CSharpScript *p_script, const MonoGCHandleData &p_gchandle);
 
 public:
+	// wgodot-changes::begin
+	CSharpInstance *get_csharp_instance() override { return this; }
+	// wgodot-changes::end
+
 	_FORCE_INLINE_ bool is_destructing_script_instance() { return destructing_script_instance; }
 
 	_FORCE_INLINE_ GCHandleIntPtr get_gchandle_intptr() { return gchandle.get_intptr(); }

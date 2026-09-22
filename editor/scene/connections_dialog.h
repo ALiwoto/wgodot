@@ -70,7 +70,9 @@ public:
 
 			Callable base_callable;
 			if (p_connection.callable.is_custom()) {
-				CallableCustomBind *ccb = dynamic_cast<CallableCustomBind *>(p_connection.callable.get_custom());
+				// wgodot-changes::begin
+				CallableCustomBind *ccb = p_connection.callable.get_custom()->as_bind();
+				// wgodot-changes::end
 				if (ccb) {
 					binds = ccb->get_binds();
 					unbinds = ccb->get_unbound_arguments_count();
@@ -78,7 +80,9 @@ public:
 					base_callable = ccb->get_callable();
 				}
 
-				CallableCustomUnbind *ccu = dynamic_cast<CallableCustomUnbind *>(p_connection.callable.get_custom());
+				// wgodot-changes::begin
+				CallableCustomUnbind *ccu = p_connection.callable.get_custom()->as_unbind();
+				// wgodot-changes::end
 				if (ccu) {
 					ccu->get_bound_arguments(binds);
 					unbinds = ccu->get_unbinds();

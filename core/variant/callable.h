@@ -37,6 +37,10 @@ class Array;
 class Object;
 class Variant;
 class CallableCustom;
+// wgodot-changes::begin
+class CallableCustomBind;
+class CallableCustomUnbind;
+// wgodot-changes::end
 
 // This is an abstraction of things that can be called.
 // It is used for signals and other cases where efficient calling of functions
@@ -146,6 +150,12 @@ class CallableCustom {
 	bool referenced = false;
 
 public:
+	// wgodot-changes::begin
+	virtual CallableCustomBind *as_bind() { return nullptr; }
+	virtual CallableCustomUnbind *as_unbind() { return nullptr; }
+	virtual void *get_userdata(void *p_token) const { return nullptr; }
+	// wgodot-changes::end
+
 	typedef bool (*CompareEqualFunc)(const CallableCustom *p_a, const CallableCustom *p_b);
 	typedef bool (*CompareLessFunc)(const CallableCustom *p_a, const CallableCustom *p_b);
 

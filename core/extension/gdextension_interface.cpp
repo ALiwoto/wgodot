@@ -159,9 +159,11 @@ public:
 		return 0;
 	}
 
-	void *get_userdata(void *p_token) const {
+	// wgodot-changes::begin
+	void *get_userdata(void *p_token) const override {
 		return (p_token == token) ? userdata : nullptr;
 	}
+	// wgodot-changes::end
 
 	void call(const Variant **p_arguments, int p_argcount, Variant &r_return_value, Callable::CallError &r_call_error) const override {
 		GDExtensionCallError error;
@@ -1559,7 +1561,10 @@ static GDExtensionScriptInstancePtr gdextension_placeholder_script_instance_crea
 }
 
 static void gdextension_placeholder_script_instance_update(GDExtensionScriptInstancePtr p_placeholder, GDExtensionConstTypePtr p_properties, GDExtensionConstTypePtr p_values) {
-	PlaceHolderScriptInstance *placeholder = dynamic_cast<PlaceHolderScriptInstance *>(reinterpret_cast<ScriptInstance *>(p_placeholder));
+	// wgodot-changes::begin
+	ScriptInstance *instance = reinterpret_cast<ScriptInstance *>(p_placeholder);
+	PlaceHolderScriptInstance *placeholder = instance ? instance->get_placeholder() : nullptr;
+	// wgodot-changes::end
 	ERR_FAIL_NULL_MSG(placeholder, "Unable to update placeholder, expected a PlaceHolderScriptInstance but received an invalid type.");
 
 	const Array &properties = *reinterpret_cast<const Array *>(p_properties);
@@ -1623,11 +1628,9 @@ static void *gdextension_callable_custom_get_userdata(GDExtensionTypePtr p_calla
 	if (!callable.is_custom()) {
 		return nullptr;
 	}
-	const CallableCustomExtension *custom_callable = dynamic_cast<const CallableCustomExtension *>(callable.get_custom());
-	if (!custom_callable) {
-		return nullptr;
-	}
-	return custom_callable->get_userdata(p_token);
+	// wgodot-changes::begin
+	return callable.get_custom()->get_userdata(p_token);
+	// wgodot-changes::end
 }
 
 static GDExtensionMethodBindPtr gdextension_classdb_get_method_bind(GDExtensionConstStringNamePtr p_classname, GDExtensionConstStringNamePtr p_methodname, GDExtensionInt p_hash) {

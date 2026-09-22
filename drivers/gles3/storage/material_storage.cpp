@@ -2604,10 +2604,9 @@ RSE::CullMode MaterialStorage::material_get_cull_mode(RID p_material) const {
 	ERR_FAIL_NULL_V(material, RSE::CULL_MODE_DISABLED);
 	ERR_FAIL_NULL_V(material->shader, RSE::CULL_MODE_DISABLED);
 	if (material->shader->data) {
-		SceneShaderData *data = dynamic_cast<SceneShaderData *>(material->shader->data);
-		if (data) {
-			return (RSE::CullMode)data->cull_mode;
-		}
+		// wgodot-changes::begin
+		return material->shader->data->get_cull_mode();
+		// wgodot-changes::end
 	}
 	return RSE::CULL_MODE_DISABLED;
 }

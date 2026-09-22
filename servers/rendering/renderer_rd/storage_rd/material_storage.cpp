@@ -2657,19 +2657,9 @@ RSE::CullMode RendererRD::MaterialStorage::material_get_cull_mode(RID p_material
 	ERR_FAIL_NULL_V(material->shader, RSE::CULL_MODE_DISABLED);
 
 	if (material->shader->type == ShaderType::SHADER_TYPE_3D && material->shader->data) {
-#ifdef FORWARD_RD_ENABLED
-		RendererSceneRenderImplementation::SceneShaderForwardClustered::ShaderData *sd_clustered = dynamic_cast<RendererSceneRenderImplementation::SceneShaderForwardClustered::ShaderData *>(material->shader->data);
-		if (sd_clustered) {
-			return (RSE::CullMode)sd_clustered->cull_mode;
-		}
-#endif // FORWARD_RD_ENABLED
-
-#ifdef MOBILE_RD_ENABLED
-		RendererSceneRenderImplementation::SceneShaderForwardMobile::ShaderData *sd_mobile = dynamic_cast<RendererSceneRenderImplementation::SceneShaderForwardMobile::ShaderData *>(material->shader->data);
-		if (sd_mobile) {
-			return (RSE::CullMode)sd_mobile->cull_mode;
-		}
-#endif // MOBILE_RD_ENABLED
+		// wgodot-changes::begin
+		return material->shader->data->get_cull_mode();
+		// wgodot-changes::end
 	}
 
 	return RSE::CULL_MODE_DISABLED;

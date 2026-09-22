@@ -891,6 +891,10 @@ public:
 	DynamicOffsetLayout dynamic_offset_layout;
 	bool uses_argument_buffers = true;
 
+	// wgodot-changes::begin
+	virtual void set_label(NS::String *p_label) = 0;
+	// wgodot-changes::end
+
 	MDShader(CharString p_name, Vector<UniformSet> p_sets, bool p_uses_argument_buffers) :
 			name(p_name), sets(p_sets), uses_argument_buffers(p_uses_argument_buffers) {}
 	virtual ~MDShader() = default;
@@ -902,6 +906,10 @@ public:
 
 	std::shared_ptr<MDLibrary> kernel;
 
+	// wgodot-changes::begin
+	void set_label(NS::String *p_label) override { kernel->set_label(p_label); }
+	// wgodot-changes::end
+
 	MDComputeShader(CharString p_name, Vector<UniformSet> p_sets, bool p_uses_argument_buffers, std::shared_ptr<MDLibrary> p_kernel);
 };
 
@@ -911,6 +919,13 @@ public:
 
 	std::shared_ptr<MDLibrary> vert;
 	std::shared_ptr<MDLibrary> frag;
+
+	// wgodot-changes::begin
+	void set_label(NS::String *p_label) override {
+		vert->set_label(p_label);
+		frag->set_label(p_label);
+	}
+	// wgodot-changes::end
 
 	MDRenderShader(CharString p_name,
 			Vector<UniformSet> p_sets,

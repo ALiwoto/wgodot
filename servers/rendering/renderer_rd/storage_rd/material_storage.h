@@ -81,6 +81,9 @@ public:
 		virtual void set_code(const String &p_Code) = 0;
 		virtual bool is_animated() const = 0;
 		virtual bool casts_shadows() const = 0;
+		// wgodot-changes::begin
+		virtual RSE::CullMode get_cull_mode() const { return RSE::CULL_MODE_DISABLED; }
+		// wgodot-changes::end
 		virtual RenderingServerTypes::ShaderNativeSourceCode get_native_source_code() const = 0;
 		virtual Pair<ShaderRD *, RID> get_native_shader_and_version() const = 0;
 

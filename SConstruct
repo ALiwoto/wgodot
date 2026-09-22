@@ -939,6 +939,12 @@ if env["disable_exceptions"]:
 elif env.msvc:
     env.Append(CXXFLAGS=["/EHsc"])
 
+# wgodot-changes::begin
+from misc.utility.wgodot_rtti import configure_release
+
+configure_release(env)
+# wgodot-changes::end
+
 # Configure compiler warnings
 env.AppendUnique(CCFLAGS=["$WARNLEVEL"])
 if env.msvc and not methods.using_clang(env):  # MSVC

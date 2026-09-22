@@ -306,6 +306,9 @@ public:
 		virtual void set_code(const String &p_Code);
 		virtual bool is_animated() const;
 		virtual bool casts_shadows() const;
+		// wgodot-changes::begin
+		RSE::CullMode get_cull_mode() const override { return static_cast<RSE::CullMode>(cull_mode); }
+		// wgodot-changes::end
 		virtual RenderingServerTypes::ShaderNativeSourceCode get_native_source_code() const;
 		virtual Pair<ShaderRD *, RID> get_native_shader_and_version() const;
 		RD::PolygonCullMode get_cull_mode_from_cull_variant(CullVariant p_cull_variant);

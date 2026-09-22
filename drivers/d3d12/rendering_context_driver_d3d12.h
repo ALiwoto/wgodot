@@ -56,6 +56,10 @@ class RenderingContextDriverD3D12 : public RenderingContextDriver {
 	Error _initialize_devices();
 
 public:
+	// wgodot-changes::begin
+	RenderingContextDriverD3D12 *get_d3d12_driver() override { return this; }
+	// wgodot-changes::end
+
 	virtual Error initialize() override;
 	virtual const Device &device_get(uint32_t p_device_index) const override;
 	virtual uint32_t device_get_count() const override;

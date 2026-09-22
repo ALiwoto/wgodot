@@ -34,6 +34,10 @@
 
 class Script;
 class ScriptLanguage;
+// wgodot-changes::begin
+class PlaceHolderScriptInstance;
+class CSharpInstance;
+// wgodot-changes::end
 
 class ScriptInstance {
 public:
@@ -86,6 +90,10 @@ public:
 	virtual Ref<Script> get_script() const = 0;
 
 	virtual bool is_placeholder() const { return false; }
+	// wgodot-changes::begin
+	virtual PlaceHolderScriptInstance *get_placeholder() { return nullptr; }
+	virtual CSharpInstance *get_csharp_instance() { return nullptr; }
+	// wgodot-changes::end
 
 	virtual void property_set_fallback(const StringName &p_name, const Variant &p_value, bool *r_valid);
 	virtual Variant property_get_fallback(const StringName &p_name, bool *r_valid);

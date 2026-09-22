@@ -264,6 +264,11 @@ if env["builtin_graphite"] and freetype_enabled and env["graphite"]:
 
 if env["builtin_icu4c"]:
     env_icu = env_modules.Clone()
+    # wgodot-changes::begin
+    from misc.utility.wgodot_rtti import enable_for_c_library
+
+    enable_for_c_library(env_icu)
+    # wgodot-changes::end
     env_icu.disable_warnings()
 
     thirdparty_dir = "#thirdparty/icu4c/"

@@ -64,6 +64,9 @@ struct ShaderData {
 	virtual void set_code(const String &p_Code) = 0;
 	virtual bool is_animated() const = 0;
 	virtual bool casts_shadows() const = 0;
+	// wgodot-changes::begin
+	virtual RSE::CullMode get_cull_mode() const { return RSE::CULL_MODE_DISABLED; }
+	// wgodot-changes::end
 	virtual RenderingServerTypes::ShaderNativeSourceCode get_native_source_code() const { return RenderingServerTypes::ShaderNativeSourceCode(); }
 
 	virtual ~ShaderData() {}
@@ -354,6 +357,10 @@ struct SceneShaderData : public ShaderData {
 	virtual bool is_animated() const;
 	virtual bool casts_shadows() const;
 	virtual RenderingServerTypes::ShaderNativeSourceCode get_native_source_code() const;
+
+	// wgodot-changes::begin
+	RSE::CullMode get_cull_mode() const override { return cull_mode; }
+	// wgodot-changes::end
 
 	SceneShaderData();
 	virtual ~SceneShaderData();

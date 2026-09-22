@@ -37,6 +37,9 @@
 #include <cstdint>
 
 class RenderingDeviceDriver;
+// wgodot-changes::begin
+class RenderingContextDriverD3D12;
+// wgodot-changes::end
 
 class RenderingContextDriver {
 public:
@@ -95,6 +98,9 @@ public:
 	};
 
 	virtual ~RenderingContextDriver();
+	// wgodot-changes::begin
+	virtual RenderingContextDriverD3D12 *get_d3d12_driver() { return nullptr; }
+	// wgodot-changes::end
 	virtual Error initialize() = 0;
 	virtual const Device &device_get(uint32_t p_device_index) const = 0;
 	virtual uint32_t device_get_count() const = 0;

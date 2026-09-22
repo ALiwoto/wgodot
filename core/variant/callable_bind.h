@@ -41,6 +41,10 @@ class CallableCustomBind : public CallableCustom {
 	static bool _less_func(const CallableCustom *p_a, const CallableCustom *p_b);
 
 public:
+	// wgodot-changes::begin
+	CallableCustomBind *as_bind() override { return this; }
+	// wgodot-changes::end
+
 	//for every type that inherits, these must always be the same for this type
 	virtual uint32_t hash() const override;
 	virtual String get_as_text() const override;
@@ -70,6 +74,10 @@ class CallableCustomUnbind : public CallableCustom {
 	static bool _less_func(const CallableCustom *p_a, const CallableCustom *p_b);
 
 public:
+	// wgodot-changes::begin
+	CallableCustomUnbind *as_unbind() override { return this; }
+	// wgodot-changes::end
+
 	//for every type that inherits, these must always be the same for this type
 	virtual uint32_t hash() const override;
 	virtual String get_as_text() const override;

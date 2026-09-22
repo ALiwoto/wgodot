@@ -133,9 +133,11 @@ void XRPositionalTracker::set_pose(const StringName &p_action_name, const Transf
 
 Variant XRPositionalTracker::get_input(const StringName &p_action_name) const {
 	// Complain if this method is called on a XRPositionalTracker instance.
-	if (!dynamic_cast<const XRControllerTracker *>(this)) {
+	// wgodot-changes::begin
+	if (!Object::cast_to<XRControllerTracker>(this)) {
 		WARN_DEPRECATED_MSG(R"*(The "get_input()" method is deprecated, use "XRControllerTracker" instead.)*");
 	}
+	// wgodot-changes::end
 
 	if (inputs.has(p_action_name)) {
 		return inputs[p_action_name];
@@ -146,9 +148,11 @@ Variant XRPositionalTracker::get_input(const StringName &p_action_name) const {
 
 void XRPositionalTracker::set_input(const StringName &p_action_name, const Variant &p_value) {
 	// Complain if this method is called on a XRPositionalTracker instance.
-	if (!dynamic_cast<XRControllerTracker *>(this)) {
+	// wgodot-changes::begin
+	if (!Object::cast_to<XRControllerTracker>(this)) {
 		WARN_DEPRECATED_MSG(R"*(The "set_input()" method is deprecated, use "XRControllerTracker" instead.)*");
 	}
+	// wgodot-changes::end
 
 	// XR inputs
 	bool changed;

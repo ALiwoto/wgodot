@@ -391,6 +391,9 @@ public:
 	void update(const List<PropertyInfo> &p_properties, const HashMap<StringName, Variant> &p_values); //likely changed in editor
 
 	virtual bool is_placeholder() const override { return true; }
+	// wgodot-changes::begin
+	PlaceHolderScriptInstance *get_placeholder() override { return this; }
+	// wgodot-changes::end
 
 	virtual void property_set_fallback(const StringName &p_name, const Variant &p_value, bool *r_valid = nullptr) override;
 	virtual Variant property_get_fallback(const StringName &p_name, bool *r_valid = nullptr) override;

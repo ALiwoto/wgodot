@@ -37,8 +37,11 @@
 #include "core/templates/safe_refcount.h"
 #include "core/variant/variant.h"
 
+// wgodot-changes::begin
+#include "core/templates/wgodot_type_name.h"
+// wgodot-changes::end
+
 #include <cstdio>
-#include <typeinfo> // IWYU pragma: keep // Used in macro.
 
 #ifdef TSAN_ENABLED
 #include <sanitizer/tsan_interface.h>
@@ -427,8 +430,10 @@ public:
 		}
 
 		if (alloc_count) {
+			// wgodot-changes::begin
 			print_error(vformat("ERROR: %d RID allocations of type '%s' were leaked at exit.",
-					alloc_count, description ? description : typeid(T).name()));
+					alloc_count, description ? description : wgodot_type_name<T>()));
+			// wgodot-changes::end
 
 			for (size_t i = 0; i < max_alloc; i++) {
 				uint32_t validator = chunks[i / elements_in_chunk][i % elements_in_chunk].validator;

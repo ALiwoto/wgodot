@@ -3563,8 +3563,9 @@ DisplayServerWindows::ScreenHdrData DisplayServerWindows::_get_screen_hdr_data(D
 		}
 
 #ifdef D3D12_ENABLED
-		// A dynamic cast is used here because the rendering context is not an Object and Object:cast is not supported.
-		RenderingContextDriverD3D12 *rendering_context_d3d12 = dynamic_cast<RenderingContextDriverD3D12 *>(rendering_context);
+		// wgodot-changes::begin
+		RenderingContextDriverD3D12 *rendering_context_d3d12 = rendering_context ? rendering_context->get_d3d12_driver() : nullptr;
+		// wgodot-changes::end
 		if (rendering_context_d3d12) {
 			IDXGIFactory2 *dxgi_factory = rendering_context_d3d12->dxgi_factory_get();
 

@@ -40,6 +40,12 @@
 // If on MSVC, also ensures that the `Zc:__cplusplus` flag is present.
 static_assert(__cplusplus >= 201703L, "Minimum of C++17 required.");
 
+// wgodot-changes::begin
+#if defined(WGODOT_NO_RTTI) && (defined(__cpp_rtti) || defined(__GXX_RTTI) || defined(_CPPRTTI))
+#error Release engine and game code must be compiled without C++ RTTI.
+#endif
+// wgodot-changes::end
+
 // IWYU pragma: begin_exports
 
 // Include first in case the platform needs to pre-define/include some things.

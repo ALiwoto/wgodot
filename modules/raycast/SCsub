@@ -76,6 +76,11 @@ if env["builtin_embree"]:
         env_raycast.Append(CCFLAGS=["/wd4324"])
 
     env_thirdparty = env_raycast.Clone()
+    # wgodot-changes::begin
+    from misc.utility.wgodot_rtti import enable_for_c_library
+
+    enable_for_c_library(env_thirdparty)
+    # wgodot-changes::end
     env_thirdparty.force_optimization_on_debug()
     env_thirdparty.disable_warnings()
     env_thirdparty.add_source_files(thirdparty_obj, thirdparty_sources)

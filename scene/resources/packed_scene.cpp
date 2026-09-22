@@ -1253,7 +1253,9 @@ Error SceneState::_parse_connections(Node *p_owner, Node *p_node, HashMap<String
 			Callable base_callable;
 
 			if (c.callable.is_custom()) {
-				CallableCustomBind *ccb = dynamic_cast<CallableCustomBind *>(c.callable.get_custom());
+				// wgodot-changes::begin
+				CallableCustomBind *ccb = c.callable.get_custom()->as_bind();
+				// wgodot-changes::end
 				if (ccb) {
 					binds = ccb->get_binds();
 					unbinds = ccb->get_unbound_arguments_count();
@@ -1261,7 +1263,9 @@ Error SceneState::_parse_connections(Node *p_owner, Node *p_node, HashMap<String
 					base_callable = ccb->get_callable();
 				}
 
-				CallableCustomUnbind *ccu = dynamic_cast<CallableCustomUnbind *>(c.callable.get_custom());
+				// wgodot-changes::begin
+				CallableCustomUnbind *ccu = c.callable.get_custom()->as_unbind();
+				// wgodot-changes::end
 				if (ccu) {
 					ccu->get_bound_arguments(binds);
 					unbinds = ccu->get_unbinds();
