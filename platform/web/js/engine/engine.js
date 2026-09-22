@@ -40,10 +40,14 @@ const Engine = (function () {
 	 *
 	 * @function Engine.load
 	 */
-	Engine.load = function (basePath, size) {
+	// wgodot-changes::begin
+	Engine.load = function (basePath, size, wasmPath = '') {
+	// wgodot-changes::end
 		if (loadPromise == null) {
 			loadPath = basePath;
-			loadPromise = preloader.loadPromise(`${loadPath}.wasm`, size, true);
+			// wgodot-changes::begin
+			loadPromise = preloader.loadPromise(wasmPath || `${loadPath}.wasm`, size, true);
+			// wgodot-changes::end
 			requestAnimationFrame(preloader.animateProgress);
 		}
 		return loadPromise;
@@ -83,7 +87,9 @@ const Engine = (function () {
 						initPromise = Promise.reject(new Error('A base path must be provided when calling `init` and the engine is not loaded.'));
 						return initPromise;
 					}
-					Engine.load(basePath, this.config.fileSizes[`${basePath}.wasm`]);
+					// wgodot-changes::begin
+					Engine.load(basePath, this.config.fileSizes[`${basePath}.wasm`], this.config.fileMappings[`${basePath}.wasm`]);
+					// wgodot-changes::end
 				}
 				const me = this;
 				function doInit(promise) {
@@ -128,7 +134,13 @@ const Engine = (function () {
 			 * @returns {Promise} A Promise that resolves once the file is loaded.
 			 */
 			preloadFile: function (file, path) {
-				return preloader.preload(file, path, this.config.fileSizes[file]);
+				// wgodot-changes::begin
+				const url = typeof file === 'string'
+					? (this.config.fileMappings[file] || file)
+					: file;
+				const destination = path || (typeof file === 'string' ? file : undefined);
+				return preloader.preload(url, destination, this.config.fileSizes[file]);
+				// wgodot-changes::end
 			},
 
 			/**

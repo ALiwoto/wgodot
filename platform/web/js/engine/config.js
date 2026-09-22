@@ -133,6 +133,10 @@ const InternalConfig = function (initConfig) { // eslint-disable-line no-unused-
 		 * @type {Array.<string>}
 		 */
 		fileSizes: [],
+		// wgodot-changes::begin
+		/** @type {Object<string, string>} */
+		fileMappings: {},
+		// wgodot-changes::end
 		/**
 		 * @ignore
 		 * @type {number}
@@ -269,6 +273,9 @@ const InternalConfig = function (initConfig) { // eslint-disable-line no-unused-
 		this.serviceWorker = parse('serviceWorker', this.serviceWorker);
 		this.gdextensionLibs = parse('gdextensionLibs', this.gdextensionLibs);
 		this.fileSizes = parse('fileSizes', this.fileSizes);
+		// wgodot-changes::begin
+		this.fileMappings = parse('fileMappings', this.fileMappings);
+		// wgodot-changes::end
 		this.emscriptenPoolSize = parse('emscriptenPoolSize', this.emscriptenPoolSize);
 		this.godotPoolSize = parse('godotPoolSize', this.godotPoolSize);
 		this.args = parse('args', this.args);
@@ -284,7 +291,9 @@ const InternalConfig = function (initConfig) { // eslint-disable-line no-unused-
 	Config.prototype.getModuleConfig = function (loadPath, response) {
 		let r = response;
 		const gdext = this.gdextensionLibs;
-		return {
+		// wgodot-changes::begin
+		const moduleConfig = {
+		// wgodot-changes::end
 			'print': this.onPrint,
 			'printErr': this.onPrintError,
 			'thisProgram': this.executable,
@@ -324,6 +333,15 @@ const InternalConfig = function (initConfig) { // eslint-disable-line no-unused-
 				return path;
 			},
 		};
+		// wgodot-changes::begin
+		const locateFile = moduleConfig['locateFile'];
+		const mappings = this.fileMappings;
+		moduleConfig['locateFile'] = function (path) {
+			const resolved = locateFile(path);
+			return mappings[resolved] || resolved;
+		};
+		return moduleConfig;
+		// wgodot-changes::end
 	};
 
 	/**

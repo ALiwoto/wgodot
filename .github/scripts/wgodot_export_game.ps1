@@ -160,6 +160,9 @@ try {
     foreach ($variant in $variants) {
         Write-Host "Building $Platform native game ($variant)..."
         $variantFlags = $buildFlags + "target=template_$variant"
+        if ($variant -eq 'release') {
+            $variantFlags += @('optimize=speed', 'lto=full')
+        }
         if ($Platform -eq 'android') {
             foreach ($architecture in @('arm64', 'arm32')) {
                 Invoke-Checked 'scons' ($variantFlags + "arch=$architecture")
@@ -207,14 +210,59 @@ try {
         switch ($Platform) {
             linux {
                 Invoke-Checked 'chmod' @('+x', $exportPath)
-                Invoke-Checked 'tar' @('-czf', "$releaseDirectory/$assetName-x86_64.tar.gz", '-C', $variantDirectory, '.')
+                if ($variant -eq 'release') {
+                    Invoke-Checked 'python' @("$PSScriptRoot/wgodot_package_game.py", 'tar-xz', $variantDirectory, "$releaseDirectory/$assetName-x86_64.tar.xz")
+                } else {
+                    Invoke-Checked 'tar' @('-czf', "$releaseDirectory/$assetName-x86_64.tar.gz", '-C', $variantDirectory, '.')
+                }
             }
             windows {
-                Compress-Archive -Path "$variantDirectory/*" -DestinationPath "$releaseDirectory/$assetName-x86_64.zip" -Force
+                if ($variant -eq 'release') {
+                    $archivePath = "$releaseDirectory/$assetName-x86_64.7z"
+                    # Recreate the archive: 7-Zip's update mode retains files removed from a later export.
+                    if (Test-Path -LiteralPath $archivePath) { Remove-Item -LiteralPath $archivePath }
+                    Push-Location $variantDirectory
+                    try {
+                        Invoke-Checked '7z' @('a', '-t7z', '-mx=9', '-m0=LZMA2:d=256m:fb=273', '-ms=on', '-mmt=2', $archivePath, '.')
+                        Invoke-Checked '7z' @('t', $archivePath)
+                    } finally {
+                        Pop-Location
+                    }
+                    Invoke-Checked 'python' @("$PSScriptRoot/wgodot_package_game.py", 'report', $variantDirectory, $archivePath)
+                } else {
+                    Compress-Archive -Path "$variantDirectory/*" -DestinationPath "$releaseDirectory/$assetName-x86_64.zip" -Force
+                }
             }
             android {
+                if ($variant -eq 'release') {
+                    $originalApkSize = (Get-Item -LiteralPath $exportPath).Length
+                    $repackedPath = "$exportPath.repacked"
+                    $alignedPath = "$exportPath.aligned"
+                    Invoke-Checked 'python' @("$PSScriptRoot/wgodot_package_game.py", 'apk', $exportPath, $repackedPath)
+                    # Android requires alignment before signing. Never modify the final signed APK.
+                    $zipAlign = "$env:ANDROID_HOME/build-tools/$buildTools/zipalign"
+                    Invoke-Checked $zipAlign @('-f', '-z', '-P', '16', '4', $repackedPath, $alignedPath)
+                    Invoke-Checked $apkSigner @(
+                        'sign', '--ks', $env:GODOT_ANDROID_KEYSTORE_RELEASE_PATH,
+                        '--ks-key-alias', $env:GODOT_ANDROID_KEYSTORE_RELEASE_USER,
+                        '--ks-pass', 'env:GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD',
+                        '--key-pass', 'env:GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD',
+                        '--v4-signing-enabled', 'false', $alignedPath
+                    )
+                    Invoke-Checked $apkSigner @('verify', $alignedPath)
+                    Invoke-Checked $zipAlign @('-c', '-P', '16', '4', $alignedPath)
+                    if ((Get-Item -LiteralPath $alignedPath).Length -lt $originalApkSize) {
+                        Move-Item -LiteralPath $alignedPath -Destination $exportPath -Force
+                    } else {
+                        Remove-Item -LiteralPath $alignedPath
+                    }
+                    Remove-Item -LiteralPath $repackedPath
+                }
                 Invoke-Checked $apkSigner @('verify', $exportPath)
                 Copy-Item -LiteralPath $exportPath -Destination "$releaseDirectory/$assetName.apk"
+                if ($variant -eq 'release') {
+                    Invoke-Checked 'python' @("$PSScriptRoot/wgodot_package_game.py", 'report', "$originalApkSize", "$releaseDirectory/$assetName.apk")
+                }
             }
             web {
                 # Godot generates all asset references from the versioned export basename.
@@ -230,7 +278,13 @@ try {
                     $webManifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $webManifestPath -Encoding utf8
                 }
 
-                Compress-Archive -Path "$variantDirectory/*" -DestinationPath "$releaseDirectory/$assetName-wasm32.zip" -Force
+                if ($variant -eq 'release') {
+                    $webOriginalSize = (Get-ChildItem -LiteralPath $variantDirectory -Recurse -File | Measure-Object -Property Length -Sum).Sum
+                    & "$PSScriptRoot/wgodot_compress_web.ps1" -Directory $variantDirectory -BaseName "$webExportBase-$variant"
+                    Invoke-Checked 'python' @("$PSScriptRoot/wgodot_package_game.py", 'zip', $variantDirectory, "$releaseDirectory/$assetName-wasm32.zip", '--original-size', "$webOriginalSize")
+                } else {
+                    Compress-Archive -Path "$variantDirectory/*" -DestinationPath "$releaseDirectory/$assetName-wasm32.zip" -Force
+                }
             }
         }
     }
