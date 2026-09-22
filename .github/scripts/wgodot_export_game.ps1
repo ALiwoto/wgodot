@@ -11,6 +11,18 @@ param(
     [string]$Edition,
     [string]$AndroidPackageId,
     [string]$EngineDirectory = "$PSScriptRoot/../..",
+    [string]$EditorPath,
+    [string]$ConfigPath,
+    [string]$SigningConfigPath,
+    [string]$ModuleDirectory,
+    [string]$OutputDirectory,
+    [string]$ReleaseDirectory,
+    [string]$ProjectName = 'DarkSurvivors',
+    [string]$PythonExecutable = 'python',
+    [string]$GradleExecutable,
+    [string[]]$GradleArguments = @(),
+    [ValidateRange(0, 1024)]
+    [int]$Jobs = 0,
     [switch]$BuildDebug,
     [switch]$BuildRelease = $true
 )
@@ -25,22 +37,30 @@ function Invoke-Checked([string]$Program, [string[]]$Arguments) {
 $EngineDirectory = (Resolve-Path -LiteralPath $EngineDirectory).Path.Replace('\', '/')
 $GameDirectory = (Resolve-Path -LiteralPath $GameDirectory).Path.Replace('\', '/')
 $editorName = if ($IsWindows) { 'godot.windows.editor.x86_64.exe' } else { 'godot.linuxbsd.editor.x86_64' }
-$editorPath = "$EngineDirectory/bin/$editorName"
-$moduleDirectory = "$EngineDirectory/generated/main_game"
-$configPath = "$GameDirectory/configs/config.ini"
-$outputDirectory = "$EngineDirectory/game_build/$Edition"
-$releaseDirectory = "$EngineDirectory/release_assets"
+if (!$EditorPath) { $EditorPath = "$EngineDirectory/bin/$editorName" }
+$EditorPath = (Resolve-Path -LiteralPath $EditorPath).Path
+if (!$ModuleDirectory) { $ModuleDirectory = "$EngineDirectory/generated/main_game" }
+if (!$OutputDirectory) { $OutputDirectory = "$EngineDirectory/game_build/$Edition" }
+if (!$ReleaseDirectory) { $ReleaseDirectory = "$EngineDirectory/release_assets" }
+$ModuleDirectory = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($ModuleDirectory).Replace('\', '/')
+$OutputDirectory = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputDirectory)
+$ReleaseDirectory = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($ReleaseDirectory)
+if ($SigningConfigPath) { $SigningConfigPath = (Resolve-Path -LiteralPath $SigningConfigPath).Path }
 $variants = @()
 if ($BuildRelease) { $variants += 'release' }
 if ($BuildDebug) { $variants += 'debug' }
 if (!$variants) { throw 'Enable at least one game build variant.' }
-$configSecretName = if ($Edition -eq 'ir') { 'GAME_IR_CONFIG_CONTENT' } else { 'GAME_GLOBAL_CONFIG_CONTENT' }
-$configContent = [Environment]::GetEnvironmentVariable($configSecretName, 'Process')
-if (!$configContent) { throw "$configSecretName is required." }
+if ($ConfigPath) {
+    $ConfigPath = (Resolve-Path -LiteralPath $ConfigPath).Path
+} else {
+    $configSecretName = if ($Edition -eq 'ir') { 'GAME_IR_CONFIG_CONTENT' } else { 'GAME_GLOBAL_CONFIG_CONTENT' }
+    $configContent = [Environment]::GetEnvironmentVariable($configSecretName, 'Process')
+    if (!$configContent) { throw "Supply ConfigPath or $configSecretName." }
+}
 if ($Platform -eq 'web' -and $Edition -ne 'global') { throw 'Web exports must use the global instance.' }
 if ($Platform -eq 'android' -and !$AndroidPackageId) { throw 'AndroidPackageId is required for Android editions.' }
 
-# Match the project's wg wrapper while using the editor built in this job.
+# Match the project's wg wrapper while using the selected host editor.
 function wg {
     Invoke-Checked $editorPath (@('--headless', '--path', $GameDirectory, '--wg') + $args)
 }
@@ -74,12 +94,20 @@ if ($Platform -eq 'web') {
     $webExportBase = "index-$gameRevision-$engineRevision"
 }
 
-$signingDirectory = $null
+$temporaryConfigPath = $null
+$temporaryKeystorePath = $null
 $signingVariables = @(
     'GODOT_ANDROID_KEYSTORE_RELEASE_PATH',
     'GODOT_ANDROID_KEYSTORE_RELEASE_USER',
     'GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD'
 )
+$previousSigningEnvironment = @{}
+foreach ($name in $signingVariables) {
+    $previousSigningEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+}
+$presetPath = Join-Path $GameDirectory 'export_presets.cfg'
+$originalPreset = $null
+$presetChanged = $false
 
 Push-Location $EngineDirectory
 try {
@@ -88,49 +116,72 @@ try {
         $gradleConfig = Get-Content platform/android/java/app/config.gradle -Raw
         $sdkMatch = [regex]::Match($gradleConfig, '(?m)^\s*compileSdk\s*:\s*(\d+)')
         $toolsMatch = [regex]::Match($gradleConfig, "(?m)^\s*buildTools\s*:\s*'([^']+)'")
-        if (!$sdkMatch.Success -or !$toolsMatch.Success) { throw 'Cannot read Android SDK versions from app/config.gradle.' }
+        $ndkMatch = [regex]::Match($gradleConfig, "(?m)^\s*ndkVersion\s*:\s*'([^']+)'")
+        if (!$sdkMatch.Success -or !$toolsMatch.Success -or !$ndkMatch.Success) {
+            throw 'Cannot read Android SDK versions from app/config.gradle.'
+        }
         $compileSdk = $sdkMatch.Groups[1].Value
         $buildTools = $toolsMatch.Groups[1].Value
-        Invoke-Checked "$env:ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" @("platforms;android-$compileSdk", "build-tools;$buildTools")
-        $apkSigner = "$env:ANDROID_HOME/build-tools/$buildTools/apksigner"
+        $batchExtension = if ($IsWindows) { '.bat' } else { '' }
+        $binaryExtension = if ($IsWindows) { '.exe' } else { '' }
+        if ($env:GITHUB_ACTIONS -eq 'true') {
+            Invoke-Checked "$env:ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager$batchExtension" @("platforms;android-$compileSdk", "build-tools;$buildTools")
+        }
+        $apkSigner = "$env:ANDROID_HOME/build-tools/$buildTools/apksigner$batchExtension"
+        $zipAlign = "$env:ANDROID_HOME/build-tools/$buildTools/zipalign$binaryExtension"
+        foreach ($requiredPath in @("$env:ANDROID_HOME/platforms/android-$compileSdk/android.jar", $apkSigner, $zipAlign)) {
+            if (!(Test-Path -LiteralPath $requiredPath)) { throw "Required Android SDK file is missing: $requiredPath" }
+        }
+        if ($env:GITHUB_ACTIONS -ne 'true' -and !(Test-Path -LiteralPath "$env:ANDROID_HOME/ndk/$($ndkMatch.Groups[1].Value)/source.properties")) {
+            throw "Install Android NDK $($ndkMatch.Groups[1].Value) in ANDROID_HOME before building."
+        }
+        if (!$GradleExecutable) { $GradleExecutable = "$EngineDirectory/platform/android/java/gradlew$batchExtension" }
+        Get-Command $GradleExecutable -ErrorAction Stop | Out-Null
+        if (!(Test-Path -LiteralPath "$env:JAVA_HOME/bin/java$binaryExtension")) {
+            throw 'Set JAVA_HOME to the installed JDK before building Android.'
+        }
 
         if ($BuildRelease) {
-            if (!$env:GAME_ANDROID_SIGN_KEY -or !$env:GAME_ANDROID_SIGN_JSON) {
-                throw 'Android release builds require GAME_ANDROID_SIGN_KEY and GAME_ANDROID_SIGN_JSON.'
+            if ($SigningConfigPath) {
+                $signing = Get-Content -LiteralPath $SigningConfigPath -Raw | ConvertFrom-Json
+                if (!$signing.KeystorePath) { throw 'SigningConfigPath requires KeystorePath.' }
+                $keystorePath = $signing.KeystorePath
+                if (![IO.Path]::IsPathRooted($keystorePath)) {
+                    $keystorePath = Join-Path (Split-Path $SigningConfigPath -Parent) $keystorePath
+                }
+                $keystorePath = (Resolve-Path -LiteralPath $keystorePath).Path
+            } else {
+                if (!$env:GAME_ANDROID_SIGN_KEY -or !$env:GAME_ANDROID_SIGN_JSON) {
+                    throw 'Supply SigningConfigPath or GAME_ANDROID_SIGN_KEY and GAME_ANDROID_SIGN_JSON.'
+                }
+                $signing = $env:GAME_ANDROID_SIGN_JSON | ConvertFrom-Json
+                $temporaryKeystorePath = [IO.Path]::GetTempFileName()
+                [IO.File]::WriteAllBytes($temporaryKeystorePath, [Convert]::FromBase64String($env:GAME_ANDROID_SIGN_KEY))
+                $keystorePath = $temporaryKeystorePath
             }
-            $signing = $env:GAME_ANDROID_SIGN_JSON | ConvertFrom-Json
-            if (!$signing.Alias -or !$signing.Password) { throw 'GAME_ANDROID_SIGN_JSON requires Alias and Password.' }
-            Write-Output "::add-mask::$($signing.Alias)"
-            Write-Output "::add-mask::$($signing.Password)"
-            $signingDirectory = Join-Path $env:RUNNER_TEMP 'wgodot-game-signing'
-            New-Item -ItemType Directory -Path $signingDirectory -Force | Out-Null
-            $keystorePath = Join-Path $signingDirectory 'android-release.keystore'
-            [IO.File]::WriteAllBytes($keystorePath, [Convert]::FromBase64String($env:GAME_ANDROID_SIGN_KEY))
+            if (!$signing.Alias -or !$signing.Password) { throw 'Signing configuration requires Alias and Password.' }
+            if ($env:GITHUB_ACTIONS -eq 'true') {
+                Write-Output "::add-mask::$($signing.Alias)"
+                Write-Output "::add-mask::$($signing.Password)"
+            }
             $env:GODOT_ANDROID_KEYSTORE_RELEASE_PATH = $keystorePath
             $env:GODOT_ANDROID_KEYSTORE_RELEASE_USER = $signing.Alias
             $env:GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD = $signing.Password
         }
     }
 
-    New-Item -ItemType Directory -Path "$GameDirectory/configs", $outputDirectory, $releaseDirectory -Force | Out-Null
-    # The edition's secret owns the complete configuration compiled into the game.
-    [IO.File]::WriteAllText($configPath, $configContent, [Text.UTF8Encoding]::new($false))
-    try {
-        & "$GameDirectory/scripts/gen_startup_config.ps1" -TargetConfigPath $configPath `
-            -TargetScriptPath "$GameDirectory/src/core/game_config/game_startup_config.gd"
+    New-Item -ItemType Directory -Path $outputDirectory, $releaseDirectory -Force | Out-Null
+    if (!$ConfigPath) {
+        $temporaryConfigPath = [IO.Path]::GetTempFileName()
+        [IO.File]::WriteAllText($temporaryConfigPath, $configContent, [Text.UTF8Encoding]::new($false))
+        $ConfigPath = $temporaryConfigPath
     }
-    finally {
-        Remove-Item -LiteralPath $configPath
-    }
+    Write-Host "Generating startup configuration from: $ConfigPath"
+    & "$GameDirectory/scripts/gen_startup_config.ps1" -TargetConfigPath $ConfigPath `
+        -TargetScriptPath "$GameDirectory/src/core/game_config/game_startup_config.gd"
 
     Write-Host 'Importing game resources...'
     Invoke-Checked $editorPath @('--headless', '--path', $GameDirectory, '--editor', '--import')
-    $presetArguments = @(
-        '--headless', '--path', $GameDirectory, '--script', "$PSScriptRoot/wgodot_game_preset.gd", '--',
-        $presetName, $moduleDirectory, $templates.debug, $templates.release
-    )
-    if ($Platform -eq 'android') { $presetArguments += $AndroidPackageId }
-    Invoke-Checked $editorPath $presetArguments
 
     Write-Host 'Generating native game code...'
     wg export-cpp $moduleDirectory
@@ -139,8 +190,6 @@ try {
     $sconsPlatform = if ($Platform -eq 'linux') { 'linuxbsd' } else { $Platform }
     $buildFlags = @(
         "platform=$sconsPlatform",
-        'production=yes',
-        'debug_symbols=no',
         'module_text_server_fb_enabled=yes',
         "custom_modules=$moduleDirectory",
         'custom_modules_recursive=no',
@@ -150,6 +199,7 @@ try {
         "cache_path=$EngineDirectory/.scons_cache",
         'redirect_build_objects=no'
     )
+    if ($Jobs) { $buildFlags += "-j$Jobs" }
     $buildFlags += switch ($Platform) {
         linux { @('arch=x86_64', 'accesskit=no') }
         windows { @('arch=x86_64', 'accesskit=no', 'angle=no', 'd3d12=no', 'windows_subsystem=console') }
@@ -161,14 +211,18 @@ try {
         Write-Host "Building $Platform native game ($variant)..."
         $variantFlags = $buildFlags + "target=template_$variant"
         if ($variant -eq 'release') {
-            $variantFlags += @('optimize=speed', 'lto=full')
+            $variantFlags += @('production=yes', 'debug_symbols=no', 'optimize=speed', 'lto=full')
+        } elseif ($Platform -eq 'android') {
+            $variantFlags += @('production=no', 'debug_symbols=yes', 'optimize=debug', 'lto=none')
+        } else {
+            $variantFlags += @('production=yes', 'debug_symbols=no')
         }
         if ($Platform -eq 'android') {
             foreach ($architecture in @('arm64', 'arm32')) {
-                Invoke-Checked 'scons' ($variantFlags + "arch=$architecture")
+                Invoke-Checked $PythonExecutable (@('-m', 'SCons') + $variantFlags + "arch=$architecture")
             }
         } else {
-            Invoke-Checked 'scons' $variantFlags
+            Invoke-Checked $PythonExecutable (@('-m', 'SCons') + $variantFlags)
         }
     }
 
@@ -176,7 +230,7 @@ try {
         Push-Location platform/android/java
         try {
             # Gradle only packages variants whose native libraries were built.
-            Invoke-Checked './gradlew' @('generateGodotTemplates')
+            Invoke-Checked $GradleExecutable ($GradleArguments + 'generateGodotTemplates')
         }
         finally {
             Pop-Location
@@ -185,6 +239,16 @@ try {
             Copy-Item -LiteralPath "bin/android_$variant.apk" -Destination $templates[$variant]
         }
     }
+
+    # Apply export paths only for packaging, then restore the user's preset in finally.
+    $originalPreset = [IO.File]::ReadAllBytes($presetPath)
+    $presetArguments = @(
+        '--headless', '--path', $GameDirectory, '--script', "$PSScriptRoot/wgodot_game_preset.gd", '--',
+        $presetName, $moduleDirectory, $templates.debug, $templates.release
+    )
+    if ($Platform -eq 'android') { $presetArguments += $AndroidPackageId }
+    $presetChanged = $true
+    Invoke-Checked $editorPath $presetArguments
 
     foreach ($variant in $variants) {
         $templatePath = $templates[$variant]
@@ -197,21 +261,21 @@ try {
         $variantDirectory = Join-Path $outputDirectory $variant
         New-Item -ItemType Directory -Path $variantDirectory -Force | Out-Null
         $fileName = switch ($Platform) {
-            linux { 'DarkSurvivors.x86_64' }
-            windows { 'DarkSurvivors.exe' }
-            android { 'DarkSurvivors.apk' }
+            linux { "$ProjectName.x86_64" }
+            windows { "$ProjectName.exe" }
+            android { "$ProjectName.apk" }
             web { "$webExportBase-$variant.html" }
         }
         $exportPath = Join-Path $variantDirectory $fileName
         Write-Host "Exporting $Platform native game ($variant)..."
         Invoke-Checked $editorPath @('--headless', '--path', $GameDirectory, "--export-$variant", $presetName, $exportPath)
 
-        $assetName = "DarkSurvivors-$Edition-$Platform-$variant"
+        $assetName = "$ProjectName-$Edition-$Platform-$variant"
         switch ($Platform) {
             linux {
                 Invoke-Checked 'chmod' @('+x', $exportPath)
                 if ($variant -eq 'release') {
-                    Invoke-Checked 'python' @("$PSScriptRoot/wgodot_package_game.py", 'tar-xz', $variantDirectory, "$releaseDirectory/$assetName-x86_64.tar.xz")
+                    Invoke-Checked $PythonExecutable @("$PSScriptRoot/wgodot_package_game.py", 'tar-xz', $variantDirectory, "$releaseDirectory/$assetName-x86_64.tar.xz")
                 } else {
                     Invoke-Checked 'tar' @('-czf', "$releaseDirectory/$assetName-x86_64.tar.gz", '-C', $variantDirectory, '.')
                 }
@@ -228,7 +292,7 @@ try {
                     } finally {
                         Pop-Location
                     }
-                    Invoke-Checked 'python' @("$PSScriptRoot/wgodot_package_game.py", 'report', $variantDirectory, $archivePath)
+                    Invoke-Checked $PythonExecutable @("$PSScriptRoot/wgodot_package_game.py", 'report', $variantDirectory, $archivePath)
                 } else {
                     Compress-Archive -Path "$variantDirectory/*" -DestinationPath "$releaseDirectory/$assetName-x86_64.zip" -Force
                 }
@@ -238,9 +302,8 @@ try {
                     $originalApkSize = (Get-Item -LiteralPath $exportPath).Length
                     $repackedPath = "$exportPath.repacked"
                     $alignedPath = "$exportPath.aligned"
-                    Invoke-Checked 'python' @("$PSScriptRoot/wgodot_package_game.py", 'apk', $exportPath, $repackedPath)
+                    Invoke-Checked $PythonExecutable @("$PSScriptRoot/wgodot_package_game.py", 'apk', $exportPath, $repackedPath)
                     # Android requires alignment before signing. Never modify the final signed APK.
-                    $zipAlign = "$env:ANDROID_HOME/build-tools/$buildTools/zipalign"
                     Invoke-Checked $zipAlign @('-f', '-z', '-P', '16', '4', $repackedPath, $alignedPath)
                     Invoke-Checked $apkSigner @(
                         'sign', '--ks', $env:GODOT_ANDROID_KEYSTORE_RELEASE_PATH,
@@ -261,7 +324,7 @@ try {
                 Invoke-Checked $apkSigner @('verify', $exportPath)
                 Copy-Item -LiteralPath $exportPath -Destination "$releaseDirectory/$assetName.apk"
                 if ($variant -eq 'release') {
-                    Invoke-Checked 'python' @("$PSScriptRoot/wgodot_package_game.py", 'report', "$originalApkSize", "$releaseDirectory/$assetName.apk")
+                    Invoke-Checked $PythonExecutable @("$PSScriptRoot/wgodot_package_game.py", 'report', "$originalApkSize", "$releaseDirectory/$assetName.apk")
                 }
             }
             web {
@@ -281,7 +344,7 @@ try {
                 if ($variant -eq 'release') {
                     $webOriginalSize = (Get-ChildItem -LiteralPath $variantDirectory -Recurse -File | Measure-Object -Property Length -Sum).Sum
                     & "$PSScriptRoot/wgodot_compress_web.ps1" -Directory $variantDirectory -BaseName "$webExportBase-$variant"
-                    Invoke-Checked 'python' @("$PSScriptRoot/wgodot_package_game.py", 'zip', $variantDirectory, "$releaseDirectory/$assetName-wasm32.zip", '--original-size', "$webOriginalSize")
+                    Invoke-Checked $PythonExecutable @("$PSScriptRoot/wgodot_package_game.py", 'zip', $variantDirectory, "$releaseDirectory/$assetName-wasm32.zip", '--original-size', "$webOriginalSize")
                 } else {
                     Compress-Archive -Path "$variantDirectory/*" -DestinationPath "$releaseDirectory/$assetName-wasm32.zip" -Force
                 }
@@ -290,12 +353,12 @@ try {
     }
 }
 finally {
-    if ($signingDirectory) {
-        Remove-Item -LiteralPath (Join-Path $signingDirectory 'android-release.keystore') -ErrorAction SilentlyContinue
-        Remove-Item -LiteralPath $signingDirectory -ErrorAction SilentlyContinue
+    if ($presetChanged) { [IO.File]::WriteAllBytes($presetPath, $originalPreset) }
+    foreach ($temporaryPath in @($temporaryConfigPath, $temporaryKeystorePath)) {
+        if ($temporaryPath) { Remove-Item -LiteralPath $temporaryPath -ErrorAction SilentlyContinue }
     }
     foreach ($name in $signingVariables) {
-        [Environment]::SetEnvironmentVariable($name, $null, 'Process')
+        [Environment]::SetEnvironmentVariable($name, $previousSigningEnvironment[$name], 'Process')
     }
     Pop-Location
 }
