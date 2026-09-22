@@ -345,6 +345,7 @@ void WGodotCppSignatures::analyze() {
 	for (const auto *node : nodes) {
 		seed(node);
 	}
+	HashSet<const Parser::Node *> linked_arguments;
 	// Every iteration resolves an unknown signature or propagates a stronger call-site constraint. There
 	// is no arbitrary iteration limit or mutation of GDScript's inferred types.
 	bool changed;
@@ -401,6 +402,25 @@ void WGodotCppSignatures::analyze() {
 				continue;
 			}
 			const auto *base = static_cast<const Parser::SubscriptNode *>(call->callee)->base;
+			const bool binding = base->type_constraint.builtin_type == Variant::CALLABLE && call->function_name == SNAME("bind");
+			const bool invocation = (base->type_constraint.builtin_type == Variant::CALLABLE && (call->function_name == SNAME("call") || call->function_name == SNAME("call_deferred"))) ||
+					(base->type_constraint.builtin_type == Variant::SIGNAL && call->function_name == SNAME("emit"));
+			if ((binding || invocation) && !linked_arguments.has(call)) {
+				if (const auto *input = get(base)) {
+					// Higher-order arguments retain their declaration origins through
+					// bind and invocation, just as arguments to direct script calls do.
+					// The receiver can resolve in a later pass, so link only once known.
+					linked_arguments.insert(call);
+					const int offset = binding ? input->arguments.size() - int(call->arguments.size()) : 0;
+					for (uint32_t i = 0; offset >= 0 && i < call->arguments.size() && offset + int(i) < input->arguments.size(); i++) {
+						const auto &parameter = input->arguments[offset + i];
+						if (contains_signature(parameter.type)) {
+							link(call->arguments[i], parameter.origin);
+							changed = true;
+						}
+					}
+				}
+			}
 			if (base->type_constraint.builtin_type == Variant::SIGNAL && !call->arguments.is_empty() &&
 					(call->function_name == SNAME("connect") || call->function_name == SNAME("disconnect") || call->function_name == SNAME("is_connected"))) {
 				if (const auto *input = get(base)) {

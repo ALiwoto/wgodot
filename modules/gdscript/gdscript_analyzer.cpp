@@ -6164,7 +6164,9 @@ GDScriptParser::DataType GDScriptAnalyzer::type_from_metatype(const GDScriptPars
 	return result;
 }
 
-GDScriptParser::DataType GDScriptAnalyzer::type_from_property_hint_string(const String &p_type_name) const {
+// wgodot-changes::begin
+GDScriptParser::DataType GDScriptAnalyzer::type_from_property_hint_string(const String &p_type_name, const GDScriptParser::Node *p_source) const {
+	// wgodot-changes::end
 	GDScriptParser::DataType result;
 	result.type_source = GDScriptParser::DataType::ANNOTATED_EXPLICIT;
 	result.is_constant = false;
@@ -6185,17 +6187,12 @@ GDScriptParser::DataType GDScriptAnalyzer::type_from_property_hint_string(const 
 		result.kind = GDScriptParser::DataType::NATIVE;
 		result.builtin_type = Variant::OBJECT;
 		result.native_type = p_type_name;
-	// wgodot-changes::begin
-	} else if (WGodotGDScriptResolution::is_global_class(p_type_name)) {
-	// wgodot-changes::end
-		// Just load this as it shouldn't be a GDScript.
 		// wgodot-changes::begin
-		Ref<Script> script = WGodotGDScriptResolution::load_script(WGodotGDScriptResolution::get_global_class_path(p_type_name));
+	} else if (WGodotGDScriptResolution::is_global_class(p_type_name)) {
+		// Signal/callable metadata can name GDScript container element types.
+		// Resolve their parser types without recursively loading and compiling scripts.
+		return type_from_metatype(make_global_class_meta_type(p_type_name, p_source));
 		// wgodot-changes::end
-		result.kind = GDScriptParser::DataType::SCRIPT;
-		result.builtin_type = Variant::OBJECT;
-		result.native_type = script->get_instance_base_type();
-		result.script_type = script;
 	} else if (p_type_name == SNAME("Variant")) {
 		result.kind = GDScriptParser::DataType::VARIANT;
 	} else {
@@ -6244,10 +6241,14 @@ GDScriptParser::DataType GDScriptAnalyzer::type_from_property(const PropertyInfo
 		result.kind = GDScriptParser::DataType::BUILTIN;
 		result.builtin_type = p_property.type;
 		if (p_property.type == Variant::ARRAY && p_property.hint == PROPERTY_HINT_ARRAY_TYPE) {
-			result.set_container_element_type(0, type_from_property_hint_string(p_property.hint_string));
+			// wgodot-changes::begin
+			result.set_container_element_type(0, type_from_property_hint_string(p_property.hint_string, p_source));
+			// wgodot-changes::end
 		} else if (p_property.type == Variant::DICTIONARY && p_property.hint == PROPERTY_HINT_DICTIONARY_TYPE) {
-			result.set_container_element_type(0, type_from_property_hint_string(p_property.hint_string.get_slicec(';', 0)));
-			result.set_container_element_type(1, type_from_property_hint_string(p_property.hint_string.get_slicec(';', 1)));
+			// wgodot-changes::begin
+			result.set_container_element_type(0, type_from_property_hint_string(p_property.hint_string.get_slicec(';', 0), p_source));
+			result.set_container_element_type(1, type_from_property_hint_string(p_property.hint_string.get_slicec(';', 1), p_source));
+			// wgodot-changes::end
 		} else if (p_property.type == Variant::INT) {
 			// Check if it's enum.
 			if ((p_property.usage & PROPERTY_USAGE_CLASS_IS_ENUM) && p_property.class_name != StringName()) {
