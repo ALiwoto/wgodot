@@ -179,6 +179,12 @@ def configure(env: "SConsEnvironment"):
 
     if env["PLATFORM"] == "win32":
         env.use_windows_spawn_fix()
+        # wgodot-changes::begin
+        # Large modules can exceed Windows' command-line limit when archiving.
+        env["ARCOM_ORIG"] = env["ARCOM"]
+        env["ARCOM"] = "${TEMPFILE('$ARCOM_ORIG', '$ARCOMSTR')}"
+        env["TEMPFILESUFFIX"] = ".rsp"
+        # wgodot-changes::end
 
     if sys.platform.startswith("linux"):
         host_subpath = "linux-x86_64"

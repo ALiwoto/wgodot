@@ -227,7 +227,8 @@ jobs:
 
   android-templates:
     name: Android templates
-    if: github.event_name != 'release'
+    # Android templates are built locally.
+    if: ${{ false }}
     runs-on: ubuntu-24.04
     timeout-minutes: 180
 

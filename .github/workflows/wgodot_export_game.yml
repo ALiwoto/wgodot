@@ -76,10 +76,11 @@ jobs:
           }
           if (!$env:GH_TOKEN) { throw 'Set GAME_REPO_GH_TOKEN to a token with read access to the game repository.' }
           if (!$env:GAME_GLOBAL_CONFIG_CONTENT) { throw 'Set GAME_GLOBAL_CONFIG_CONTENT to the global game configuration INI contents.' }
-          if (!$env:GAME_IR_CONFIG_CONTENT) { throw 'Set GAME_IR_CONFIG_CONTENT to the IR game configuration INI contents.' }
-          if ($env:GAME_BUILD_RELEASE -eq 'true' -and (!$env:GAME_ANDROID_SIGN_KEY -or !$env:GAME_ANDROID_SIGN_JSON)) {
-            throw 'Android release builds require GAME_ANDROID_SIGN_KEY (Base64 keystore) and GAME_ANDROID_SIGN_JSON.'
-          }
+          # Android builds run locally; keep their checks for when CI is re-enabled.
+          # if (!$env:GAME_IR_CONFIG_CONTENT) { throw 'Set GAME_IR_CONFIG_CONTENT to the IR game configuration INI contents.' }
+          # if ($env:GAME_BUILD_RELEASE -eq 'true' -and (!$env:GAME_ANDROID_SIGN_KEY -or !$env:GAME_ANDROID_SIGN_JSON)) {
+          #   throw 'Android release builds require GAME_ANDROID_SIGN_KEY (Base64 keystore) and GAME_ANDROID_SIGN_JSON.'
+          # }
           $url = [uri]$env:GAME_REPO_URL
           if (!$url.IsAbsoluteUri -or $url.Scheme -ne 'https' -or $url.Host -ne 'github.com') {
             throw 'GAME_REPO_URL must be an HTTPS GitHub repository URL.'
@@ -118,12 +119,13 @@ jobs:
             editor-platform: windows
             editor-flags: accesskit=no angle=no d3d12=no windows_subsystem=console
             cache-name: wgodot-windows-game
-          - name: Android
-            platform: android
-            runner: ubuntu-24.04
-            editor-platform: linuxbsd
-            editor-flags: accesskit=no
-            cache-name: wgodot-android-game
+          # Android builds run locally.
+          # - name: Android
+          #   platform: android
+          #   runner: ubuntu-24.04
+          #   editor-platform: linuxbsd
+          #   editor-flags: accesskit=no
+          #   cache-name: wgodot-android-game
           - name: Web
             platform: web
             runner: ubuntu-24.04
