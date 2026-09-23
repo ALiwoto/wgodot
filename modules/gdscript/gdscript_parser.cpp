@@ -5260,16 +5260,11 @@ bool GDScriptParser::warning_ignore_annotation(AnnotationNode *p_annotation, Nod
 					}
 				} break;
 
+				// wgodot-changes::begin
 				case Node::FUNCTION: {
-					FunctionNode *function = static_cast<FunctionNode *>(p_target);
-					end_line = function->start_line;
-					for (const ParameterNode *param : function->parameters) {
-						end_line = MAX(end_line, param->end_line);
-						if (param->initializer != nullptr) {
-							end_line = MAX(end_line, param->initializer->end_line);
-						}
-					}
+					// Keep the full function range so the ignore also covers its body.
 				} break;
+				// wgodot-changes::end
 
 				case Node::MATCH_BRANCH: {
 					MatchBranchNode *branch = static_cast<MatchBranchNode *>(p_target);
