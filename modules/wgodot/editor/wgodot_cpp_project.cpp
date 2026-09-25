@@ -9,6 +9,7 @@
 #include "core/object/script_language.h"
 #include "core/templates/hash_set.h"
 
+#include "modules/gdscript/wgodot_gd/editor/export/export_pass_no_export.h"
 
 namespace {
 class ResourceDependencies : public WGodotCppAstVisitor {
@@ -31,6 +32,12 @@ public:
 	HashMap<String, WGodotCppProject::Preload> paths;
 };
 } // namespace
+
+WGodotCppProject::~WGodotCppProject() {
+	if (export_analysis) {
+		memdelete(export_analysis);
+	}
+}
 
 Error WGodotCppProject::collect_scripts(const String &p_directory, Vector<String> &r_scripts) {
 	Error error = OK;
@@ -65,6 +72,42 @@ Error WGodotCppProject::collect_scripts(const String &p_directory, Vector<String
 	return OK;
 }
 
+Error WGodotCppProject::prepare_sources(const Vector<String> &p_scripts) {
+	using namespace WGodotGDScriptExportTransform;
+
+	HashSet<String> paths;
+	for (const String &path : p_scripts) {
+		paths.insert(path);
+	}
+	ExportProject original;
+	String error_text;
+	Error error = original.capture(paths, paths, error_text);
+	if (error != OK) {
+		diagnostics.push_back(error_text);
+		return error;
+	}
+
+	NoExportPass no_export;
+	ExportPassOutput output(export_context);
+	{
+		ExportAnalysis analysis(original, export_context);
+		const ExportAnalysisInput input{ { original, export_context }, analysis };
+		error = no_export.analyze(input, error_text);
+		if (error == OK) {
+			error = no_export.transform(input, output, error_text);
+		}
+	}
+	if (error == OK) {
+		error = original.apply(output.edits, no_export.get_name(), export_project, error_text);
+	}
+	if (error != OK) {
+		diagnostics.push_back("no_export: " + error_text);
+		return error;
+	}
+	export_analysis = memnew(ExportAnalysis(export_project, export_context));
+	return OK;
+}
+
 void WGodotCppProject::collect_classes(const String &p_script_path, GDScriptParser::ClassNode *p_class) {
 	Class entry;
 	entry.script_path = p_script_path;
@@ -87,6 +130,10 @@ Error WGodotCppProject::analyze() {
 	preloads.clear();
 	diagnostics.clear();
 	parsers.clear();
+	if (export_analysis) {
+		memdelete(export_analysis);
+		export_analysis = nullptr;
+	}
 	if (!GLOBAL_GET("wgodot/gdscript/strict_type_checking")) {
 		diagnostics.push_back("Native export requires strict type checking. Enable 'wgodot/gdscript/strict_type_checking' in Project Settings.");
 		return ERR_UNCONFIGURED;
@@ -101,9 +148,14 @@ Error WGodotCppProject::analyze() {
 		return error;
 	}
 	scripts.sort();
+	error = prepare_sources(scripts);
+	if (error != OK) {
+		return error;
+	}
+	WGodotGDScriptExportTransform::ExportAnalysis::Scope scope(*export_analysis);
 	ResourceDependencies dependencies;
 	for (const String &path : scripts) {
-		Ref<GDScriptParserRef> parser = GDScriptCache::get_parser(path, GDScriptParserRef::FULLY_SOLVED, error);
+		Ref<GDScriptParserRef> parser = export_analysis->get_parser(path, GDScriptParserRef::FULLY_SOLVED, error);
 		if (parser.is_valid()) {
 			parsers.push_back(parser);
 		}

@@ -554,6 +554,7 @@ String WGodotCppEmitter::leaf_expression(const Parser::ExpressionNode *p_express
 }
 
 Error WGodotCppEmitter::generate() {
+	WGodotGDScriptExportTransform::ExportAnalysis::Scope scope(*project.export_analysis);
 	files.clear();
 	preload_indices.clear();
 	preloads = project.get_preloads();
