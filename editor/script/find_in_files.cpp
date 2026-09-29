@@ -29,6 +29,9 @@
 /**************************************************************************/
 
 #include "find_in_files.h"
+// wgodot-changes::begin
+#include "wgodot_find_in_files.h"
+// wgodot-changes::end
 
 #include "core/config/project_settings.h"
 #include "core/io/dir_access.h"
@@ -103,6 +106,9 @@ void FindInFilesSearch::copy_from(const FindInFilesSearch *p_other) {
 	pattern = p_other->pattern;
 	whole_words = p_other->whole_words;
 	match_case = p_other->match_case;
+	// wgodot-changes::begin
+	include_comments = p_other->include_comments;
+	// wgodot-changes::end
 	root_dir = p_other->root_dir;
 
 	include_string = p_other->include_string;
@@ -343,15 +349,28 @@ void FindInFilesSearch::_scan_file(const String &p_fpath) {
 		lines = f->get_as_text().split("\n");
 	}
 
+	// wgodot-changes::begin
+	WGodotSearchComments comments(include_comments ? String() : p_fpath.get_extension());
+	// wgodot-changes::end
 	int line_number = 0;
 
 	for (const String &line : lines) {
+		// wgodot-changes::begin
+		if (!include_comments) {
+			comments.scan_line(line);
+		}
+		// wgodot-changes::end
 		// Line number starts at 1.
 		++line_number;
 		int begin = 0;
 		int end = 0;
 
 		while (find_next(line, pattern, end, match_case, whole_words, begin, end)) {
+			// wgodot-changes::begin
+			if (!include_comments && comments.overlaps(begin, end)) {
+				continue;
+			}
+			// wgodot-changes::end
 			emit_signal(SNAME("result_found"), p_fpath, line_number, begin, end, line);
 		}
 	}
@@ -420,6 +439,9 @@ void FindInFilesSearch::_bind_methods() {
 
 void FindInFilesSearchPanel::set_finder(FindInFilesSearch *p_finder, bool p_init) {
 	finder = p_finder;
+	// wgodot-changes::begin
+	comments_checkbox->set_pressed_no_signal(finder->get_include_comments());
+	// wgodot-changes::end
 	search_text_line_edit->set_text(finder->get_search_text());
 	match_case_checkbox->set_pressed_no_signal(finder->get_match_case());
 	whole_words_checkbox->set_pressed_no_signal(finder->get_whole_words());
@@ -537,6 +559,9 @@ void FindInFilesSearchPanel::_on_search_modified() {
 }
 
 void FindInFilesSearchPanel::_update_finder() {
+	// wgodot-changes::begin
+	finder->set_include_comments(comments_checkbox->is_pressed());
+	// wgodot-changes::end
 	finder->set_search_text(search_text_line_edit->get_text());
 	finder->set_match_case(match_case_checkbox->is_pressed());
 	finder->set_whole_words(whole_words_checkbox->is_pressed());
@@ -738,7 +763,9 @@ FindInFilesSearchPanel::FindInFilesSearchPanel() {
 	additional_options_vbc->add_child(includes_line_edit);
 
 	filters_container = memnew(HFlowContainer);
-	additional_options_vbc->add_child(filters_container);
+	// wgodot-changes::begin
+	_wgodot_add_search_filters();
+	// wgodot-changes::end
 	EditorSettings::get_singleton()->connect("settings_changed", callable_mp(this, &FindInFilesSearchPanel::_update_file_extensions).bind(false));
 	_update_file_extensions(true);
 

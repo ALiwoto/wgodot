@@ -46,6 +46,9 @@ class FindInFilesSearch : public Node {
 	String root_dir;
 	bool whole_words = false;
 	bool match_case = false;
+	// wgodot-changes::begin
+	bool include_comments = true;
+	// wgodot-changes::end
 
 	// State.
 	HashSet<String> include_wildcards;
@@ -91,6 +94,10 @@ public:
 
 	bool is_whole_words() const { return whole_words; }
 	bool is_match_case() const { return match_case; }
+	// wgodot-changes::begin
+	void set_include_comments(bool p_include) { include_comments = p_include; }
+	bool get_include_comments() const { return include_comments; }
+	// wgodot-changes::end
 
 	void start();
 	void stop();
@@ -151,6 +158,10 @@ class FindInFilesSearchPanel : public ScrollContainer {
 	FileDialog *folder_dialog = nullptr;
 	HFlowContainer *filters_container = nullptr;
 	HashMap<String, bool> filters_preferences;
+	// wgodot-changes::begin
+	CheckBox *comments_checkbox = nullptr;
+	void _wgodot_add_search_filters();
+	// wgodot-changes::end
 	LineEdit *folder_line_edit = nullptr;
 	LineEdit *includes_line_edit = nullptr;
 	LineEdit *excludes_line_edit = nullptr;
