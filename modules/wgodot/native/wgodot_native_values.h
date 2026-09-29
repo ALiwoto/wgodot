@@ -2,6 +2,7 @@
 #pragma once
 
 #include "wgodot_native_calls.h"
+#include "wgodot_native_match.h"
 
 #include <optional>
 
@@ -239,9 +240,5 @@ public:
 	int64_t get() const { return position; }
 	void next() { position += step; }
 };
-
-inline bool match_value(const Variant &p_value, const Variant &p_pattern) {
-	return p_value.get_type() == p_pattern.get_type() && p_value == p_pattern;
-}
 
 } // namespace WGodotNative
