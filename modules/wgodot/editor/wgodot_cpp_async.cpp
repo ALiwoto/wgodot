@@ -336,8 +336,10 @@ void WGodotCppAsync::suite(const Parser::SuiteNode *p_suite, int p_indent, bool 
 				line(p_indent, "while (true) {");
 				const String test = condition(node->condition, p_indent + 1);
 				line(p_indent + 1, "if (!" + test + ") { break; }");
+				emitter.begin_loop();
 				suite(node->loop, p_indent + 1, false);
 				line(p_indent, "}");
+				code += emitter.end_loop(p_indent);
 				for (const auto *item : node->loop->statements) {
 					if (item->type == Parser::Node::VARIABLE) {
 						const String &field = emitter.local_overrides[item];
@@ -388,8 +390,10 @@ void WGodotCppAsync::suite(const Parser::SuiteNode *p_suite, int p_indent, bool 
 				const String variable = local(node->variable, node->variable->name, node->variable->type_constraint);
 				line(p_indent, "for (; " + iterator + "->has_value(); " + iterator + "->next()) {");
 				line(p_indent + 1, variable + " = " + iterator + (range ? "->get();" : "->get<" + field_types[variable] + ">();"));
+				emitter.begin_loop();
 				suite(node->loop, p_indent + 1, false);
 				line(p_indent, "}");
+				code += emitter.end_loop(p_indent);
 				line(p_indent, iterator + ".reset();");
 				line(p_indent, variable + " = " + field_types[variable] + "();");
 				for (const auto *item : node->loop->statements) {
@@ -401,26 +405,48 @@ void WGodotCppAsync::suite(const Parser::SuiteNode *p_suite, int p_indent, bool 
 				break;
 			}
 			case Parser::Node::BREAK:
-				line(p_indent, "break;");
+				line(p_indent, emitter.loop_break());
 				break;
 			case Parser::Node::CONTINUE:
 				line(p_indent, "continue;");
 				break;
 			case Parser::Node::MATCH: {
 				const auto *node = static_cast<const Parser::MatchNode *>(statement);
-				if (emitter.is_warray(emitter.expression_type(node->test)) || emitter.is_wdictionary(emitter.expression_type(node->test))) {
+				const auto value_type = emitter.expression_type(node->test);
+				if (emitter.is_warray(value_type) || emitter.is_wdictionary(value_type)) {
 					emitter.unsupported(node, "matching native containers through the current Variant pattern matcher");
 					break;
 				}
-				const String value = add_field(emitter.type(node->test->type_constraint, node->test), "match_value");
-				const String matched = add_field("bool", "matched");
+				const String value = add_field(emitter.type(value_type, node->test), "match_value");
 				line(p_indent, value + " = " + expression(node->test, p_indent) + ";");
 				clear_temporaries(p_indent);
+				Vector<Vector<String>> labels;
+				if (emitter.integer_match_cases(node, labels)) {
+					line(p_indent, "switch (" + value + ") {");
+					emitter.switch_depth++;
+					for (uint32_t i = 0; i < node->branches.size(); i++) {
+						if (labels[i].is_empty()) {
+							continue;
+						}
+						for (const String &label : labels[i]) {
+							line(p_indent + 1, label);
+						}
+						line(p_indent + 1, "{");
+						suite(node->branches[i]->block, p_indent + 2);
+						line(p_indent + 2, "break;");
+						line(p_indent + 1, "}");
+					}
+					emitter.switch_depth--;
+					line(p_indent, "}");
+					line(p_indent, value + " = " + field_types[value] + "();");
+					break;
+				}
+				const String matched = add_field("bool", "matched");
 				line(p_indent, matched + " = false;");
 				for (const auto *branch : node->branches) {
 					Vector<String> patterns;
 					for (const auto *pattern : branch->patterns) {
-						patterns.push_back(emitter.match_condition(pattern, value));
+						patterns.push_back(emitter.match_condition(pattern, value, value_type));
 					}
 					line(p_indent, "if (!" + matched + " && (" + String(" || ").join(patterns) + ")) {");
 					if (branch->guard_body) {

@@ -4,7 +4,8 @@
 param(
 	[switch]$Templates,
 	[switch]$Game,
-	[switch]$Release
+	[switch]$Release,
+	[switch]$Optimize
 )
 
 $ErrorActionPreference = "Stop"
@@ -35,6 +36,10 @@ $sconsArgs = @(
 	"winrt=no"
 )
 
+if (!$Optimize) {
+	$sconsArgs += @("optimize=none", "lto=none")
+}
+
 $binarySuffix = ""
 if ($Game) {
 	$gameModulePath = Join-Path $PSScriptRoot "generated/main_game"
@@ -57,9 +62,9 @@ if ($Game) {
 		"extra_suffix=game"
 	)
 	if (!$Release) {
-		# Keep native game builds easy to step through in the Windows debugger.
+		# Include symbols for debugging native game builds.
 		$sconsArgs = $sconsArgs | Where-Object { $_ -ne "debug_symbols=no" }
-		$sconsArgs += @("debug_symbols=yes", "optimize=none", "lto=none")
+		$sconsArgs += "debug_symbols=yes"
 	}
 }
 if ($Release) {

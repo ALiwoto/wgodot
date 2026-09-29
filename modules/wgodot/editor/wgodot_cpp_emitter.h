@@ -69,6 +69,13 @@ class WGodotCppEmitter {
 	bool emitted_array_range = false;
 	const GDScriptParser::CallNode *awaited_call = nullptr;
 	uint64_t temporary_index = 0;
+	struct LoopContext {
+		String break_label;
+		int switch_depth = 0;
+		bool uses_break_label = false;
+	};
+	Vector<LoopContext> loops;
+	int switch_depth = 0;
 
 	Value lower(const GDScriptParser::ExpressionNode *p_expression);
 	Value lower_call(const GDScriptParser::CallNode *p_call);
@@ -172,8 +179,13 @@ class WGodotCppEmitter {
 	String array_iteration_element(const GDScriptParser::ExpressionNode *p_expression);
 	String array_iteration_result(const String &p_call, const GDScriptParser::Node *p_origin);
 	String iteration(const GDScriptParser::ForNode *p_loop, int p_indent);
+	void begin_loop();
+	String end_loop(int p_indent);
+	String loop_break();
 	String suite(const GDScriptParser::SuiteNode *p_suite, int p_indent);
-	String match_condition(const GDScriptParser::PatternNode *p_pattern, const String &p_value);
+	bool integer_match_cases(const GDScriptParser::MatchNode *p_match, Vector<Vector<String>> &r_labels);
+	String match_statement(const GDScriptParser::MatchNode *p_match, int p_indent);
+	String match_condition(const GDScriptParser::PatternNode *p_pattern, const String &p_value, const GDScriptParser::DataType &p_value_type);
 	String function(const GDScriptParser::FunctionNode *p_function, String &r_declaration, const String &p_cpp_name = String());
 	String lambda(const GDScriptParser::LambdaNode *p_lambda);
 	void emit_class(const WGodotCppProject::Class &p_class);

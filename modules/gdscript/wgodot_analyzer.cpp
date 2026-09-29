@@ -17,6 +17,37 @@
 #include "core/config/project_settings.h"
 #include "core/object/class_db.h"
 
+void GDScriptAnalyzer::wgodot_reduce_enum_query(GDScriptParser::CallNode *p_call) {
+	if (p_call->get_callee_type() != GDScriptParser::Node::SUBSCRIPT || p_call->is_super) {
+		return;
+	}
+	const auto *base = static_cast<GDScriptParser::SubscriptNode *>(p_call->callee)->base;
+	if (!base || !base->is_constant || base->type_constraint.kind != GDScriptParser::DataType::ENUM || !base->type_constraint.is_meta_type || base->reduced_value.get_type() != Variant::DICTIONARY) {
+		return;
+	}
+	// Fold scalar queries on immutable enum dictionaries using builtin metadata.
+	// Container-returning methods must keep their allocation and identity semantics.
+	const auto &result_type = p_call->type_constraint;
+	if (result_type.kind != GDScriptParser::DataType::BUILTIN || (result_type.builtin_type != Variant::INT && result_type.builtin_type != Variant::BOOL) || !Variant::is_builtin_method_const(Variant::DICTIONARY, p_call->function_name)) {
+		return;
+	}
+	Vector<const Variant *> arguments;
+	for (const auto *argument : p_call->arguments) {
+		if (!argument->is_constant) {
+			return;
+		}
+		arguments.push_back(&argument->reduced_value);
+	}
+	Variant receiver = base->reduced_value;
+	Variant result;
+	Callable::CallError error;
+	receiver.call_const(p_call->function_name, arguments.ptrw(), arguments.size(), result, error);
+	if (error.error == Callable::CallError::CALL_OK) {
+		p_call->is_constant = true;
+		p_call->reduced_value = result;
+	}
+}
+
 void GDScriptAnalyzer::wgodot_validate_readonly_variable(GDScriptParser::VariableNode *p_variable, bool p_is_local) {
 	ERR_FAIL_NULL(p_variable);
 
@@ -290,6 +321,10 @@ void GDScriptAnalyzer::wgodot_validate_strict_native_property_access(const Strin
 		return;
 	}
 	if (p_method != SNAME("get") && p_method != SNAME("set") && p_method != SNAME("get_indexed") && p_method != SNAME("set_indexed") && p_method != SNAME("set_deferred")) {
+		return;
+	}
+	// JavaScript properties are resolved by the browser at runtime.
+	if (ClassDB::is_parent_class(p_native_type, SNAME("JavaScriptObject"))) {
 		return;
 	}
 	const MethodBind *method = ClassDB::get_method(p_native_type, p_method);

@@ -39,6 +39,13 @@ WGodotCppEmitter::Value WGodotCppEmitter::builtin_call(const Parser::CallNode *p
 	if (is_wdictionary(base_type) && !base_type.is_meta_type) {
 		return wdictionary_call(p_call);
 	}
+	bool named_format = false;
+	if ((base_type.builtin_type == Variant::STRING || base_type.builtin_type == Variant::STRING_NAME) && p_call->function_name == SNAME("format") && !p_call->arguments.is_empty()) {
+		const auto values_type = expression_type(p_call->arguments[0]);
+		named_format = is_wdictionary(values_type) &&
+				values_type.get_container_element_type(0).kind == Parser::DataType::BUILTIN && values_type.get_container_element_type(0).builtin_type == Variant::STRING &&
+				values_type.get_container_element_type(1).kind == Parser::DataType::BUILTIN && values_type.get_container_element_type(1).builtin_type == Variant::STRING;
+	}
 	if (!validate_builtin_arguments(base_type.builtin_type, p_call->function_name, p_call)) {
 		return String();
 	}
@@ -49,7 +56,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::builtin_call(const Parser::CallNode *p
 		const auto source_type = expression_type(source);
 		const bool string_join = base_type.builtin_type == Variant::STRING && p_call->function_name == SNAME("join") && is_warray(source_type) && source_type.get_container_element_type(0).builtin_type == Variant::STRING;
 		const Variant::Type target = int(i) < Variant::get_builtin_method_argument_count(base_type.builtin_type, p_call->function_name) ? Variant::get_builtin_method_argument_type(base_type.builtin_type, p_call->function_name, i) : Variant::NIL;
-		operands.push_back(string_join ? lower(source) : lower_engine_argument(source, target));
+		operands.push_back(string_join || (named_format && i == 0) ? lower(source) : lower_engine_argument(source, target));
 	}
 	const bool is_static = Variant::is_builtin_method_static(base_type.builtin_type, p_call->function_name);
 	operands.push_back(is_static && base_type.is_meta_type ? Value(type(base_type, base) + "()", type(base_type, base)) : lower(base));
@@ -59,6 +66,13 @@ WGodotCppEmitter::Value WGodotCppEmitter::builtin_call(const Parser::CallNode *p
 		arguments.push_back(operands[i].code);
 	}
 	const String receiver = "(" + operands[operands.size() - 1].code + ")";
+	if (named_format) {
+		class_call_headers.insert("modules/wgodot/native/wgodot_native_string_format.h");
+		result.code = "WGodotNative::format_named(" + receiver + ", " + String(", ").join(arguments) + ")";
+		result.cpp_type = "String";
+		result.effects = true;
+		return result;
+	}
 	if (!is_static && arguments.is_empty()) {
 		if (is_packed(base_type)) {
 			// Reduced constants are engine vectors; script values use Packed's

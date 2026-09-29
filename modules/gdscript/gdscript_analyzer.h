@@ -117,6 +117,7 @@ class GDScriptAnalyzer {
 	void resolve_return(GDScriptParser::ReturnNode *p_return);
 
 	// wgodot-changes::begin
+	void wgodot_reduce_enum_query(GDScriptParser::CallNode *p_call);
 	void wgodot_validate_readonly_variable(GDScriptParser::VariableNode *p_variable, bool p_is_local);
 	bool wgodot_validate_readonly_assignment(GDScriptParser::AssignmentNode *p_assignment);
 	const GDScriptParser::VariableNode *wgodot_get_readonly_assignment_source(GDScriptParser::ExpressionNode *p_assignee) const;

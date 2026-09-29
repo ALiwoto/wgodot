@@ -4047,6 +4047,9 @@ void GDScriptAnalyzer::reduce_call(GDScriptParser::CallNode *p_call, bool p_is_a
 	}
 
 	p_call->type_constraint = call_type;
+	// wgodot-changes::begin
+	wgodot_reduce_enum_query(p_call);
+	// wgodot-changes::end
 }
 
 void GDScriptAnalyzer::reduce_cast(GDScriptParser::CastNode *p_cast) {

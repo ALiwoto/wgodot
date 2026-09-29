@@ -29,6 +29,26 @@ public:
 };
 } // namespace
 
+void WGodotCppEmitter::begin_loop() {
+	loops.push_back({ "loop_end_" + itos(temporary_index++), switch_depth, false });
+}
+
+String WGodotCppEmitter::end_loop(int p_indent) {
+	const LoopContext loop = loops[loops.size() - 1];
+	loops.resize(loops.size() - 1);
+	return loop.uses_break_label ? String("\t").repeat(p_indent) + loop.break_label + ":;\n" : String();
+}
+
+String WGodotCppEmitter::loop_break() {
+	if (!loops.is_empty() && loops[loops.size() - 1].switch_depth < switch_depth) {
+		// GDScript break exits the loop, even when nested inside a match.
+		LoopContext &loop = loops.write[loops.size() - 1];
+		loop.uses_break_label = true;
+		return "goto " + loop.break_label + ";";
+	}
+	return "break;";
+}
+
 String WGodotCppEmitter::receiver_expression(const Parser::ExpressionNode *p_expression) {
 	if (p_expression && p_expression->type == Parser::Node::IDENTIFIER && !expression_overrides.has(p_expression)) {
 		const auto *source = local_source(static_cast<const Parser::IdentifierNode *>(p_expression));
@@ -106,7 +126,9 @@ String WGodotCppEmitter::iteration(const Parser::ForNode *p_loop, int p_indent) 
 		if (!same_type) {
 			code += "\t" + variable_type + " " + variable + " = WGodotNative::convert<" + variable_type + ">(iteration_value);\n";
 		}
+		begin_loop();
 		code += suite(p_loop->loop, 1) + "}\n";
+		code += end_loop(0);
 		object_views.erase(p_loop->variable);
 		return collection.block(code.trim_suffix("\n"), p_indent);
 	}
@@ -116,5 +138,8 @@ String WGodotCppEmitter::iteration(const Parser::ForNode *p_loop, int p_indent) 
 																							: "WGodotNative::Iterator";
 	String code = "for (" + iterator_type + " iterator{" + collection.code + "}; iterator.has_value(); iterator.next()) {\n";
 	code += "\t" + variable_type + " " + variable + " = iterator." + (range ? "get()" : "get<" + variable_type + ">()") + ";\n";
-	return collection.block(code + suite(p_loop->loop, 1) + "}", p_indent);
+	begin_loop();
+	code += suite(p_loop->loop, 1) + "}\n";
+	code += end_loop(0);
+	return collection.block(code.trim_suffix("\n"), p_indent);
 }
