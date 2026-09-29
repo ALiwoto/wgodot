@@ -285,6 +285,21 @@ void GDScriptAnalyzer::wgodot_validate_strict_object_call(const GDScriptParser::
 	push_error(vformat(R"*(Strict type checking does not allow object.%s("func_name", ...): method names passed as strings bypass static method checking. You should instead call object.func_name.%s(args).)*", p_call->function_name, p_call->function_name), p_call);
 }
 
+void GDScriptAnalyzer::wgodot_validate_strict_native_property_access(const StringName &p_native_type, const StringName &p_method, const GDScriptParser::Node *p_source) {
+	if (!wgodot_strict_type_checking_enabled()) {
+		return;
+	}
+	if (p_method != SNAME("get") && p_method != SNAME("set") && p_method != SNAME("get_indexed") && p_method != SNAME("set_indexed") && p_method != SNAME("set_deferred")) {
+		return;
+	}
+	const MethodBind *method = ClassDB::get_method(p_native_type, p_method);
+	if (method == nullptr || method->get_instance_class() != SNAME("Object")) {
+		return;
+	}
+
+	push_error(vformat(R"*(Strict type checking does not allow Object.%s(): dynamic member access bypasses static property checking. Access members directly (object.member) or use a statically typed accessor method instead.)*", p_method), p_source);
+}
+
 void GDScriptAnalyzer::wgodot_validate_strict_dynamic_call(const GDScriptParser::DataType &p_base_type, const GDScriptParser::CallNode *p_call, bool p_is_self) {
 	ERR_FAIL_NULL(p_call);
 

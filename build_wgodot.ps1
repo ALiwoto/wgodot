@@ -17,15 +17,17 @@ if ($Release -and !($Game -or $Templates)) {
 }
 
 $target = "editor"
+$debugSymbols = "yes"
 if ($Templates -or $Game) {
 	$target = if ($Release) { "template_release" } else { "template_debug" }
+	$debugSymbols = "no"
 }
 
 $sconsArgs = @(
 	"platform=windows",
 	"arch=x86_64",
 	"target=$target",
-	"debug_symbols=no",
+	"debug_symbols=$debugSymbols",
 	"windows_subsystem=console",
 	"accesskit=no",
 	"angle=no",

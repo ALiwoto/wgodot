@@ -4640,6 +4640,7 @@ void GDScriptAnalyzer::reduce_identifier_from_base(GDScriptParser::IdentifierNod
 		}
 		if (ClassDB::get_method_info(native, name, &method_info)) {
 			// wgodot-changes::begin
+			wgodot_validate_strict_native_property_access(native, name, p_identifier);
 			if (wgodot_strict_type_checking_enabled() && ClassDB::is_parent_class(native, SNAME("SceneTree")) &&
 					(name == SNAME("call_group") || name == SNAME("call_group_flags") || name == SNAME("call_group_as"))) {
 				push_error("Strict type checking does not allow storing SceneTree group methods as Callable. Use call_group_as(NodeType, \"method\", ...) directly so its target can be checked statically.", p_identifier);
@@ -6424,6 +6425,11 @@ bool GDScriptAnalyzer::get_function_signature(GDScriptParser::Node *p_source, bo
 		StringName script_class = p_base_type.kind == GDScriptParser::DataType::SCRIPT ? p_base_type.script_type->get_class_name() : StringName(GDScript::get_class_static());
 
 		if (ClassDB::get_method_info(script_class, function_name, &info)) {
+			// wgodot-changes::begin
+			if (p_source->type == GDScriptParser::Node::CALL) {
+				wgodot_validate_strict_native_property_access(script_class, function_name, p_source);
+			}
+			// wgodot-changes::end
 			return function_signature_from_info(info, r_return_type, r_par_types, r_default_arg_count, r_method_flags, p_source);
 		}
 	}
@@ -6445,6 +6451,11 @@ bool GDScriptAnalyzer::get_function_signature(GDScriptParser::Node *p_source, bo
 	// wgodot-changes::end
 	MethodInfo info;
 	if (ClassDB::get_method_info(base_native, function_name, &info)) {
+		// wgodot-changes::begin
+		if (p_source->type == GDScriptParser::Node::CALL) {
+			wgodot_validate_strict_native_property_access(base_native, function_name, p_source);
+		}
+		// wgodot-changes::end
 		bool valid = function_signature_from_info(info, r_return_type, r_par_types, r_default_arg_count, r_method_flags, p_source);
 		if (valid && Engine::get_singleton()->has_singleton(base_native)) {
 			r_method_flags.set_flag(METHOD_FLAG_STATIC);
