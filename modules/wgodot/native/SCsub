@@ -1,11 +1,15 @@
 # wgodot-changes::file
 from misc.utility.scons_hints import *
 
+from SCons.Scanner import Scanner
+
 from modules.wgodot import cpp_builders
 
 Import("env")
 
 # Native templates need these entry points even when the editor module is off.
+# Read the binding source as text. Scanning its includes would make the
+# generated implementation header depend on itself through variant_call.cpp.
 env.CommandNoCache(
     [
         "#modules/wgodot/editor/wgodot_cpp_packed_api.gen.h",
@@ -14,4 +18,5 @@ env.CommandNoCache(
     ],
     ["#core/variant/variant_call.cpp"],
     env.Run(cpp_builders.packed_api),
+    source_scanner=Scanner({}),
 )

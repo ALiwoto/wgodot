@@ -12,6 +12,7 @@ env_wgodot.add_source_files(env.modules_sources, "*.cpp")
 if env.editor_build:
     import pathlib
     import cpp_builders
+    from SCons.Scanner import Scanner
 
     root = pathlib.Path(Dir("#").abspath)
     env_wgodot.Depends("editor/wgodot_cpp_packed.cpp", "editor/wgodot_cpp_packed_api.gen.h")
@@ -32,22 +33,27 @@ if env.editor_build:
         implementations.extend(str(path) for path in (root / module_path).rglob("*.cpp")
                                if not path.name.endswith(".gen.cpp") and "tests" not in path.parts and "editor" not in path.parts)
     env_wgodot["wgodot_source_root"] = str(root)
+    # These generators read only the listed files, without following C++ includes.
+    # Include dependency scanning remains enabled on the compiler builders.
     native_headers = env_wgodot.CommandNoCache(
         "editor/wgodot_cpp_native_headers.gen.h",
         sorted(set(headers)),
         env.Run(cpp_builders.native_headers),
+        source_scanner=Scanner({}),
     )
     env_wgodot.Depends("editor/wgodot_cpp_emitter.cpp", native_headers)
     native_methods = env_wgodot.CommandNoCache(
         "editor/wgodot_cpp_native_methods.gen.h",
         sorted(set(implementations + headers)),
         env.Run(cpp_builders.native_methods),
+        source_scanner=Scanner({}),
     )
     env_wgodot.Depends("editor/wgodot_cpp_native_calls.cpp", native_methods)
     array_api = env_wgodot.CommandNoCache(
         "editor/wgodot_cpp_array_api.gen.h",
         ["native/wgodot_native_warray.h", str(root / "core/variant/variant_call.cpp")],
         env.Run(cpp_builders.array_api),
+        source_scanner=Scanner({}),
     )
     env_wgodot.Depends(["editor/wgodot_cpp_warray.cpp", "editor/wgodot_cpp_signatures.cpp"], array_api)
     env_wgodot.add_source_files(env.modules_sources, "editor/*.cpp")
