@@ -178,6 +178,8 @@ class WGodotCppEmitter {
 	String receiver_expression(const GDScriptParser::ExpressionNode *p_expression);
 	String array_iteration_element(const GDScriptParser::ExpressionNode *p_expression);
 	String array_iteration_result(const String &p_call, const GDScriptParser::Node *p_origin);
+	bool enum_iteration_values(const GDScriptParser::ExpressionNode *p_expression, Vector<int64_t> &r_values) const;
+	Value enum_iteration_value(const Vector<int64_t> &p_values, const String &p_index, const GDScriptParser::Node *p_origin);
 	String iteration(const GDScriptParser::ForNode *p_loop, int p_indent);
 	void begin_loop();
 	String end_loop(int p_indent);

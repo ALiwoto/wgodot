@@ -3,6 +3,8 @@
 #include "wgodot_cpp_emitter.h"
 #include "wgodot_cpp_names.h"
 
+#include "core/variant/dictionary.h"
+
 using Parser = GDScriptParser;
 using namespace WGodotCppNames;
 
@@ -71,10 +73,64 @@ String WGodotCppEmitter::array_iteration_result(const String &p_call, const Pars
 	return "WGodotNative::iterate<" + array_iteration_element(static_cast<const Parser::ExpressionNode *>(p_origin)) + ">(" + p_call + ")";
 }
 
+bool WGodotCppEmitter::enum_iteration_values(const Parser::ExpressionNode *p_expression, Vector<int64_t> &r_values) const {
+	if (p_expression->type != Parser::Node::CALL) {
+		return false;
+	}
+	const auto *call = static_cast<const Parser::CallNode *>(p_expression);
+	if (call->is_super || call->get_callee_type() != Parser::Node::SUBSCRIPT || call->function_name != SNAME("values") || !call->arguments.is_empty()) {
+		return false;
+	}
+	const auto *base = static_cast<const Parser::SubscriptNode *>(call->callee)->base;
+	if (!base->is_constant || base->type_constraint.kind != Parser::DataType::ENUM || !base->type_constraint.is_meta_type || base->reduced_value.get_type() != Variant::DICTIONARY) {
+		return false;
+	}
+	// Only a directly iterated enum snapshot is elided. Other .values() calls
+	// keep their normal array semantics. Dictionary order also preserves aliases.
+	const Dictionary members = base->reduced_value;
+	for (const KeyValue<Variant, Variant> &member : members) {
+		r_values.push_back(int64_t(member.value));
+	}
+	return true;
+}
+
+WGodotCppEmitter::Value WGodotCppEmitter::enum_iteration_value(const Vector<int64_t> &p_values, const String &p_index, const Parser::Node *p_origin) {
+	bool consecutive = true;
+	for (int i = 0; i < p_values.size(); i++) {
+		if (p_values[i] != i) {
+			consecutive = false;
+			break;
+		}
+	}
+	if (consecutive) {
+		return Value(p_index, "int64_t");
+	}
+	// An ordinal switch handles gaps, negative values and aliases without a
+	// runtime container. Switch on the index, never on possibly duplicate values.
+	String code = "([&]() -> int64_t {\n\tswitch (" + p_index + ") {\n";
+	for (int i = 0; i < p_values.size(); i++) {
+		code += "\t\tcase " + itos(i) + ":\n\t\t\treturn " + literal(p_values[i], p_origin) + ";\n";
+	}
+	code += "\t}\n\treturn int64_t(0);\n}())";
+	return Value(code, "int64_t");
+}
+
 String WGodotCppEmitter::iteration(const Parser::ForNode *p_loop, int p_indent) {
 	const auto collection_type = expression_type(p_loop->list);
 	const String variable_type = type(p_loop->variable->type_constraint, p_loop->variable);
 	const String variable = "v_" + symbol(p_loop->variable->name);
+	Vector<int64_t> enum_values;
+	if (enum_iteration_values(p_loop->list, enum_values)) {
+		const String index = "enum_index_" + itos(temporary_index++);
+		const Value value = enum_iteration_value(enum_values, index, p_loop->list);
+		String code = "for (int64_t " + index + " = 0; " + index + " < " + itos(enum_values.size()) + "; ++" + index + ") {\n";
+		// The script may assign its iterator variable; the loop counter is separate.
+		code += "\t" + variable_type + " " + variable + " = " + convert_value(value, variable_type) + ";\n";
+		begin_loop();
+		code += suite(p_loop->loop, 1) + "}\n";
+		code += end_loop(0);
+		return Value().block(code.trim_suffix("\n"), p_indent);
+	}
 	Value collection;
 	bool range = p_loop->list->type_constraint.kind == Parser::DataType::BUILTIN && p_loop->list->type_constraint.builtin_type == Variant::INT;
 	bool array_range = false;

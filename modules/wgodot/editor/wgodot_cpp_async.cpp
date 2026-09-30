@@ -354,7 +354,12 @@ void WGodotCppAsync::suite(const Parser::SuiteNode *p_suite, int p_indent, bool 
 				WGodotCppEmitter::Value collection;
 				bool array_range = false;
 				bool range = node->list->type_constraint.kind == Parser::DataType::BUILTIN && node->list->type_constraint.builtin_type == Variant::INT;
-				if (node->list->type == Parser::Node::CALL && static_cast<const Parser::CallNode *>(node->list)->function_name == "range") {
+				Vector<int64_t> enum_values;
+				const bool enum_iteration = emitter.enum_iteration_values(node->list, enum_values);
+				if (enum_iteration) {
+					collection.code = itos(enum_values.size());
+					range = true;
+				} else if (node->list->type == Parser::Node::CALL && static_cast<const Parser::CallNode *>(node->list)->function_name == "range") {
 					Vector<String> arguments;
 					for (const auto *argument : static_cast<const Parser::CallNode *>(node->list)->arguments) {
 						arguments.push_back(preserve(argument, p_indent));
@@ -389,7 +394,12 @@ void WGodotCppAsync::suite(const Parser::SuiteNode *p_suite, int p_indent, bool 
 				clear_temporaries(p_indent);
 				const String variable = local(node->variable, node->variable->name, node->variable->type_constraint);
 				line(p_indent, "for (; " + iterator + "->has_value(); " + iterator + "->next()) {");
-				line(p_indent + 1, variable + " = " + iterator + (range ? "->get();" : "->get<" + field_types[variable] + ">();"));
+				if (enum_iteration) {
+					const auto value = emitter.enum_iteration_value(enum_values, iterator + "->get()", node->list);
+					line(p_indent + 1, variable + " = " + emitter.convert_value(value, field_types[variable]) + ";");
+				} else {
+					line(p_indent + 1, variable + " = " + iterator + (range ? "->get();" : "->get<" + field_types[variable] + ">();"));
+				}
 				emitter.begin_loop();
 				suite(node->loop, p_indent + 1, false);
 				line(p_indent, "}");
