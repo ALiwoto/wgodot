@@ -195,10 +195,22 @@ String WGodotCppEmitter::truth(const Parser::ExpressionNode *p_expression) {
 		return "!(" + value + ").is_null()";
 	}
 	if (datatype.kind == Parser::DataType::CLASS || datatype.kind == Parser::DataType::NATIVE) {
-		return ClassDB::is_parent_class(native_base(datatype), "RefCounted") ? "(" + value + ").is_valid()" : "Variant(" + value + ").booleanize()";
+		class_call_headers.insert("modules/wgodot/native/wgodot_native_calls.h");
+		return "(WGodotNative::object_pointer(" + value + ") != nullptr)";
 	}
 	if (datatype.kind == Parser::DataType::BUILTIN && datatype.builtin_type == Variant::BOOL) {
 		return value;
+	}
+	if (datatype.kind == Parser::DataType::ENUM) {
+		return "(" + value + " != 0)";
+	}
+	if (datatype.kind == Parser::DataType::BUILTIN) {
+		if (datatype.builtin_type == Variant::NIL) {
+			return "((void)(" + value + "), false)";
+		}
+		// Variant::is_zero compares scalar/math values with their default value;
+		// this also preserves identity-transform and default-color truth rules.
+		return "(" + value + " != " + type(datatype, p_expression) + "())";
 	}
 	return "Variant(" + value + ").booleanize()";
 }
@@ -530,8 +542,10 @@ String WGodotCppEmitter::leaf_expression(const Parser::ExpressionNode *p_express
 			if (unary->operation == Parser::UnaryOpNode::OP_LOGIC_NOT) {
 				return "(!" + truth(unary->operand) + ")";
 			}
-			class_call_headers.insert("modules/wgodot/native/wgodot_native_values.h");
-			return "WGodotNative::evaluate<" + type(unary->type_constraint, unary) + ">(Variant::Operator(" + itos(unary->variant_op) + "), " + expression(unary->operand) + ", Variant())";
+			Parser::DataType nil_type;
+			nil_type.kind = Parser::DataType::BUILTIN;
+			nil_type.builtin_type = Variant::NIL;
+			return operation(unary->variant_op, unary->type_constraint, expression_type(unary->operand), nil_type, expression(unary->operand), "Variant()", unary);
 		}
 		case Parser::Node::TERNARY_OPERATOR: {
 			const auto *ternary = static_cast<const Parser::TernaryOpNode *>(p_expression);

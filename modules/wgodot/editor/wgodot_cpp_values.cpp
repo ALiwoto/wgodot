@@ -52,6 +52,13 @@ WGodotCppEmitter::Value WGodotCppEmitter::builtin_call(const Parser::CallNode *p
 	if (!validate_builtin_arguments(base_type.builtin_type, p_call->function_name, p_call)) {
 		return String();
 	}
+	// The ordinary WArray join and named formatter have explicit container
+	// contracts; other builtin methods can use their generated native mapping.
+	const bool array_join = base_type.builtin_type == Variant::STRING && p_call->function_name == SNAME("join") && p_call->arguments.size() == 1 && is_warray(expression_type(p_call->arguments[0]));
+	Value native_result;
+	if (!named_format && !array_join && native_builtin_call(p_call, base_type, native_result)) {
+		return native_result;
+	}
 	class_call_headers.insert("modules/wgodot/native/wgodot_native_values.h");
 	Vector<Value> operands;
 	for (uint32_t i = 0; i < p_call->arguments.size(); i++) {
@@ -76,18 +83,8 @@ WGodotCppEmitter::Value WGodotCppEmitter::builtin_call(const Parser::CallNode *p
 		result.effects = true;
 		return result;
 	}
-	if (!is_static && arguments.is_empty()) {
-		if (base_type.builtin_type == Variant::STRING && p_call->function_name == SNAME("to_utf8_buffer")) {
-			result.code = type(expression_type(p_call), p_call) + "(" + receiver + ".to_utf8_buffer())";
-		}
-		if (!result.code.is_empty()) {
-			result.effects = true;
-			return result;
-		}
-	}
-	if (base_type.builtin_type == Variant::STRING && p_call->function_name == SNAME("join") && arguments.size() == 1) {
-		const String strings = is_warray(expression_type(p_call->arguments[0])) ? arguments[0] + ".native()" : "WGodotNative::convert<PackedStringArray>(" + arguments[0] + ")";
-		result.code = receiver + ".join(" + strings + ")";
+	if (array_join) {
+		result.code = receiver + ".join(" + arguments[0] + ".native())";
 		result.effects = true;
 		return result;
 	}
@@ -191,9 +188,21 @@ WGodotCppEmitter::Value WGodotCppEmitter::global_call(const Parser::CallNode *p_
 		return result;
 	}
 	if (builtin < Variant::VARIANT_MAX) {
-		result.code = "WGodotNative::construct<" + type(p_call->type_constraint, p_call) + ", " + variant_type(builtin) + ">(" + joined + ")";
+		Vector<Parser::DataType> argument_types;
+		bool dynamic = false;
+		for (uint32_t i = 0; i < p_call->arguments.size(); i++) {
+			argument_types.push_back(expression_type(p_call->arguments[i]));
+			dynamic |= operands[i].cpp_type == "Variant";
+		}
+		result.code = dynamic ? String() : native_constructor(builtin, argument_types, arguments);
+		if (result.code.is_empty()) {
+			result.code = "WGodotNative::construct<" + type(p_call->type_constraint, p_call) + ", " + variant_type(builtin) + ">(" + joined + ")";
+		}
 	} else if (Variant::has_utility_function(name)) {
-		result.code = "WGodotNative::utility<" + type(p_call->type_constraint, p_call) + ">(SNAME(" + quoted(name) + ")" + (arguments.is_empty() ? "" : ", " + joined) + ")";
+		result.code = native_utility(p_call, operands);
+		if (result.code.is_empty()) {
+			result.code = "WGodotNative::utility<" + type(p_call->type_constraint, p_call) + ">(SNAME(" + quoted(name) + ")" + (arguments.is_empty() ? "" : ", " + joined) + ")";
+		}
 	} else if (name == SNAME("len") && arguments.size() == 1) {
 		result.code = "WGodotNative::length(" + arguments[0] + ")";
 	} else if (name == SNAME("load") && arguments.size() == 1) {

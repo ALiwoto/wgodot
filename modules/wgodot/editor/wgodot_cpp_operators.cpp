@@ -1,11 +1,31 @@
 // wgodot-changes::file
 #include "wgodot_cpp_emitter.h"
 #include "wgodot_cpp_names.h"
+#include "wgodot_cpp_operator_api.gen.h"
 
 #include "core/object/class_db.h"
 
 using Parser = GDScriptParser;
 using namespace WGodotCppNames;
+
+namespace {
+String operator_expression(const String &p_template, const String &p_left, const String &p_right) {
+	String result;
+	for (int i = 0; i < p_template.length();) {
+		const String marker = p_template.substr(i, 6);
+		if (marker == "{left}") {
+			result += p_left;
+			i += 6;
+		} else if (p_template.substr(i, 7) == "{right}") {
+			result += p_right;
+			i += 7;
+		} else {
+			result += p_template[i++];
+		}
+	}
+	return result;
+}
+} // namespace
 
 String WGodotCppEmitter::operation(Variant::Operator p_operation, const Parser::DataType &p_result, const Parser::DataType &p_left_type, const Parser::DataType &p_right_type, const String &p_left, const String &p_right, const Parser::Node *p_origin) {
 	if (p_operation == Variant::OP_MODULE && p_left_type.kind == Parser::DataType::BUILTIN && p_left_type.builtin_type == Variant::STRING && p_right_type.kind == Parser::DataType::BUILTIN && p_right_type.builtin_type == Variant::ARRAY) {
@@ -52,46 +72,17 @@ String WGodotCppEmitter::operation(Variant::Operator p_operation, const Parser::
 		unsupported(p_origin, "WArray operator " + Variant::get_operator_name(p_operation) + " for these operand types");
 		return String();
 	}
-	auto numeric = [](const Parser::DataType &p_type) {
-		return p_type.kind == Parser::DataType::ENUM || (p_type.kind == Parser::DataType::BUILTIN && (p_type.builtin_type == Variant::INT || p_type.builtin_type == Variant::FLOAT));
+	// The caller has already evaluated both operands in language order. Use the
+	// registered signature to expose the corresponding native operation.
+	const auto builtin = [](const Parser::DataType &p_type) {
+		return p_type.kind == Parser::DataType::ENUM ? Variant::INT : p_type.kind == Parser::DataType::BUILTIN ? p_type.builtin_type : Variant::VARIANT_MAX;
 	};
-	// The caller has already evaluated both operands in language order. Keep the
-	// common numeric operations directly visible to the native optimizer.
-	if (numeric(p_left_type) && numeric(p_right_type)) {
-		String symbol;
-		switch (p_operation) {
-			case Variant::OP_ADD:
-				symbol = "+";
-				break;
-			case Variant::OP_SUBTRACT:
-				symbol = "-";
-				break;
-			case Variant::OP_MULTIPLY:
-				symbol = "*";
-				break;
-			case Variant::OP_EQUAL:
-				symbol = "==";
-				break;
-			case Variant::OP_NOT_EQUAL:
-				symbol = "!=";
-				break;
-			case Variant::OP_LESS:
-				symbol = "<";
-				break;
-			case Variant::OP_LESS_EQUAL:
-				symbol = "<=";
-				break;
-			case Variant::OP_GREATER:
-				symbol = ">";
-				break;
-			case Variant::OP_GREATER_EQUAL:
-				symbol = ">=";
-				break;
-			default:
-				break;
-		}
-		if (!symbol.is_empty()) {
-			return "(" + p_left + " " + symbol + " " + p_right + ")";
+	const Variant::Type left_type = builtin(p_left_type);
+	const Variant::Type right_type = builtin(p_right_type);
+	for (const auto &entry : builtin_operators) {
+		if (entry.operation == p_operation && entry.left == left_type && entry.right == right_type) {
+			class_call_headers.insert("modules/wgodot/native/wgodot_native_builtin.h");
+			return operator_expression(entry.expression, p_left, p_right);
 		}
 	}
 	class_call_headers.insert("modules/wgodot/native/wgodot_native_values.h");
@@ -124,7 +115,13 @@ String WGodotCppEmitter::cast(const Parser::CastNode *p_cast) {
 	}
 	if (target.kind == Parser::DataType::BUILTIN || target.kind == Parser::DataType::ENUM) {
 		const Variant::Type builtin = target.kind == Parser::DataType::ENUM ? Variant::INT : target.builtin_type;
-		return "WGodotNative::construct<" + type(target, p_cast) + ", " + variant_type(builtin) + ">(" + expression(p_cast->operand) + ")";
+		const Value operand = lower(p_cast->operand);
+		const String value = operand.expression();
+		const String native = operand.cpp_type == "Variant" ? String() : native_constructor(builtin, { expression_type(p_cast->operand) }, { value });
+		if (!native.is_empty()) {
+			return native;
+		}
+		return "WGodotNative::construct<" + type(target, p_cast) + ", " + variant_type(builtin) + ">(" + value + ")";
 	}
 	const String pointer = "Object::cast_to<" + class_name(target, p_cast) + ">(WGodotNative::object_pointer(" + expression(p_cast->operand) + "))";
 	return type(target, p_cast) + "(" + pointer + ")";

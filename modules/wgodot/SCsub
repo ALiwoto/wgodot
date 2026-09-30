@@ -12,10 +12,25 @@ env_wgodot.add_source_files(env.modules_sources, "*.cpp")
 if env.editor_build:
     import pathlib
     import cpp_builders
+    import cpp_builtin_builders
     from SCons.Scanner import Scanner
 
     root = pathlib.Path(Dir("#").abspath)
     env_wgodot.Depends("editor/wgodot_cpp_packed.cpp", "editor/wgodot_cpp_packed_api.gen.h")
+    builtin_api = env_wgodot.CommandNoCache(
+        "editor/wgodot_cpp_builtin_api.gen.h",
+        [str(root / "core/variant/variant_call.cpp"), str(root / "core/variant/variant_construct.cpp"), str(root / "core/variant/variant_utility.cpp")],
+        env.Run(cpp_builtin_builders.builtin_api),
+        source_scanner=Scanner({}),
+    )
+    env_wgodot.Depends("editor/wgodot_cpp_builtins.cpp", builtin_api)
+    operator_api = env_wgodot.CommandNoCache(
+        "editor/wgodot_cpp_operator_api.gen.h",
+        [str(root / "core/variant/variant_op.cpp")],
+        env.Run(cpp_builtin_builders.operator_api),
+        source_scanner=Scanner({}),
+    )
+    env_wgodot.Depends("editor/wgodot_cpp_operators.cpp", operator_api)
     headers = []
     implementations = []
     for directory in ("core", "scene", "servers"):

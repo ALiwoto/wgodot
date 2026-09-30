@@ -143,6 +143,9 @@ class WGodotCppEmitter {
 	Value call(const GDScriptParser::CallNode *p_call);
 	const GDScriptParser::FunctionNode *interface_method(const GDScriptParser::CallNode *p_call) const;
 	Value builtin_call(const GDScriptParser::CallNode *p_call);
+	bool native_builtin_call(const GDScriptParser::CallNode *p_call, const GDScriptParser::DataType &p_base_type, Value &r_result);
+	String native_constructor(Variant::Type p_target, const Vector<GDScriptParser::DataType> &p_types, const Vector<String> &p_arguments);
+	String native_utility(const GDScriptParser::CallNode *p_call, const Vector<Value> &p_arguments);
 	Value global_call(const GDScriptParser::CallNode *p_call);
 	String variant_type(Variant::Type p_type) const;
 	String operation(Variant::Operator p_operation, const GDScriptParser::DataType &p_result, const GDScriptParser::DataType &p_left_type, const GDScriptParser::DataType &p_right_type, const String &p_left, const String &p_right, const GDScriptParser::Node *p_origin);
