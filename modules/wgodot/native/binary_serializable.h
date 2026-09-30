@@ -9,5 +9,5 @@ class BinarySerializable {
 	WGD_INTERFACE(BinarySerializable);
 
 public:
-	virtual WGodotNative::Packed<PackedByteArray> serialize_binary() = 0;
+	virtual WGodotNative::WArray<uint8_t, Variant::PACKED_BYTE_ARRAY> serialize_binary() = 0;
 };

@@ -1,0 +1,17 @@
+# wgodot-changes::file
+from misc.utility.scons_hints import *
+
+from modules.wgodot import cpp_builders
+
+Import("env")
+
+# Native templates need these entry points even when the editor module is off.
+env.CommandNoCache(
+    [
+        "#modules/wgodot/editor/wgodot_cpp_packed_api.gen.h",
+        "wgodot_native_packed_api.gen.h",
+        "wgodot_native_packed_api_impl.gen.h",
+    ],
+    ["#core/variant/variant_call.cpp"],
+    env.Run(cpp_builders.packed_api),
+)

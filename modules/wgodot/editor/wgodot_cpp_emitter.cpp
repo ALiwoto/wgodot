@@ -76,7 +76,7 @@ String WGodotCppEmitter::type(const Parser::DataType &p_type, const Parser::Node
 	if (p_type.kind == Parser::DataType::BUILTIN) {
 		if (p_type.builtin_type >= Variant::PACKED_BYTE_ARRAY && p_type.builtin_type <= Variant::PACKED_VECTOR4_ARRAY) {
 			class_native_headers.insert("modules/wgodot/native/wgodot_native_packed.h");
-			return "WGodotNative::Packed<" + Variant::get_type_name(p_type.builtin_type) + ">";
+			return "WGodotNative::WArray<" + packed_element_type(p_type.builtin_type) + ", " + variant_type(p_type.builtin_type) + ">";
 		}
 		if (p_type.builtin_type == Variant::ARRAY && p_type.has_container_element_type(0)) {
 			const auto &element = p_type.get_container_element_type(0);

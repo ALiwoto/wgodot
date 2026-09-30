@@ -1,77 +1,28 @@
 // wgodot-changes::file
 #pragma once
 
+#include "wgodot_native_warray.h"
+
 #include "core/variant/method_ptrcall.h"
 #include "core/variant/type_info.h"
 #include "core/variant/variant_internal.h"
 
-#include <type_traits>
-#include <utility>
-
-namespace WGodotNative {
-
-// Packed arrays share the Variant's packed-array reference in GDScript. A plain
-// Vector<T> would detach on mutation and silently change assignment semantics.
-template <class ArrayType>
-class Packed {
-	Variant value;
-
-public:
-	using Native = ArrayType;
-	using Element = std::decay_t<decltype(std::declval<ArrayType>()[0])>;
-	Packed() : value(ArrayType()) {}
-	// An engine Vector has value semantics. Retain its COW buffer in a new
-	// packed-array identity; never borrow the Vector or its owner's lifetime.
-	Packed(const ArrayType &p_value) : value(p_value) {}
-	Packed(const Variant &p_value) {
-		if (p_value.get_type() == GetTypeInfo<ArrayType>::VARIANT_TYPE) {
-			value = p_value;
-		} else {
-			const Variant *argument = &p_value;
-			Callable::CallError error;
-			Variant::construct(GetTypeInfo<ArrayType>::VARIANT_TYPE, value, &argument, 1, error);
-			if (error.error != Callable::CallError::CALL_OK) {
-				value = ArrayType();
-				ERR_FAIL_MSG("Invalid native game packed-array conversion.");
-			}
-		}
-	}
-	operator const Variant &() const { return value; }
-	const ArrayType &native() const { return VariantInternalAccessor<ArrayType>::get(&value); }
-	explicit operator bool() const noexcept { return !native().is_empty(); }
-	bool operator==(const Packed &p_other) const { return value == p_other.value; }
-	bool is_same(const Packed &p_other) const { return value.hash_compare(p_other.value); }
-	uint32_t hash() const { return value.hash(); }
+template <class T, Variant::Type Kind>
+struct GetTypeInfo<WGodotNative::WArray<T, Kind>> : GetTypeInfo<Vector<T>> {
+	static_assert(Kind != Variant::ARRAY, "Ordinary WArray has no implicit engine ABI.");
 };
 
-template <class T>
-struct IsPacked : std::false_type {};
-
-template <class T>
-struct IsPacked<Packed<T>> : std::true_type {};
-
-inline String packed_string_from_utf8(const PackedByteArray &p_bytes) {
-	String result;
-	if (!p_bytes.is_empty()) {
-		result.append_utf8(reinterpret_cast<const char *>(p_bytes.ptr()), p_bytes.size());
-	}
-	return result;
-}
-
-} // namespace WGodotNative
-
-template <class T>
-struct GetTypeInfo<WGodotNative::Packed<T>> : GetTypeInfo<T> {};
-
-template <class T>
-struct PtrToArg<WGodotNative::Packed<T>> {
-	using EncodeT = T;
-	static WGodotNative::Packed<T> convert(const void *p_pointer) { return *static_cast<const T *>(p_pointer); }
-	static void encode(const WGodotNative::Packed<T> &p_value, void *p_pointer) { *static_cast<T *>(p_pointer) = p_value.native(); }
+template <class T, Variant::Type Kind>
+struct PtrToArg<WGodotNative::WArray<T, Kind>> {
+	static_assert(Kind != Variant::ARRAY, "Ordinary WArray has no implicit engine ABI.");
+	using EncodeT = Vector<T>;
+	static WGodotNative::WArray<T, Kind> convert(const void *p_pointer) { return *static_cast<const Vector<T> *>(p_pointer); }
+	static void encode(const WGodotNative::WArray<T, Kind> &p_value, void *p_pointer) { *static_cast<Vector<T> *>(p_pointer) = p_value.native(); }
 };
 
-template <class T>
-struct VariantInternalAccessor<WGodotNative::Packed<T>> {
-	static WGodotNative::Packed<T> get(const Variant *p_value) { return *p_value; }
-	static void set(Variant *p_target, const WGodotNative::Packed<T> &p_value) { *p_target = static_cast<const Variant &>(p_value); }
+template <class T, Variant::Type Kind>
+struct VariantInternalAccessor<WGodotNative::WArray<T, Kind>> {
+	static_assert(Kind != Variant::ARRAY, "Ordinary WArray has no implicit engine ABI.");
+	static WGodotNative::WArray<T, Kind> get(const Variant *p_value) { return *p_value; }
+	static void set(Variant *p_target, const WGodotNative::WArray<T, Kind> &p_value) { *p_target = Variant(p_value); }
 };

@@ -3,4 +3,8 @@ from misc.utility.scons_hints import *
 
 Import("env")
 
+# wgodot-changes::begin
+SConscript("#modules/wgodot/native/SCsub")
+# wgodot-changes::end
+
 env.add_source_files(env.core_sources, "*.cpp")

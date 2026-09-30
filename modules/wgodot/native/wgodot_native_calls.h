@@ -130,16 +130,26 @@ Result invoke_result(Function &&p_function, Args &&...p_args) {
 	}
 }
 
-// Explicit Array -> PackedArray construction creates independent storage.
+// Explicit packed construction creates independent storage. Matching element
+// types can retain the COW buffer without copying or converting each element.
 template <class Result, class T>
-Result copy_packed(const WArray<T> &p_source) {
+Result copy_packed(const Vector<T> &p_source) {
 	static_assert(IsPacked<Result>::value);
-	typename Result::Native result;
-	result.resize(p_source.size());
-	for (int64_t i = 0; i < p_source.size(); i++) {
-		result.set(i, convert<typename Result::Element>(p_source.get(i)));
+	if constexpr (std::is_same_v<typename Result::Element, T>) {
+		return Result(p_source);
+	} else {
+		typename Result::Native result;
+		ERR_FAIL_COND_V(result.resize(p_source.size()) != OK, Result());
+		for (int64_t i = 0; i < p_source.size(); i++) {
+			result.set(i, convert<typename Result::Element>(p_source[i]));
+		}
+		return result;
 	}
-	return result;
+}
+
+template <class Result, class T, Variant::Type Kind>
+Result copy_packed(const WArray<T, Kind> &p_source) {
+	return copy_packed<Result>(p_source.native());
 }
 
 // Used only by exporter handlers for APIs that return an independent snapshot.

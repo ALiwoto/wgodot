@@ -4,6 +4,99 @@ import pathlib
 import re
 
 
+def packed_api(target, source, env):
+    bindings = pathlib.Path(str(source[0])).read_text(encoding="utf-8")
+    elements = dict(re.findall(r"\bVARCALL_ARRAY_GETTER_SETTER\((Packed\w+Array), (\w+)\)", bindings))
+    member_aliases = dict(re.findall(r"static constexpr auto (\w+) = ([^;]+);", bindings))
+    functions = {
+        name: (result, arguments)
+        for result, name, arguments in re.findall(r"\bstatic ([\w:<>]+) (func_Packed\w+)\(([^\n]*)\) \{", bindings)
+    }
+    # Expand the upstream accessors into inline typed functions. Bracket
+    # indexing and these methods deliberately have different bounds semantics.
+    accessor_definition = re.search(
+        r"#define VARCALL_ARRAY_GETTER_SETTER\(m_packed_type, m_type\) (.*?)\n\n", bindings, re.DOTALL
+    )
+    accessor_macro = accessor_definition.group(1).replace("\\\n", "\n")
+    accessors = []
+    accessor_names = set()
+    for owner, element in elements.items():
+        expanded = accessor_macro.replace("m_packed_type", owner).replace("m_type", element).replace("##", "")
+        accessor_names.update(re.findall(r"\b(func_\w+)\(", expanded))
+        expanded = expanded.replace("static ", "inline ").replace("func_", "packed_")
+        expanded = expanded.replace(f"{owner} *p_instance", f"{owner} &p_instance").replace(
+            "p_instance->", "p_instance."
+        )
+        accessors.append("\n".join(line.removeprefix("\t").rstrip() for line in expanded.strip("\n").splitlines()))
+
+    api = [
+        "// wgodot-changes::file",
+        "// Generated from Godot's packed-array bindings.",
+        "static const struct { Variant::Type kind; const char *element; } packed_types[] = {",
+    ]
+    for owner, element in sorted(elements.items()):
+        kind = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", owner).upper()
+        api.append(f'\t{{ Variant::{kind}, "{element}" }},')
+    api.extend([
+        "};",
+        "static const struct { const char *owner; const char *name; const char *member; const char *function; } packed_methods[] = {",
+    ])
+    declarations = [
+        "// wgodot-changes::file",
+        "// Generated typed entry points; no Variant method dispatch.",
+        "#pragma once",
+        '#include "core/variant/variant.h"',
+        "namespace WGodotNative {",
+    ]
+    declarations.extend(accessors)
+    definitions = [
+        "// wgodot-changes::file",
+        "// Included after _VariantCall, retaining the upstream implementations.",
+        '#include "modules/wgodot/native/wgodot_native_packed_api.gen.h"',
+        "namespace WGodotNative {",
+    ]
+    for binding, owner, name, tail in re.findall(
+        r"\bbind_(methodv|method|functionnc|function)\((Packed\w+Array), (\w+), ([^\n]+)", bindings
+    ):
+        member = ""
+        function = ""
+        if binding == "method":
+            member = f"&{owner}::{name}"
+        elif binding == "methodv":
+            pointer = tail.split(",", 1)[0]
+            if pointer.startswith(f"&{owner}::"):
+                member = pointer
+            elif alias := re.fullmatch(r"(\w+)<(\w+)>", pointer):
+                member = re.sub(r"\bT\b", alias.group(2), member_aliases[alias.group(1)])
+            else:
+                raise ValueError(f"Unsupported packed member binding: {pointer}")
+        else:
+            pointer = tail.split(",", 1)[0]
+            if not pointer.startswith("_VariantCall::"):
+                raise ValueError(f"Unsupported packed function binding: {pointer}")
+            native_name = pointer.removeprefix("_VariantCall::")
+            if native_name in accessor_names:
+                function = native_name.replace("func_", "packed_", 1)
+            else:
+                result, arguments = functions[native_name]
+                function = f"packed_{owner}_{name}"
+                parameters = arguments.replace(f"{owner} *p_instance", f"{owner} &p_instance")
+                forwarded = re.findall(r"\bp_\w+\b", arguments)
+                forwarded[0] = "&" + forwarded[0]
+                declarations.append(f"{result} {function}({parameters});")
+                definitions.extend([
+                    f"{result} {function}({parameters}) {{",
+                    f"\treturn {pointer}({', '.join(forwarded)});",
+                    "}",
+                ])
+        api.append(f'\t{{ "{owner}", "{name}", "{member}", "{function}" }},')
+    api.append("};\n")
+    declarations.append("} // namespace WGodotNative\n")
+    definitions.append("} // namespace WGodotNative\n")
+    for path, lines in zip(target, (api, declarations, definitions)):
+        pathlib.Path(str(path)).write_text("\n".join(lines), encoding="utf-8")
+
+
 def array_api(target, source, env):
     header = pathlib.Path(str(source[0])).read_text(encoding="utf-8").split("\npublic:", 1)[1]
     declaration = re.compile(

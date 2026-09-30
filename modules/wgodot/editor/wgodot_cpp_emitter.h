@@ -114,6 +114,8 @@ class WGodotCppEmitter {
 	String dictionary_engine_argument(const GDScriptParser::ExpressionNode *p_value, Variant::Type p_target);
 	bool validate_dictionary_conversion(const GDScriptParser::ExpressionNode *p_value, const GDScriptParser::DataType &p_target, const GDScriptParser::Node *p_target_origin);
 	bool is_packed(const GDScriptParser::DataType &p_type) const;
+	String packed_element_type(Variant::Type p_type) const;
+	Value packed_call(const GDScriptParser::CallNode *p_call);
 	Value packed_array(const GDScriptParser::ExpressionNode *p_source, const GDScriptParser::DataType &p_target);
 	GDScriptParser::DataType expression_type(const GDScriptParser::ExpressionNode *p_expression) const;
 	GDScriptParser::DataType variable_type(const GDScriptParser::VariableNode *p_variable) const;

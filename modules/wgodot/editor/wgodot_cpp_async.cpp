@@ -383,6 +383,8 @@ void WGodotCppAsync::suite(const Parser::SuiteNode *p_suite, int p_indent, bool 
 					iterator_type = "WGodotNative::Range";
 				} else if (emitter.is_warray(collection_type)) {
 					iterator_type = "WGodotNative::WArrayIterator<" + emitter.type(collection_type.get_container_element_type(0), node) + ">";
+				} else if (emitter.is_packed(collection_type)) {
+					iterator_type = "WGodotNative::WArrayIterator<" + emitter.packed_element_type(collection_type.builtin_type) + ", " + emitter.variant_type(collection_type.builtin_type) + ">";
 				} else if (emitter.is_wdictionary(collection_type)) {
 					iterator_type = "WGodotNative::WDictionaryIterator<" + emitter.type(collection_type.get_container_element_type(0), node) + ", " + emitter.type(collection_type.get_container_element_type(1), node) + ">";
 				} else {

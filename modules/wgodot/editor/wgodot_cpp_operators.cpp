@@ -25,6 +25,19 @@ String WGodotCppEmitter::operation(Variant::Operator p_operation, const Parser::
 		unsupported(p_origin, "WDictionary operator " + Variant::get_operator_name(p_operation) + " for these operand types");
 		return String();
 	}
+	if (is_packed(p_right_type) && p_operation == Variant::OP_IN) {
+		class_call_headers.insert("modules/wgodot/native/wgodot_native_calls.h");
+		return "WGodotNative::convert<" + Variant::get_type_name(p_right_type.builtin_type) + ">(" + p_right + ").has(WGodotNative::convert<" + packed_element_type(p_right_type.builtin_type) + ">(" + p_left + "))";
+	}
+	if (is_packed(p_left_type) && is_packed(p_right_type) && p_left_type.builtin_type == p_right_type.builtin_type) {
+		if (p_operation == Variant::OP_ADD || p_operation == Variant::OP_EQUAL || p_operation == Variant::OP_NOT_EQUAL) {
+			class_call_headers.insert("modules/wgodot/native/wgodot_native_calls.h");
+			const String operand_type = type(p_left_type, p_origin);
+			const String symbol = p_operation == Variant::OP_ADD ? " + " : p_operation == Variant::OP_EQUAL ? " == "
+																											: " != ";
+			return "(WGodotNative::convert<" + operand_type + ">(" + p_left + ")" + symbol + "WGodotNative::convert<" + operand_type + ">(" + p_right + "))";
+		}
+	}
 	if (is_warray(p_left_type) || is_warray(p_right_type)) {
 		if (p_operation == Variant::OP_IN && is_warray(p_right_type) && !is_warray(p_left_type)) {
 			return p_right + ".has(WGodotNative::convert<" + type(p_right_type.get_container_element_type(0), p_origin) + ">(" + p_left + "))";
@@ -92,6 +105,9 @@ String WGodotCppEmitter::cast(const Parser::CastNode *p_cast) {
 	}
 	if (is_packed(target) && (p_cast->operand->type == Parser::Node::ARRAY || is_warray(expression_type(p_cast->operand)))) {
 		return packed_array(p_cast->operand, target).expression();
+	}
+	if (is_packed(target) && is_packed(expression_type(p_cast->operand)) && target.builtin_type == expression_type(p_cast->operand).builtin_type) {
+		return converted(p_cast->operand, target);
 	}
 	if (is_warray(target) || is_warray(expression_type(p_cast->operand))) {
 		if (is_warray(target) && p_cast->operand->type == Parser::Node::ARRAY) {

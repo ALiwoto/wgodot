@@ -14,6 +14,7 @@ if env.editor_build:
     import cpp_builders
 
     root = pathlib.Path(Dir("#").abspath)
+    env_wgodot.Depends("editor/wgodot_cpp_packed.cpp", "editor/wgodot_cpp_packed_api.gen.h")
     headers = []
     implementations = []
     for directory in ("core", "scene", "servers"):

@@ -91,6 +91,13 @@ typedef Vector<Vector3> PackedVector3Array;
 typedef Vector<Color> PackedColorArray;
 typedef Vector<Vector4> PackedVector4Array;
 
+// wgodot-changes::begin
+namespace WGodotNative {
+template <class T>
+struct PackedStorage;
+}
+// wgodot-changes::end
+
 class _WARN_UNUSED_ Variant {
 public:
 	// If this changes the table in variant_op must be updated
@@ -152,6 +159,10 @@ public:
 	};
 
 private:
+	// wgodot-changes::begin
+	template <class T>
+	friend struct WGodotNative::PackedStorage;
+	// wgodot-changes::end
 	friend struct _VariantCall;
 	friend class VariantInternal;
 	template <typename>

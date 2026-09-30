@@ -1249,6 +1249,10 @@ struct _VariantCall {
 
 HashMap<StringName, Variant> *_VariantCall::variant_constants = nullptr;
 
+// wgodot-changes::begin
+#include "modules/wgodot/native/wgodot_native_packed_api_impl.gen.h"
+// wgodot-changes::end
+
 struct VariantBuiltInMethodInfo {
 	void (*call)(Variant *p_base, const Variant **p_args, int p_argcount, Variant &r_ret, const Vector<Variant> &p_defvals, Callable::CallError &r_error) = nullptr;
 	Variant::ValidatedBuiltInMethod validated_call = nullptr;

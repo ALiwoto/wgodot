@@ -39,6 +39,9 @@ WGodotCppEmitter::Value WGodotCppEmitter::builtin_call(const Parser::CallNode *p
 	if (is_wdictionary(base_type) && !base_type.is_meta_type) {
 		return wdictionary_call(p_call);
 	}
+	if (is_packed(base_type) && !base_type.is_meta_type) {
+		return packed_call(p_call);
+	}
 	bool named_format = false;
 	if ((base_type.builtin_type == Variant::STRING || base_type.builtin_type == Variant::STRING_NAME) && p_call->function_name == SNAME("format") && !p_call->arguments.is_empty()) {
 		const auto values_type = expression_type(p_call->arguments[0]);
@@ -74,17 +77,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::builtin_call(const Parser::CallNode *p
 		return result;
 	}
 	if (!is_static && arguments.is_empty()) {
-		if (is_packed(base_type)) {
-			// Reduced constants are engine vectors; script values use Packed's
-			// shared storage. Borrow either representation without a Variant call.
-			const String array = operands[operands.size() - 1].cpp_type == Variant::get_type_name(base_type.builtin_type) ? receiver : receiver + ".native()";
-			if (p_call->function_name == SNAME("size") || p_call->function_name == SNAME("is_empty")) {
-				result.code = array + "." + String(p_call->function_name) + "()";
-			} else if (base_type.builtin_type == Variant::PACKED_BYTE_ARRAY && p_call->function_name == SNAME("get_string_from_utf8")) {
-				class_call_headers.insert("modules/wgodot/native/wgodot_native_packed.h");
-				result.code = "WGodotNative::packed_string_from_utf8(" + array + ")";
-			}
-		} else if (base_type.builtin_type == Variant::STRING && p_call->function_name == SNAME("to_utf8_buffer")) {
+		if (base_type.builtin_type == Variant::STRING && p_call->function_name == SNAME("to_utf8_buffer")) {
 			result.code = type(expression_type(p_call), p_call) + "(" + receiver + ".to_utf8_buffer())";
 		}
 		if (!result.code.is_empty()) {
@@ -119,12 +112,16 @@ WGodotCppEmitter::Value WGodotCppEmitter::builtin_call(const Parser::CallNode *p
 WGodotCppEmitter::Value WGodotCppEmitter::global_call(const Parser::CallNode *p_call) {
 	StringName name = p_call->function_name;
 	class_call_headers.insert("modules/wgodot/native/wgodot_native_values.h");
-	if (is_packed(p_call->type_constraint) && Parser::get_builtin_type(name) == p_call->type_constraint.builtin_type && p_call->arguments.size() == 1) {
-		const auto *source = p_call->arguments[0];
-		if (source->type == Parser::Node::ARRAY || is_warray(expression_type(source))) {
-			return packed_array(source, p_call->type_constraint);
+	if (is_packed(p_call->type_constraint) && Parser::get_builtin_type(name) == p_call->type_constraint.builtin_type) {
+		if (p_call->arguments.is_empty()) {
+			const String result_type = type(p_call->type_constraint, p_call);
+			return Value(result_type + "()", result_type);
+		}
+		if (p_call->arguments.size() == 1) {
+			return packed_array(p_call->arguments[0], p_call->type_constraint);
 		}
 	}
+
 	if (name == SNAME("len") && p_call->arguments.size() == 1 && (is_warray(expression_type(p_call->arguments[0])) || is_wdictionary(expression_type(p_call->arguments[0])))) {
 		return "(" + expression(p_call->arguments[0]) + ").size()";
 	}

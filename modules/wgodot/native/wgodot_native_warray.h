@@ -2,6 +2,7 @@
 #pragma once
 
 #include "wgodot_native_array_fwd.h"
+#include "wgodot_native_array_storage.h"
 #include "wgodot_native_callback_fwd.h"
 #include "wgodot_native_container_ops.h"
 #include "wgodot_native_dictionary_fwd.h"
@@ -22,11 +23,12 @@
 namespace WGodotNative {
 
 // Handles share one vector object, including its size and current allocation.
-// There is deliberately no implicit Array/Variant conversion or MethodBind ABI.
-template <class T>
+// Ordinary arrays have no implicit Array/Variant conversion or MethodBind ABI.
+// Packed kinds reuse this container with the engine-compatible shared allocation.
+template <class T, Variant::Type Kind>
 class WArray {
 	static_assert(!std::is_same_v<T, Variant>, "WArray requires a concrete element type.");
-	template <class>
+	template <class, Variant::Type>
 	friend class WArray;
 	template <class Compare>
 	struct CallbackComparator {
@@ -34,25 +36,14 @@ class WArray {
 		explicit CallbackComparator(Compare p_callback) : callback(std::move(p_callback)) {}
 		bool operator()(const T &p_left, const T &p_right) const { return bool(callback.call(p_left, p_right)); }
 	};
-	struct Storage {
-		SafeRefCount references;
-		Vector<T> elements;
-		bool read_only = false;
+	using Storage = ArrayStorage<T, Kind>;
+	typename Storage::Data *storage;
 
-		Storage() { references.init(); }
-		explicit Storage(std::initializer_list<T> p_values) : elements(p_values) { references.init(); }
-	};
-
-	Storage *storage;
-
-	static void release(Storage *p_storage) {
-		if (p_storage->references.unref()) {
-			memdelete(p_storage);
-		}
-	}
+	Vector<T> &elements() { return Storage::elements(storage); }
+	const Vector<T> &elements() const { return Storage::elements(storage); }
 
 	bool writable() const {
-		ERR_FAIL_COND_V_MSG(storage->read_only, false, "WArray is read-only.");
+		ERR_FAIL_COND_V_MSG(is_read_only(), false, "WArray is read-only.");
 		return true;
 	}
 
@@ -60,26 +51,45 @@ class WArray {
 
 public:
 	using Element = T;
+	using Native = Vector<T>;
+	static constexpr Variant::Type KIND = Kind;
 
-	WArray() : storage(memnew(Storage)) {}
-	WArray(std::initializer_list<T> p_values) : storage(memnew(Storage(p_values))) {}
-	WArray(const WArray &p_other) : storage(p_other.storage) { storage->references.ref(); }
-	~WArray() { release(storage); }
+	WArray() : storage(Storage::create()) {}
+	WArray(std::initializer_list<T> p_values) : storage(Storage::create(p_values)) {}
+	WArray(const WArray &p_other) : storage(p_other.storage) { Storage::retain(storage); }
+	~WArray() { Storage::release(storage); }
 
 	WArray &operator=(const WArray &p_other) {
-		Storage *previous = storage;
-		p_other.storage->references.ref();
+		auto *previous = storage;
+		Storage::retain(p_other.storage);
 		storage = p_other.storage;
-		release(previous);
+		Storage::release(previous);
 		return *this;
 	}
 
-	int64_t size() const { return storage->elements.size(); }
-	bool is_empty() const { return storage->elements.is_empty(); }
-	bool is_read_only() const { return storage->read_only; }
-	void make_read_only() { storage->read_only = true; }
+	// Native vectors represent a new packed identity; Variant boundaries retain
+	// the existing identity so engine callbacks continue to see mutations.
+	template <Variant::Type K = Kind, std::enable_if_t<K != Variant::ARRAY && K == Kind, int> = 0>
+	WArray(const Native &p_values) : storage(Storage::create(p_values)) {}
+	template <Variant::Type K = Kind, std::enable_if_t<K != Variant::ARRAY && K == Kind, int> = 0>
+	WArray(const Variant &p_value) : storage(Storage::from_variant(p_value)) {}
 	// native-array: internal
-	const Vector<T> &native() const { return storage->elements; }
+	template <Variant::Type K = Kind, std::enable_if_t<K != Variant::ARRAY && K == Kind, int> = 0>
+	operator Variant() const { return Storage::to_variant(storage); }
+	// native-array: internal
+	explicit operator bool() const { return !is_empty(); }
+	// native-array: internal
+	Vector<T> &packed_native() const {
+		static_assert(Kind != Variant::ARRAY);
+		return Storage::elements(storage);
+	}
+
+	int64_t size() const { return elements().size(); }
+	bool is_empty() const { return elements().is_empty(); }
+	bool is_read_only() const { return Storage::read_only(storage); }
+	void make_read_only() { Storage::make_read_only(storage); }
+	// native-array: internal
+	const Vector<T> &native() const { return elements(); }
 	bool is_typed() const { return true; }
 	template <class U>
 	bool is_same_typed(const WArray<U> &) const { return std::is_same_v<T, U>; }
@@ -107,8 +117,8 @@ public:
 	// native-array: unsupported=Script resources are unavailable in native games
 	std::nullptr_t get_typed_script() const = delete;
 	uint32_t hash() const {
-		uint32_t result = hash_murmur3_one_32(Variant::ARRAY);
-		for (const T &value : storage->elements) {
+		uint32_t result = hash_murmur3_one_32(Kind);
+		for (const T &value : elements()) {
 			result = hash_murmur3_one_32(container_value_hash(value), result);
 		}
 		return hash_fmix32(result);
@@ -117,7 +127,7 @@ public:
 	T get(int64_t p_index) const {
 		const int64_t position = index(p_index);
 		ERR_FAIL_INDEX_V(position, size(), T());
-		return storage->elements[position];
+		return elements()[position];
 	}
 
 	void set(int64_t p_index, T p_value) {
@@ -126,17 +136,17 @@ public:
 		}
 		const int64_t position = index(p_index);
 		ERR_FAIL_INDEX(position, size());
-		storage->elements.set(position, p_value);
+		elements().set(position, p_value);
 	}
 
 	void clear() {
 		if (writable()) {
-			storage->elements.clear();
+			elements().clear();
 		}
 	}
 	void append(T p_value) {
 		if (writable()) {
-			storage->elements.push_back(p_value);
+			elements().push_back(p_value);
 		}
 	}
 	void push_back(T p_value) { append(std::move(p_value)); }
@@ -144,23 +154,23 @@ public:
 		if (!writable()) {
 			return ERR_LOCKED;
 		}
-		return storage->elements.insert(index(p_position), p_value);
+		return elements().insert(index(p_position), p_value);
 	}
 	void push_front(T p_value) { insert(0, p_value); }
 	Error resize(int64_t p_size) {
-		return writable() ? storage->elements.resize_initialized(p_size) : ERR_LOCKED;
+		return writable() ? elements().resize_initialized(p_size) : ERR_LOCKED;
 	}
-	Error reserve(int64_t p_size) { return writable() ? storage->elements.reserve(p_size) : ERR_LOCKED; }
+	Error reserve(int64_t p_size) { return writable() ? elements().reserve(p_size) : ERR_LOCKED; }
 	void remove_at(int64_t p_index) {
 		if (writable()) {
-			storage->elements.remove_at(index(p_index));
+			elements().remove_at(index(p_index));
 		}
 	}
 	T front() const { return get(0); }
 	T back() const { return get(-1); }
 	T pick_random() const {
 		ERR_FAIL_COND_V_MSG(is_empty(), T(), "Can't take a value from an empty WArray.");
-		return storage->elements[Math::rand() % size()];
+		return elements()[Math::rand() % size()];
 	}
 	T pop_at(int64_t p_index) {
 		if (!writable() || is_empty()) {
@@ -168,16 +178,16 @@ public:
 		}
 		const int64_t position = index(p_index);
 		ERR_FAIL_INDEX_V(position, size(), T());
-		T value = storage->elements[position];
-		storage->elements.remove_at(position);
+		T value = elements()[position];
+		elements().remove_at(position);
 		return value;
 	}
 	T pop_back() { return pop_at(-1); }
 	T pop_front() { return pop_at(0); }
-	int64_t find(const T &p_value, int64_t p_from = 0) const { return p_from < 0 ? -1 : storage->elements.find(p_value, p_from); }
+	int64_t find(const T &p_value, int64_t p_from = 0) const { return p_from < 0 ? -1 : elements().find(p_value, p_from); }
 	int64_t rfind(const T &p_value, int64_t p_from = -1) const {
 		const int64_t from = index(p_from);
-		return storage->elements.rfind(p_value, from < 0 || from >= size() ? size() - 1 : from);
+		return elements().rfind(p_value, from < 0 || from >= size() ? size() - 1 : from);
 	}
 	template <class Predicate>
 	int64_t find_custom(const Predicate &p_predicate, int64_t p_from = 0) const {
@@ -201,53 +211,53 @@ public:
 		}
 		return -1;
 	}
-	int64_t count(const T &p_value) const { return storage->elements.count(p_value); }
+	int64_t count(const T &p_value) const { return elements().count(p_value); }
 	bool has(const T &p_value) const { return find(p_value) >= 0; }
 	void erase(const T &p_value) {
 		if (writable()) {
-			storage->elements.erase(p_value);
+			elements().erase(p_value);
 		}
 	}
 	void reverse() {
 		if (writable()) {
-			storage->elements.reverse();
+			elements().reverse();
 		}
 	}
 	// native-array: ordered
 	void sort() {
 		if (writable()) {
-			storage->elements.sort();
+			elements().sort();
 		}
 	}
 	template <class Compare>
 	void sort_custom(const Compare &p_compare) {
 		if (writable()) {
-			storage->elements.template sort_custom<CallbackComparator<Compare>, true>(CallbackComparator<Compare>(p_compare));
+			elements().template sort_custom<CallbackComparator<Compare>, true>(CallbackComparator<Compare>(p_compare));
 		}
 	}
 	void shuffle() {
 		if (!writable() || size() < 2) {
 			return;
 		}
-		T *elements = storage->elements.ptrw();
+		T *data = elements().ptrw();
 		for (int64_t i = size() - 1; i > 0; i--) {
 			const int64_t other = Math::rand() % (i + 1);
-			SWAP(elements[i], elements[other]);
+			SWAP(data[i], data[other]);
 		}
 	}
 	// native-array: ordered
-	int64_t bsearch(const T &p_value, bool p_before = true) const { return storage->elements.bsearch(p_value, p_before); }
+	int64_t bsearch(const T &p_value, bool p_before = true) const { return elements().bsearch(p_value, p_before); }
 	template <class Compare>
 	int64_t bsearch_custom(const T &p_value, const Compare &p_compare, bool p_before = true) const {
-		return storage->elements.template bsearch_custom<CallbackComparator<Compare>>(p_value, p_before, p_compare);
+		return elements().template bsearch_custom<CallbackComparator<Compare>>(p_value, p_before, p_compare);
 	}
 	// native-array: ordered
 	T min() const {
 		ERR_FAIL_COND_V_MSG(is_empty(), T(), "An empty WArray has no minimum value.");
 		T result = get(0);
 		for (int64_t i = 1; i < size(); i++) {
-			if (storage->elements[i] < result) {
-				result = storage->elements[i];
+			if (elements()[i] < result) {
+				result = elements()[i];
 			}
 		}
 		return result;
@@ -257,25 +267,25 @@ public:
 		ERR_FAIL_COND_V_MSG(is_empty(), T(), "An empty WArray has no maximum value.");
 		T result = get(0);
 		for (int64_t i = 1; i < size(); i++) {
-			if (result < storage->elements[i]) {
-				result = storage->elements[i];
+			if (result < elements()[i]) {
+				result = elements()[i];
 			}
 		}
 		return result;
 	}
 	void fill(T p_value) {
 		if (writable()) {
-			storage->elements.fill(p_value);
+			elements().fill(p_value);
 		}
 	}
 	void append_array(const WArray &p_other) {
 		if (writable()) {
-			storage->elements.append_array(p_other.storage->elements);
+			elements().append_array(p_other.elements());
 		}
 	}
 	void assign(const WArray &p_other) {
 		if (writable()) {
-			storage->elements = p_other.storage->elements;
+			elements() = p_other.elements();
 		}
 	}
 
@@ -298,7 +308,7 @@ public:
 		const int64_t count = (end - begin) / p_step + ((end - begin) % p_step != 0);
 		result.resize(count);
 		for (int64_t i = 0, position = begin; i < count; i++) {
-			result.storage->elements.set(i, p_deep ? duplicate_container_value(get(position), RESOURCE_DEEP_DUPLICATE_NONE, 1) : get(position));
+			result.elements().set(i, p_deep ? duplicate_container_value(get(position), RESOURCE_DEEP_DUPLICATE_NONE, 1) : get(position));
 			if (i + 1 < count) {
 				position += p_step;
 			}
@@ -367,12 +377,12 @@ public:
 	WArray recursive_duplicate(bool p_deep, ResourceDeepDuplicateMode p_mode, int p_depth) const {
 		WArray result;
 		ERR_FAIL_COND_V_MSG(p_depth > Variant::MAX_RECURSION_DEPTH, result, "Maximum container copy recursion reached.");
-		result.storage->elements = storage->elements;
+		result.elements() = elements();
 		if constexpr (container_needs_deep_copy<T>) {
 			if (p_deep) {
 				ContainerDuplicateScope scope(p_depth);
 				for (int64_t i = 0; i < size(); i++) {
-					result.storage->elements.set(i, duplicate_container_value(storage->elements[i], p_mode, p_depth + 1));
+					result.elements().set(i, duplicate_container_value(elements()[i], p_mode, p_depth + 1));
 				}
 			}
 		}
@@ -386,20 +396,23 @@ public:
 			result.set_typed(Variant::CALLABLE, StringName(), Variant());
 			result.resize(size());
 			for (int64_t i = 0; i < size(); i++) {
-				result[i] = storage->elements[i].to_callable();
+				result[i] = elements()[i].to_callable();
 			}
 		} else {
 			const PropertyInfo element = GetTypeInfo<T>::get_class_info();
 			result.set_typed(GetTypeInfo<T>::VARIANT_TYPE, element.class_name, Variant());
 			result.resize(size());
 			for (int64_t i = 0; i < size(); i++) {
-				result[i] = Variant(storage->elements[i]);
+				result[i] = Variant(elements()[i]);
 			}
 		}
 		return p_deep ? result.duplicate(true) : result;
 	}
 
 	bool operator==(const WArray &p_other) const {
+		if constexpr (Kind != Variant::ARRAY) {
+			return native() == p_other.native();
+		}
 		if (storage == p_other.storage) {
 			return true;
 		}
@@ -407,13 +420,30 @@ public:
 			return false;
 		}
 		for (int64_t i = 0; i < size(); i++) {
-			if (!(storage->elements[i] == p_other.storage->elements[i])) {
+			if (!(elements()[i] == p_other.elements()[i])) {
 				return false;
 			}
 		}
 		return true;
 	}
 	bool operator!=(const WArray &p_other) const { return !(*this == p_other); }
+	// native-array: internal
+	bool is_same(const WArray &p_other) const {
+		if constexpr (Kind == Variant::ARRAY) {
+			return *this == p_other;
+		}
+		if (size() != p_other.size()) {
+			return false;
+		}
+		const T *left = native().ptr();
+		const T *right = p_other.native().ptr();
+		for (int64_t i = 0; i < size(); i++) {
+			if (!HashMapComparatorDefault<T>::compare(left[i], right[i])) {
+				return false;
+			}
+		}
+		return true;
+	}
 	WArray operator+(const WArray &p_other) const {
 		WArray result = duplicate();
 		result.append_array(p_other);

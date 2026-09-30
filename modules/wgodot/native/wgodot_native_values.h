@@ -72,9 +72,16 @@ Result get_index(const Base &p_base, const Key &p_key) {
 	return convert<Result>(result);
 }
 
-template <class Result, class T, class Key>
-Result get_index(const WArray<T> &p_base, const Key &p_key) {
+template <class Result, class T, Variant::Type Kind, class Key>
+Result get_index(const WArray<T, Kind> &p_base, const Key &p_key) {
 	return convert<Result>(p_base.get(p_key));
+}
+
+template <class Result, class T, class Key>
+Result get_index(const Vector<T> &p_base, const Key &p_key) {
+	const int64_t index = int64_t(p_key) < 0 ? int64_t(p_key) + p_base.size() : int64_t(p_key);
+	ERR_FAIL_INDEX_V(index, p_base.size(), Result());
+	return convert<Result>(p_base[index]);
 }
 
 template <class Result, class K, class V, class Key>
@@ -87,9 +94,16 @@ void set_index(WDictionary<K, V> &p_base, const Key &p_key, const Value &p_value
 	p_base.set(convert<K>(p_key), convert<V>(p_value));
 }
 
-template <class T, class Key, class Value>
-void set_index(WArray<T> &p_base, const Key &p_key, const Value &p_value) {
+template <class T, Variant::Type Kind, class Key, class Value>
+void set_index(WArray<T, Kind> &p_base, const Key &p_key, const Value &p_value) {
 	p_base.set(p_key, convert<T>(p_value));
+}
+
+template <class T, class Key, class Value>
+void set_index(Vector<T> &p_base, const Key &p_key, const Value &p_value) {
+	const int64_t index = int64_t(p_key) < 0 ? int64_t(p_key) + p_base.size() : int64_t(p_key);
+	ERR_FAIL_INDEX(index, p_base.size());
+	p_base.set(index, convert<T>(p_value));
 }
 
 template <class Base, class Key, class Value>
@@ -154,20 +168,25 @@ inline int64_t length(const Variant &p_value) {
 	ERR_FAIL_V_MSG(0, "Native game value cannot provide a length: " + Variant::get_type_name(type));
 }
 
+template <class T, Variant::Type Kind>
+int64_t length(const WArray<T, Kind> &p_value) {
+	return p_value.size();
+}
+
 template <class T>
-int64_t length(const WArray<T> &p_value) {
+int64_t length(const Vector<T> &p_value) {
 	return p_value.size();
 }
 
 // Own the array handle, not a buffer pointer: mutations may resize it, and
 // assigning another array to the original variable must not redirect the loop.
-template <class T>
+template <class T, Variant::Type Kind = Variant::ARRAY>
 class WArrayIterator {
-	WArray<T> collection;
+	WArray<T, Kind> collection;
 	int64_t position = 0;
 
 public:
-	explicit WArrayIterator(const WArray<T> &p_collection) : collection(p_collection) {}
+	explicit WArrayIterator(const WArray<T, Kind> &p_collection) : collection(p_collection) {}
 	bool has_value() const { return position < collection.size(); }
 	void next() { position++; }
 	template <class Result>
