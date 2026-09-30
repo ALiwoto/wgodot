@@ -1,6 +1,7 @@
 // wgodot-changes::file
 #pragma once
 
+#include "core/object/property_info.h"
 #include "core/string/ustring.h"
 #include "core/templates/hash_map.h"
 #include "core/templates/hash_set.h"
@@ -29,7 +30,7 @@ class WGodotResourceExport {
 public:
 	void initialize(const Dictionary &p_paths);
 	String path(const String &p_original);
-	Variant rewrite_value(const Variant &p_value);
+	Variant rewrite_value(const Variant &p_value, const PropertyInfo &p_property = PropertyInfo());
 	Error export_file(String &r_path, Vector<uint8_t> &r_data);
 	Error finish(Vector<uint8_t> &r_catalog);
 };

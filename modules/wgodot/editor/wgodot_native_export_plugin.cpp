@@ -178,7 +178,7 @@ void WGodotNativeExportPlugin::_export_project_settings(HashMap<String, Variant>
 				continue;
 			}
 		}
-		const Variant rewritten = resources.rewrite_value(original);
+		const Variant rewritten = resources.rewrite_value(original, property);
 		if (rewritten != original) {
 			r_settings[property.name] = rewritten;
 		}

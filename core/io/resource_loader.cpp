@@ -70,11 +70,17 @@ int ResourceLoader::loader_count = 0;
 bool ResourceFormatLoader::recognize_path(const String &p_path, const String &p_for_type) const {
 	// wgodot-changes::begin
 	if (WGodotResourcePaths::is_opaque(p_path)) {
+		// Native remaps bypass ResourceFormatImporter, which normally supplies
+		// the imported resource's concrete type when selecting its loader.
+		String type_hint = WGodotResourcePaths::resource_type(p_path);
+		if (type_hint.is_empty()) {
+			type_hint = p_for_type;
+		}
 		List<String> extensions;
-		if (p_for_type.is_empty()) {
+		if (type_hint.is_empty()) {
 			get_recognized_extensions(&extensions);
 		} else {
-			get_recognized_extensions_for_type(p_for_type, &extensions);
+			get_recognized_extensions_for_type(type_hint, &extensions);
 		}
 		for (const String &extension : extensions) {
 			if (WGodotResourcePaths::recognizes_extension(p_path, extension)) {

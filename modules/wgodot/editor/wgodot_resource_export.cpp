@@ -15,6 +15,32 @@
 #include "core/variant/variant_parser.h"
 #include "editor/file_system/editor_paths.h"
 
+namespace {
+PropertyInfo container_element_property(const PropertyInfo &p_container, int p_index = 0) {
+	PropertyInfo property;
+	if (p_container.hint != PROPERTY_HINT_TYPE_STRING && p_container.hint != PROPERTY_HINT_ARRAY_TYPE && p_container.hint != PROPERTY_HINT_DICTIONARY_TYPE) {
+		return property;
+	}
+	String hint = p_container.hint_string;
+	if (p_container.type == Variant::DICTIONARY) {
+		const PackedStringArray types = hint.split(";", true, 1);
+		if (p_index >= types.size()) {
+			return property;
+		}
+		hint = types[p_index];
+	}
+	// Container hints encode each element as type/hint:hint_string.
+	const int separator = hint.find_char(':');
+	if (separator >= 0) {
+		const String type = hint.substr(0, separator);
+		property.type = Variant::Type(type.get_slicec('/', 0).to_int());
+		property.hint = PropertyHint(type.get_slicec('/', 1).to_int());
+		property.hint_string = hint.substr(separator + 1);
+	}
+	return property;
+}
+} // namespace
+
 void WGodotResourceExport::initialize(const Dictionary &p_paths) {
 	ids.clear();
 	entries.clear();
@@ -58,7 +84,11 @@ String WGodotResourceExport::path(const String &p_original) {
 	return WGodotResourcePaths::to_path(id);
 }
 
-Variant WGodotResourceExport::rewrite_value(const Variant &p_value) {
+Variant WGodotResourceExport::rewrite_value(const Variant &p_value, const PropertyInfo &p_property) {
+	// Directory settings describe locations, not resources in the pack catalog.
+	if (p_property.hint == PROPERTY_HINT_DIR || p_property.hint == PROPERTY_HINT_GLOBAL_DIR) {
+		return p_value;
+	}
 	switch (p_value.get_type()) {
 		case Variant::STRING:
 		case Variant::STRING_NAME: {
@@ -77,24 +107,28 @@ Variant WGodotResourceExport::rewrite_value(const Variant &p_value) {
 		}
 		case Variant::PACKED_STRING_ARRAY: {
 			PackedStringArray result = p_value;
+			const PropertyInfo element = container_element_property(p_property);
 			for (int i = 0; i < result.size(); i++) {
-				result.set(i, rewrite_value(result[i]));
+				result.set(i, rewrite_value(result[i], element));
 			}
 			return result;
 		}
 		case Variant::ARRAY: {
 			const Array source = p_value;
 			Array result;
+			const PropertyInfo element = container_element_property(p_property);
 			for (const Variant &value : source) {
-				result.push_back(rewrite_value(value));
+				result.push_back(rewrite_value(value, element));
 			}
 			return result;
 		}
 		case Variant::DICTIONARY: {
 			const Dictionary source = p_value;
 			Dictionary result;
+			const PropertyInfo key_property = container_element_property(p_property);
+			const PropertyInfo value_property = container_element_property(p_property, 1);
 			for (const KeyValue<Variant, Variant> &entry : source) {
-				result[rewrite_value(entry.key)] = rewrite_value(entry.value);
+				result[rewrite_value(entry.key, key_property)] = rewrite_value(entry.value, value_property);
 			}
 			return result;
 		}
