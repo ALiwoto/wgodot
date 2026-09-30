@@ -160,6 +160,12 @@ void WorkerThreadPool::_process_task(Task *p_task) {
 				threads[i].signaled = true;
 			}
 		}
+		// wgodot-changes::begin
+		if (p_task->wgodot_release_on_completion && p_task->waiting_pool == 0 && p_task->waiting_user == 0) {
+			tasks.erase(p_task->self);
+			task_allocator.free(p_task);
+		}
+		// wgodot-changes::end
 	}
 
 #ifdef THREADS_ENABLED

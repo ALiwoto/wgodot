@@ -43,6 +43,9 @@
 
 class WorkerThreadPool : public Object {
 	GDCLASS(WorkerThreadPool, Object)
+	// wgodot-changes::begin
+	friend class WGodotResourceLoaderLifetime;
+	// wgodot-changes::end
 public:
 	enum {
 		INVALID_TASK_ID = -1
@@ -87,6 +90,9 @@ private:
 		uint32_t waiting_pool = 0;
 		uint32_t waiting_user = 0;
 		bool low_priority = false;
+		// wgodot-changes::begin
+		bool wgodot_release_on_completion = false;
+		// wgodot-changes::end
 		BaseTemplateUserdata *template_userdata = nullptr;
 		int pool_thread_index = -1;
 

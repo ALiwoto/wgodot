@@ -31,6 +31,7 @@
 #include "resource_loader.h"
 
 // wgodot-changes::begin
+#include "core/io/wgodot_resource_loader_lifetime.h"
 #include "core/profiling/wgodot_startup_profile.h"
 // wgodot-changes::end
 
@@ -228,48 +229,9 @@ void ResourceFormatLoader::_bind_methods() {
 
 // This should be robust enough to be called redundantly without issues.
 void ResourceLoader::LoadToken::clear() {
-	WorkerThreadPool::TaskID task_to_await = 0;
-
-	{
-		MutexLock thread_load_lock(thread_load_mutex);
-		// User-facing tokens shouldn't be deleted until completely claimed.
-		DEV_ASSERT(user_rc == 0 && user_path.is_empty());
-
-		if (!local_path.is_empty()) {
-			if (task_if_unregistered) {
-				memdelete(task_if_unregistered);
-				task_if_unregistered = nullptr;
-			} else {
-				DEV_ASSERT(thread_load_tasks.has(local_path));
-				ThreadLoadTask &load_task = thread_load_tasks[local_path];
-				if (load_task.task_id && !load_task.awaited) {
-					task_to_await = load_task.task_id;
-				}
-				// Removing a task which is still in progress would be catastrophic.
-				// Tokens must be alive until the task thread function is done.
-				DEV_ASSERT(load_task.status == THREAD_LOAD_FAILED || load_task.status == THREAD_LOAD_LOADED);
-				thread_load_tasks.erase(local_path);
-			}
-			local_path.clear(); // Mark as already cleared.
-			if (task_to_await) {
-				for (KeyValue<String, ResourceLoader::ThreadLoadTask> &E : thread_load_tasks) {
-					if (E.value.task_id == task_to_await) {
-						task_to_await = 0;
-						break; // Same task is reused by nested loads, do not wait for completion here.
-					}
-				}
-			}
-		}
-	}
-
-	// If task is unused, await it here, locally, now the token data is consistent.
-	if (task_to_await) {
-		int load_nesting_backup = load_nesting;
-		load_nesting = 0;
-		WorkerThreadPool::get_singleton()->wait_for_task_completion(task_to_await);
-		DEV_ASSERT(load_nesting == 0);
-		load_nesting = load_nesting_backup;
-	}
+	// wgodot-changes::begin
+	WGodotResourceLoaderLifetime::clear_token(this);
+	// wgodot-changes::end
 }
 
 ResourceLoader::LoadToken::~LoadToken() {
@@ -343,6 +305,10 @@ Ref<Resource> ResourceLoader::_load(const String &p_path, const String &p_origin
 // The load task token must be manually re-referenced before this is called, which includes threaded runs.
 void ResourceLoader::_run_load_task(void *p_userdata) {
 	ThreadLoadTask &load_task = *(ThreadLoadTask *)p_userdata;
+	// wgodot-changes::begin
+	// Adopts the reference reserved before this invocation was scheduled.
+	WGodotResourceLoaderLifetime::TaskScope task_scope(load_task.load_token);
+	// wgodot-changes::end
 	int thread_index = WorkerThreadPool::get_singleton()->get_thread_index();
 	String thread_waiting_on_backup;
 
@@ -369,7 +335,9 @@ void ResourceLoader::_run_load_task(void *p_userdata) {
 		}
 	}
 
-	ThreadLoadTask *curr_load_task_backup = curr_load_task;
+	// wgodot-changes::begin
+	// TaskScope restores this on every exit, including shutdown cancellation.
+	// wgodot-changes::end
 	curr_load_task = &load_task;
 
 	if (wait) {
@@ -386,6 +354,13 @@ void ResourceLoader::_run_load_task(void *p_userdata) {
 			chain.clear();
 
 			thread_load_mutex.lock();
+			// wgodot-changes::begin
+			if (cleaning_tasks) {
+				load_task.status = THREAD_LOAD_FAILED;
+				thread_load_mutex.unlock();
+				return;
+			}
+			// wgodot-changes::end
 
 			int waiting_on_thread = load_task.thread_index;
 			int current_thread = waiting_on_thread;
@@ -498,22 +473,15 @@ void ResourceLoader::_run_load_task(void *p_userdata) {
 				// yield.
 				OS::get_singleton()->delay_usec(1000);
 			}
-		} while (wait && status == THREAD_LOAD_IN_PROGRESS && !cleaning_tasks);
-
-		if (cleaning_tasks || status != THREAD_LOAD_IN_PROGRESS) {
-			curr_load_task = curr_load_task_backup;
-		}
-
-		if (cleaning_tasks) {
-			load_task.status = THREAD_LOAD_FAILED;
-			// Do not attempt to unreference the load token. Many things are
-			// tearing down concurrently and our task might be dead already. If it is
-			// the load token is already released.
-			return;
-		}
+			// wgodot-changes::begin
+			// Cancellation is checked while holding the mutex at the start of each pass.
+		} while (wait && status == THREAD_LOAD_IN_PROGRESS);
+		// wgodot-changes::end
 
 		if (status != THREAD_LOAD_IN_PROGRESS) {
-			load_task.load_token->unreference();
+			// wgodot-changes::begin
+			// Keep the token until this invocation has finished using task state.
+			// wgodot-changes::end
 			thread_load_mutex.lock();
 			if (thread_waiting_on_backup.is_empty()) {
 				thread_waiting_on.erase(thread_index);
@@ -528,13 +496,13 @@ void ResourceLoader::_run_load_task(void *p_userdata) {
 	}
 
 	// Thread-safe either if it's the current thread or a brand new one.
-	CallQueue *own_mq_override = nullptr;
 	if (load_nesting == 0) {
 		if (!Thread::is_main_thread()) {
 			// Let the caller thread use its own, for added flexibility. Provide one otherwise.
 			if (MessageQueue::get_singleton() == MessageQueue::get_main_singleton()) {
-				own_mq_override = memnew(CallQueue);
-				MessageQueue::set_thread_singleton_override(own_mq_override);
+				// wgodot-changes::begin
+				task_scope.create_queue_override();
+				// wgodot-changes::end
 			}
 			set_current_thread_safe_for_nodes(true);
 		}
@@ -647,8 +615,9 @@ void ResourceLoader::_run_load_task(void *p_userdata) {
 
 	if (cleaning_tasks) {
 		// If we are cleaning don't wake up yielders here.
-		// And don't unreference the load token, it will get destroyed
-		// with the task later.
+		// wgodot-changes::begin
+		// TaskScope also cleans up the queue and token on this exit.
+		// wgodot-changes::end
 		load_task.status = THREAD_LOAD_FAILED;
 		thread_load_mutex.unlock();
 		return;
@@ -678,18 +647,9 @@ void ResourceLoader::_run_load_task(void *p_userdata) {
 
 	thread_load_mutex.unlock();
 
-	// It's safe now to let the task go in case no one else was grabbing the token.
-	load_task.load_token->unreference();
-
-	if (load_nesting == 0) {
-		if (own_mq_override) {
-			MessageQueue::set_thread_singleton_override(nullptr);
-			memdelete(own_mq_override);
-		}
-	}
-
-	curr_load_task = curr_load_task_backup;
-
+	// wgodot-changes::begin
+	// TaskScope releases the token after this final access and local cleanup.
+	// wgodot-changes::end
 	print_verbose(vformat("Completed load for: '%s' remapped '%s' at thread %d", load_task.local_path, remapped_path, thread_index));
 }
 
@@ -765,6 +725,11 @@ Ref<ResourceLoader::LoadToken> ResourceLoader::_load_start(const String &p_path,
 	ThreadLoadTask *load_task_ptr = nullptr;
 	{
 		MutexLock thread_load_lock(thread_load_mutex);
+		// wgodot-changes::begin
+		if (cleaning_tasks) {
+			return Ref<LoadToken>();
+		}
+		// wgodot-changes::end
 
 		if (p_for_user) {
 			LoadToken *existing_token = _load_threaded_request_reuse_user_token(p_path);
@@ -838,7 +803,9 @@ Ref<ResourceLoader::LoadToken> ResourceLoader::_load_start(const String &p_path,
 		// It's important to keep the token alive because until the load completes,
 		// which includes before the thread start, it may happen that no one is grabbing
 		// the token anymore so it's released.
-		load_task_ptr->load_token->reference();
+		// wgodot-changes::begin
+		WGodotResourceLoaderLifetime::reference_run(load_task_ptr->load_token);
+		// wgodot-changes::end
 
 		if (p_thread_mode == LOAD_THREAD_FROM_CURRENT) {
 			// The current thread may happen to be a thread from the pool.
@@ -850,6 +817,9 @@ Ref<ResourceLoader::LoadToken> ResourceLoader::_load_start(const String &p_path,
 			}
 		} else {
 			load_task_ptr->task_id = WorkerThreadPool::get_singleton()->add_native_task(&ResourceLoader::_run_load_task, load_task_ptr);
+			// wgodot-changes::begin
+			load_token->wgodot_owned_pool_task = load_task_ptr->task_id;
+			// wgodot-changes::end
 		}
 	} // MutexLock(thread_load_mutex).
 
@@ -1036,6 +1006,14 @@ Ref<Resource> ResourceLoader::_load_complete_inner(LoadToken &p_load_token, Erro
 	if (r_error) {
 		*r_error = OK;
 	}
+	// wgodot-changes::begin
+	if (cleaning_tasks) {
+		if (r_error) {
+			*r_error = FAILED;
+		}
+		return Ref<Resource>();
+	}
+	// wgodot-changes::end
 
 	ThreadLoadTask *load_task_ptr = nullptr;
 	if (p_load_token.task_if_unregistered) {
@@ -1066,23 +1044,24 @@ Ref<Resource> ResourceLoader::_load_complete_inner(LoadToken &p_load_token, Erro
 			bool loader_is_wtp = load_task.task_id != 0;
 			if (loader_is_wtp) {
 				// Loading thread is in the worker pool.
+				// wgodot-changes::begin
+				// Reserve the run while locked, so shutdown cannot miss it.
+				WGodotResourceLoaderLifetime::reference_run(load_task.load_token);
+				// wgodot-changes::end
 				p_thread_load_lock.temp_unlock();
 
 				// The wtp won't let us wait on tasks that are older than us. But ResourceLoader has its own
 				// deadlock detection and prevention in _run_load_task(), rely on that instead.
-				load_task.load_token->reference();
 				_run_load_task(&load_task);
 
 				p_thread_load_lock.temp_relock();
-				load_task.awaited = true;
-				// Mark nested loads with the same task id as awaited.
-				for (KeyValue<String, ResourceLoader::ThreadLoadTask> &E : thread_load_tasks) {
-					if (E.value.task_id == load_task.task_id) {
-						E.value.awaited = true;
-					}
-				}
+				// wgodot-changes::begin
+				// The token owns pool-task cleanup; inline progress is not a pool join.
+				// wgodot-changes::end
 
-				DEV_ASSERT(load_task.status == THREAD_LOAD_FAILED || load_task.status == THREAD_LOAD_LOADED);
+				// wgodot-changes::begin
+				DEV_ASSERT(cleaning_tasks || load_task.status == THREAD_LOAD_FAILED || load_task.status == THREAD_LOAD_LOADED);
+				// wgodot-changes::end
 			} else if (load_task.need_wait) {
 				// Loading thread is main or user thread.
 				if (!load_task.cond_var) {
@@ -1099,13 +1078,21 @@ Ref<Resource> ResourceLoader::_load_complete_inner(LoadToken &p_load_token, Erro
 					load_task.cond_var = nullptr;
 				}
 
-				DEV_ASSERT(load_task.status == THREAD_LOAD_FAILED || load_task.status == THREAD_LOAD_LOADED);
+				// wgodot-changes::begin
+				DEV_ASSERT(cleaning_tasks || load_task.status == THREAD_LOAD_FAILED || load_task.status == THREAD_LOAD_LOADED);
+				// wgodot-changes::end
 			}
 		}
 
 		if (cleaning_tasks) {
-			load_task.resource = Ref<Resource>();
-			load_task.error = FAILED;
+			// wgodot-changes::begin
+			// Cancellation wakes awaiters before the loading run has finished.
+			// Its result must remain untouched until TaskScope releases the run.
+			if (r_error) {
+				*r_error = FAILED;
+			}
+			return Ref<Resource>();
+			// wgodot-changes::end
 		}
 
 		load_task_ptr = &load_task;
@@ -1599,19 +1586,21 @@ void ResourceLoader::clear_thread_load_tasks() {
 	cleaning_tasks = true;
 
 	while (true) {
-		bool none_running = true;
+		// wgodot-changes::begin
+		// A result can be ready while another invocation still uses the task.
+		bool none_running = !WGodotResourceLoaderLifetime::has_active_runs();
+		// wgodot-changes::end
 		for (int tid : yielders) {
 			WorkerThreadPool::get_singleton()->notify_yield_over(tid);
 		}
 		if (thread_load_tasks.size()) {
 			for (KeyValue<String, ResourceLoader::ThreadLoadTask> &E : thread_load_tasks) {
-				if (E.value.status == THREAD_LOAD_IN_PROGRESS) {
-					if (E.value.cond_var && E.value.need_wait) {
-						E.value.cond_var->notify_all();
-					}
-					E.value.need_wait = false;
-					none_running = false;
+				// wgodot-changes::begin
+				if (E.value.cond_var && E.value.need_wait) {
+					E.value.cond_var->notify_all();
 				}
+				E.value.need_wait = false;
+				// wgodot-changes::end
 			}
 		}
 		if (none_running) {
@@ -1635,10 +1624,17 @@ void ResourceLoader::clear_thread_load_tasks() {
 		DEV_ASSERT(user_token->user_rc > 0 && !user_token->user_path.is_empty());
 		user_token->user_path.clear();
 		user_token->user_rc = 0;
-		user_token->unreference();
+		// wgodot-changes::begin
+		user_token->clear();
+		if (user_token->unreference()) {
+			memdelete(user_token);
+		}
+		// wgodot-changes::end
 	}
 
-	thread_load_tasks.clear();
+	// wgodot-changes::begin
+	WGodotResourceLoaderLifetime::clear_remaining_tokens();
+	// wgodot-changes::end
 	thread_waiting_on.clear();
 	// yielders is already guaranteed to be empty now
 

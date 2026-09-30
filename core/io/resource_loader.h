@@ -101,6 +101,9 @@ typedef Error (*ResourceLoaderImport)(const String &p_path);
 typedef void (*ResourceLoadedCallback)(Ref<Resource> p_resource, const String &p_path);
 
 class ResourceLoader {
+	// wgodot-changes::begin
+	friend class WGodotResourceLoaderLifetime;
+	// wgodot-changes::end
 	friend class LoadToken;
 	friend class CoreBind::ResourceLoader;
 
@@ -136,6 +139,10 @@ public:
 		String user_path;
 		uint32_t user_rc = 0; // Having user RC implies regular RC incremented in one, until the user RC reaches zero.
 		ThreadLoadTask *task_if_unregistered = nullptr;
+		// wgodot-changes::begin
+		// Only tasks submitted by this load are owned; nested loads may borrow a task ID.
+		WorkerThreadPool::TaskID wgodot_owned_pool_task = WorkerThreadPool::INVALID_TASK_ID;
+		// wgodot-changes::end
 
 		void clear();
 
@@ -198,7 +205,9 @@ private:
 		ThreadLoadTask *parent_task = nullptr;
 		HashSet<String> sub_tasks;
 
-		bool awaited : 1; // If it's in the pool, this helps not awaiting from more than one dependent thread.
+		// wgodot-changes::begin
+		// Pool-task ownership lives in LoadToken instead of an "awaited" flag.
+		// wgodot-changes::end
 		bool need_wait : 1;
 		bool in_progress_check : 1; // Measure against recursion cycles in progress reporting. Cycles are not expected, but can happen due to how it's currently implemented.
 		bool use_sub_threads : 1;
@@ -214,7 +223,6 @@ private:
 		LocalVector<ResourceChangedConnection> resource_changed_connections;
 
 		ThreadLoadTask() :
-				awaited(false),
 				need_wait(true),
 				in_progress_check(false),
 				use_sub_threads(false),
