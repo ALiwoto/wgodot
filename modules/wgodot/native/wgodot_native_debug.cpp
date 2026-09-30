@@ -4,6 +4,7 @@
 #ifdef DEBUG_ENABLED
 #include "core/object/object.h"
 #include "core/object/wgodot_native_lifetime.h"
+#include "core/os/wgodot_native_allocation.h"
 
 #include <mutex>
 #include <string>
@@ -15,6 +16,7 @@ struct ObjectRecord {
 	std::string class_name;
 	DebugSource context;
 	bool deleting = false;
+	const char *cpp_type = nullptr;
 };
 
 struct Registry {
@@ -51,6 +53,14 @@ void object_predelete(ObjectID p_id) {
 	}
 }
 
+void object_allocated(Object *p_object, const char *p_cpp_type) {
+	std::lock_guard<std::mutex> lock(registry().mutex);
+	const auto found = registry().objects.find(uint64_t(p_object->get_instance_id()));
+	if (found != registry().objects.end()) {
+		found->second.cpp_type = p_cpp_type;
+	}
+}
+
 void object_removed(ObjectID p_id) {
 	std::lock_guard<std::mutex> lock(registry().mutex);
 	registry().objects.erase(uint64_t(p_id));
@@ -64,6 +74,9 @@ String describe_object(ObjectID p_id) {
 	}
 	const ObjectRecord &record = found->second;
 	String result = " - Original class: " + String(record.class_name.c_str());
+	if (record.cpp_type) {
+		result += "\n    C++ allocation type: " + String(record.cpp_type);
+	}
 	const auto source = registry().classes.find(record.class_name);
 	if (source != registry().classes.end()) {
 		result += "\n    Script class: " + describe_source(source->second);
@@ -109,6 +122,7 @@ void DebugFrame::report_callback_failure(const char *p_reason, DebugSource p_tar
 }
 
 void NativeDebug::initialize() {
+	WGodotNativeAllocation::object_allocated = &object_allocated;
 	WGodotNativeLifetime::object_initialized = &object_initialized;
 	WGodotNativeLifetime::object_predelete = &object_predelete;
 	WGodotNativeLifetime::object_removed = &object_removed;

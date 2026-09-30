@@ -353,6 +353,9 @@ template <class... Values>
 void WCallable<R(Args...)>::call_deferred(Values... p_args) const {
 	auto source = *this;
 	auto args = std::make_tuple(std::move(p_args)...);
+	// Preserve the receiver so MessageQueue discards calls after it is freed.
+	// Ownerless static callbacks remain valid; empty callables remain invalid.
+	auto valid = invocation ? invocation->valid : std::function<bool()>([]() { return false; });
 #ifdef DEBUG_ENABLED
 	const DebugSource scheduled_at = DebugFrame::current_source();
 #endif
@@ -361,7 +364,9 @@ void WCallable<R(Args...)>::call_deferred(Values... p_args) const {
 		DebugFrame frame(scheduled_at, "deferred from");
 #endif
 		std::apply([&](const auto &...p_values) { source.call(p_values...); }, args);
-	}).to_callable()
+	},
+			std::move(valid), owner)
+			.to_callable()
 			.call_deferred();
 }
 

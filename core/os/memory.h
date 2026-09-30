@@ -32,6 +32,10 @@
 
 #include "core/error/error_macros.h"
 
+// wgodot-changes::begin
+#include "wgodot_native_allocation.h"
+// wgodot-changes::end
+
 #include <new> // IWYU pragma: keep // `new` operators.
 #include <type_traits>
 
@@ -142,6 +146,11 @@ template <typename T>
 _ALWAYS_INLINE_ memnew_result_t<T> _post_initialize(T *p_obj) {
 	memnew_result_t<T> result{ p_obj };
 	postinitialize_handler(result);
+	// wgodot-changes::begin
+#if defined(WGODOT_NATIVE_GAME) && defined(DEBUG_ENABLED)
+	WGodotNativeAllocation::record_type(p_obj);
+#endif
+	// wgodot-changes::end
 	return result;
 }
 
