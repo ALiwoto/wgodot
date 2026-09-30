@@ -1,6 +1,8 @@
 // wgodot-changes::file
-#include "wgodot_cpp_emitter.h"
 #include "wgodot_cpp_array_api.h"
+#include "wgodot_cpp_emitter.h"
+
+#include "core/object/class_db.h"
 
 using Parser = GDScriptParser;
 
@@ -22,6 +24,14 @@ Parser::DataType WGodotCppEmitter::expression_type(const Parser::ExpressionNode 
 	}
 	if (p_expression->type == Parser::Node::CALL) {
 		const auto *call = static_cast<const Parser::CallNode *>(p_expression);
+		if (call->type_constraint.is_variant() && !call->is_super && call->get_callee_type() == Parser::Node::IDENTIFIER) {
+			const auto *owner = member_owner(current_class->node, call->function_name);
+			const bool member = owner && owner->node->get_member(call->function_name).type == Parser::ClassNode::Member::FUNCTION;
+			Parser::DataType result;
+			if (!member && !ClassDB::has_method(native_base(current_class->node->self_type), call->function_name) && native_utility_type(call, result)) {
+				return result;
+			}
+		}
 		if (call->get_callee_type() == Parser::Node::IDENTIFIER && call->function_name == SNAME("Array") && call->arguments.size() == 1) {
 			const auto source = expression_type(call->arguments[0]);
 			if (is_packed(source)) {
@@ -136,15 +146,47 @@ Parser::DataType WGodotCppEmitter::expression_type(const Parser::ExpressionNode 
 	}
 	if (p_expression->type == Parser::Node::BINARY_OPERATOR) {
 		const auto *binary = static_cast<const Parser::BinaryOpNode *>(p_expression);
+		const auto left = expression_type(binary->left_operand);
+		const auto right = expression_type(binary->right_operand);
 		if (binary->variant_op == Variant::OP_ADD) {
-			const auto left = expression_type(binary->left_operand);
-			const auto right = expression_type(binary->right_operand);
 			if (is_warray(left) && (is_warray(right) || binary->right_operand->type == Parser::Node::ARRAY)) {
 				return left;
 			}
 			if (is_warray(right) && binary->left_operand->type == Parser::Node::ARRAY) {
 				return right;
 			}
+		}
+		// Comparisons and logical operators return bool even when an operand's
+		// analyzer type was erased (for example a typed Callable's result).
+		Variant::Type result = Variant::NIL;
+		if (binary->variant_op <= Variant::OP_GREATER_EQUAL || binary->variant_op == Variant::OP_AND || binary->variant_op == Variant::OP_OR || binary->variant_op == Variant::OP_XOR || binary->variant_op == Variant::OP_IN) {
+			result = Variant::BOOL;
+		} else if (native_value_kind(left) != Variant::VARIANT_MAX && native_value_kind(right) != Variant::VARIANT_MAX) {
+			result = Variant::get_operator_return_type(binary->variant_op, native_value_kind(left), native_value_kind(right));
+		}
+		if (p_expression->type_constraint.is_variant() && result != Variant::NIL) {
+			Parser::DataType resolved;
+			resolved.kind = Parser::DataType::BUILTIN;
+			resolved.type_source = Parser::DataType::ANNOTATED_INFERRED;
+			resolved.builtin_type = result;
+			return resolved;
+		}
+	}
+	if (p_expression->type == Parser::Node::UNARY_OPERATOR && p_expression->type_constraint.is_variant()) {
+		const auto *unary = static_cast<const Parser::UnaryOpNode *>(p_expression);
+		const Variant::Type operand = native_value_kind(expression_type(unary->operand));
+		Variant::Type result = Variant::NIL;
+		if (unary->variant_op == Variant::OP_NOT) {
+			result = Variant::BOOL;
+		} else if (operand != Variant::VARIANT_MAX) {
+			result = Variant::get_operator_return_type(unary->variant_op, operand, Variant::NIL);
+		}
+		if (result != Variant::NIL) {
+			Parser::DataType resolved;
+			resolved.kind = Parser::DataType::BUILTIN;
+			resolved.type_source = Parser::DataType::ANNOTATED_INFERRED;
+			resolved.builtin_type = result;
+			return resolved;
 		}
 	}
 	if (p_expression->type == Parser::Node::TERNARY_OPERATOR) {
@@ -156,6 +198,14 @@ Parser::DataType WGodotCppEmitter::expression_type(const Parser::ExpressionNode 
 		}
 		if (is_warray(right) && ternary->true_expr->type == Parser::Node::ARRAY) {
 			return right;
+		}
+		const Variant::Type kind = native_value_kind(left);
+		if (p_expression->type_constraint.is_variant() && kind > Variant::NIL && kind < Variant::OBJECT && kind == native_value_kind(right)) {
+			Parser::DataType resolved;
+			resolved.kind = Parser::DataType::BUILTIN;
+			resolved.type_source = Parser::DataType::ANNOTATED_INFERRED;
+			resolved.builtin_type = kind;
+			return resolved;
 		}
 	}
 	return p_expression->type_constraint;

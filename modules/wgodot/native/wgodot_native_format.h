@@ -16,6 +16,14 @@ inline String format_string(const String &p_format, const Span<Variant> &p_argum
 	return result;
 }
 
+// sprintf still consumes Variants, but a scalar argument needs neither an
+// engine Array allocation nor Variant operator dispatch around the formatter.
+template <class T>
+String format_string_value(const String &p_format, const T &p_argument) {
+	const Variant value(p_argument);
+	return format_string(p_format, Span<Variant>(&value, 1));
+}
+
 template <class T>
 String format_string(const String &p_format, const WArray<T> &p_arguments) {
 	Vector<Variant> values;

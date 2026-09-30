@@ -83,6 +83,7 @@ class WGodotCppEmitter {
 	Value lower_engine_argument(const GDScriptParser::ExpressionNode *p_expression, Variant::Type p_target);
 	Value lower_receiver(const GDScriptParser::ExpressionNode *p_expression);
 	Value lower_binary(const GDScriptParser::BinaryOpNode *p_binary);
+	bool literal_membership(const GDScriptParser::BinaryOpNode *p_binary, Value &r_result);
 	Value lower_index(const GDScriptParser::SubscriptNode *p_subscript);
 	Value lower_dictionary(const GDScriptParser::DictionaryNode *p_dictionary);
 	Value value_facts(const GDScriptParser::ExpressionNode *p_expression, const String &p_code);
@@ -118,6 +119,8 @@ class WGodotCppEmitter {
 	Value packed_call(const GDScriptParser::CallNode *p_call);
 	Value packed_array(const GDScriptParser::ExpressionNode *p_source, const GDScriptParser::DataType &p_target);
 	GDScriptParser::DataType expression_type(const GDScriptParser::ExpressionNode *p_expression) const;
+	static Variant::Type native_value_kind(const GDScriptParser::DataType &p_type);
+	bool native_utility_type(const GDScriptParser::CallNode *p_call, GDScriptParser::DataType &r_type) const;
 	GDScriptParser::DataType variable_type(const GDScriptParser::VariableNode *p_variable) const;
 	bool has_native_value_signature(const GDScriptParser::FunctionNode *p_function) const;
 	bool validate_array_conversion(const GDScriptParser::ExpressionNode *p_value, const GDScriptParser::DataType &p_target, const GDScriptParser::Node *p_target_origin = nullptr);

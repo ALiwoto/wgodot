@@ -1,12 +1,68 @@
 // wgodot-changes::file
+#include "wgodot_cpp_builtin_api.gen.h"
 #include "wgodot_cpp_emitter.h"
 #include "wgodot_cpp_names.h"
 
 #include "core/variant/type_info.h"
 
-#include "wgodot_cpp_builtin_api.gen.h"
-
 using Parser = GDScriptParser;
+
+Variant::Type WGodotCppEmitter::native_value_kind(const Parser::DataType &p_type) {
+	if (p_type.is_meta_type || p_type.is_coroutine) {
+		return Variant::VARIANT_MAX;
+	}
+	switch (p_type.kind) {
+		case Parser::DataType::BUILTIN:
+			return p_type.builtin_type;
+		case Parser::DataType::ENUM:
+			return Variant::INT;
+		case Parser::DataType::CLASS:
+		case Parser::DataType::NATIVE:
+			return Variant::OBJECT;
+		default:
+			return Variant::VARIANT_MAX;
+	}
+}
+
+bool WGodotCppEmitter::native_utility_type(const Parser::CallNode *p_call, Parser::DataType &r_type) const {
+	Variant::Type result = Variant::VARIANT_MAX;
+	if (p_call->arguments.size() == 1) {
+		const Variant::Type source = native_value_kind(expression_type(p_call->arguments[0]));
+		for (const auto &entry : unary_utilities) {
+			if (p_call->function_name == entry.name && source == entry.kind) {
+				result = entry.result;
+				break;
+			}
+		}
+	} else if (p_call->arguments.size() >= 2) {
+		for (const auto &entry : builtin_utilities) {
+			if (p_call->function_name != entry.name || entry.numeric == WGodotNative::NumericUtility::NONE) {
+				continue;
+			}
+			if (entry.numeric == WGodotNative::NumericUtility::CLAMP && p_call->arguments.size() != 3) {
+				return false;
+			}
+			result = native_value_kind(expression_type(p_call->arguments[0]));
+			if (result != Variant::INT && result != Variant::FLOAT) {
+				return false;
+			}
+			for (uint32_t i = 1; i < p_call->arguments.size(); i++) {
+				if (native_value_kind(expression_type(p_call->arguments[i])) != result) {
+					return false; // A mixed call can return either operand's kind.
+				}
+			}
+			break;
+		}
+	}
+	if (result == Variant::VARIANT_MAX) {
+		return false;
+	}
+	r_type = Parser::DataType();
+	r_type.kind = Parser::DataType::BUILTIN;
+	r_type.type_source = Parser::DataType::ANNOTATED_INFERRED;
+	r_type.builtin_type = result;
+	return true;
+}
 
 bool WGodotCppEmitter::native_builtin_call(const Parser::CallNode *p_call, const Parser::DataType &p_base_type, Value &r_result) {
 	if (is_warray(expression_type(p_call))) {
@@ -93,7 +149,7 @@ String WGodotCppEmitter::native_utility(const Parser::CallNode *p_call, const Ve
 	const String result_type = type(expression_type(p_call), p_call);
 	if (p_arguments.size() == 1 && p_arguments[0].cpp_type != "Variant") {
 		const auto source = expression_type(p_call->arguments[0]);
-		const Variant::Type kind = source.kind == Parser::DataType::ENUM ? Variant::INT : source.kind == Parser::DataType::BUILTIN ? source.builtin_type : Variant::VARIANT_MAX;
+		const Variant::Type kind = native_value_kind(source);
 		for (const auto &entry : unary_utilities) {
 			if (p_call->function_name == entry.name && kind == entry.kind) {
 				class_call_headers.insert("modules/wgodot/native/wgodot_native_calls.h");

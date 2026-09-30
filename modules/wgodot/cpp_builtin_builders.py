@@ -28,6 +28,10 @@ def builtin_api(target, source, env):
     lines = [
         "// wgodot-changes::file",
         "// Generated from Godot's builtin registrations. Used only by the exporter.",
+        '#include "core/variant/type_info.h"',
+        '#include "modules/wgodot/native/wgodot_native_utility_traits.h"',
+        "#include <type_traits>",
+        "#include <utility>",
         "static const struct { const char *owner; const char *name; const char *receiver; const char *pointer; bool is_static; } builtin_methods[] = {",
     ]
     for match in re.finditer(
@@ -69,7 +73,7 @@ def builtin_api(target, source, env):
         )
     lines.extend([
         "};",
-        "static const struct { const char *name; const char *function; const char *invoke; } builtin_utilities[] = {",
+        "static const struct { const char *name; const char *function; const char *invoke; WGodotNative::NumericUtility numeric; } builtin_utilities[] = {",
     ])
     for binding, name in re.findall(
         r"^\s*(FUNCBINDR?|FUNCBINDVR[23]?|FUNCBINDVARARG)\((\w+),", utilities, re.MULTILINE
@@ -82,10 +86,12 @@ def builtin_api(target, source, env):
             else "invoke_static"
         )
         exposed = name.removeprefix("_")
-        lines.append(f"\t{{ {json.dumps(exposed)}, {json.dumps(name)}, {json.dumps(invoke)} }},")
+        lines.append(
+            f"\t{{ {json.dumps(exposed)}, {json.dumps(name)}, {json.dumps(invoke)}, WGodotNative::numeric_utility<&VariantUtilityFunctions::{name}> }},"
+        )
     lines.extend([
         "};",
-        "static const struct { const char *name; Variant::Type kind; const char *type; const char *expression; } unary_utilities[] = {",
+        "static const struct { const char *name; Variant::Type kind; const char *type; const char *expression; Variant::Type result; } unary_utilities[] = {",
     ])
     # Simple one-argument math branches already contain the authoritative typed
     # operation. More complex/error-producing branches keep their engine helper.
@@ -102,8 +108,11 @@ def builtin_api(target, source, env):
             if accessor:
                 prefix, cpp_type, suffix = accessor.groups()
                 expression = prefix + "{value}" + suffix
+                result = (
+                    f"GetTypeInfo<std::decay_t<decltype({prefix}std::declval<{cpp_type}>(){suffix})>>::VARIANT_TYPE"
+                )
                 lines.append(
-                    f"\t{{ {json.dumps(name)}, Variant::{kind}, {json.dumps(cpp_type)}, {json.dumps(expression)} }},"
+                    f"\t{{ {json.dumps(name)}, Variant::{kind}, {json.dumps(cpp_type)}, {json.dumps(expression)}, {result} }},"
                 )
     lines.append("};\n")
     pathlib.Path(str(target[0])).write_text("\n".join(lines), encoding="utf-8")
@@ -116,6 +125,16 @@ def operator_api(target, source, env):
         for left, left_kind in (("String", "STRING"), ("StringName", "STRING_NAME")):
             for right, right_kind in (("String", "STRING"), ("StringName", "STRING_NAME")):
                 registrations.append((f"{family}<{left}, {right}>", operation, left_kind, right_kind))
+    for right, right_kind in re.findall(
+        r"^\s*register_string_modulo_op\(([^,]+), Variant::(\w+)\);", bindings, re.MULTILINE
+    ):
+        for left, left_kind in (("String", "STRING"), ("StringName", "STRING_NAME")):
+            registrations.append((
+                f"OperatorEvaluatorStringFormat<{left}, {right}>",
+                "OP_MODULE",
+                left_kind,
+                right_kind,
+            ))
     binary = {
         "Add": "+",
         "Sub": "-",
@@ -178,6 +197,10 @@ def operator_api(target, source, env):
             expression = f"(String({right}).find(String({left})) != -1)"
         elif family == "StringConcat":
             expression = f"(String({left}) + String({right}))"
+        elif family == "StringFormat":
+            if right_kind in ("CALLABLE", "SIGNAL"):
+                continue
+            expression = f"WGodotNative::format_string_value(String({left}), {right})"
         elif family in ("AlwaysTrue", "AlwaysFalse"):
             expression = f"((void){left}, (void){right}, {str(family == 'AlwaysTrue').lower()})"
         else:

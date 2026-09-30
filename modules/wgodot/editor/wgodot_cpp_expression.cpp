@@ -470,6 +470,10 @@ WGodotCppEmitter::Value WGodotCppEmitter::lower_binary(const Parser::BinaryOpNod
 		// Each operand retains its own setup so the RHS remains conditional.
 		return Value("(" + truth(p_binary->left_operand) + (p_binary->operation == Parser::BinaryOpNode::OP_LOGIC_AND ? " && " : " || ") + truth(p_binary->right_operand) + ")", "bool");
 	}
+	Value membership;
+	if (literal_membership(p_binary, membership)) {
+		return membership;
+	}
 	if (p_binary->variant_op == Variant::OP_MODULE && p_binary->left_operand->type_constraint.kind == Parser::DataType::BUILTIN && p_binary->left_operand->type_constraint.builtin_type == Variant::STRING && p_binary->right_operand->type == Parser::Node::ARRAY && !expression_overrides.has(p_binary->right_operand)) {
 		class_call_headers.insert("modules/wgodot/native/wgodot_native_format.h");
 		Value result;
@@ -505,6 +509,16 @@ WGodotCppEmitter::Value WGodotCppEmitter::lower_binary(const Parser::BinaryOpNod
 		left_type = right_type;
 	}
 	Vector<Value> operands{ lower_converted(p_binary->left_operand, left_type), lower_converted(p_binary->right_operand, right_type) };
+	if ((p_binary->variant_op == Variant::OP_EQUAL || p_binary->variant_op == Variant::OP_NOT_EQUAL) &&
+			(native_value_kind(left_type) == Variant::OBJECT || native_value_kind(right_type) == Variant::OBJECT)) {
+		// A literal null needs no Variant temporary for native pointer comparison.
+		if (native_value_kind(left_type) == Variant::NIL && operands[0].invariant) {
+			operands.write[0].code = "nullptr";
+		}
+		if (native_value_kind(right_type) == Variant::NIL && operands[1].invariant) {
+			operands.write[1].code = "nullptr";
+		}
+	}
 	Value result = sequence(operands);
 	result.cpp_type = type(datatype, p_binary);
 	result.code = operation(p_binary->variant_op, datatype, left_type, right_type, operands[0].code, operands[1].code, p_binary);

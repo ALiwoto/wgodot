@@ -27,7 +27,84 @@ String operator_expression(const String &p_template, const String &p_left, const
 }
 } // namespace
 
+bool WGodotCppEmitter::literal_membership(const Parser::BinaryOpNode *p_binary, Value &r_result) {
+	if (p_binary->variant_op != Variant::OP_IN || p_binary->right_operand->type != Parser::Node::ARRAY || expression_overrides.has(p_binary->right_operand)) {
+		return false;
+	}
+	const auto *array = static_cast<const Parser::ArrayNode *>(p_binary->right_operand);
+	if (array->type_constraint.has_container_element_type(0)) {
+		return false; // Typed containers also validate/convert the searched value.
+	}
+	const auto comparable = [](Variant::Type p_kind) {
+		// Unlike language ==, Array.find distinguishes NIL from an OBJECT with
+		// a null pointer. Object handles can contain either, so keep that path.
+		// Containers and callbacks also retain their existing implementations.
+		return p_kind < Variant::OBJECT;
+	};
+	const auto left_type = expression_type(p_binary->left_operand);
+	const Variant::Type left_kind = native_value_kind(left_type);
+	if (!comparable(left_kind)) {
+		return false;
+	}
+	for (const auto *element : array->elements) {
+		if (!comparable(native_value_kind(expression_type(element)))) {
+			return false;
+		}
+	}
+	r_result.cpp_type = "bool";
+	Value left = lower(p_binary->left_operand);
+	if (!left.invariant && (!left.borrowed || left.effects || !left.setup.is_empty())) {
+		materialize(left, r_result.setup);
+	} else {
+		r_result.setup.append_array(left.setup);
+	}
+	Vector<String> comparisons;
+	class_call_headers.insert("core/templates/hashfuncs.h");
+	for (const auto *element : array->elements) {
+		const auto right_type = expression_type(element);
+		const Variant::Type right_kind = native_value_kind(right_type);
+		Value right = lower_converted(element, right_type);
+		if (!right.invariant) {
+			// Array construction snapshots each element before evaluating the next.
+			// Evaluate every element even if an earlier comparison would succeed.
+			right.borrowed = false;
+			materialize(right, r_result.setup);
+		} else {
+			r_result.setup.append_array(right.setup);
+		}
+		const bool strings = (left_kind == Variant::STRING || left_kind == Variant::STRING_NAME) && (right_kind == Variant::STRING || right_kind == Variant::STRING_NAME);
+		if (strings) {
+			Parser::DataType boolean;
+			boolean.kind = Parser::DataType::BUILTIN;
+			boolean.builtin_type = Variant::BOOL;
+			comparisons.push_back(operation(Variant::OP_EQUAL, boolean, left_type, right_type, left.code, right.code, p_binary));
+		} else if (left_kind == right_kind) {
+			if (left_kind == Variant::NIL) {
+				comparisons.push_back("true");
+			} else {
+				// Array.find uses semantic equality: equal NaNs, but distinct numeric
+				// kinds remain unequal. Godot's native hash comparators implement it.
+				comparisons.push_back("HashMapComparatorDefault<" + type(left_type, p_binary->left_operand) + ">::compare(" + left.code + ", " + right.code + ")");
+			}
+		}
+	}
+	r_result.code = comparisons.is_empty() ? "false" : "(" + String(" || ").join(comparisons) + ")";
+	return true;
+}
+
 String WGodotCppEmitter::operation(Variant::Operator p_operation, const Parser::DataType &p_result, const Parser::DataType &p_left_type, const Parser::DataType &p_right_type, const String &p_left, const String &p_right, const Parser::Node *p_origin) {
+	const Variant::Type left_type = native_value_kind(p_left_type);
+	const Variant::Type right_type = native_value_kind(p_right_type);
+	if ((p_operation == Variant::OP_EQUAL || p_operation == Variant::OP_NOT_EQUAL) &&
+			((left_type == Variant::OBJECT && (right_type == Variant::OBJECT || right_type == Variant::NIL)) ||
+					(right_type == Variant::OBJECT && left_type == Variant::NIL))) {
+		// Godot's language equality uses validated pointers, including for freed
+		// objects. Keep handle ownership intact and avoid Variant operator dispatch.
+		class_call_headers.insert("modules/wgodot/native/wgodot_native_calls.h");
+		const String left = left_type == Variant::NIL ? "((void)(" + p_left + "), nullptr)" : "static_cast<const Object *>(WGodotNative::object_pointer(" + p_left + "))";
+		const String right = right_type == Variant::NIL ? "((void)(" + p_right + "), nullptr)" : "static_cast<const Object *>(WGodotNative::object_pointer(" + p_right + "))";
+		return "(" + left + (p_operation == Variant::OP_EQUAL ? " == " : " != ") + right + ")";
+	}
 	if (p_operation == Variant::OP_MODULE && p_left_type.kind == Parser::DataType::BUILTIN && p_left_type.builtin_type == Variant::STRING && p_right_type.kind == Parser::DataType::BUILTIN && p_right_type.builtin_type == Variant::ARRAY) {
 		class_call_headers.insert("modules/wgodot/native/wgodot_native_format.h");
 		return "WGodotNative::format_string(" + p_left + ", " + p_right + (is_warray(p_right_type) ? ")" : ".span())");
@@ -74,14 +151,12 @@ String WGodotCppEmitter::operation(Variant::Operator p_operation, const Parser::
 	}
 	// The caller has already evaluated both operands in language order. Use the
 	// registered signature to expose the corresponding native operation.
-	const auto builtin = [](const Parser::DataType &p_type) {
-		return p_type.kind == Parser::DataType::ENUM ? Variant::INT : p_type.kind == Parser::DataType::BUILTIN ? p_type.builtin_type : Variant::VARIANT_MAX;
-	};
-	const Variant::Type left_type = builtin(p_left_type);
-	const Variant::Type right_type = builtin(p_right_type);
 	for (const auto &entry : builtin_operators) {
 		if (entry.operation == p_operation && entry.left == left_type && entry.right == right_type) {
 			class_call_headers.insert("modules/wgodot/native/wgodot_native_builtin.h");
+			if (p_operation == Variant::OP_MODULE && (left_type == Variant::STRING || left_type == Variant::STRING_NAME)) {
+				class_call_headers.insert("modules/wgodot/native/wgodot_native_format.h");
+			}
 			return operator_expression(entry.expression, p_left, p_right);
 		}
 	}
