@@ -43,6 +43,9 @@
 #include "core/string/translation_server.h"
 #include "editor/export/editor_export_platform.h"
 #include "editor/settings/editor_settings.h"
+// wgodot-changes::begin
+#include "modules/modules_enabled.gen.h"
+// wgodot-changes::end
 #include "scene/property_list_helper.h"
 #include "scene/resources/theme.h"
 #include "scene/theme/theme_db.h"
@@ -807,6 +810,17 @@ void DocTools::generate(BitField<GenerateFlags> p_flags) {
 		class_list["Variant"].name = "Variant";
 		inheriting[""].insert("Variant");
 	}
+
+	// wgodot-changes::begin
+#ifdef MODULE_GDSCRIPT_ENABLED
+	// Seed the language-only type so its XML documentation is merged and cached.
+	{
+		DocData::ClassDoc resource_path;
+		resource_path.name = "WResPath";
+		add_doc(resource_path);
+	}
+#endif
+	// wgodot-changes::end
 
 	// Add Variant data types.
 	for (int i = 0; i < Variant::VARIANT_MAX; i++) {

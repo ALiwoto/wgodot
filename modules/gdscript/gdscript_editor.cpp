@@ -766,6 +766,11 @@ static String _trim_parent_class(const String &p_class, const String &p_base_cla
 }
 
 static String _get_visual_datatype(const PropertyInfo &p_info, bool p_is_arg, const String &p_base_class = "") {
+	// wgodot-changes::begin
+	if (p_info.type == Variant::STRING && p_info.class_name == SNAME("WResPath")) {
+		return p_info.class_name;
+	}
+	// wgodot-changes::end
 	String class_name = p_info.class_name;
 	bool is_enum = p_info.type == Variant::INT && p_info.usage & PROPERTY_USAGE_CLASS_IS_ENUM;
 	// PROPERTY_USAGE_CLASS_IS_BITFIELD: BitField[T] isn't supported (yet?), use plain int.
@@ -1148,6 +1153,10 @@ static void _list_available_types(bool p_inherit_only, GDScriptParser::Completio
 	if (!p_inherit_only) {
 		EditorLanguage::CompletionOption variant_option("Variant", EditorLanguage::CompletionKind::CLASS);
 		r_result.insert(variant_option.display, variant_option);
+		// wgodot-changes::begin
+		EditorLanguage::CompletionOption resource_path_option("WResPath", EditorLanguage::CompletionKind::CLASS);
+		r_result.insert(resource_path_option.display, resource_path_option);
+		// wgodot-changes::end
 	}
 
 	LocalVector<StringName> native_types;
@@ -4366,6 +4375,13 @@ static Error _lookup_symbol_from_base(const GDScriptParser::DataType &p_base, co
 
 ::Error GDScriptEditorLanguage::lookup_code(const String &p_code, const String &p_symbol, const String &p_path, Object *p_owner, LookupResult &r_result) {
 	// Before parsing, try the usual stuff.
+	// wgodot-changes::begin
+	if (p_symbol == "WResPath") {
+		r_result.type = LookupResult::Type::CLASS;
+		r_result.class_name = p_symbol;
+		return OK;
+	}
+	// wgodot-changes::end
 	if (GDScriptAnalyzer::class_exists(p_symbol)) {
 		r_result.type = LookupResult::Type::CLASS;
 		r_result.class_name = p_symbol;

@@ -15,6 +15,9 @@ def get_doc_classes():
         "GDScriptSyntaxHighlighter",
         "GDScriptTextDocument",
         "GDScriptWorkspace",
+        # wgodot-changes::begin
+        "WResPath",
+        # wgodot-changes::end
     ]
 
 

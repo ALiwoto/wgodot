@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!-- wgodot-changes::file -->
+<class name="WResPath" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
+	<brief_description>
+		An opaque resource path that becomes an integer ID in native exports.
+	</brief_description>
+	<description>
+		Identifies a packaged project resource for [method @GDScript.load], [method @GDScript.preload], and [method @GDScript.async_preload]. Constant resource path strings convert implicitly to [WResPath]. Runtime strings, including paths assembled from variables, cannot be converted.
+		Use [WResPath] for variables, parameters, and return types that carry resource paths. Select between constant paths when the resource depends on runtime input:
+		[codeblock]
+		func get_icon_path(selected: bool) -> WResPath:
+			match selected:
+				true:
+					return "res://icons/selected.webp"
+				false:
+					return "res://icons/default.webp"
+			return ""
+
+		func load_icon(selected: bool) -> Resource:
+			return load(get_icon_path(selected))
+		[/codeblock]
+		[WResPath] supports equality, truth checks, and membership in typed containers. String methods, concatenation, character indexing, and casts to [String] or numeric types are forbidden. The empty constant [code]""[/code] represents no resource and is false in truth checks.
+		In the editor's GDScript runtime, the value is stored as a [String]. In gd2cpp native exports, it becomes an integer resource ID and packaged resource paths are remapped to numeric names. Treat the ID as opaque; select resources through constant paths in source code.
+	</description>
+</class>

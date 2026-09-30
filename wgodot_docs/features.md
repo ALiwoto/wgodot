@@ -255,6 +255,55 @@ Behavior:
 
 ## Resource Loading
 
+## WResPath
+
+Using fully dynamic resource lookup is forbidden. Because resource paths give up lots of clues to reverse engineers and decompilers.
+
+Instead, use WResPath, which will be converted to a meaningless number in the runtime.
+For example:
+
+```gdscript
+
+enum Icon { BUTTON1, BUTTON2 }
+
+func get_icon_path(target: Icon) -> WResPath:
+  match target:
+    Icon.BUTTON1: return "res://icons/button1.webp" # implicit compile-time cast from string to WResPath
+    Icon.BUTTON1: return "res://icons/button2.webp"
+
+# somewhere else:
+load(get_icon_path(some_target))
+
+```
+
+in normal gdscript, a `WResPath` object will be just a normal string (however, dynamic operations on it are forbidden, e.g. `.Split()`, indexing, etc). equality and truthness checks are allowed, but in gd2cpp, they will become integer operations.
+
+in gd2cpp, this will get compiled to something like this:
+
+```cpp
+switch (target) {
+  	case int64_t(1):
+		{
+			return int64_t(307);
+			break;
+		}
+		case int64_t(2):
+		{
+			return int64_t(308);
+			break;
+		}
+		default:
+		{
+			return int64_t(0);
+			break;
+		}
+}
+```
+
+As you can see, there is no intent leaking string paths remaining in the code. All resources are integers. Same thing is implemented in the `ResourceLoader` family (such as `ResourceThreadLoader` and worker pools path are all implemented and fully tested).
+The `.pck` file(s) also don't contain any string paths; they contain something like: `res://412` (because I didn't want to change the serialization format of .pck files itself, so I let it stay string).
+
+note: if you have a server-side protocol to serve assets in real time to your end-users, that's an entirely different thing, the design in that depends on your network protocol and does not concern the local asset packs.
 
 ## async_preload
 

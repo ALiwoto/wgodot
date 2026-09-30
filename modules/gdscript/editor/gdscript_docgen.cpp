@@ -81,6 +81,12 @@ void GDScriptDocGen::_doctype_from_datatype(const DataType &p_datatype, String &
 		r_type = "Variant";
 		return;
 	}
+	// wgodot-changes::begin
+	if (p_datatype.wgodot_resource_path) {
+		r_type = p_datatype.to_string();
+		return;
+	}
+	// wgodot-changes::end
 	switch (p_datatype.kind) {
 		case DataType::BUILTIN:
 			if (p_datatype.builtin_type == Variant::NIL) {
