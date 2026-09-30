@@ -14,6 +14,7 @@ class WGodotCppEmitter {
 	friend class WGodotCppAsync;
 	using Value = WGodotCppExpression;
 	const WGodotCppProject &project;
+	const bool trace_enabled;
 	WGodotCppSignatures signatures;
 	HashSet<const GDScriptParser::Node *> rendering_signatures;
 	const WGodotCppProject::Class *current_class = nullptr;
@@ -97,8 +98,12 @@ class WGodotCppEmitter {
 	String leaf_expression(const GDScriptParser::ExpressionNode *p_expression);
 
 	void unsupported(const GDScriptParser::Node *p_node, const String &p_feature);
-	String source_header(const String &p_path, const String &p_class) const;
-	String debug_source_arguments(const GDScriptParser::Node *p_node) const;
+	HashMap<String, int64_t> resource_ids;
+	int64_t resource_id(const String &p_path);
+	Value resource_path_constant(const Variant &p_value);
+	String source_header(const String &p_path, const String &p_class);
+	String debug_source_arguments(const GDScriptParser::Node *p_node);
+	String trace_call(const GDScriptParser::Node *p_node, const String &p_code);
 	String class_name(const GDScriptParser::DataType &p_type, const GDScriptParser::Node *p_origin);
 	StringName native_base(const GDScriptParser::DataType &p_type) const;
 	String type(const GDScriptParser::DataType &p_type, const GDScriptParser::Node *p_origin);
@@ -218,7 +223,7 @@ class WGodotCppEmitter {
 	void register_class(const WGodotCppProject::Class &p_class, HashSet<String> &r_registered, String &r_code);
 
 public:
-	explicit WGodotCppEmitter(const WGodotCppProject &p_project);
+	explicit WGodotCppEmitter(const WGodotCppProject &p_project, bool p_trace_enabled = false);
 	Error generate();
 	Error write(const String &p_directory) const;
 	const Vector<String> &get_diagnostics() const { return diagnostics; }

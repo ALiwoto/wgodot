@@ -5429,6 +5429,11 @@ String GDScriptParser::SuiteNode::Local::get_name() const {
 }
 
 String GDScriptParser::DataType::to_string() const {
+	// wgodot-changes::begin
+	if (wgodot_resource_path) {
+		return "WResPath";
+	}
+	// wgodot-changes::end
 	switch (kind) {
 		case VARIANT:
 			return "Variant";
@@ -5486,6 +5491,11 @@ String GDScriptParser::DataType::to_string() const {
 }
 
 String GDScriptParser::DataType::to_property_info_hint_string() const {
+	// wgodot-changes::begin
+	if (wgodot_resource_path) {
+		return "WResPath";
+	}
+	// wgodot-changes::end
 	switch (kind) {
 		case BUILTIN:
 			return Variant::get_type_name(builtin_type);
@@ -5518,6 +5528,13 @@ PropertyInfo GDScriptParser::DataType::to_property_info(const String &p_name) co
 	PropertyInfo result;
 	result.name = p_name;
 	result.usage = PROPERTY_USAGE_NONE;
+	// wgodot-changes::begin
+	if (wgodot_resource_path) {
+		result.type = Variant::STRING;
+		result.class_name = SNAME("WResPath");
+		return result;
+	}
+	// wgodot-changes::end
 
 	if (!is_hard_type()) {
 		result.usage |= PROPERTY_USAGE_NIL_IS_VARIANT;

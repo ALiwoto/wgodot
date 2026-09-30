@@ -50,6 +50,7 @@ class EditorExportPlugin : public RefCounted {
 	friend class EditorExportPreset;
 	// wgodot-changes::begin
 	friend class WGodotGDScriptExportTransform::ExportPipeline;
+	friend class EditorExportSaveProxy;
 	// wgodot-changes::end
 
 public:
@@ -147,6 +148,8 @@ protected:
 	virtual void _export_project_settings(HashMap<String, Variant> &r_settings) {}
 	virtual void _export_cache_paths(HashSet<String> &r_paths) {}
 	virtual Error _export_completed() { return OK; }
+	virtual Error _export_pack_file(String &r_path, Vector<uint8_t> &r_data) { return OK; }
+	virtual Error _export_pack_finish(HashMap<String, Vector<uint8_t>> &r_files) { return OK; }
 	// wgodot-changes::end
 	virtual void _export_end();
 	virtual void _end_generate_apple_embedded_project(const String &p_path, bool p_will_build_archive);

@@ -38,7 +38,7 @@ void WGodotCppEmitter::emit_preloads() {
 	if (!preloads.is_empty()) {
 		source += "static const WGodotPreloads::Definition preloads[] = {\n";
 		for (const auto &preload : preloads) {
-			source += "\t{" + WGodotCppNames::quoted(preload.path) + ", " + WGodotCppNames::quoted(preload.type) + ", " + (preload.asynchronous ? "true" : "false") + "},\n";
+			source += "\t{" + itos(resource_id(preload.path)) + ", " + WGodotCppNames::quoted(preload.type) + ", " + (preload.asynchronous ? "true" : "false") + "},\n";
 		}
 		source += "};\n\n";
 	}

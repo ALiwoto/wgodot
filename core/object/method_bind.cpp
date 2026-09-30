@@ -48,6 +48,11 @@ PropertyInfo MethodBind::get_argument_info(int p_argument) const {
 	ERR_FAIL_INDEX_V(p_argument, get_argument_count(), PropertyInfo());
 
 	PropertyInfo info = _gen_argument_type_info(p_argument);
+	// wgodot-changes::begin
+	if (p_argument < 64 && (wgodot_resource_path_arguments & (uint64_t(1) << p_argument))) {
+		info.class_name = SNAME("WResPath");
+	}
+	// wgodot-changes::end
 #ifdef DEBUG_ENABLED
 	if (info.name.is_empty()) {
 		info.name = p_argument < arg_names.size() ? String(arg_names[p_argument]) : String("_unnamed_arg" + itos(p_argument));

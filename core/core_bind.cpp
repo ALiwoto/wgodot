@@ -147,21 +147,41 @@ Vector<String> ResourceLoader::list_directory(const String &p_directory) {
 }
 
 void ResourceLoader::_bind_methods() {
-	ClassDB::bind_method(D_METHOD("load_threaded_request", "path", "type_hint", "use_sub_threads", "cache_mode"), &ResourceLoader::load_threaded_request, DEFVAL(""), DEFVAL(false), DEFVAL(CACHE_MODE_REUSE));
-	ClassDB::bind_method(D_METHOD("load_threaded_get_status", "path", "progress"), &ResourceLoader::load_threaded_get_status, DEFVAL_ARRAY);
-	ClassDB::bind_method(D_METHOD("load_threaded_get", "path"), &ResourceLoader::load_threaded_get);
+	// wgodot-changes::begin
+	ClassDB::bind_method(D_METHOD("load_threaded_request", "path", "type_hint", "use_sub_threads", "cache_mode"), &ResourceLoader::load_threaded_request, DEFVAL(""), DEFVAL(false), DEFVAL(CACHE_MODE_REUSE))->wgodot_set_resource_path_argument(0);
+	// wgodot-changes::end
+	// wgodot-changes::begin
+	ClassDB::bind_method(D_METHOD("load_threaded_get_status", "path", "progress"), &ResourceLoader::load_threaded_get_status, DEFVAL_ARRAY)->wgodot_set_resource_path_argument(0);
+	// wgodot-changes::end
+	// wgodot-changes::begin
+	ClassDB::bind_method(D_METHOD("load_threaded_get", "path"), &ResourceLoader::load_threaded_get)->wgodot_set_resource_path_argument(0);
+	// wgodot-changes::end
 
-	ClassDB::bind_method(D_METHOD("load", "path", "type_hint", "cache_mode"), &ResourceLoader::load, DEFVAL(""), DEFVAL(CACHE_MODE_REUSE));
+	// wgodot-changes::begin
+	ClassDB::bind_method(D_METHOD("load", "path", "type_hint", "cache_mode"), &ResourceLoader::load, DEFVAL(""), DEFVAL(CACHE_MODE_REUSE))->wgodot_set_resource_path_argument(0);
+	// wgodot-changes::end
 	ClassDB::bind_method(D_METHOD("get_recognized_extensions_for_type", "type"), &ResourceLoader::get_recognized_extensions_for_type);
 	ClassDB::bind_method(D_METHOD("add_resource_format_loader", "format_loader", "at_front"), &ResourceLoader::add_resource_format_loader, DEFVAL(false));
 	ClassDB::bind_method(D_METHOD("remove_resource_format_loader", "format_loader"), &ResourceLoader::remove_resource_format_loader);
 	ClassDB::bind_method(D_METHOD("set_abort_on_missing_resources", "abort"), &ResourceLoader::set_abort_on_missing_resources);
-	ClassDB::bind_method(D_METHOD("get_dependencies", "path"), &ResourceLoader::get_dependencies);
-	ClassDB::bind_method(D_METHOD("has_cached", "path"), &ResourceLoader::has_cached);
-	ClassDB::bind_method(D_METHOD("get_cached_ref", "path"), &ResourceLoader::get_cached_ref);
-	ClassDB::bind_method(D_METHOD("exists", "path", "type_hint"), &ResourceLoader::exists, DEFVAL(""));
-	ClassDB::bind_method(D_METHOD("get_resource_uid", "path"), &ResourceLoader::get_resource_uid);
-	ClassDB::bind_method(D_METHOD("get_resource_type", "path"), &ResourceLoader::get_resource_type);
+	// wgodot-changes::begin
+	ClassDB::bind_method(D_METHOD("get_dependencies", "path"), &ResourceLoader::get_dependencies)->wgodot_set_resource_path_argument(0);
+	// wgodot-changes::end
+	// wgodot-changes::begin
+	ClassDB::bind_method(D_METHOD("has_cached", "path"), &ResourceLoader::has_cached)->wgodot_set_resource_path_argument(0);
+	// wgodot-changes::end
+	// wgodot-changes::begin
+	ClassDB::bind_method(D_METHOD("get_cached_ref", "path"), &ResourceLoader::get_cached_ref)->wgodot_set_resource_path_argument(0);
+	// wgodot-changes::end
+	// wgodot-changes::begin
+	ClassDB::bind_method(D_METHOD("exists", "path", "type_hint"), &ResourceLoader::exists, DEFVAL(""))->wgodot_set_resource_path_argument(0);
+	// wgodot-changes::end
+	// wgodot-changes::begin
+	ClassDB::bind_method(D_METHOD("get_resource_uid", "path"), &ResourceLoader::get_resource_uid)->wgodot_set_resource_path_argument(0);
+	// wgodot-changes::end
+	// wgodot-changes::begin
+	ClassDB::bind_method(D_METHOD("get_resource_type", "path"), &ResourceLoader::get_resource_type)->wgodot_set_resource_path_argument(0);
+	// wgodot-changes::end
 	ClassDB::bind_method(D_METHOD("list_directory", "directory_path"), &ResourceLoader::list_directory);
 
 	BIND_ENUM_CONSTANT(THREAD_LOAD_INVALID_RESOURCE);

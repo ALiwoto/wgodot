@@ -798,6 +798,10 @@ GDScriptParser::DataType GDScriptAnalyzer::resolve_datatype(GDScriptParser::Type
 				return bad_type;
 			}
 			result.kind = GDScriptParser::DataType::VARIANT;
+		// wgodot-changes::begin
+		} else if (first == SNAME("WResPath")) {
+			result = wgodot_resource_path_type();
+		// wgodot-changes::end
 		} else if (GDScriptParser::get_builtin_type(first) < Variant::VARIANT_MAX) {
 			// Built-in types.
 			const Variant::Type builtin_type = GDScriptParser::get_builtin_type(first);
@@ -2323,6 +2327,11 @@ void GDScriptAnalyzer::resolve_assignable(GDScriptParser::AssignableNode *p_assi
 			}
 		}
 
+		// wgodot-changes::begin
+		if (has_specified_type && !wgodot_validate_resource_path_argument(p_assignable->initializer, specified_type)) {
+			return;
+		}
+		// wgodot-changes::end
 		if (has_specified_type && p_assignable->initializer->is_constant) {
 			update_const_expression_builtin_type(p_assignable->initializer, specified_type, "assign");
 		}
@@ -2502,6 +2511,12 @@ void GDScriptAnalyzer::resolve_for(GDScriptParser::ForNode *p_for) {
 		}
 
 		list_type = p_for->list->type_constraint;
+		// wgodot-changes::begin
+		if (list_type.wgodot_resource_path) {
+			push_error("WResPath cannot be iterated as a string.", p_for->list);
+			return;
+		}
+		// wgodot-changes::end
 
 		if (!list_type.is_hard_type()) {
 			mark_node_unsafe(p_for->list);
@@ -2775,6 +2790,11 @@ void GDScriptAnalyzer::resolve_return(GDScriptParser::ReturnNode *p_return) {
 				update_dictionary_literal_element_type(static_cast<GDScriptParser::DictionaryNode *>(p_return->return_value),
 						expected_type.get_container_element_type_or_variant(0), expected_type.get_container_element_type_or_variant(1));
 			}
+			// wgodot-changes::begin
+			if (has_expected_type && !wgodot_validate_resource_path_argument(p_return->return_value, expected_type)) {
+				return;
+			}
+			// wgodot-changes::end
 			if (has_expected_type && expected_type.is_hard_type() && p_return->return_value->is_constant) {
 				update_const_expression_builtin_type(p_return->return_value, expected_type, "return");
 			}
@@ -2994,6 +3014,11 @@ void GDScriptAnalyzer::update_array_literal_element_type(GDScriptParser::ArrayNo
 	expected_type.container_element_types.clear(); // Nested types (like `Array[Array[int]]`) are not currently supported.
 
 	for (GDScriptParser::ExpressionNode *element_node : p_array->elements) {
+		// wgodot-changes::begin
+		if (!wgodot_validate_resource_path_argument(element_node, expected_type)) {
+			return;
+		}
+		// wgodot-changes::end
 		if (element_node->is_constant) {
 			update_const_expression_builtin_type(element_node, expected_type, "include");
 		}
@@ -3027,6 +3052,11 @@ void GDScriptAnalyzer::update_dictionary_literal_element_type(GDScriptParser::Di
 
 	for (uint32_t i = 0; i < p_dictionary->elements.size(); i++) {
 		GDScriptParser::ExpressionNode *key_element_node = p_dictionary->elements[i].key;
+		// wgodot-changes::begin
+		if (!wgodot_validate_resource_path_argument(key_element_node, expected_key_type)) {
+			return;
+		}
+		// wgodot-changes::end
 		if (key_element_node->is_constant) {
 			update_const_expression_builtin_type(key_element_node, expected_key_type, "include");
 		}
@@ -3043,6 +3073,11 @@ void GDScriptAnalyzer::update_dictionary_literal_element_type(GDScriptParser::Di
 		}
 
 		GDScriptParser::ExpressionNode *value_element_node = p_dictionary->elements[i].value;
+		// wgodot-changes::begin
+		if (!wgodot_validate_resource_path_argument(value_element_node, expected_value_type)) {
+			return;
+		}
+		// wgodot-changes::end
 		if (value_element_node->is_constant) {
 			update_const_expression_builtin_type(value_element_node, expected_value_type, "include");
 		}
@@ -3134,6 +3169,11 @@ void GDScriptAnalyzer::reduce_assignment(GDScriptParser::AssignmentNode *p_assig
 	// wgodot-changes::end
 
 	GDScriptParser::DataType assignee_type = p_assignment->assignee->type_constraint;
+	// wgodot-changes::begin
+	if (!wgodot_validate_resource_path_argument(p_assignment->assigned_value, assignee_type)) {
+		return;
+	}
+	// wgodot-changes::end
 
 	if (assignee_type.is_constant) {
 		push_error("Cannot assign a new value to a constant.", p_assignment->assignee);
@@ -3331,6 +3371,27 @@ void GDScriptAnalyzer::reduce_binary_op(GDScriptParser::BinaryOpNode *p_binary_o
 	}
 
 	// wgodot-changes::begin
+	if (p_binary_op->variant_op == Variant::OP_EQUAL || p_binary_op->variant_op == Variant::OP_NOT_EQUAL) {
+		if (left_type.wgodot_resource_path) {
+			if (!wgodot_validate_resource_path_argument(p_binary_op->right_operand, left_type)) {
+				return;
+			}
+			right_type = p_binary_op->right_operand->type_constraint;
+		} else if (right_type.wgodot_resource_path) {
+			if (!wgodot_validate_resource_path_argument(p_binary_op->left_operand, right_type)) {
+				return;
+			}
+			left_type = p_binary_op->left_operand->type_constraint;
+		}
+	} else if (p_binary_op->variant_op == Variant::OP_IN && right_type.get_container_element_type_or_variant(0).wgodot_resource_path) {
+		if (!wgodot_validate_resource_path_argument(p_binary_op->left_operand, right_type.get_container_element_type(0))) {
+			return;
+		}
+		left_type = p_binary_op->left_operand->type_constraint;
+	}
+	if (!wgodot_validate_resource_path_operation(p_binary_op->variant_op, left_type, right_type, p_binary_op)) {
+		return;
+	}
 	wgodot_validate_strict_equality(p_binary_op);
 	// wgodot-changes::end
 
@@ -3488,6 +3549,14 @@ void GDScriptAnalyzer::reduce_call(GDScriptParser::CallNode *p_call, bool p_is_a
 
 		Variant::Type builtin_type = GDScriptParser::get_builtin_type(function_name);
 		if (builtin_type < Variant::VARIANT_MAX) {
+			// wgodot-changes::begin
+			for (const GDScriptParser::ExpressionNode *argument : p_call->arguments) {
+				if (argument->type_constraint.wgodot_resource_path && builtin_type != Variant::BOOL) {
+					push_error("WResPath cannot be converted to another value type.", argument);
+					return;
+				}
+			}
+			// wgodot-changes::end
 			// Is a builtin constructor.
 			call_type.type_source = GDScriptParser::DataType::ANNOTATED_EXPLICIT;
 			call_type.kind = GDScriptParser::DataType::BUILTIN;
@@ -3670,6 +3739,11 @@ void GDScriptAnalyzer::reduce_call(GDScriptParser::CallNode *p_call, bool p_is_a
 			return;
 		} else if (GDScriptUtilityFunctions::function_exists(function_name)) {
 			MethodInfo function_info = GDScriptUtilityFunctions::get_function_info(function_name);
+			// wgodot-changes::begin
+			if (!wgodot_validate_resource_utility(p_call, function_info)) {
+				return;
+			}
+			// wgodot-changes::end
 
 			if (!p_is_root && !p_is_await && function_info.return_val.type == Variant::NIL && ((function_info.return_val.usage & PROPERTY_USAGE_NIL_IS_VARIANT) == 0)) {
 				push_error(vformat(R"*(Cannot get return value of call to "%s()" because it returns "void".)*", function_name), p_call);
@@ -3721,6 +3795,11 @@ void GDScriptAnalyzer::reduce_call(GDScriptParser::CallNode *p_call, bool p_is_a
 			return;
 		} else if (Variant::has_utility_function(function_name)) {
 			MethodInfo function_info = info_from_utility_func(function_name);
+			// wgodot-changes::begin
+			if (!wgodot_validate_resource_utility(p_call, function_info)) {
+				return;
+			}
+			// wgodot-changes::end
 
 			if (!p_is_root && !p_is_await && function_info.return_val.type == Variant::NIL && ((function_info.return_val.usage & PROPERTY_USAGE_NIL_IS_VARIANT) == 0)) {
 				push_error(vformat(R"*(Cannot get return value of call to "%s()" because it returns "void".)*", function_name), p_call);
@@ -4062,6 +4141,15 @@ void GDScriptAnalyzer::reduce_cast(GDScriptParser::CastNode *p_cast) {
 		return;
 	}
 
+	// wgodot-changes::begin
+	if (!wgodot_validate_resource_path_argument(p_cast->operand, cast_type)) {
+		return;
+	}
+	if (p_cast->operand->type_constraint.wgodot_resource_path && !cast_type.wgodot_resource_path) {
+		push_error("WResPath cannot be cast to a string or another value type.", p_cast);
+		return;
+	}
+	// wgodot-changes::end
 	p_cast->type_constraint = cast_type;
 	if (p_cast->operand->is_constant) {
 		update_const_expression_builtin_type(p_cast->operand, cast_type, "cast", true);
@@ -5122,6 +5210,12 @@ void GDScriptAnalyzer::reduce_subscript(GDScriptParser::SubscriptNode *p_subscri
 	} else {
 		reduce_expression(p_subscript->base);
 	}
+	// wgodot-changes::begin
+	if (p_subscript->base->type_constraint.wgodot_resource_path) {
+		push_error("WResPath has no string members or character indexing.", p_subscript);
+		return;
+	}
+	// wgodot-changes::end
 
 	GDScriptParser::DataType result_type;
 
@@ -5257,6 +5351,12 @@ void GDScriptAnalyzer::reduce_subscript(GDScriptParser::SubscriptNode *p_subscri
 			return;
 		}
 		reduce_expression(p_subscript->index);
+		// wgodot-changes::begin
+		if (p_subscript->base->type_constraint.builtin_type == Variant::DICTIONARY &&
+				!wgodot_validate_resource_path_argument(p_subscript->index, p_subscript->base->type_constraint.get_container_element_type_or_variant(0))) {
+			return;
+		}
+		// wgodot-changes::end
 
 		if (p_subscript->base->is_constant && p_subscript->index->is_constant) {
 			// Just try to get it.
@@ -5497,6 +5597,15 @@ void GDScriptAnalyzer::reduce_subscript(GDScriptParser::SubscriptNode *p_subscri
 	}
 
 	// wgodot-changes::begin
+	if (p_subscript->is_constant) {
+		const auto &base_type = p_subscript->base->type_constraint;
+		const int element = base_type.builtin_type == Variant::DICTIONARY ? 1 : 0;
+		if ((base_type.builtin_type == Variant::ARRAY || base_type.builtin_type == Variant::DICTIONARY) &&
+				base_type.get_container_element_type_or_variant(element).wgodot_resource_path) {
+			result_type = wgodot_resource_path_type();
+			result_type.is_constant = true;
+		}
+	}
 	if (!p_subscript->is_attribute && wgodot_datatype_contains_variant(result_type)) {
 		const GDScriptParser::DataType base_type = p_subscript->base->type_constraint;
 		if (!base_type.is_variant()) {
@@ -5541,6 +5650,19 @@ void GDScriptAnalyzer::reduce_ternary_op(GDScriptParser::TernaryOpNode *p_ternar
 		false_type.kind = GDScriptParser::DataType::VARIANT;
 	}
 
+	// wgodot-changes::begin
+	if (true_type.wgodot_resource_path && p_ternary_op->false_expr) {
+		if (!wgodot_validate_resource_path_argument(p_ternary_op->false_expr, true_type)) {
+			return;
+		}
+		false_type = p_ternary_op->false_expr->type_constraint;
+	} else if (false_type.wgodot_resource_path && p_ternary_op->true_expr) {
+		if (!wgodot_validate_resource_path_argument(p_ternary_op->true_expr, false_type)) {
+			return;
+		}
+		true_type = p_ternary_op->true_expr->type_constraint;
+	}
+	// wgodot-changes::end
 	if (true_type.is_variant() || false_type.is_variant()) {
 		result.kind = GDScriptParser::DataType::VARIANT;
 	} else {
@@ -5614,6 +5736,11 @@ void GDScriptAnalyzer::reduce_unary_op(GDScriptParser::UnaryOpNode *p_unary_op) 
 	}
 
 	GDScriptParser::DataType operand_type = p_unary_op->operand->type_constraint;
+	// wgodot-changes::begin
+	if (!wgodot_validate_resource_path_operation(p_unary_op->variant_op, operand_type, GDScriptParser::DataType(), p_unary_op)) {
+		return;
+	}
+	// wgodot-changes::end
 
 	if (p_unary_op->operand->is_constant) {
 		p_unary_op->is_constant = true;
@@ -6182,6 +6309,11 @@ GDScriptParser::DataType GDScriptAnalyzer::type_from_property_hint_string(const 
 #endif
 	// wgodot-changes::end
 
+	// wgodot-changes::begin
+	if (p_type_name == "WResPath") {
+		return wgodot_resource_path_type();
+	}
+	// wgodot-changes::end
 	const Variant::Type builtin_type = GDScriptParser::get_builtin_type(p_type_name);
 	if (builtin_type < Variant::VARIANT_MAX) {
 		// Built-in type.
@@ -6215,6 +6347,11 @@ GDScriptParser::DataType GDScriptAnalyzer::type_from_property(const PropertyInfo
 		result.kind = GDScriptParser::DataType::VARIANT;
 		return result;
 	}
+	// wgodot-changes::begin
+	if (p_property.type == Variant::STRING && p_property.class_name == SNAME("WResPath")) {
+		return wgodot_resource_path_type();
+	}
+	// wgodot-changes::end
 	result.builtin_type = p_property.type;
 	if (p_property.type == Variant::OBJECT) {
 		// wgodot-changes::begin
@@ -6274,6 +6411,12 @@ GDScriptParser::DataType GDScriptAnalyzer::type_from_property(const PropertyInfo
 }
 
 bool GDScriptAnalyzer::get_function_signature(GDScriptParser::Node *p_source, bool p_is_constructor, GDScriptParser::DataType p_base_type, const StringName &p_function, GDScriptParser::DataType &r_return_type, List<GDScriptParser::DataType> &r_par_types, int &r_default_arg_count, BitField<MethodFlags> &r_method_flags, StringName *r_native_class) {
+	// wgodot-changes::begin
+	if (p_base_type.wgodot_resource_path) {
+		push_error("WResPath has no string methods.", p_source);
+		return false;
+	}
+	// wgodot-changes::end
 	r_method_flags = METHOD_FLAGS_DEFAULT;
 	r_default_arg_count = 0;
 	if (r_native_class) {
@@ -6308,6 +6451,9 @@ bool GDScriptAnalyzer::get_function_signature(GDScriptParser::Node *p_source, bo
 		for (const MethodInfo &E : methods) {
 			if (E.name == p_function) {
 				function_signature_from_info(E, r_return_type, r_par_types, r_default_arg_count, r_method_flags, p_source);
+				// wgodot-changes::begin
+				wgodot_resource_container_signature(p_base_type, p_function, r_return_type, r_par_types);
+				// wgodot-changes::end
 				// Cannot use non-const methods on enums.
 				if (!r_method_flags.has_flag(METHOD_FLAG_STATIC) && was_enum && !(E.flags & METHOD_FLAG_CONST)) {
 					push_error(vformat(R"*(Cannot call non-const Dictionary function "%s()" on enum "%s".)*", p_function, p_base_type.enum_type), p_source);
@@ -6511,6 +6657,11 @@ void GDScriptAnalyzer::validate_call_arg(const List<GDScriptParser::DataType> &p
 			break;
 		}
 		GDScriptParser::DataType par_type = *par_itr;
+		// wgodot-changes::begin
+		if (!wgodot_validate_resource_path_argument(p_call->arguments[i], par_type)) {
+			continue;
+		}
+		// wgodot-changes::end
 
 		if (par_type.is_hard_type() && p_call->arguments[i]->is_constant) {
 			update_const_expression_builtin_type(p_call->arguments[i], par_type, "pass");
@@ -6696,6 +6847,12 @@ GDScriptParser::DataType GDScriptAnalyzer::get_operation_type(Variant::Operator 
 }
 
 GDScriptParser::DataType GDScriptAnalyzer::get_operation_type(Variant::Operator p_operation, const GDScriptParser::DataType &p_a, const GDScriptParser::DataType &p_b, bool &r_valid, const GDScriptParser::Node *p_source) {
+	// wgodot-changes::begin
+	if (!wgodot_validate_resource_path_operation(p_operation, p_a, p_b, p_source)) {
+		r_valid = false;
+		return GDScriptParser::DataType();
+	}
+	// wgodot-changes::end
 	if (p_operation == Variant::OP_AND || p_operation == Variant::OP_OR) {
 		// Those work for any type of argument and always return a boolean.
 		// They don't use the Variant operator since they have short-circuit semantics.
@@ -6792,6 +6949,15 @@ bool GDScriptAnalyzer::is_type_compatible_strict_collections(const GDScriptParse
 
 // TODO: Add safe/unsafe return variable (for variant cases)
 bool GDScriptAnalyzer::check_type_compatibility(const GDScriptParser::DataType &p_target, const GDScriptParser::DataType &p_source, bool p_allow_implicit_conversion, const GDScriptParser::Node *p_source_node) {
+	// wgodot-changes::begin
+	if (p_target.wgodot_resource_path || p_source.wgodot_resource_path) {
+		if (p_target.wgodot_resource_path == p_source.wgodot_resource_path) {
+			return true;
+		}
+		const bool constant = p_source.is_constant || (p_source_node && p_source_node->is_expression() && static_cast<const GDScriptParser::ExpressionNode *>(p_source_node)->is_constant);
+		return p_target.wgodot_resource_path && p_allow_implicit_conversion && constant && p_source.kind == GDScriptParser::DataType::BUILTIN && p_source.builtin_type == Variant::STRING;
+	}
+	// wgodot-changes::end
 	// These return "true" so it doesn't affect users negatively.
 	ERR_FAIL_COND_V_MSG(!p_target.is_set(), true, "Parser bug (please report): Trying to check compatibility of unset target type");
 	ERR_FAIL_COND_V_MSG(!p_source.is_set(), true, "Parser bug (please report): Trying to check compatibility of unset value type");

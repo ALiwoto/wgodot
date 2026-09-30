@@ -43,6 +43,9 @@ class MethodBind {
 	Vector<Variant> default_arguments;
 	int default_argument_count = 0;
 	int argument_count = 0;
+	// wgodot-changes::begin
+	uint64_t wgodot_resource_path_arguments = 0;
+	// wgodot-changes::end
 
 	bool _static = false;
 	bool _const = false;
@@ -64,6 +67,13 @@ protected:
 	void set_argument_count(int p_count) { argument_count = p_count; }
 
 public:
+	// wgodot-changes::begin
+	void wgodot_set_resource_path_argument(int p_argument) {
+		ERR_FAIL_INDEX(p_argument, 64);
+		ERR_FAIL_COND(get_argument_type(p_argument) != Variant::STRING);
+		wgodot_resource_path_arguments |= uint64_t(1) << p_argument;
+	}
+	// wgodot-changes::end
 	_FORCE_INLINE_ const Vector<Variant> &get_default_arguments() const { return default_arguments; }
 	_FORCE_INLINE_ int get_default_argument_count() const { return default_argument_count; }
 

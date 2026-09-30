@@ -13,7 +13,7 @@ class WGodotPreloads : public Object {
 
 public:
 	struct Definition {
-		const char *path;
+		int64_t resource_id;
 		const char *type;
 		bool asynchronous;
 	};

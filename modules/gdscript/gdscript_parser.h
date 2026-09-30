@@ -127,6 +127,9 @@ public:
 		bool is_meta_type = false;
 		bool is_pseudo_type = false; // For global names that can't be used standalone.
 		bool is_coroutine = false; // For function calls.
+		// wgodot-changes::begin
+		bool wgodot_resource_path = false; // String in the VM, opaque integer in native games.
+		// wgodot-changes::end
 
 		Variant::Type builtin_type = Variant::NIL;
 		StringName native_type;
@@ -206,6 +209,11 @@ public:
 		bool can_reference(const DataType &p_other) const;
 
 		bool operator==(const DataType &p_other) const {
+			// wgodot-changes::begin
+			if (wgodot_resource_path != p_other.wgodot_resource_path) {
+				return false;
+			}
+			// wgodot-changes::end
 			if (type_source == UNDETECTED || p_other.type_source == UNDETECTED) {
 				return true; // Can be considered equal for parsing purposes.
 			}
@@ -250,6 +258,9 @@ public:
 			is_meta_type = p_other.is_meta_type;
 			is_pseudo_type = p_other.is_pseudo_type;
 			is_coroutine = p_other.is_coroutine;
+			// wgodot-changes::begin
+			wgodot_resource_path = p_other.wgodot_resource_path;
+			// wgodot-changes::end
 			builtin_type = p_other.builtin_type;
 			native_type = p_other.native_type;
 			enum_type = p_other.enum_type;

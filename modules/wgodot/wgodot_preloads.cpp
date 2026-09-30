@@ -3,6 +3,7 @@
 
 #include "core/config/engine.h"
 #include "core/io/resource_loader.h"
+#include "core/io/wgodot_resource_paths.h"
 #include "core/object/class_db.h"
 #include "core/os/thread.h"
 
@@ -53,7 +54,7 @@ Error WGodotPreloads::start() {
 	entries.resize(definition_count);
 	for (int i = 0; i < definition_count; ++i) {
 		Entry &entry = entries.write[i];
-		entry.path = String::utf8(definitions[i].path);
+		entry.path = WGodotResourcePaths::to_path(definitions[i].resource_id);
 		entry.type = String::utf8(definitions[i].type);
 		entry.asynchronous = definitions[i].asynchronous;
 		if (entry.asynchronous) {

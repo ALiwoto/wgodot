@@ -8,6 +8,7 @@
 #include "core/io/json.h"
 #include "core/io/resource_loader.h"
 #include "core/io/resource_saver.h"
+#include "core/io/wgodot_resource_paths.h"
 #include "core/object/class_db.h"
 #include "editor/file_system/editor_paths.h"
 #include "editor/export/editor_export_preset.h"
@@ -44,7 +45,7 @@ void WGodotNativeExportPlugin::_export_begin(const HashSet<String> &p_features, 
 	}
 	const String directory = get_export_preset()->get("wgodot/native_module");
 	manifest = read_manifest(directory.path_join("main_game.json"));
-	if (int(manifest.get("format", 0)) != 1 || !manifest.has("native_classes") || !manifest.has("sources")) {
+	if (int(manifest.get("format", 0)) != 1 || !manifest.has("native_classes") || !manifest.has("sources") || !manifest.has("resource_paths")) {
 		set_export_error(ERR_UNCONFIGURED, "Generate the native module first with wg export-cpp. Invalid manifest in: " + directory);
 		return;
 	}
@@ -61,6 +62,7 @@ void WGodotNativeExportPlugin::_export_begin(const HashSet<String> &p_features, 
 			return;
 		}
 	}
+	resources.initialize(manifest["resource_paths"]);
 	validated = true;
 }
 
@@ -157,9 +159,37 @@ void WGodotNativeExportPlugin::_export_cache_paths(HashSet<String> &r_paths) {
 }
 
 void WGodotNativeExportPlugin::_export_project_settings(HashMap<String, Variant> &r_settings) {
-	if (enabled) {
-		for (const KeyValue<Variant, Variant> &entry : autoloads) {
-			r_settings[entry.key] = entry.value;
+	if (!validated) {
+		return;
+	}
+	for (const KeyValue<Variant, Variant> &entry : autoloads) {
+		r_settings[entry.key] = entry.value;
+	}
+	List<PropertyInfo> properties;
+	ProjectSettings::get_singleton()->get_property_list(&properties);
+	for (const PropertyInfo &property : properties) {
+		const Variant original = r_settings.has(property.name) ? r_settings[property.name] : ProjectSettings::get_singleton()->get(property.name);
+		const Variant rewritten = resources.rewrite_value(original);
+		if (rewritten != original) {
+			r_settings[property.name] = rewritten;
 		}
 	}
+}
+
+Error WGodotNativeExportPlugin::_export_pack_file(String &r_path, Vector<uint8_t> &r_data) {
+	return validated ? resources.export_file(r_path, r_data) : OK;
+}
+
+Error WGodotNativeExportPlugin::_export_pack_finish(HashMap<String, Vector<uint8_t>> &r_files) {
+	if (!validated) {
+		return OK;
+	}
+	Vector<uint8_t> catalog;
+	const Error error = resources.finish(catalog);
+	if (error != OK) {
+		set_export_error(error, "Cannot finalize the native resource catalog.");
+		return error;
+	}
+	r_files.insert(WGodotResourcePaths::CATALOG_PATH, catalog);
+	return OK;
 }

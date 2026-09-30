@@ -11,6 +11,9 @@ Variant::Type WGodotCppEmitter::native_value_kind(const Parser::DataType &p_type
 	if (p_type.is_meta_type || p_type.is_coroutine) {
 		return Variant::VARIANT_MAX;
 	}
+	if (p_type.wgodot_resource_path) {
+		return Variant::INT;
+	}
 	switch (p_type.kind) {
 		case Parser::DataType::BUILTIN:
 			return p_type.builtin_type;

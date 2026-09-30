@@ -260,6 +260,9 @@ WGodotCppEmitter::Value WGodotCppEmitter::lower(const Parser::ExpressionNode *p_
 		return container_constant(constant);
 	}
 	Value result;
+	if (expression_type(p_expression).wgodot_resource_path && p_expression->is_constant && p_expression->reduced) {
+		return resource_path_constant(p_expression->reduced_value);
+	}
 	if (can_inline_constant(p_expression)) {
 		return value_facts(p_expression, leaf_expression(p_expression));
 	}
@@ -355,6 +358,9 @@ WGodotCppEmitter::Value WGodotCppEmitter::lower_index(const Parser::SubscriptNod
 }
 
 WGodotCppEmitter::Value WGodotCppEmitter::lower_converted(const Parser::ExpressionNode *p_expression, const Parser::DataType &p_target, const Parser::Node *p_target_origin, bool p_parameter) {
+	if (p_target.wgodot_resource_path && p_expression->is_constant && p_expression->reduced) {
+		return resource_path_constant(p_expression->reduced_value);
+	}
 	const String target = type(p_target, p_target_origin ? p_target_origin : p_expression);
 	if (p_expression->type == Parser::Node::ARRAY && is_warray(p_target)) {
 		return array_literal(static_cast<const Parser::ArrayNode *>(p_expression), p_target);
@@ -420,6 +426,15 @@ WGodotCppEmitter::Value WGodotCppEmitter::lower_converted(const Parser::Expressi
 
 WGodotCppEmitter::Value WGodotCppEmitter::lower_engine_argument(const Parser::ExpressionNode *p_expression, Variant::Type p_target) {
 	const auto datatype = expression_type(p_expression);
+	if (datatype.wgodot_resource_path && p_target == Variant::STRING) {
+		class_call_headers.insert("core/io/wgodot_resource_paths.h");
+		Value result = lower(p_expression);
+		result.code = "WGodotResourcePaths::to_path(" + result.code + ")";
+		result.cpp_type = "String";
+		result.borrowed = false;
+		result.effects = true;
+		return result;
+	}
 	Parser::DataType target;
 	target.kind = Parser::DataType::BUILTIN;
 	target.builtin_type = p_target;

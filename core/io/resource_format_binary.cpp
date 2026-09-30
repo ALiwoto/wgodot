@@ -30,6 +30,10 @@
 
 #include "resource_format_binary.h"
 
+// wgodot-changes::begin
+#include "core/io/wgodot_resource_serialization.h"
+// wgodot-changes::end
+
 #include "core/config/project_settings.h"
 #include "core/io/dir_access.h"
 #include "core/io/file_access_compressed.h"
@@ -2070,7 +2074,13 @@ void ResourceFormatSaverBinaryInstance::_find_resources(const Variant &p_variant
 }
 
 void ResourceFormatSaverBinaryInstance::save_unicode_string(Ref<FileAccess> r_file, const String &p_string, bool p_bit_on_len) {
+	// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+	CharString utf8 = WGodotResourceSerialization::rewrite(p_string).utf8();
+#else
 	CharString utf8 = p_string.utf8();
+#endif
+	// wgodot-changes::end
 	if (p_bit_on_len) {
 		r_file->store_32(uint32_t((utf8.length() + 1) | 0x80000000));
 	} else {

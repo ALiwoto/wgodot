@@ -202,7 +202,12 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 				if (serialized) {
 					const String property = quoted(variable->identifier->name);
 					property_reads += "\tif (p_name == " + property + ") { r_value = const_cast<" + name + " *>(this)->" + getter + "(); return true; }\n";
-					property_writes += "\tif (p_name == " + property + ") { " + setter + "(WGodotNative::convert<" + field_type + ">(p_value)); return true; }\n";
+					String decoded = "WGodotNative::convert<" + field_type + ">(p_value)";
+					if (datatype.wgodot_resource_path) {
+						class_call_headers.insert("core/io/wgodot_resource_paths.h");
+						decoded = "WGodotResourcePaths::from_variant(p_value)";
+					}
+					property_writes += "\tif (p_name == " + property + ") { " + setter + "(" + decoded + "); return true; }\n";
 					property_list += "\t{ PropertyInfo info = GetTypeInfo<" + field_type + ">::get_class_info(); info.name = " + property + "; info.usage = " + String(variable->is_static ? "PROPERTY_USAGE_NONE" : "PROPERTY_USAGE_STORAGE") + "; p_list->push_back(info); }\n";
 				}
 				if (variable->property == Parser::VariableNode::PROP_INLINE) {
@@ -316,5 +321,7 @@ void WGodotCppEmitter::register_class(const WGodotCppProject::Class &p_class, Ha
 	}
 	r_registered.insert(p_class.cpp_name);
 	r_code += String(p_class.node->is_abstract ? "\tGDREGISTER_ABSTRACT_CLASS(" : "\tGDREGISTER_CLASS(") + p_class.cpp_name + ");\n";
-	r_code += "#ifdef DEBUG_ENABLED\n\tWGodotNative::NativeDebug::register_class(" + quoted(p_class.cpp_name) + ", { " + quoted(p_class.script_path) + ", " + itos(p_class.node->start_line) + ", " + quoted(p_class.node->fqcn) + " });\n#endif\n";
+	if (trace_enabled) {
+		r_code += "#ifdef DEBUG_ENABLED\n\tWGodotNative::NativeDebug::register_class(" + quoted(p_class.cpp_name) + ", { " + quoted("res://" + itos(resource_id(p_class.script_path))) + ", " + itos(p_class.node->start_line) + ", " + quoted(p_class.cpp_name) + " });\n#endif\n";
+	}
 }

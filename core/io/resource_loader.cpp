@@ -29,6 +29,9 @@
 /**************************************************************************/
 
 #include "resource_loader.h"
+// wgodot-changes::begin
+#include "wgodot_resource_paths.h"
+// wgodot-changes::end
 
 // wgodot-changes::begin
 #include "core/io/wgodot_resource_loader_lifetime.h"
@@ -65,6 +68,22 @@ Ref<ResourceFormatLoader> ResourceLoader::loader[ResourceLoader::MAX_LOADERS];
 int ResourceLoader::loader_count = 0;
 
 bool ResourceFormatLoader::recognize_path(const String &p_path, const String &p_for_type) const {
+	// wgodot-changes::begin
+	if (WGodotResourcePaths::is_opaque(p_path)) {
+		List<String> extensions;
+		if (p_for_type.is_empty()) {
+			get_recognized_extensions(&extensions);
+		} else {
+			get_recognized_extensions_for_type(p_for_type, &extensions);
+		}
+		for (const String &extension : extensions) {
+			if (WGodotResourcePaths::recognizes_extension(p_path, extension)) {
+				return true;
+			}
+		}
+		return false;
+	}
+	// wgodot-changes::end
 	bool ret = false;
 	if (GDVIRTUAL_CALL(_recognize_path, p_path, p_for_type, ret)) {
 		return ret;
@@ -1378,6 +1397,11 @@ void ResourceLoader::get_classes_used(const String &p_path, HashSet<StringName> 
 }
 
 String ResourceLoader::get_resource_type(const String &p_path) {
+	// wgodot-changes::begin
+	if (WGodotResourcePaths::is_opaque(p_path)) {
+		return WGodotResourcePaths::resource_type(p_path);
+	}
+	// wgodot-changes::end
 	String local_path = _validate_local_path(p_path);
 
 	for (int i = 0; i < loader_count; i++) {
@@ -1481,6 +1505,11 @@ String ResourceLoader::_path_remap(const String &p_path, bool *r_translation_rem
 	}
 
 	// Usually, there's no remap file and FileAccess::exists() is faster than FileAccess::open().
+	// wgodot-changes::begin
+	if (WGodotResourcePaths::is_opaque(new_path)) {
+		return WGodotResourcePaths::remap(new_path);
+	}
+	// wgodot-changes::end
 	new_path = ResourceUID::ensure_path(new_path);
 	if (FileAccess::exists(new_path + ".remap")) {
 		Error err;

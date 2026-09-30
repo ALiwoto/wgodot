@@ -6,12 +6,16 @@
 
 using Parser = GDScriptParser;
 
-String WGodotCppEmitter::debug_source_arguments(const Parser::Node *p_node) const {
-	String function = current_class->node->fqcn;
+String WGodotCppEmitter::trace_call(const Parser::Node *p_node, const String &p_code) {
+	return trace_enabled ? "WGODOT_NATIVE_TRACE(" + debug_source_arguments(p_node) + ", " + p_code + ")" : p_code;
+}
+
+String WGodotCppEmitter::debug_source_arguments(const Parser::Node *p_node) {
+	String function = current_class->cpp_name;
 	if (current_function) {
 		function += "::" + (current_function->identifier ? String(current_function->identifier->name) : String("<lambda>"));
 	}
-	return WGodotCppNames::quoted(current_class->script_path) + ", " + itos(p_node->start_line) + ", " + WGodotCppNames::quoted(function);
+	return WGodotCppNames::quoted("res://" + itos(resource_id(current_class->script_path))) + ", " + itos(p_node->start_line) + ", " + WGodotCppNames::quoted(function);
 }
 
 bool WGodotCppEmitter::validate_callback(const Parser::ExpressionNode *p_source, const WGodotCppSignatures::Signature &p_target, bool p_discard_result) {
@@ -173,7 +177,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::callback_call(const Parser::CallNode *
 	}
 	result.code = operands[operands.size() - 1].code + "." + String(name) + "(" + String(", ").join(arguments) + ")";
 	if (invocation) {
-		result.code = "WGODOT_NATIVE_TRACE(" + debug_source_arguments(p_call) + ", " + result.code + ")";
+		result.code = trace_call(p_call, result.code);
 	}
 	result.effects = true;
 	return result;

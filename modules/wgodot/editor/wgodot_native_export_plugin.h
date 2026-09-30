@@ -2,6 +2,7 @@
 #pragma once
 
 #include "editor/export/editor_export_plugin.h"
+#include "wgodot_resource_export.h"
 
 class WGodotNativeExportPlugin : public EditorExportPlugin {
 	GDCLASS(WGodotNativeExportPlugin, EditorExportPlugin);
@@ -9,6 +10,7 @@ class WGodotNativeExportPlugin : public EditorExportPlugin {
 	bool validated = false;
 	Dictionary manifest;
 	Dictionary autoloads;
+	WGodotResourceExport resources;
 
 protected:
 	void _get_export_options(const Ref<EditorExportPlatform> &p_platform, List<EditorExportPlatform::ExportOption> *r_options) const override;
@@ -18,6 +20,8 @@ protected:
 	void _export_global_class_list(Array &r_classes) override;
 	void _export_project_settings(HashMap<String, Variant> &r_settings) override;
 	void _export_cache_paths(HashSet<String> &r_paths) override;
+	Error _export_pack_file(String &r_path, Vector<uint8_t> &r_data) override;
+	Error _export_pack_finish(HashMap<String, Vector<uint8_t>> &r_files) override;
 
 public:
 	String get_name() const override { return "0WGodotNative"; }

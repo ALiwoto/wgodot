@@ -568,7 +568,9 @@ void GDScriptUtilityFunctions::register_functions() {
 	REGISTER_FUNC( _char,          true,  RET(STRING),        ARGS( ARG("code", INT)                ), false, varray(     ));
 	REGISTER_FUNC( ord,            true,  RET(INT),           ARGS( ARG("char", STRING)             ), false, varray(     ));
 	REGISTER_FUNC( range,          false, RET(ARRAY),         NOARGS,                                  true,  varray(     ));
-	REGISTER_FUNC( load,           false, RETCLS("Resource"), ARGS( ARG("path", STRING)             ), false, varray(     ));
+	// wgodot-changes::begin
+	REGISTER_FUNC( load,           false, RETCLS("Resource"), ARGS( PropertyInfo(Variant::STRING, "path", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_DEFAULT, "WResPath") ), false, varray(     ));
+	// wgodot-changes::end
 #ifndef DISABLE_DEPRECATED
 	REGISTER_FUNC( inst_to_dict,   false, RET(DICTIONARY),    ARGS( ARG("instance", OBJECT)         ), false, varray(     ));
 	REGISTER_FUNC( dict_to_inst,   false, RET(OBJECT),        ARGS( ARG("dictionary", DICTIONARY)   ), false, varray(     ));

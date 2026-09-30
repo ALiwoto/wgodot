@@ -101,7 +101,7 @@ class WCallable<R(Args...)> {
 	ObjectID owner;
 	std::tuple<Args...> defaults{};
 	int default_count = 0;
-#ifdef DEBUG_ENABLED
+#ifdef WGODOT_NATIVE_TRACE_ACTIVE
 	DebugSource debug_source;
 #endif
 
@@ -140,7 +140,7 @@ class WCallable<R(Args...)> {
 				invocation->valid, owner, std::make_shared<BoundIdentity<Tuple>>(identity, bound));
 		result.defaults = std::make_tuple(std::get<I>(defaults)...);
 		result.default_count = MAX(0, default_count - int(std::tuple_size_v<Tuple>));
-#ifdef DEBUG_ENABLED
+#ifdef WGODOT_NATIVE_TRACE_ACTIVE
 		result.debug_source = debug_source;
 #endif
 		return result;
@@ -151,7 +151,7 @@ public:
 	using Arguments = std::tuple<Args...>;
 	static constexpr size_t argument_count = sizeof...(Args);
 	WCallable() = default;
-#ifdef DEBUG_ENABLED
+#ifdef WGODOT_NATIVE_TRACE_ACTIVE
 	WCallable with_debug_source(DebugSource p_source) const {
 		WCallable result = *this;
 		result.debug_source = p_source;
@@ -199,7 +199,7 @@ public:
 		if (!valid || int(sizeof...(Values)) < get_minimum_argument_count()) {
 			const char *reason = !invocation ? "callable is empty" : !valid ? "target is no longer valid"
 																			: "too few arguments";
-#ifdef DEBUG_ENABLED
+#ifdef WGODOT_NATIVE_TRACE_ACTIVE
 			DebugFrame::report_callback_failure(reason, debug_source, owner, sizeof...(Values), get_minimum_argument_count(), sizeof...(Args));
 #else
 			ERR_PRINT(String("Invalid native callback invocation: ") + reason);
@@ -210,7 +210,7 @@ public:
 				return;
 			}
 		}
-#ifdef DEBUG_ENABLED
+#ifdef WGODOT_NATIVE_TRACE_ACTIVE
 		DebugFrame frame(debug_source, "invoking callback");
 #endif
 		auto args = std::forward_as_tuple(p_args...);
@@ -238,7 +238,7 @@ public:
 			result.defaults = p_source.defaults;
 			result.default_count = p_source.default_count;
 		}
-#ifdef DEBUG_ENABLED
+#ifdef WGODOT_NATIVE_TRACE_ACTIVE
 		result.debug_source = p_source.debug_source;
 #endif
 		return result;
@@ -259,7 +259,7 @@ public:
 			return call_unbound(p_source, args, std::make_index_sequence<sizeof...(Args) - Count>());
 		},
 				[p_source]() { return p_source.is_valid(); }, p_source.owner, std::make_shared<UnboundIdentity>(p_source.identity, Count));
-#ifdef DEBUG_ENABLED
+#ifdef WGODOT_NATIVE_TRACE_ACTIVE
 		result.debug_source = p_source.debug_source;
 #endif
 		return result;
@@ -356,11 +356,11 @@ void WCallable<R(Args...)>::call_deferred(Values... p_args) const {
 	// Preserve the receiver so MessageQueue discards calls after it is freed.
 	// Ownerless static callbacks remain valid; empty callables remain invalid.
 	auto valid = invocation ? invocation->valid : std::function<bool()>([]() { return false; });
-#ifdef DEBUG_ENABLED
+#ifdef WGODOT_NATIVE_TRACE_ACTIVE
 	const DebugSource scheduled_at = DebugFrame::current_source();
 #endif
 	WCallable<void()>::make([=]() {
-#ifdef DEBUG_ENABLED
+#ifdef WGODOT_NATIVE_TRACE_ACTIVE
 		DebugFrame frame(scheduled_at, "deferred from");
 #endif
 		std::apply([&](const auto &...p_values) { source.call(p_values...); }, args);

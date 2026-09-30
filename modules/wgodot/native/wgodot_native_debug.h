@@ -1,7 +1,8 @@
 // wgodot-changes::file
 #pragma once
 
-#ifdef DEBUG_ENABLED
+#if defined(DEBUG_ENABLED) && defined(WGODOT_NATIVE_TRACE_ENABLED)
+#define WGODOT_NATIVE_TRACE_ACTIVE
 #include "core/object/object_id.h"
 
 namespace WGodotNative {

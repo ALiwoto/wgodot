@@ -183,6 +183,13 @@ class GDScriptAnalyzer {
 	// wgodot-changes::end
 
 	// Reduction functions.
+	// wgodot-changes::begin
+	static GDScriptParser::DataType wgodot_resource_path_type();
+	void wgodot_resource_container_signature(const GDScriptParser::DataType &p_container, const StringName &p_method, GDScriptParser::DataType &r_result, List<GDScriptParser::DataType> &r_arguments);
+	bool wgodot_validate_resource_path_argument(GDScriptParser::ExpressionNode *p_expression, const GDScriptParser::DataType &p_target);
+	bool wgodot_validate_resource_utility(const GDScriptParser::CallNode *p_call, const MethodInfo &p_info);
+	bool wgodot_validate_resource_path_operation(Variant::Operator p_operator, const GDScriptParser::DataType &p_left, const GDScriptParser::DataType &p_right, const GDScriptParser::Node *p_source);
+	// wgodot-changes::end
 	void reduce_expression(GDScriptParser::ExpressionNode *p_expression, bool p_is_root = false);
 	void reduce_array(GDScriptParser::ArrayNode *p_array);
 	void reduce_assignment(GDScriptParser::AssignmentNode *p_assignment);

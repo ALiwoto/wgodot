@@ -200,7 +200,7 @@ void print_cli_help() {
 	print_line("Usage: godot [Godot options] --wg <command> [arguments]");
 	print_line("");
 	print_line("Commands:");
-	print_line("  export-cpp <directory> [--analyze-only] Generate native game C++ using this headless editor process.");
+	print_line("  export-cpp <directory> [--analyze-only] [--trace on|off|true|false] Generate native game C++ (trace defaults to off).");
 	print_line("  status [--json] [--session <id>]  Show the matching editor and running game sessions.");
 	print_line("  run [--current|<scene>] [--json]  Run the main, current, or specified scene.");
 	print_line("  stop [--json]                     Stop the running game.");

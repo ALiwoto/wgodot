@@ -11,9 +11,35 @@
 #include "core/string/print_string.h"
 
 int WGodotCppExporter::run(const Vector<String> &p_arguments) {
-	if (p_arguments.size() != 1 && !(p_arguments.size() == 2 && p_arguments[1] == "--analyze-only")) {
-		print_error("Usage: wg export-cpp <absolute-output-directory> [--analyze-only]");
+	const String usage = "Usage: wg export-cpp <absolute-output-directory> [--analyze-only] [--trace on|off|true|false] (default: off)";
+	if (p_arguments.is_empty()) {
+		print_error(usage);
 		return 2;
+	}
+	bool analyze_only = false;
+	bool trace_enabled = false;
+	for (int i = 1; i < p_arguments.size(); i++) {
+		if (p_arguments[i] == "--analyze-only") {
+			analyze_only = true;
+		} else if (p_arguments[i] == "--trace") {
+			if (++i >= p_arguments.size()) {
+				print_error("--trace requires on, off, true, or false.");
+				return 2;
+			}
+			const String value = p_arguments[i].to_lower();
+			if (value == "on" || value == "true") {
+				trace_enabled = true;
+			} else if (value == "off" || value == "false") {
+				trace_enabled = false;
+			} else {
+				print_error("Invalid --trace value: " + p_arguments[i] + ". Expected on, off, true, or false.");
+				return 2;
+			}
+		} else {
+			print_error("Unknown C++ export option: " + p_arguments[i]);
+			print_error(usage);
+			return 2;
+		}
 	}
 	const String output = p_arguments[0].replace_char('\\', '/').simplify_path();
 	if (!output.is_absolute_path() || output.begins_with("res://") || output.begins_with("user://")) {
@@ -28,8 +54,8 @@ int WGodotCppExporter::run(const Vector<String> &p_arguments) {
 	Error result = project.analyze();
 	Dictionary report = project.describe();
 	Vector<String> diagnostics = project.get_diagnostics();
-	if (result == OK && p_arguments.size() == 1) {
-		WGodotCppEmitter emitter(project);
+	if (result == OK && !analyze_only) {
+		WGodotCppEmitter emitter(project, trace_enabled);
 		result = emitter.generate();
 		diagnostics = emitter.get_diagnostics();
 		if (result == OK) {
@@ -38,7 +64,8 @@ int WGodotCppExporter::run(const Vector<String> &p_arguments) {
 	}
 	report["diagnostics"] = diagnostics;
 	report["success"] = result == OK;
-	report["analysis_only"] = p_arguments.size() == 2;
+	report["analysis_only"] = analyze_only;
+	report["trace"] = trace_enabled;
 	Error write_error = DirAccess::make_dir_recursive_absolute(output);
 	if (write_error == OK) {
 		Ref<FileAccess> file = FileAccess::open(output.path_join("cpp-export-report.json"), FileAccess::WRITE, &write_error);
@@ -58,6 +85,6 @@ int WGodotCppExporter::run(const Vector<String> &p_arguments) {
 		print_error(vformat("C++ export failed: %s", error_names[result != OK ? result : write_error]));
 		return 1;
 	}
-	print_line(vformat("C++ %s: %d classes. Output: %s", p_arguments.size() == 2 ? "analysis complete" : "export complete", project.get_classes().size(), output));
+	print_line(vformat("C++ %s: %d classes. Output: %s", analyze_only ? "analysis complete" : "export complete", project.get_classes().size(), output));
 	return 0;
 }

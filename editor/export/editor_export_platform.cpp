@@ -68,20 +68,62 @@ class EditorExportSaveProxy {
 	HashSet<String> saved_paths;
 	EditorExportPlatform::SaveFileFunction save_func;
 	bool tracking_saves = false;
+	// wgodot-changes::begin
+	Vector<Ref<EditorExportPlugin>> plugins;
+	// wgodot-changes::end
 
 public:
 	bool has_saved(const String &p_path) const { return saved_paths.has(p_path); }
 
 	Error save_file(const Ref<EditorExportPreset> &p_preset, void *p_userdata, const EditorExportPlatform::SaveFileInfo &p_info, const Vector<uint8_t> &p_data) {
-		if (tracking_saves) {
-			saved_paths.insert(p_info.path.simplify_path().trim_prefix("res://"));
+		// wgodot-changes::begin
+		EditorExportPlatform::SaveFileInfo info = p_info;
+		Vector<uint8_t> data = p_data;
+		for (const Ref<EditorExportPlugin> &plugin : plugins) {
+			const Error error = plugin->_export_pack_file(info.path, data);
+			if (error != OK) {
+				return error;
+			}
+			if (info.path.is_empty()) {
+				return OK;
+			}
 		}
-
-		return save_func(p_preset, p_userdata, p_info, p_data);
+		if (tracking_saves) {
+			saved_paths.insert(info.path.simplify_path().trim_prefix("res://"));
+		}
+		return save_func(p_preset, p_userdata, info, data);
+		// wgodot-changes::end
 	}
 
+	// wgodot-changes::begin
+	Error finish(const Ref<EditorExportPreset> &p_preset, void *p_userdata, const EditorExportPlatform::SaveFileInfo &p_info) {
+		HashMap<String, Vector<uint8_t>> files;
+		for (const Ref<EditorExportPlugin> &plugin : plugins) {
+			const Error error = plugin->_export_pack_finish(files);
+			if (error != OK) {
+				return error;
+			}
+		}
+		for (const KeyValue<String, Vector<uint8_t>> &file : files) {
+			EditorExportPlatform::SaveFileInfo info = p_info;
+			info.path = file.key;
+			info.source_path = file.key;
+			const Error error = save_func(p_preset, p_userdata, info, file.value);
+			if (error != OK) {
+				return error;
+			}
+			saved_paths.insert(info.path.simplify_path().trim_prefix("res://"));
+		}
+		return OK;
+	}
+	// wgodot-changes::end
+
 	EditorExportSaveProxy(EditorExportPlatform::SaveFileFunction p_save_func, bool p_track_saves) :
-			save_func(p_save_func), tracking_saves(p_track_saves) {}
+			save_func(p_save_func), tracking_saves(p_track_saves) {
+		// wgodot-changes::begin
+		plugins = EditorExport::get_singleton()->get_export_plugins();
+		// wgodot-changes::end
+	}
 };
 
 static int _get_pad(int p_alignment, int p_n) {
@@ -1845,6 +1887,13 @@ Error EditorExportPlatform::export_project_files(const Ref<EditorExportPreset> &
 	if (err != OK) {
 		return err;
 	}
+
+	// wgodot-changes::begin
+	err = save_proxy.finish(p_preset, p_udata, save_info);
+	if (err != OK) {
+		return err;
+	}
+	// wgodot-changes::end
 
 	if (p_remove_func) {
 		for (const String &path : PackedData::get_singleton()->get_file_paths()) {

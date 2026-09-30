@@ -212,7 +212,8 @@ WGodotCppEmitter::Value WGodotCppEmitter::global_call(const Parser::CallNode *p_
 			return String();
 		}
 		class_call_headers.insert("core/io/resource_loader.h");
-		result.code = "WGodotNative::convert<" + type(p_call->type_constraint, p_call) + ">(::ResourceLoader::load(WGodotNative::convert<String>(" + arguments[0] + ")))";
+		class_call_headers.insert("core/io/wgodot_resource_paths.h");
+		result.code = "WGodotNative::convert<" + type(p_call->type_constraint, p_call) + ">(::ResourceLoader::load(WGodotResourcePaths::to_path(" + arguments[0] + ")))";
 	} else {
 		unsupported(p_call, "global call " + String(name));
 		return Value();

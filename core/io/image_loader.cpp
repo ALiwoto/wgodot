@@ -30,6 +30,10 @@
 
 #include "image_loader.h"
 
+// wgodot-changes::begin
+#include "core/io/wgodot_resource_paths.h"
+// wgodot-changes::end
+
 #include "core/object/class_db.h"
 
 void ImageFormatLoader::_bind_methods() {
@@ -94,7 +98,17 @@ Error ImageLoader::load_image(const String &p_file, Ref<Image> p_image, Ref<File
 	String extension = file.get_extension();
 
 	for (int i = 0; i < loader.size(); i++) {
-		if (!loader[i]->recognize(extension)) {
+		// wgodot-changes::begin
+		bool recognized = loader[i]->recognize(extension);
+		if (WGodotResourcePaths::is_opaque(file)) {
+			List<String> extensions;
+			loader[i]->get_recognized_extensions(&extensions);
+			for (const String &candidate : extensions) {
+				recognized |= WGodotResourcePaths::recognizes_extension(file, candidate);
+			}
+		}
+		if (!recognized) {
+		// wgodot-changes::end
 			continue;
 		}
 		Error err = loader.write[i]->load_image(p_image, f, p_flags, p_scale);

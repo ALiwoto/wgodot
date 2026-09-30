@@ -1,7 +1,7 @@
 // wgodot-changes::file
 #include "wgodot_native_debug.h"
 
-#ifdef DEBUG_ENABLED
+#ifdef WGODOT_NATIVE_TRACE_ACTIVE
 #include "core/object/object.h"
 #include "core/object/wgodot_native_lifetime.h"
 #include "core/os/wgodot_native_allocation.h"
