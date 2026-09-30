@@ -5,7 +5,8 @@ param(
 	[switch]$Templates,
 	[switch]$Game,
 	[switch]$Release,
-	[switch]$Optimize
+	[switch]$Optimize,
+	[string]$BuildProfilePath
 )
 
 $ErrorActionPreference = "Stop"
@@ -15,6 +16,12 @@ if ($Game -and $Templates) {
 }
 if ($Release -and !($Game -or $Templates)) {
 	throw "-Release requires -Game or -Templates."
+}
+if ($BuildProfilePath -and !$Game) {
+	throw "-BuildProfilePath requires -Game."
+}
+if ($BuildProfilePath) {
+	$BuildProfilePath = (Resolve-Path -LiteralPath $BuildProfilePath).Path
 }
 
 $target = "editor"
@@ -61,6 +68,9 @@ if ($Game) {
 		"module_gdscript_enabled=no",
 		"extra_suffix=game"
 	)
+	if ($BuildProfilePath) {
+		$sconsArgs += "build_profile=$BuildProfilePath"
+	}
 	if (!$Release) {
 		# Include symbols for debugging native game builds.
 		$sconsArgs = $sconsArgs | Where-Object { $_ -ne "debug_symbols=no" }

@@ -275,8 +275,9 @@ Error WGodotResourceExport::export_file(String &r_path, Vector<uint8_t> &r_data)
 
 Error WGodotResourceExport::finish(Vector<uint8_t> &r_catalog) {
 	RETURN_IF_ERROR(error);
-	for (const int64_t id : required) {
-		ERR_FAIL_COND_V_MSG(!entries.has(id), ERR_FILE_MISSING_DEPENDENCIES, "Resource used by native code is excluded from this export: " + itos(id));
+	for (const KeyValue<String, int64_t> &resource : ids) {
+		ERR_FAIL_COND_V_MSG(required.has(resource.value) && !entries.has(resource.value), ERR_FILE_MISSING_DEPENDENCIES,
+				"Resource required by native export is excluded: " + resource.key + " (ID " + itos(resource.value) + ")");
 	}
 	HashSet<int64_t> visiting;
 	HashSet<int64_t> validated;

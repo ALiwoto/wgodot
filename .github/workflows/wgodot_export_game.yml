@@ -214,6 +214,7 @@ jobs:
             $packageId = if ($edition -eq 'ir') { $env:GAME_PACKAGE_ID_IR } else { $env:GAME_PACKAGE_ID_GLOBAL }
             ./.github/scripts/wgodot_export_game.ps1 -Platform $env:GAME_PLATFORM `
               -GameDirectory "$env:GITHUB_WORKSPACE/game-source" `
+              -BuildProfilePath "$env:GITHUB_WORKSPACE/game-source/configs/native.gdbuild" `
               -Edition $edition -AndroidPackageId $packageId `
               -BuildDebug:($env:GAME_BUILD_DEBUG -eq 'true') `
               -BuildRelease:($env:GAME_BUILD_RELEASE -eq 'true')

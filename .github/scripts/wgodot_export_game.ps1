@@ -13,6 +13,7 @@ param(
     [string]$EngineDirectory = "$PSScriptRoot/../..",
     [string]$EditorPath,
     [string]$ConfigPath,
+    [string]$BuildProfilePath,
     [string]$SigningConfigPath,
     [string]$ModuleDirectory,
     [string]$OutputDirectory,
@@ -36,6 +37,9 @@ function Invoke-Checked([string]$Program, [string[]]$Arguments) {
 
 $EngineDirectory = (Resolve-Path -LiteralPath $EngineDirectory).Path.Replace('\', '/')
 $GameDirectory = (Resolve-Path -LiteralPath $GameDirectory).Path.Replace('\', '/')
+if ($BuildProfilePath) {
+    $BuildProfilePath = (Resolve-Path -LiteralPath $BuildProfilePath).Path.Replace('\', '/')
+}
 $editorName = if ($IsWindows) { 'godot.windows.editor.x86_64.exe' } else { 'godot.linuxbsd.editor.x86_64' }
 if (!$EditorPath) { $EditorPath = "$EngineDirectory/bin/$editorName" }
 $EditorPath = (Resolve-Path -LiteralPath $EditorPath).Path
@@ -190,7 +194,6 @@ try {
     $sconsPlatform = if ($Platform -eq 'linux') { 'linuxbsd' } else { $Platform }
     $buildFlags = @(
         "platform=$sconsPlatform",
-        'module_text_server_fb_enabled=yes',
         "custom_modules=$moduleDirectory",
         'custom_modules_recursive=no',
         'module_main_game_enabled=yes',
@@ -199,6 +202,9 @@ try {
         "cache_path=$EngineDirectory/.scons_cache",
         'redirect_build_objects=no'
     )
+    if ($BuildProfilePath) {
+        $buildFlags += "build_profile=$BuildProfilePath"
+    }
     if ($Jobs) { $buildFlags += "-j$Jobs" }
     $buildFlags += switch ($Platform) {
         linux { @('arch=x86_64', 'accesskit=no') }

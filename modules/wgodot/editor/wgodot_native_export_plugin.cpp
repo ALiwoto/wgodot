@@ -166,9 +166,18 @@ void WGodotNativeExportPlugin::_export_project_settings(HashMap<String, Variant>
 		r_settings[entry.key] = entry.value;
 	}
 	List<PropertyInfo> properties;
-	ProjectSettings::get_singleton()->get_property_list(&properties);
+	ProjectSettings *settings = ProjectSettings::get_singleton();
+	settings->get_property_list(&properties);
 	for (const PropertyInfo &property : properties) {
-		const Variant original = r_settings.has(property.name) ? r_settings[property.name] : ProjectSettings::get_singleton()->get(property.name);
+		const Variant original = r_settings.has(property.name) ? r_settings[property.name] : settings->get(property.name);
+		if (!r_settings.has(property.name) && original.get_type() == Variant::STRING && original == settings->property_get_revert(property.name)) {
+			const String path = original;
+			// Defaults may name optional resources, such as the default audio bus layout.
+			// Keep absent defaults unchanged; explicitly configured missing assets still fail.
+			if ((path.begins_with("res://") || path.begins_with("uid://")) && !ResourceLoader::exists(path)) {
+				continue;
+			}
+		}
 		const Variant rewritten = resources.rewrite_value(original);
 		if (rewritten != original) {
 			r_settings[property.name] = rewritten;
