@@ -61,5 +61,5 @@ String WGodotCppEmitter::lambda(const Parser::LambdaNode *p_lambda) {
 	if (!defaults.is_empty()) {
 		code += ".with_defaults(std::make_tuple(" + String(", ").join(defaults) + "))";
 	}
-	return code;
+	return code + " WGODOT_NATIVE_CALLBACK_SOURCE(" + debug_source_arguments(p_lambda) + ")";
 }

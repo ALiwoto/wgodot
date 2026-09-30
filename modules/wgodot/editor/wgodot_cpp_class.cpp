@@ -316,4 +316,5 @@ void WGodotCppEmitter::register_class(const WGodotCppProject::Class &p_class, Ha
 	}
 	r_registered.insert(p_class.cpp_name);
 	r_code += String(p_class.node->is_abstract ? "\tGDREGISTER_ABSTRACT_CLASS(" : "\tGDREGISTER_CLASS(") + p_class.cpp_name + ");\n";
+	r_code += "#ifdef DEBUG_ENABLED\n\tWGodotNative::NativeDebug::register_class(" + quoted(p_class.cpp_name) + ", { " + quoted(p_class.script_path) + ", " + itos(p_class.node->start_line) + ", " + quoted(p_class.node->fqcn) + " });\n#endif\n";
 }

@@ -1,9 +1,18 @@
 // wgodot-changes::file
 #include "wgodot_cpp_emitter.h"
+#include "wgodot_cpp_names.h"
 
 #include "modules/gdscript/gdscript_analyzer.h"
 
 using Parser = GDScriptParser;
+
+String WGodotCppEmitter::debug_source_arguments(const Parser::Node *p_node) const {
+	String function = current_class->node->fqcn;
+	if (current_function) {
+		function += "::" + (current_function->identifier ? String(current_function->identifier->name) : String("<lambda>"));
+	}
+	return WGodotCppNames::quoted(current_class->script_path) + ", " + itos(p_node->start_line) + ", " + WGodotCppNames::quoted(function);
+}
 
 bool WGodotCppEmitter::validate_callback(const Parser::ExpressionNode *p_source, const WGodotCppSignatures::Signature &p_target, bool p_discard_result) {
 	const auto *source = signatures.get(p_source);
@@ -163,6 +172,9 @@ WGodotCppEmitter::Value WGodotCppEmitter::callback_call(const Parser::CallNode *
 		arguments.push_back(operands[i].code);
 	}
 	result.code = operands[operands.size() - 1].code + "." + String(name) + "(" + String(", ").join(arguments) + ")";
+	if (invocation) {
+		result.code = "WGODOT_NATIVE_TRACE(" + debug_source_arguments(p_call) + ", " + result.code + ")";
+	}
 	result.effects = true;
 	return result;
 }

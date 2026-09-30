@@ -148,6 +148,13 @@ bool Object::_predelete() {
 		return false;
 	}
 
+	// wgodot-changes::begin
+#if defined(WGODOT_NATIVE_GAME) && defined(DEBUG_ENABLED)
+	if (WGodotNativeLifetime::object_predelete) {
+		WGodotNativeLifetime::object_predelete(get_instance_id());
+	}
+#endif
+	// wgodot-changes::end
 	_gdtype_ptr = nullptr; // Must restore, so constructors/destructors have proper class name access at each stage.
 	notification(NOTIFICATION_PREDELETE_CLEANUP, true);
 
@@ -204,6 +211,13 @@ void Object::_initialize() {
 }
 
 void Object::_postinitialize() {
+	// wgodot-changes::begin
+#if defined(WGODOT_NATIVE_GAME) && defined(DEBUG_ENABLED)
+	if (WGodotNativeLifetime::object_initialized) {
+		WGodotNativeLifetime::object_initialized(this);
+	}
+#endif
+	// wgodot-changes::end
 	if (_uses_signal_mutex()) {
 		signal_mutex = memnew(Mutex);
 	}
@@ -2591,6 +2605,13 @@ ObjectID ObjectDB::add_instance(Object *p_object) {
 }
 
 void ObjectDB::remove_instance(Object *p_object) {
+	// wgodot-changes::begin
+#if defined(WGODOT_NATIVE_GAME) && defined(DEBUG_ENABLED)
+	if (WGodotNativeLifetime::object_removed) {
+		WGodotNativeLifetime::object_removed(p_object->get_instance_id());
+	}
+#endif
+	// wgodot-changes::end
 	uint64_t t = p_object->get_instance_id();
 	uint32_t slot = t & OBJECTDB_SLOT_MAX_COUNT_MASK; //slot is always valid on valid object
 
@@ -2657,6 +2678,13 @@ void ObjectDB::cleanup() {
 
 					uint64_t id = uint64_t(i) | (uint64_t(object_slots[i].validator) << OBJECTDB_SLOT_MAX_COUNT_BITS) | (object_slots[i].is_ref_counted ? OBJECTDB_REFERENCE_BIT : 0);
 					DEV_ASSERT(id == (uint64_t)obj->get_instance_id()); // We could just use the id from the object, but this check may help catching memory corruption catastrophes.
+					// wgodot-changes::begin
+#if defined(WGODOT_NATIVE_GAME) && defined(DEBUG_ENABLED)
+					if (WGodotNativeLifetime::describe_object) {
+						extra_info += WGodotNativeLifetime::describe_object(ObjectID(id));
+					}
+#endif
+					// wgodot-changes::end
 					print_line("Leaked instance: " + String(obj->get_class()) + ":" + uitos(id) + extra_info);
 
 					count--;

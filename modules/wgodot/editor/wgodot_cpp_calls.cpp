@@ -60,6 +60,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::call(const Parser::CallNode *p_call) {
 		}
 		const String instance = materialize_receiver(result, value, value.code + ".operator->()");
 		result.code = instance + "->" + String(p_call->function_name) + "(" + String(", ").join(arguments) + ")";
+		result.code = "WGODOT_NATIVE_TRACE(" + debug_source_arguments(p_call) + ", " + result.code + ")";
 		result.cpp_type = result_type;
 		result.effects = true;
 		return result;
@@ -111,6 +112,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::call(const Parser::CallNode *p_call) {
 		receiver = "this->";
 	}
 	result.code = receiver + (construct ? "create" : "m_" + symbol(name)) + "(" + String(", ").join(arguments) + ")";
+	result.code = "WGODOT_NATIVE_TRACE(" + debug_source_arguments(p_call) + ", " + result.code + ")";
 	result.cpp_type = construct ? type(p_call->type_constraint, p_call) : function_result(method);
 	result.effects = true;
 	return result;

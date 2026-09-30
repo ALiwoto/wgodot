@@ -2,6 +2,7 @@
 #pragma once
 
 #include "wgodot_native_calls.h"
+#include "wgodot_native_debug.h"
 
 #include <functional>
 #include <memory>
@@ -100,6 +101,9 @@ class WCallable<R(Args...)> {
 	ObjectID owner;
 	std::tuple<Args...> defaults{};
 	int default_count = 0;
+#ifdef DEBUG_ENABLED
+	DebugSource debug_source;
+#endif
 
 	template <size_t I, class Tuple>
 	decltype(auto) argument(Tuple &p_args) const {
@@ -136,6 +140,9 @@ class WCallable<R(Args...)> {
 				invocation->valid, owner, std::make_shared<BoundIdentity<Tuple>>(identity, bound));
 		result.defaults = std::make_tuple(std::get<I>(defaults)...);
 		result.default_count = MAX(0, default_count - int(std::tuple_size_v<Tuple>));
+#ifdef DEBUG_ENABLED
+		result.debug_source = debug_source;
+#endif
 		return result;
 	}
 
@@ -144,6 +151,13 @@ public:
 	using Arguments = std::tuple<Args...>;
 	static constexpr size_t argument_count = sizeof...(Args);
 	WCallable() = default;
+#ifdef DEBUG_ENABLED
+	WCallable with_debug_source(DebugSource p_source) const {
+		WCallable result = *this;
+		result.debug_source = p_source;
+		return result;
+	}
+#endif
 	template <class F>
 	static WCallable make(F p_function, std::function<bool()> p_valid = {}, ObjectID p_owner = ObjectID(), std::shared_ptr<CallbackIdentity> p_identity = {}) {
 		WCallable result;
@@ -181,14 +195,24 @@ public:
 	template <class... Values>
 	R call(Values &&...p_args) const {
 		static_assert(sizeof...(Values) <= sizeof...(Args), "Too many callback arguments.");
-		if (!is_valid() || int(sizeof...(Values)) < get_minimum_argument_count()) {
-			ERR_PRINT("Invalid native callback invocation.");
+		const bool valid = is_valid();
+		if (!valid || int(sizeof...(Values)) < get_minimum_argument_count()) {
+			const char *reason = !invocation ? "callable is empty" : !valid ? "target is no longer valid"
+																			: "too few arguments";
+#ifdef DEBUG_ENABLED
+			DebugFrame::report_callback_failure(reason, debug_source, owner, sizeof...(Values), get_minimum_argument_count(), sizeof...(Args));
+#else
+			ERR_PRINT(String("Invalid native callback invocation: ") + reason);
+#endif
 			if constexpr (!std::is_void_v<R>) {
 				return R();
 			} else {
 				return;
 			}
 		}
+#ifdef DEBUG_ENABLED
+		DebugFrame frame(debug_source, "invoking callback");
+#endif
 		auto args = std::forward_as_tuple(p_args...);
 		return call_tuple(args, std::index_sequence_for<Args...>());
 	}
@@ -214,6 +238,9 @@ public:
 			result.defaults = p_source.defaults;
 			result.default_count = p_source.default_count;
 		}
+#ifdef DEBUG_ENABLED
+		result.debug_source = p_source.debug_source;
+#endif
 		return result;
 	}
 	template <class... Bound>
@@ -227,11 +254,15 @@ public:
 		if (p_source.is_null()) {
 			return {};
 		}
-		return make([p_source](Args... p_args) -> R {
+		auto result = make([p_source](Args... p_args) -> R {
 			auto args = std::forward_as_tuple(p_args...);
 			return call_unbound(p_source, args, std::make_index_sequence<sizeof...(Args) - Count>());
 		},
 				[p_source]() { return p_source.is_valid(); }, p_source.owner, std::make_shared<UnboundIdentity>(p_source.identity, Count));
+#ifdef DEBUG_ENABLED
+		result.debug_source = p_source.debug_source;
+#endif
+		return result;
 	}
 	static WCallable from_callable(Callable p_callable) {
 		return make([p_callable](Args... p_args) -> R {
@@ -322,7 +353,16 @@ template <class... Values>
 void WCallable<R(Args...)>::call_deferred(Values... p_args) const {
 	auto source = *this;
 	auto args = std::make_tuple(std::move(p_args)...);
-	WCallable<void()>::make([source, args]() { std::apply([&](const auto &...p_values) { source.call(p_values...); }, args); }).to_callable().call_deferred();
+#ifdef DEBUG_ENABLED
+	const DebugSource scheduled_at = DebugFrame::current_source();
+#endif
+	WCallable<void()>::make([=]() {
+#ifdef DEBUG_ENABLED
+		DebugFrame frame(scheduled_at, "deferred from");
+#endif
+		std::apply([&](const auto &...p_values) { source.call(p_values...); }, args);
+	}).to_callable()
+			.call_deferred();
 }
 
 template <class Instance, class Owner, class R, class... Args>

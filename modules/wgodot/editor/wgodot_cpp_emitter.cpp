@@ -312,6 +312,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::member(const Parser::ExpressionNode *p
 		if (!defaults.is_empty()) {
 			value += ".with_defaults(std::make_tuple(" + String(", ").join(defaults) + "))";
 		}
+		value += " WGODOT_NATIVE_CALLBACK_SOURCE(" + quoted(owner->script_path) + ", " + itos(entry.function->start_line) + ", " + quoted(String(owner->node->fqcn) + "::" + String(p_name)) + ")";
 		return value;
 	}
 	if (entry.type == Parser::ClassNode::Member::VARIABLE) {
@@ -618,13 +619,13 @@ Error WGodotCppEmitter::generate() {
 	}
 	emit_native_access();
 	files.insert("game_types.h", "// wgodot-changes::file\n#pragma once\n#include \"modules/wgodot/native/wgodot_native_support.h\"\n#include \"core/object/ref_counted.h\"\n#include \"core/variant/variant_caster.h\"\n#include \"core/variant/typed_array.h\"\n#include \"core/variant/typed_dictionary.h\"\n");
-	files.insert("SCsub", "# wgodot-changes::file\nImport('env')\nImport('env_modules')\nenv_game = env_modules.Clone()\nenv_game.add_source_files(env.modules_sources, '*.cpp')\nenv_game.add_source_files(env.modules_sources, [File('#modules/wgodot/native/wgodot_native_task.cpp'), File('#modules/wgodot/native/wgodot_native_connections.cpp'), File('#modules/wgodot/native/wgodot_native_string_format.cpp'), File('#modules/wgodot/wgodot_preloads.cpp')])\n");
+	files.insert("SCsub", "# wgodot-changes::file\nImport('env')\nImport('env_modules')\nenv_game = env_modules.Clone()\nenv_game.add_source_files(env.modules_sources, '*.cpp')\nenv_game.add_source_files(env.modules_sources, [File('#modules/wgodot/native/wgodot_native_task.cpp'), File('#modules/wgodot/native/wgodot_native_connections.cpp'), File('#modules/wgodot/native/wgodot_native_debug.cpp'), File('#modules/wgodot/native/wgodot_native_string_format.cpp'), File('#modules/wgodot/wgodot_preloads.cpp')])\n");
 	files.insert("config.py", "# wgodot-changes::file\ndef can_build(env, platform):\n    return not env.editor_build\n\ndef configure(env):\n    env.AppendUnique(CPPDEFINES=['WGODOT_NATIVE_GAME'])\n");
 	files.insert("register_types.h", "// wgodot-changes::file\n#pragma once\n#include \"modules/register_module_types.h\"\nvoid initialize_main_game_module(ModuleInitializationLevel p_level);\nvoid uninitialize_main_game_module(ModuleInitializationLevel p_level);\n");
 	String registration = "// wgodot-changes::file\n#include \"register_types.h\"\n#include \"modules/wgodot/native/wgodot_native_static.h\"\n#include \"modules/wgodot/native/wgodot_native_task.h\"\n#include \"core/object/wgodot_native_interfaces.h\"\n";
 	emit_preloads();
 	registration += "#include \"modules/wgodot/wgodot_preloads.h\"\nvoid register_main_game_preloads();\n";
-	String body = "\tWGodotPreloads::initialize();\n\tregister_main_game_preloads();\n\tWGodotNative::NativeConnections::initialize();\n\tGDREGISTER_ABSTRACT_CLASS(WGodotNative::NativeTask);\n" + register_interfaces();
+	String body = "#ifdef DEBUG_ENABLED\n\tWGodotNative::NativeDebug::initialize();\n#endif\n\tWGodotPreloads::initialize();\n\tregister_main_game_preloads();\n\tWGodotNative::NativeConnections::initialize();\n\tGDREGISTER_ABSTRACT_CLASS(WGodotNative::NativeTask);\n" + register_interfaces();
 	HashSet<String> registered;
 	for (const auto &entry : project.get_classes()) {
 		if (!entry.node->wgodot_static_class && files.has(entry.cpp_name + ".h")) {
