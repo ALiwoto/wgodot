@@ -8,6 +8,7 @@
 #include "editor/wgodot_cpp_exporter.h"
 
 #include "wgodot_debug_cli.h"
+#include "wgodot_format_cli.h"
 #include "wgodot_logs_cli.h"
 #include "wgodot_rename_cli.h"
 
@@ -255,6 +256,7 @@ void print_cli_help() {
 	print_line("  resume_physics                    Resume physics-only pausing.");
 	print_line("  step_physics [--count <number>]   Advance paused physics ticks.");
 	print_line("  check                             Refresh editor assets, then check all GDScript files.");
+	print_line("  format [paths...] [options]       Format GDScript using the running editor (--check, --diff).");
 	print_line("  help                              Show this help.");
 }
 
@@ -1307,6 +1309,10 @@ bool execute_if_requested(int &r_exit_code) {
 
 	if (command == "export-cpp") {
 		r_exit_code = WGodotCppExporter::run(arguments);
+		return true;
+	}
+	if (command == "format") {
+		r_exit_code = WGodotFormatCLI::run(arguments);
 		return true;
 	}
 	if (command == "check") {

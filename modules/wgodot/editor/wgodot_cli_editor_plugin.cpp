@@ -6,6 +6,7 @@
 #include "wgodot_cli_editor_plugin.h"
 
 #include "../wgodot_cli.h"
+#include "../wgodot_format_cli.h"
 #include "../wgodot_member_list.h"
 #include "wgodot_cli_debugger_bridge.h"
 #include "wgodot_debug_service.h"
@@ -385,6 +386,10 @@ void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
 			return;
 		}
 		p_connection.wait_kind = PendingConnection::WAIT_EDITOR_REFRESH;
+		return;
+	}
+	if (command == "format") {
+		finish_connection(p_connection, WGodotFormatCLI::execute(options));
 		return;
 	}
 	if (command == "source_info") {
