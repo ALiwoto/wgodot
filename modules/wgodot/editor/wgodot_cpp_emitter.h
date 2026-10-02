@@ -101,7 +101,7 @@ class WGodotCppEmitter {
 	HashMap<String, int64_t> resource_ids;
 	int64_t resource_id(const String &p_path);
 	Value resource_path_constant(const Variant &p_value);
-	String source_header(const String &p_path, const String &p_class);
+	String source_header(const String &p_path, const String &p_class) const;
 	String debug_source_arguments(const GDScriptParser::Node *p_node);
 	String trace_call(const GDScriptParser::Node *p_node, const String &p_code);
 	String class_name(const GDScriptParser::DataType &p_type, const GDScriptParser::Node *p_origin);

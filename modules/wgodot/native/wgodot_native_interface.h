@@ -51,7 +51,18 @@ public:
 		return !object || object->wgodot_get_native_interface(&NativeInterface::wgodot_interface_tag) != nullptr;
 	}
 	static Contract cast(const Variant &p_value) {
-		return accepts(p_value) ? Contract(p_value) : Contract();
+		Contract result;
+		if (p_value.get_type() != Variant::NIL && p_value.get_type() != Variant::OBJECT) {
+			return result;
+		}
+		if (Object *object = p_value.get_validated_object()) {
+			result.interface = static_cast<NativeInterface *>(object->wgodot_get_native_interface(&NativeInterface::wgodot_interface_tag));
+			if (!result.interface) {
+				return result;
+			}
+		}
+		result.value = p_value;
+		return result;
 	}
 };
 
