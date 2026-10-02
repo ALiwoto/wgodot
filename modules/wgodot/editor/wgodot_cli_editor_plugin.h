@@ -27,6 +27,7 @@ class WGodotCLIEditorPlugin : public EditorPlugin {
 			WAIT_GAME_RESPONSE,
 			WAIT_DEBUG,
 			WAIT_EDITOR_REFRESH,
+			WAIT_PROJECT_REFRESH,
 		};
 
 		Ref<StreamPeerTCP> tcp;
@@ -40,6 +41,9 @@ class WGodotCLIEditorPlugin : public EditorPlugin {
 		String game_command;
 		Dictionary debug_options;
 		WGodotProjectCheck project_check;
+		WGodotProjectRefresh project_refresh;
+		String editor_command;
+		Dictionary editor_options;
 		WaitKind wait_kind = WAIT_NONE;
 		bool return_on_debug_break = false;
 		bool game_debug_break_observed = false;

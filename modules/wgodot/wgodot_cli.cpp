@@ -5,8 +5,6 @@
 
 #include "wgodot_cli.h"
 
-#include "editor/wgodot_cpp_exporter.h"
-
 #include "wgodot_debug_cli.h"
 #include "wgodot_format_cli.h"
 #include "wgodot_logs_cli.h"
@@ -22,13 +20,15 @@
 #include "core/string/print_string.h"
 #include "core/templates/vector.h"
 #include "editor/file_system/editor_paths.h"
+#include "editor/wgodot_cpp_exporter.h"
 
 namespace WGodotCLI {
 
 namespace {
 
-constexpr uint64_t CONNECT_TIMEOUT_MSEC = 750;
+constexpr uint64_t DISCOVERY_TIMEOUT_MSEC = 5000;
 constexpr uint64_t RESPONSE_TIMEOUT_MSEC = 65000;
+constexpr uint64_t EXPORT_TIMEOUT_MSEC = 300000;
 constexpr int MAX_PACKET_SIZE = 4 * 1024 * 1024;
 
 bool command_requested = false;
@@ -44,6 +44,11 @@ struct EditorRecord {
 	int port = 0;
 	int64_t pid = 0;
 	int64_t started_at = 0;
+};
+
+struct EditorConnection {
+	EditorRecord record;
+	Ref<StreamPeerTCP> tcp;
 };
 
 String find_project_root_upwards() {
@@ -137,9 +142,8 @@ Vector<EditorRecord> find_editor_records(bool &r_project_was_resolved) {
 	return records;
 }
 
-bool receive_response(const Ref<StreamPeerTCP> &p_tcp, const Ref<PacketPeerStream> &p_packet, Dictionary &r_response) {
-	const uint64_t deadline = OS::get_singleton()->get_ticks_msec() + RESPONSE_TIMEOUT_MSEC;
-	while (OS::get_singleton()->get_ticks_msec() < deadline) {
+bool receive_response(const Ref<StreamPeerTCP> &p_tcp, const Ref<PacketPeerStream> &p_packet, Dictionary &r_response, uint64_t p_deadline_msec) {
+	while (OS::get_singleton()->get_ticks_msec() < p_deadline_msec) {
 		p_tcp->poll();
 		if (p_packet->get_available_packet_count() > 0) {
 			const uint8_t *buffer = nullptr;
@@ -164,44 +168,34 @@ bool receive_response(const Ref<StreamPeerTCP> &p_tcp, const Ref<PacketPeerStrea
 	return false;
 }
 
-bool send_request(const EditorRecord &p_record, const Dictionary &p_request, Dictionary &r_response) {
-	Ref<StreamPeerTCP> tcp;
-	tcp.instantiate();
-	if (tcp->connect_to_host(IPAddress(p_record.host), p_record.port) != OK) {
-		return false;
-	}
-
-	const uint64_t connect_deadline = OS::get_singleton()->get_ticks_msec() + CONNECT_TIMEOUT_MSEC;
-	while (tcp->get_status() == StreamPeerTCP::STATUS_CONNECTING && OS::get_singleton()->get_ticks_msec() < connect_deadline) {
-		tcp->poll();
-		OS::get_singleton()->delay_usec(100);
-	}
-	if (tcp->get_status() != StreamPeerTCP::STATUS_CONNECTED) {
-		return false;
-	}
-
+bool send_request(const EditorConnection &p_connection, const Dictionary &p_request, Dictionary &r_response, uint64_t p_discovery_deadline, bool &r_sent) {
+	r_sent = false;
 	Ref<PacketPeerStream> packet;
 	packet.instantiate();
 	packet->set_input_buffer_max_size(MAX_PACKET_SIZE);
 	packet->set_output_buffer_max_size(MAX_PACKET_SIZE);
-	packet->set_stream_peer(tcp);
+	packet->set_stream_peer(p_connection.tcp);
 
 	Dictionary authenticated_request = p_request;
-	authenticated_request["token"] = p_record.token;
-	authenticated_request["project_key"] = p_record.project_key;
+	authenticated_request["token"] = p_connection.record.token;
+	authenticated_request["project_key"] = p_connection.record.project_key;
 	const PackedByteArray request_bytes = JSON::stringify(authenticated_request, "", true).to_utf8_buffer();
 	if (packet->put_packet(request_bytes.ptr(), request_bytes.size()) != OK) {
 		return false;
 	}
+	r_sent = true;
 
-	return receive_response(tcp, packet, r_response);
+	const String command = p_request.get("command", String());
+	const uint64_t response_deadline = command == "status" ? p_discovery_deadline : OS::get_singleton()->get_ticks_msec() + (command == "export-cpp" ? EXPORT_TIMEOUT_MSEC : RESPONSE_TIMEOUT_MSEC);
+	return receive_response(p_connection.tcp, packet, r_response, response_deadline);
 }
 
 void print_cli_help() {
 	print_line("Usage: godot [Godot options] --wg <command> [arguments]");
 	print_line("");
 	print_line("Commands:");
-	print_line("  export-cpp <directory> [--analyze-only] [--trace on|off|true|false] Generate native game C++ (trace defaults to off).");
+	print_line("  export-cpp <directory> [--analyze-only] [--trace on|off|true|false] Generate native game C++; uses the running editor when available.");
+	print_line("  import                            Refresh project files and import assets in the running editor.");
 	print_line("  status [--json] [--session <id>]  Show the matching editor and running game sessions.");
 	print_line("  run [--current|<scene>] [--json]  Run the main, current, or specified scene.");
 	print_line("  stop [--json]                     Stop the running game.");
@@ -313,6 +307,8 @@ int print_status_response(const Dictionary &p_response, bool p_json_output) {
 	return (bool)p_response.get("ok", false) ? 0 : 4;
 }
 
+int request_editor(const Dictionary &p_request, Dictionary &r_response);
+
 int run_status(const Vector<String> &p_arguments) {
 	bool json_output = false;
 	int requested_session = -1;
@@ -336,9 +332,6 @@ int run_status(const Vector<String> &p_arguments) {
 		}
 	}
 
-	bool project_was_resolved = false;
-	Vector<EditorRecord> records = find_editor_records(project_was_resolved);
-
 	Dictionary request;
 	request["protocol"] = PROTOCOL_VERSION;
 	request["command"] = "status";
@@ -346,77 +339,53 @@ int run_status(const Vector<String> &p_arguments) {
 		request["session"] = requested_session;
 	}
 
-	Dictionary discovered_response;
-	int live_editor_count = 0;
-	while (!records.is_empty()) {
-		int newest_index = 0;
-		for (int i = 1; i < records.size(); i++) {
-			if (records[i].started_at > records[newest_index].started_at) {
-				newest_index = i;
-			}
-		}
-
-		Dictionary response;
-		if (send_request(records[newest_index], request, response)) {
-			if (!(bool)response.get("ok", false) && String(response.get("error", String())) == "authentication_failed") {
-				records.remove_at(newest_index);
-				continue;
-			}
-			if (project_was_resolved) {
-				return print_status_response(response, json_output);
-			}
-			discovered_response = response;
-			live_editor_count++;
-		}
-		records.remove_at(newest_index);
-	}
-
-	if (!project_was_resolved && live_editor_count > 1) {
-		Dictionary error;
-		error["ok"] = false;
-		error["error"] = "multiple_editors";
-		error["message"] = "No project.godot was found and more than one WGodot editor is running.";
-		if (json_output) {
-			print_line(JSON::stringify(error, "", true));
-		} else {
-			print_line("wgodot: " + String(error["message"]));
-		}
-		return 3;
-	}
-	if (!project_was_resolved && live_editor_count == 1) {
-		return print_status_response(discovered_response, json_output);
-	}
-
-	Dictionary error;
-	error["ok"] = false;
-	error["error"] = "editor_not_found";
-	error["message"] = project_was_resolved ? "No running WGodot editor was found for this project." : "No running WGodot editor was found.";
-	if (json_output) {
-		print_line(JSON::stringify(error, "", true));
-	} else {
-		print_line("wgodot: " + String(error["message"]));
-	}
-	return 3;
+	Dictionary response;
+	const int connection_result = request_editor(request, response);
+	const int status_result = print_status_response(response, json_output);
+	return connection_result != 0 ? connection_result : status_result;
 }
 
 int request_editor(const Dictionary &p_request, Dictionary &r_response) {
 	bool project_was_resolved = false;
-	Vector<EditorRecord> records = find_editor_records(project_was_resolved);
+	const Vector<EditorRecord> records = find_editor_records(project_was_resolved);
+	const uint64_t discovery_deadline = OS::get_singleton()->get_ticks_msec() + DISCOVERY_TIMEOUT_MSEC;
+	Vector<EditorConnection> connections;
+	// Probe all recorded ports together, so stale editors share one timeout.
+	for (const EditorRecord &record : records) {
+		EditorConnection connection;
+		connection.record = record;
+		connection.tcp.instantiate();
+		if (connection.tcp->connect_to_host(IPAddress(record.host), record.port) == OK) {
+			connections.push_back(connection);
+		}
+	}
 	Dictionary discovered_response;
 	int live_editor_count = 0;
 
-	while (!records.is_empty()) {
-		int newest_index = 0;
-		for (int i = 1; i < records.size(); i++) {
-			if (records[i].started_at > records[newest_index].started_at) {
+	while (!connections.is_empty() && OS::get_singleton()->get_ticks_msec() < discovery_deadline) {
+		int newest_index = -1;
+		for (int i = connections.size() - 1; i >= 0; i--) {
+			connections[i].tcp->poll();
+			const StreamPeerTCP::Status status = connections[i].tcp->get_status();
+			if (status == StreamPeerTCP::STATUS_ERROR || status == StreamPeerTCP::STATUS_NONE) {
+				connections.remove_at(i);
+				if (newest_index > i) {
+					newest_index--;
+				}
+			} else if (status == StreamPeerTCP::STATUS_CONNECTED && (newest_index < 0 || connections[i].record.started_at > connections[newest_index].record.started_at)) {
 				newest_index = i;
 			}
 		}
+		if (newest_index < 0) {
+			OS::get_singleton()->delay_usec(100);
+			continue;
+		}
 
 		Dictionary response;
-		if (send_request(records[newest_index], p_request, response)) {
+		bool sent = false;
+		if (send_request(connections[newest_index], p_request, response, discovery_deadline, sent)) {
 			if (!(bool)response.get("ok", false) && String(response.get("error", String())) == "authentication_failed") {
-				records.remove_at(newest_index);
+				connections.remove_at(newest_index);
 				continue;
 			}
 			if (project_was_resolved) {
@@ -425,8 +394,14 @@ int request_editor(const Dictionary &p_request, Dictionary &r_response) {
 			}
 			discovered_response = response;
 			live_editor_count++;
+		} else if (sent) {
+			// The command may still be running. Do not retry in another editor.
+			r_response["ok"] = false;
+			r_response["error"] = "editor_response_lost";
+			r_response["message"] = vformat("The editor did not respond to '%s'. The command may still be running.", String(p_request.get("command", String())));
+			return 3;
 		}
-		records.remove_at(newest_index);
+		connections.remove_at(newest_index);
 	}
 
 	if (!project_was_resolved && live_editor_count == 1) {
@@ -593,6 +568,8 @@ int print_command_response(const Dictionary &p_response, bool p_json_output) {
 		print_line(vformat("Game started: %s (session %d, PID %d)", String(p_response.get("scene", String())), (int)p_response.get("session", -1), (int64_t)p_response.get("pid", 0)));
 	} else if (command == "stop") {
 		print_line((bool)p_response.get("was_running", false) ? "Game stopped." : "Game was not running.");
+	} else if (command == "import") {
+		print_line("Project files refreshed and assets imported.");
 	} else if (command == "tree") {
 		print_tree(p_response.get("tree", Array()));
 	} else if (command == "ss") {
@@ -1313,6 +1290,18 @@ bool execute_if_requested(int &r_exit_code) {
 	}
 	if (command == "format") {
 		r_exit_code = WGodotFormatCLI::run(arguments);
+		return true;
+	}
+	if (command == "import") {
+		if (!arguments.is_empty()) {
+			print_line("wgodot: import does not accept arguments.");
+			r_exit_code = 2;
+		} else {
+			Dictionary request;
+			request["protocol"] = PROTOCOL_VERSION;
+			request["command"] = "import";
+			r_exit_code = run_editor_command(request, false);
+		}
 		return true;
 	}
 	if (command == "check") {

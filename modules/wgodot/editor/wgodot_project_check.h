@@ -2,10 +2,10 @@
 
 #pragma once
 
-#include "core/variant/dictionary.h"
+#include "wgodot_project_refresh.h"
 
 class WGodotProjectCheck {
-	uint64_t refresh_deadline_msec = 0;
+	WGodotProjectRefresh refresh;
 
 public:
 	// An empty result means the refresh started successfully, or is still pending.

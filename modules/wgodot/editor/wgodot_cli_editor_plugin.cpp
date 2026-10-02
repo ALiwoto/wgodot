@@ -9,6 +9,7 @@
 #include "../wgodot_format_cli.h"
 #include "../wgodot_member_list.h"
 #include "wgodot_cli_debugger_bridge.h"
+#include "wgodot_cpp_exporter.h"
 #include "wgodot_debug_service.h"
 #include "wgodot_log_service.h"
 #include "wgodot_project_info.h"
@@ -392,6 +393,17 @@ void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
 		finish_connection(p_connection, WGodotFormatCLI::execute(options));
 		return;
 	}
+	if (command == "import" || command == "export-cpp") {
+		const Dictionary response = p_connection.project_refresh.start();
+		if (!response.is_empty()) {
+			finish_connection(p_connection, response);
+			return;
+		}
+		p_connection.editor_command = command;
+		p_connection.editor_options = options;
+		p_connection.wait_kind = PendingConnection::WAIT_PROJECT_REFRESH;
+		return;
+	}
 	if (command == "source_info") {
 		finish_connection(p_connection, WGodotSourceInfo::resolve(options));
 		return;
@@ -498,6 +510,17 @@ void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
 }
 
 void WGodotCLIEditorPlugin::poll_waiting_connection(PendingConnection &p_connection) {
+	if (p_connection.wait_kind == PendingConnection::WAIT_PROJECT_REFRESH) {
+		Dictionary response = p_connection.project_refresh.poll();
+		if (!response.is_empty()) {
+			if ((bool)response.get("ok", false) && p_connection.editor_command == "export-cpp") {
+				response = WGodotCppExporter::execute(p_connection.editor_options);
+			}
+			response["command"] = p_connection.editor_command;
+			finish_connection(p_connection, response);
+		}
+		return;
+	}
 	if (p_connection.wait_kind == PendingConnection::WAIT_EDITOR_REFRESH) {
 		Dictionary response = p_connection.project_check.poll();
 		if (!response.is_empty()) {
@@ -668,7 +691,7 @@ void WGodotCLIEditorPlugin::poll_connections() {
 			}
 			connection.tcp->disconnect_from_host();
 			connections.remove_at(i);
-		} else if (connection.wait_kind != PendingConnection::WAIT_EDITOR_REFRESH && now > connection.deadline_msec) {
+		} else if (connection.wait_kind != PendingConnection::WAIT_EDITOR_REFRESH && connection.wait_kind != PendingConnection::WAIT_PROJECT_REFRESH && now > connection.deadline_msec) {
 			if (connection.wait_kind == PendingConnection::WAIT_DEBUG) {
 				WGodotDebugService::cancel_debug_wait(connection.game_session, static_cast<WGodotDebugService::WaitKind>(connection.debug_wait_kind));
 				finish_connection(connection, make_error_response("debug_timeout", "Timed out while waiting for the debugger state transition."));

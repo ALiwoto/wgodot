@@ -583,6 +583,9 @@ class Layout {
 
 	int delimited(int p_open, int p_close, int p_previous) {
 		const Lexeme &opening = source.tokens[p_open];
+		const bool enum_body = opening.type == Token::BRACE_OPEN && p_previous >= 0 &&
+				(source.tokens[p_previous].type == Token::ENUM ||
+						(p_previous > 0 && source.tokens[p_previous - 1].type == Token::ENUM));
 		Vector<int> commas;
 		bool has_comment = false;
 		bool has_lambda = false;
@@ -661,7 +664,7 @@ class Layout {
 		group.push_back(docs.indent(docs.concat(body)));
 		group.push_back(docs.line(true));
 		group.push_back(docs.text(source.tokens[p_close].text));
-		return docs.group(docs.concat(group), has_comment || trailing_comma);
+		return docs.group(docs.concat(group), enum_body || has_comment || trailing_comma);
 	}
 
 	int expression(int p_begin, int p_end) {
