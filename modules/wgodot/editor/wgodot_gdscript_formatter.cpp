@@ -264,7 +264,7 @@ class Documents {
 				}
 			} break;
 			case Document::INDENT:
-				render(doc.children[0], p_indent + 1, p_flat, p_tail);
+				render(doc.children[0], p_indent + (p_flat ? 0 : 1), p_flat, p_tail);
 				break;
 			case Document::FLAT:
 				render(doc.children[0], p_indent, true, p_tail);
@@ -430,6 +430,59 @@ class Layout {
 	const SyntaxInfo &syntax;
 	Documents docs;
 
+	// Read a primary and its call/attribute/index trailers. Only dots following
+	// a call start new segments, so qualified names and subscripts stay together.
+	int find_call_chain(int p_begin, int p_end, Vector<int> &r_segments) const {
+		const Lexeme &first = source.tokens[p_begin];
+		int next = p_begin + 1;
+		if (first.node_path) {
+			while (next < p_end && source.tokens[next].node_path) {
+				next++;
+			}
+		} else if (is_open(first.type) && first.matching > p_begin && first.matching < p_end) {
+			next = first.matching + 1;
+		} else if (!first.token.is_identifier() && first.type != Token::SELF && first.type != Token::SUPER && first.type != Token::LITERAL && first.type != Token::PRELOAD && first.type != Token::ASYNC_PRELOAD) {
+			return p_begin;
+		}
+		int calls = 0;
+		bool after_call = false;
+		while (next < p_end) {
+			const Lexeme &token = source.tokens[next];
+			if ((token.type == Token::PARENTHESIS_OPEN || token.type == Token::BRACKET_OPEN) && token.matching > next && token.matching < p_end) {
+				if (token.type == Token::PARENTHESIS_OPEN) {
+					calls++;
+					after_call = true;
+				}
+				next = token.matching + 1;
+			} else if (token.type == Token::PERIOD && next + 1 < p_end && source.tokens[next + 1].token.is_identifier()) {
+				if (after_call) {
+					r_segments.push_back(next);
+				}
+				after_call = false;
+				next += 2;
+			} else {
+				break;
+			}
+		}
+		if (calls < 2 || r_segments.is_empty()) {
+			r_segments.clear();
+			return p_begin;
+		}
+		return next;
+	}
+
+	int call_chain(int p_begin, int p_end, const Vector<int> &p_segments) {
+		Vector<int> parts;
+		int start = p_begin;
+		for (int segment : p_segments) {
+			parts.push_back(sequence(start, segment));
+			parts.push_back(docs.line(true));
+			start = segment;
+		}
+		parts.push_back(sequence(start, p_end));
+		return docs.group(docs.concat(parts));
+	}
+
 	bool space_before(int p_index, int p_previous) const {
 		if (p_previous < 0) {
 			return false;
@@ -509,8 +562,13 @@ class Layout {
 			} else if (space_before(i, previous)) {
 				parts.push_back(docs.text(" "));
 			}
-			if (is_open(token.type) && token.matching >= i && token.matching < p_end) {
-				parts.push_back(delimited(i, token.matching));
+			Vector<int> chain_segments;
+			const int chain_end = p_break_operators ? find_call_chain(i, p_end, chain_segments) : i;
+			if (chain_end > i) {
+				parts.push_back(call_chain(i, chain_end, chain_segments));
+				i = chain_end - 1;
+			} else if (is_open(token.type) && token.matching >= i && token.matching < p_end) {
+				parts.push_back(delimited(i, token.matching, previous));
 				i = token.matching;
 			} else {
 				parts.push_back(docs.text(normalize_string(token)));
@@ -521,7 +579,7 @@ class Layout {
 		return docs.concat(parts);
 	}
 
-	int delimited(int p_open, int p_close) {
+	int delimited(int p_open, int p_close, int p_previous) {
 		const Lexeme &opening = source.tokens[p_open];
 		Vector<int> commas;
 		bool has_comment = false;
@@ -539,7 +597,7 @@ class Layout {
 		if (p_open + 1 == p_close) {
 			return docs.text(opening.text + source.tokens[p_close].text);
 		}
-		const bool subscript = opening.type == Token::BRACKET_OPEN && p_open > 0 && source.tokens[p_open - 1].token.can_precede_bin_op();
+		const bool subscript = opening.type == Token::BRACKET_OPEN && p_previous >= 0 && source.tokens[p_previous].token.can_precede_bin_op();
 		if (subscript) {
 			bool type_arguments = true;
 			for (int i = p_open + 1; i < p_close; i++) {
@@ -557,10 +615,10 @@ class Layout {
 				return docs.flat(docs.concat(parts));
 			}
 		}
-		const bool call = opening.type == Token::PARENTHESIS_OPEN && p_open > 0 &&
-				(source.tokens[p_open - 1].token.can_precede_bin_op() || source.tokens[p_open - 1].token.is_identifier() || source.tokens[p_open - 1].type == Token::ANNOTATION ||
-						source.tokens[p_open - 1].type == Token::FUNC || source.tokens[p_open - 1].type == Token::ASSERT ||
-						source.tokens[p_open - 1].type == Token::PRELOAD || source.tokens[p_open - 1].type == Token::ASYNC_PRELOAD || source.tokens[p_open - 1].type == Token::SUPER);
+		const bool call = opening.type == Token::PARENTHESIS_OPEN && p_previous >= 0 &&
+				(source.tokens[p_previous].token.can_precede_bin_op() || source.tokens[p_previous].token.is_identifier() || source.tokens[p_previous].type == Token::ANNOTATION ||
+						source.tokens[p_previous].type == Token::FUNC || source.tokens[p_previous].type == Token::ASSERT ||
+						source.tokens[p_previous].type == Token::PRELOAD || source.tokens[p_previous].type == Token::ASYNC_PRELOAD || source.tokens[p_previous].type == Token::SUPER);
 		const bool comma_allowed = !subscript && !has_lambda && (call || opening.type == Token::BRACKET_OPEN || opening.type == Token::BRACE_OPEN);
 		int last_code = p_close - 1;
 		while (last_code > p_open && source.tokens[last_code].type == COMMENT) {
@@ -605,19 +663,24 @@ class Layout {
 	}
 
 	int expression(int p_begin, int p_end) {
-		bool has_operator = false;
+		bool has_breaks = false;
 		for (int i = p_begin; i < p_end; i++) {
 			const Lexeme &token = source.tokens[i];
 			if (token.type == Token::FUNC) {
 				return sequence(p_begin, p_end);
 			}
-			if (is_open(token.type) && token.matching > i && token.matching < p_end) {
+			Vector<int> chain_segments;
+			const int chain_end = find_call_chain(i, p_end, chain_segments);
+			if (chain_end > i) {
+				has_breaks = true;
+				i = chain_end - 1;
+			} else if (is_open(token.type) && token.matching > i && token.matching < p_end) {
 				i = token.matching;
 			} else if (operator_priority(token) > 0) {
-				has_operator = true;
+				has_breaks = true;
 			}
 		}
-		if (!has_operator) {
+		if (!has_breaks) {
 			return sequence(p_begin, p_end);
 		}
 		Vector<int> parts;
@@ -701,7 +764,12 @@ class Layout {
 			parts.push_back(expression(expr, expr_end));
 			parts.push_back(sequence(expr_end, end));
 		} else {
-			parts.push_back(sequence(p_begin, end));
+			Vector<int> chain_segments;
+			if (find_call_chain(p_begin, end, chain_segments) == end) {
+				parts.push_back(expression(p_begin, end));
+			} else {
+				parts.push_back(sequence(p_begin, end));
+			}
 		}
 		if (end < p_end) {
 			parts.push_back(docs.text((end > p_begin ? "  " : "") + source.tokens[end].text));
