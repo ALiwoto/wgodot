@@ -27,6 +27,11 @@ namespace WGodotFormatCLI {
 
 namespace {
 
+struct Options {
+	WGodotGDScriptFormatter::Options formatting;
+	bool ignore_generated_files = true;
+};
+
 Dictionary failure(const String &p_message) {
 	Dictionary response;
 	response["ok"] = false;
@@ -34,7 +39,7 @@ Dictionary failure(const String &p_message) {
 	return response;
 }
 
-bool load_options(const String &p_root, const Dictionary &p_overrides, WGodotGDScriptFormatter::Options &r_options, String &r_error) {
+bool load_options(const String &p_root, const Dictionary &p_overrides, Options &r_options, String &r_error) {
 	const String path = p_root.path_join("wgformat.cfg");
 	if (FileAccess::exists(path)) {
 		ConfigFile config;
@@ -54,13 +59,17 @@ bool load_options(const String &p_root, const Dictionary &p_overrides, WGodotGDS
 						r_error = "wgformat.cfg: line_length must be an integer between 20 and 320.";
 						return false;
 					}
-					r_options.line_length = value;
-				} else if (key == "explicit_self") {
+					r_options.formatting.line_length = value;
+				} else if (key == "explicit_self" || key == "ignore_generated_files") {
 					if (value.get_type() != Variant::BOOL) {
-						r_error = "wgformat.cfg: explicit_self must be true or false.";
+						r_error = "wgformat.cfg: " + key + " must be true or false.";
 						return false;
 					}
-					r_options.explicit_self = value;
+					if (key == "explicit_self") {
+						r_options.formatting.explicit_self = value;
+					} else {
+						r_options.ignore_generated_files = value;
+					}
 				} else {
 					r_error = "wgformat.cfg: unknown formatter option: " + key;
 					return false;
@@ -76,9 +85,34 @@ bool load_options(const String &p_root, const Dictionary &p_overrides, WGodotGDS
 			r_error = "line_length must be an integer between 20 and 320.";
 			return false;
 		}
-		r_options.line_length = width;
+		r_options.formatting.line_length = width;
 	}
 	return true;
+}
+
+bool is_generated(const String &p_source) {
+	bool generated = false;
+	bool do_not_edit = false;
+	int start = 0;
+	while (start < p_source.length()) {
+		const int newline = p_source.find_char('\n', start);
+		const int end = newline < 0 ? p_source.length() : newline;
+		const String line = p_source.substr(start, end - start).strip_edges();
+		start = end + 1;
+		if (line.is_empty()) {
+			continue;
+		}
+		if (!line.begins_with("#")) {
+			break;
+		}
+		const String comment = line.to_lower();
+		generated |= comment.contains("generated");
+		do_not_edit |= comment.contains("do not edit");
+		if (generated && do_not_edit) {
+			return true;
+		}
+	}
+	return false;
 }
 
 bool collect_scripts(const String &p_path, HashSet<String> &r_files, String &r_error, bool p_explicit = true) {
@@ -210,8 +244,10 @@ void print_help() {
 	print_line("  --json         Print structured results. Errors return a nonzero exit status.");
 	print_line("Respects # fmt: off/on and # fmt: skip. Skips hidden directories and .gdignore.");
 	print_line("Reads wgformat.cfg beside project.godot. Defaults apply when it is absent:");
-	print_line("  [format]\n  line_length=88\n  explicit_self=true");
+	print_line("  [format]\n  line_length=88\n  explicit_self=true\n  ignore_generated_files=true");
 	print_line("explicit_self qualifies resolved instance members, preserving property accessor storage.");
+	print_line("ignore_generated_files skips files whose leading comments contain both 'generated' and");
+	print_line("'do not edit' (case-insensitive), including explicitly selected files. Set false to format them.");
 }
 
 } // namespace
@@ -283,7 +319,7 @@ int run(const Vector<String> &p_arguments) {
 				print_line(String(check ? "Would reformat: " : "Reformatted: ") + String(file["path"]));
 			}
 		}
-		print_line(vformat("%d file(s) %s, %d unchanged, %d failed.", (int)response.get("changed", 0), check || diff ? "would be reformatted" : "reformatted", (int)response.get("unchanged", 0), (int)response.get("failed", 0)));
+		print_line(vformat("%d file(s) %s, %d unchanged, %d generated skipped, %d failed.", (int)response.get("changed", 0), check || diff ? "would be reformatted" : "reformatted", (int)response.get("unchanged", 0), (int)response.get("skipped", 0), (int)response.get("failed", 0)));
 	}
 	if (connection_result != 0) {
 		return connection_result;
@@ -297,7 +333,7 @@ int run(const Vector<String> &p_arguments) {
 Dictionary execute(const Dictionary &p_options) {
 	const bool check = p_options.get("check", false);
 	const bool diff = p_options.get("diff", false);
-	WGodotGDScriptFormatter::Options options;
+	Options options;
 	if (check && diff) {
 		return failure("Invalid formatter options.");
 	}
@@ -323,9 +359,13 @@ Dictionary execute(const Dictionary &p_options) {
 	ScriptEditor *script_editor = ScriptEditor::get_singleton();
 	if (!check && !diff && script_editor) {
 		for (const String &path : script_editor->get_unsaved_files()) {
-			if (selected.has(ProjectSettings::get_singleton()->globalize_path(path))) {
-				return failure("Save the script open in the Godot editor before formatting it: " + path);
+			if (!selected.has(ProjectSettings::get_singleton()->globalize_path(path))) {
+				continue;
 			}
+			if (options.ignore_generated_files && is_generated(FileAccess::get_file_as_string(path))) {
+				continue;
+			}
+			return failure("Save the script open in the Godot editor before formatting it: " + path);
 		}
 	}
 	Vector<String> scripts;
@@ -333,7 +373,7 @@ Dictionary execute(const Dictionary &p_options) {
 		scripts.push_back(path);
 	}
 	scripts.sort();
-	if (options.explicit_self) {
+	if (options.formatting.explicit_self) {
 		// Selected scripts can inherit members from any project script. Resolve
 		// those interfaces from disk even when only formatting a single file.
 		HashSet<String> dependencies(selected);
@@ -347,6 +387,7 @@ Dictionary execute(const Dictionary &p_options) {
 	Array results;
 	int changed = 0;
 	int unchanged = 0;
+	int skipped = 0;
 	int failed = 0;
 	for (const String &path : scripts) {
 		const String local = ProjectSettings::get_singleton()->localize_path(path);
@@ -358,7 +399,11 @@ Dictionary execute(const Dictionary &p_options) {
 		error.clear();
 		if (read_error != OK) {
 			error = "Cannot read script.";
-		} else if (WGodotGDScriptFormatter::format(before, local, options, after, error)) {
+		} else if (options.ignore_generated_files && is_generated(before)) {
+			skipped++;
+			result["skipped"] = true;
+			result["reason"] = "generated";
+		} else if (WGodotGDScriptFormatter::format(before, local, options.formatting, after, error)) {
 			if (before == after) {
 				unchanged++;
 			} else if (check || diff || write_script(path, before, after, error)) {
@@ -388,6 +433,7 @@ Dictionary execute(const Dictionary &p_options) {
 	response["command"] = "format";
 	response["changed"] = changed;
 	response["unchanged"] = unchanged;
+	response["skipped"] = skipped;
 	response["failed"] = failed;
 	response["files"] = results;
 	if (diff && JSON::stringify(response).utf8().length() >= 4 * 1024 * 1024) {
