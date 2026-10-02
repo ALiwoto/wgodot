@@ -8,6 +8,7 @@ namespace WGodotGDScriptFormatter {
 
 struct Options {
 	int line_length = 88;
+	bool explicit_self = true;
 };
 
 // Parses both versions and verifies syntax and statement structure before returning output.

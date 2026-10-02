@@ -5,6 +5,7 @@
 #include "wgodot_cli.h"
 
 #include "core/config/project_settings.h"
+#include "core/io/config_file.h"
 #include "core/io/dir_access.h"
 #include "core/io/file_access.h"
 #include "core/io/json.h"
@@ -15,6 +16,8 @@
 #include "editor/file_system/editor_file_system.h"
 #include "editor/script/script_editor_plugin.h"
 #include "editor/wgodot_gdscript_formatter.h"
+
+#include "modules/gdscript/gdscript_cache.h"
 
 #ifdef WINDOWS_ENABLED
 #include <windows.h>
@@ -29,6 +32,53 @@ Dictionary failure(const String &p_message) {
 	response["ok"] = false;
 	response["message"] = p_message;
 	return response;
+}
+
+bool load_options(const String &p_root, const Dictionary &p_overrides, WGodotGDScriptFormatter::Options &r_options, String &r_error) {
+	const String path = p_root.path_join("wgformat.cfg");
+	if (FileAccess::exists(path)) {
+		ConfigFile config;
+		if (config.load(path) != OK) {
+			r_error = "Cannot read formatter configuration: " + path;
+			return false;
+		}
+		for (const String &section : config.get_sections()) {
+			if (section != "format") {
+				r_error = "wgformat.cfg: unknown section [" + section + "]. Expected [format].";
+				return false;
+			}
+			for (const String &key : config.get_section_keys(section)) {
+				const Variant value = config.get_value(section, key);
+				if (key == "line_length") {
+					if (value.get_type() != Variant::INT || int64_t(value) < 20 || int64_t(value) > 320) {
+						r_error = "wgformat.cfg: line_length must be an integer between 20 and 320.";
+						return false;
+					}
+					r_options.line_length = value;
+				} else if (key == "explicit_self") {
+					if (value.get_type() != Variant::BOOL) {
+						r_error = "wgformat.cfg: explicit_self must be true or false.";
+						return false;
+					}
+					r_options.explicit_self = value;
+				} else {
+					r_error = "wgformat.cfg: unknown formatter option: " + key;
+					return false;
+				}
+			}
+		}
+	}
+	if (p_overrides.has("line_length")) {
+		const Variant width = p_overrides["line_length"];
+		// JSON transports numbers as doubles, including integer CLI arguments.
+		if ((width.get_type() != Variant::INT && width.get_type() != Variant::FLOAT) ||
+				double(width) < 20 || double(width) > 320 || double(width) != int64_t(width)) {
+			r_error = "line_length must be an integer between 20 and 320.";
+			return false;
+		}
+		r_options.line_length = width;
+	}
+	return true;
 }
 
 bool collect_scripts(const String &p_path, HashSet<String> &r_files, String &r_error, bool p_explicit = true) {
@@ -156,9 +206,12 @@ void print_help() {
 	print_line("Formats GDScript through the running project editor. Defaults to the whole project.");
 	print_line("  --check        Report files needing formatting; do not write. Exit 1 if any differ.");
 	print_line("  --diff         Print a unified diff; do not write. Exit 1 if any differ.");
-	print_line("  --line-length  Preferred line width (default: 88). Indentation uses tabs.");
+	print_line("  --line-length  Override the configured line width (default: 88). Uses tabs.");
 	print_line("  --json         Print structured results. Errors return a nonzero exit status.");
 	print_line("Respects # fmt: off/on and # fmt: skip. Skips hidden directories and .gdignore.");
+	print_line("Reads wgformat.cfg beside project.godot. Defaults apply when it is absent:");
+	print_line("  [format]\n  line_length=88\n  explicit_self=true");
+	print_line("explicit_self qualifies resolved instance members, preserving property accessor storage.");
 }
 
 } // namespace
@@ -168,6 +221,7 @@ int run(const Vector<String> &p_arguments) {
 	bool diff = false;
 	bool json = false;
 	bool paths_only = false;
+	bool width_override = false;
 	int width = 88;
 	PackedStringArray paths;
 	for (int i = 0; i < p_arguments.size(); i++) {
@@ -189,6 +243,7 @@ int run(const Vector<String> &p_arguments) {
 				return 2;
 			}
 			width = p_arguments[++i].to_int();
+			width_override = true;
 		} else if (!paths_only && argument.begins_with("-")) {
 			print_line("wgodot: unknown format option: " + argument);
 			return 2;
@@ -204,7 +259,9 @@ int run(const Vector<String> &p_arguments) {
 	options["paths"] = paths;
 	options["check"] = check;
 	options["diff"] = diff;
-	options["line_length"] = width;
+	if (width_override) {
+		options["line_length"] = width;
+	}
 	Dictionary request;
 	request["protocol"] = WGodotCLI::PROTOCOL_VERSION;
 	request["command"] = "format";
@@ -241,17 +298,19 @@ Dictionary execute(const Dictionary &p_options) {
 	const bool check = p_options.get("check", false);
 	const bool diff = p_options.get("diff", false);
 	WGodotGDScriptFormatter::Options options;
-	options.line_length = p_options.get("line_length", 88);
-	if (options.line_length < 20 || options.line_length > 320 || (check && diff)) {
+	if (check && diff) {
 		return failure("Invalid formatter options.");
 	}
 	const String root = WGodotCLI::get_current_project_root();
+	String error;
+	if (!load_options(root, p_options, options, error)) {
+		return failure(error);
+	}
 	PackedStringArray paths = p_options.get("paths", PackedStringArray());
 	if (paths.is_empty()) {
 		paths.push_back(root);
 	}
 	HashSet<String> selected;
-	String error;
 	for (const String &path : paths) {
 		const String absolute = ProjectSettings::get_singleton()->globalize_path(path).replace_char('\\', '/').simplify_path();
 		if (absolute != root && !absolute.begins_with(root + "/")) {
@@ -274,6 +333,17 @@ Dictionary execute(const Dictionary &p_options) {
 		scripts.push_back(path);
 	}
 	scripts.sort();
+	if (options.explicit_self) {
+		// Selected scripts can inherit members from any project script. Resolve
+		// those interfaces from disk even when only formatting a single file.
+		HashSet<String> dependencies(selected);
+		if (!collect_scripts(root, dependencies, error)) {
+			return failure(error);
+		}
+		for (const String &path : dependencies) {
+			GDScriptCache::remove_parser(ProjectSettings::get_singleton()->localize_path(path));
+		}
+	}
 	Array results;
 	int changed = 0;
 	int unchanged = 0;

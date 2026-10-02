@@ -7,7 +7,9 @@
 #include "core/string/string_builder.h"
 #include "core/templates/hash_set.h"
 
+#include "modules/gdscript/gdscript_analyzer.h"
 #include "modules/gdscript/gdscript_parser.h"
+#include "modules/gdscript/gdscript_utility_functions.h"
 
 namespace WGodotGDScriptFormatter {
 
@@ -687,7 +689,7 @@ class Layout {
 		parts.push_back(docs.if_break("("));
 		Vector<int> body;
 		body.push_back(docs.line(true));
-		body.push_back(sequence(p_begin, p_end, true));
+		body.push_back(docs.group(sequence(p_begin, p_end, true)));
 		parts.push_back(docs.indent(docs.concat(body)));
 		parts.push_back(docs.line(true));
 		parts.push_back(docs.if_break(")"));
@@ -817,18 +819,10 @@ int indentation(const String &p_line) {
 	return width;
 }
 
-String format_source(Source &p_source, const SyntaxInfo &p_syntax, int p_width) {
-	for (const Vector2i &range : p_syntax.node_paths) {
-		for (int i = 0; i < p_source.tokens.size(); i++) {
-			if (p_source.tokens[i].offset >= range.x && p_source.tokens[i].offset < range.y) {
-				p_source.tokens.write[i].node_path = true;
-			}
-		}
-	}
+Vector<Unit> collect_units(const Source &p_source) {
 	Vector<Unit> units;
 	int begin = 0;
 	bool disabled = false;
-	int indent_size = 0;
 	while (begin < p_source.tokens.size()) {
 		Unit unit;
 		unit.begin = begin;
@@ -871,9 +865,6 @@ String format_source(Source &p_source, const SyntaxInfo &p_syntax, int p_width) 
 		unit.end = end;
 		unit.multiline_lambda = lambda && unit.last_line > unit.first_line;
 		unit.indent = indentation(p_source.lines[unit.first_line - 1]);
-		if (indent_size == 0 && unit.indent > 0 && p_source.tokens[begin].type != COMMENT) {
-			indent_size = unit.indent;
-		}
 		const int first = p_source.tokens[begin].type;
 		unit.declaration = first == Token::FUNC || first == Token::CLASS || (first == Token::STATIC && begin + 1 < end && p_source.tokens[begin + 1].type == Token::FUNC);
 		unit.attachment = first == COMMENT;
@@ -887,6 +878,25 @@ String format_source(Source &p_source, const SyntaxInfo &p_syntax, int p_width) 
 		unit.blanks = units.is_empty() ? 0 : MIN(unit.indent == 0 ? 2 : 1, unit.first_line - units[units.size() - 1].last_line - 1);
 		units.push_back(unit);
 		begin = end;
+	}
+	return units;
+}
+
+String format_source(Source &p_source, const SyntaxInfo &p_syntax, int p_width) {
+	for (const Vector2i &range : p_syntax.node_paths) {
+		for (int i = 0; i < p_source.tokens.size(); i++) {
+			if (p_source.tokens[i].offset >= range.x && p_source.tokens[i].offset < range.y) {
+				p_source.tokens.write[i].node_path = true;
+			}
+		}
+	}
+	Vector<Unit> units = collect_units(p_source);
+	int indent_size = 0;
+	for (const Unit &unit : units) {
+		if (unit.indent > 0 && p_source.tokens[unit.begin].type != COMMENT) {
+			indent_size = unit.indent;
+			break;
+		}
 	}
 	if (indent_size == 0) {
 		indent_size = 4;
@@ -975,6 +985,152 @@ Vector<int> significant_tokens(const Source &p_source) {
 	return result;
 }
 
+// Only resolved instance accesses are eligible. Declaration names and attributes
+// on another object are not references to the current instance.
+class ExplicitSelf : public WGodotCppAstVisitor {
+	const Source &source;
+	const Parser::FunctionNode *function = nullptr;
+
+	void qualify(const Parser::IdentifierNode *p_identifier) {
+		offsets.insert(source.position(p_identifier->start_line, p_identifier->start_column));
+	}
+
+	bool is_accessor_storage(const Parser::IdentifierNode *p_identifier) const {
+		if (!function || p_identifier->source != Parser::IdentifierNode::MEMBER_VARIABLE || !p_identifier->variable_source) {
+			return false;
+		}
+		const auto *variable = p_identifier->variable_source;
+		if (variable->property == Parser::VariableNode::PROP_INLINE) {
+			return variable->getter == function || variable->setter == function;
+		}
+		if (variable->property == Parser::VariableNode::PROP_SETGET && function->identifier) {
+			const StringName name = function->identifier->name;
+			return (variable->getter_pointer && variable->getter_pointer->name == name) ||
+					(variable->setter_pointer && variable->setter_pointer->name == name);
+		}
+		return false;
+	}
+
+protected:
+	bool visit(const Parser::Node *p_node) override {
+		switch (p_node->type) {
+			case Parser::Node::FUNCTION: {
+				const auto *previous = function;
+				function = static_cast<const Parser::FunctionNode *>(p_node);
+				bool valid = true;
+				for (const auto *parameter : function->parameters) {
+					valid = walk(parameter) && valid;
+				}
+				valid = walk(function->rest_parameter) && walk(function->body) && valid;
+				function = previous;
+				return valid;
+			}
+			case Parser::Node::CALL: {
+				const auto *call = static_cast<const Parser::CallNode *>(p_node);
+				if (call->callee && call->callee->type == Parser::Node::IDENTIFIER) {
+					const auto *identifier = static_cast<const Parser::IdentifierNode *>(call->callee);
+					// Built-in constructors and utilities bypass instance method resolution.
+					if (!call->is_super && !call->is_static &&
+							Parser::get_builtin_type(identifier->name) == Variant::VARIANT_MAX &&
+							!GDScriptUtilityFunctions::function_exists(identifier->name) &&
+							!Variant::has_utility_function(identifier->name)) {
+						qualify(identifier);
+					}
+				} else if (!walk(call->callee)) {
+					return false;
+				}
+				for (const auto *argument : call->arguments) {
+					if (!walk(argument)) {
+						return false;
+					}
+				}
+				return true;
+			}
+			case Parser::Node::SUBSCRIPT: {
+				const auto *subscript = static_cast<const Parser::SubscriptNode *>(p_node);
+				return walk(subscript->base) && (subscript->is_attribute || walk(subscript->index));
+			}
+			case Parser::Node::IDENTIFIER: {
+				const auto *identifier = static_cast<const Parser::IdentifierNode *>(p_node);
+				const bool member = identifier->source == Parser::IdentifierNode::MEMBER_VARIABLE ||
+						identifier->source == Parser::IdentifierNode::INHERITED_VARIABLE ||
+						identifier->source == Parser::IdentifierNode::MEMBER_SIGNAL ||
+						(identifier->source == Parser::IdentifierNode::MEMBER_FUNCTION && !identifier->function_source_is_static);
+				if (member && !is_accessor_storage(identifier)) {
+					qualify(identifier);
+				}
+			} break;
+			default:
+				break;
+		}
+		return true;
+	}
+
+	bool descend(const Parser::Node *p_node) override {
+		return p_node->type != Parser::Node::FUNCTION && p_node->type != Parser::Node::CALL && p_node->type != Parser::Node::SUBSCRIPT;
+	}
+
+public:
+	HashSet<int> offsets;
+	explicit ExplicitSelf(const Source &p_source) :
+			source(p_source) {}
+};
+
+bool analyze(Parser &r_parser, String &r_error) {
+	GDScriptAnalyzer analyzer(&r_parser);
+	if (analyzer.analyze() == OK) {
+		return true;
+	}
+	r_error = "Cannot resolve instance members for explicit_self; file was not changed.";
+	if (!r_parser.get_errors().is_empty()) {
+		const auto &error = r_parser.get_errors().front()->get();
+		r_error += vformat(" Line %d: %s", error.start_line, error.message);
+	}
+	r_error += " Set explicit_self=false in wgformat.cfg to format without member qualification.";
+	return false;
+}
+
+bool qualify_members(const String &p_source, const String &p_path, String &r_output, String &r_error) {
+	Parser parser;
+	if (!parse(parser, p_source, p_path, r_error) || !analyze(parser, r_error)) {
+		return false;
+	}
+	Source source;
+	if (!source.read(p_source, r_error)) {
+		return false;
+	}
+	ExplicitSelf members(source);
+	if (!members.walk(parser.get_tree())) {
+		r_error = "Unsupported GDScript syntax tree.";
+		return false;
+	}
+	StringBuilder output;
+	int copied = 0;
+	for (const Unit &unit : collect_units(source)) {
+		if (unit.verbatim) {
+			continue;
+		}
+		for (int i = unit.begin; i < unit.end; i++) {
+			const Lexeme &token = source.tokens[i];
+			if (token.type == Token::IDENTIFIER && members.offsets.has(token.offset)) {
+				output.append(p_source.substr(copied, token.offset - copied));
+				output.append("self.");
+				copied = token.offset;
+			}
+		}
+	}
+	output.append(p_source.substr(copied));
+	r_output = output.as_string();
+	if (r_output != p_source) {
+		Parser qualified;
+		if (!parse(qualified, r_output, p_path, r_error) || !analyze(qualified, r_error)) {
+			r_error = "Explicit-self qualification failed validation. " + r_error;
+			return false;
+		}
+	}
+	return true;
+}
+
 bool same_tokens(const Source &p_before, const Source &p_after) {
 	const Vector<int> before = significant_tokens(p_before);
 	const Vector<int> after = significant_tokens(p_after);
@@ -998,9 +1154,7 @@ bool same_tokens(const Source &p_before, const Source &p_after) {
 	return true;
 }
 
-} // namespace
-
-bool format(const String &p_source, const String &p_path, const Options &p_options, String &r_output, String &r_error) {
+bool format_layout(const String &p_source, const String &p_path, const Options &p_options, String &r_output, String &r_error) {
 	Parser parser;
 	if (!parse(parser, p_source, p_path, r_error)) {
 		return false;
@@ -1040,6 +1194,16 @@ bool format(const String &p_source, const String &p_path, const Options &p_optio
 		return false;
 	}
 	return true;
+}
+
+} // namespace
+
+bool format(const String &p_source, const String &p_path, const Options &p_options, String &r_output, String &r_error) {
+	String source = p_source;
+	if (p_options.explicit_self && !qualify_members(p_source, p_path, source, r_error)) {
+		return false;
+	}
+	return format_layout(source, p_path, p_options, r_output, r_error);
 }
 
 } // namespace WGodotGDScriptFormatter
