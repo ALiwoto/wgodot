@@ -10,6 +10,8 @@
 #include "scene/main/canvas_item.h"
 #include "scene/main/scene_tree.h"
 #include "scene/main/window.h"
+#include "scene/resources/compressed_texture.h"
+#include "scene/resources/image_texture.h"
 #include "scene/resources/texture.h"
 #include "servers/rendering/rendering_server.h"
 #include "servers/rendering/wgodot_texture_capture.h"
@@ -155,18 +157,22 @@ Dictionary texture_report(const Dictionary &p_options, const WGodotTextureCaptur
 	ObjectDB::debug_objects(collect_texture_object, &texture_ids);
 	for (ObjectID id : texture_ids) {
 		const Ref<Texture2D> texture = ObjectDB::get_ref<Texture2D>(id);
-		if (texture.is_null() || texture->get_width() <= 0 || texture->get_height() <= 0) {
+		// Only inspect image-backed resources whose dimensions are already stored.
+		// Generic Texture2D getters can allocate GPU textures: DPITexture even
+		// rasterizes SVGs in get_width(), and AtlasTexture forwards to its source.
+		// Other texture kinds remain in the renderer's allocation inventory.
+		if (!Object::cast_to<ImageTexture>(texture.ptr()) && !Object::cast_to<CompressedTexture2D>(texture.ptr())) {
+			continue;
+		}
+		if (texture->get_width() <= 0 || texture->get_height() <= 0) {
 			continue;
 		}
 		const RID rid = texture->get_rid();
 		Dictionary &resource = resources[rid];
-		// An AtlasTexture shares its RID. Prefer the named allocation's resource.
-		if (resource.is_empty() || (!texture->get_path().is_empty() && texture->get_class() != "AtlasTexture")) {
-			resource["resource_id"] = itos(texture->get_instance_id());
-			resource["resource_class"] = texture->get_class();
-			resource["resource_name"] = texture->get_name();
-			resource["resource_path"] = texture->get_path();
-		}
+		resource["resource_id"] = itos(texture->get_instance_id());
+		resource["resource_class"] = texture->get_class();
+		resource["resource_name"] = texture->get_name();
+		resource["resource_path"] = texture->get_path();
 	}
 	HashMap<RID, String> node_paths(p_nodes);
 	if (p_capture && SceneTree::get_singleton() && SceneTree::get_singleton()->get_root()) {
