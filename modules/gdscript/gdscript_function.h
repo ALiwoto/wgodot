@@ -457,6 +457,21 @@ private:
 		} NativeProfile;
 		HashMap<String, NativeProfile> native_calls;
 		HashMap<String, NativeProfile> last_native_calls;
+		// wgodot-changes::begin
+		HashMap<String, NativeProfile> accumulated_native_calls;
+
+		void accumulate_native_calls() {
+			for (const KeyValue<String, NativeProfile> &entry : native_calls) {
+				NativeProfile *total = accumulated_native_calls.getptr(entry.key);
+				if (total) {
+					total->call_count += entry.value.call_count;
+					total->total_time += entry.value.total_time;
+				} else {
+					accumulated_native_calls.insert(entry.key, entry.value);
+				}
+			}
+		}
+		// wgodot-changes::end
 	} profile;
 
 	String _get_call_error(const String &p_where, const Variant **p_argptrs, int p_argcount, const Variant &p_ret, const Callable::CallError &p_err) const;

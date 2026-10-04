@@ -744,8 +744,15 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 #ifdef DEBUG_ENABLED
 	uint64_t function_start_time = 0;
 	uint64_t function_call_time = 0;
+	// wgodot-changes::begin
+	// A debugger poll can start/restart profiling inside an already-running call.
+	// Only calls entered in this capture may contribute timings to it.
+	const uint64_t profiling_generation = GDScriptLanguage::get_singleton()->profiling ? GDScriptLanguage::get_singleton()->profiling_generation : 0;
+	// wgodot-changes::end
 
-	if (GDScriptLanguage::get_singleton()->profiling) {
+	// wgodot-changes::begin
+	if (GDScriptLanguage::get_singleton()->is_profiling_capture(profiling_generation)) {
+		// wgodot-changes::end
 		function_start_time = OS::get_singleton()->get_ticks_usec();
 		function_call_time = 0;
 		profile.call_count.increment();
@@ -1979,7 +1986,9 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 #ifdef DEBUG_ENABLED
 				uint64_t call_time = 0;
 
-				if (GDScriptLanguage::get_singleton()->profiling) {
+				// wgodot-changes::begin
+				if (GDScriptLanguage::get_singleton()->is_profiling_capture(profiling_generation)) {
+					// wgodot-changes::end
 					call_time = OS::get_singleton()->get_ticks_usec();
 				}
 				Variant::Type base_type = base->get_type();
@@ -2029,7 +2038,9 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 				}
 #ifdef DEBUG_ENABLED
 
-				if (GDScriptLanguage::get_singleton()->profiling) {
+				// wgodot-changes::begin
+				if (GDScriptLanguage::get_singleton()->is_profiling_capture(profiling_generation)) {
+					// wgodot-changes::end
 					base_obj = (base_obj == nullptr) ? base->get_validated_object() : base_obj;
 					uint64_t t_taken = OS::get_singleton()->get_ticks_usec() - call_time;
 					if (GDScriptLanguage::get_singleton()->profile_native_calls && _profile_count_as_native(base_obj, *methodname)) {
@@ -2119,7 +2130,9 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 
 #ifdef DEBUG_ENABLED
 				uint64_t call_time = 0;
-				if (GDScriptLanguage::get_singleton()->profiling && GDScriptLanguage::get_singleton()->profile_native_calls) {
+				// wgodot-changes::begin
+				if (GDScriptLanguage::get_singleton()->is_profiling_capture(profiling_generation) && GDScriptLanguage::get_singleton()->profile_native_calls) {
+					// wgodot-changes::end
 					call_time = OS::get_singleton()->get_ticks_usec();
 				}
 #endif
@@ -2136,7 +2149,9 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 
 #ifdef DEBUG_ENABLED
 
-				if (GDScriptLanguage::get_singleton()->profiling && GDScriptLanguage::get_singleton()->profile_native_calls) {
+				// wgodot-changes::begin
+				if (GDScriptLanguage::get_singleton()->is_profiling_capture(profiling_generation) && GDScriptLanguage::get_singleton()->profile_native_calls) {
+					// wgodot-changes::end
 					uint64_t t_taken = OS::get_singleton()->get_ticks_usec() - call_time;
 					_profile_native_call(t_taken, method->get_name(), method->get_instance_class());
 					function_call_time += t_taken;
@@ -2228,7 +2243,9 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 
 #ifdef DEBUG_ENABLED
 				uint64_t call_time = 0;
-				if (GDScriptLanguage::get_singleton()->profiling && GDScriptLanguage::get_singleton()->profile_native_calls) {
+				// wgodot-changes::begin
+				if (GDScriptLanguage::get_singleton()->is_profiling_capture(profiling_generation) && GDScriptLanguage::get_singleton()->profile_native_calls) {
+					// wgodot-changes::end
 					call_time = OS::get_singleton()->get_ticks_usec();
 				}
 #endif
@@ -2237,7 +2254,9 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 				*ret = method->call(nullptr, argptrs, argc, err);
 
 #ifdef DEBUG_ENABLED
-				if (GDScriptLanguage::get_singleton()->profiling && GDScriptLanguage::get_singleton()->profile_native_calls) {
+				// wgodot-changes::begin
+				if (GDScriptLanguage::get_singleton()->is_profiling_capture(profiling_generation) && GDScriptLanguage::get_singleton()->profile_native_calls) {
+					// wgodot-changes::end
 					uint64_t t_taken = OS::get_singleton()->get_ticks_usec() - call_time;
 					_profile_native_call(t_taken, method->get_name(), method->get_instance_class());
 					function_call_time += t_taken;
@@ -2273,7 +2292,9 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 
 #ifdef DEBUG_ENABLED
 				uint64_t call_time = 0;
-				if (GDScriptLanguage::get_singleton()->profiling && GDScriptLanguage::get_singleton()->profile_native_calls) {
+				// wgodot-changes::begin
+				if (GDScriptLanguage::get_singleton()->is_profiling_capture(profiling_generation) && GDScriptLanguage::get_singleton()->profile_native_calls) {
+					// wgodot-changes::end
 					call_time = OS::get_singleton()->get_ticks_usec();
 				}
 #endif
@@ -2282,7 +2303,9 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 				method->validated_call(nullptr, (const Variant **)argptrs, ret);
 
 #ifdef DEBUG_ENABLED
-				if (GDScriptLanguage::get_singleton()->profiling && GDScriptLanguage::get_singleton()->profile_native_calls) {
+				// wgodot-changes::begin
+				if (GDScriptLanguage::get_singleton()->is_profiling_capture(profiling_generation) && GDScriptLanguage::get_singleton()->profile_native_calls) {
+					// wgodot-changes::end
 					uint64_t t_taken = OS::get_singleton()->get_ticks_usec() - call_time;
 					_profile_native_call(t_taken, method->get_name(), method->get_instance_class());
 					function_call_time += t_taken;
@@ -2310,7 +2333,9 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 				Variant **argptrs = instruction_args;
 #ifdef DEBUG_ENABLED
 				uint64_t call_time = 0;
-				if (GDScriptLanguage::get_singleton()->profiling && GDScriptLanguage::get_singleton()->profile_native_calls) {
+				// wgodot-changes::begin
+				if (GDScriptLanguage::get_singleton()->is_profiling_capture(profiling_generation) && GDScriptLanguage::get_singleton()->profile_native_calls) {
+					// wgodot-changes::end
 					call_time = OS::get_singleton()->get_ticks_usec();
 				}
 #endif
@@ -2320,7 +2345,9 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 				method->validated_call(nullptr, (const Variant **)argptrs, nullptr);
 
 #ifdef DEBUG_ENABLED
-				if (GDScriptLanguage::get_singleton()->profiling && GDScriptLanguage::get_singleton()->profile_native_calls) {
+				// wgodot-changes::begin
+				if (GDScriptLanguage::get_singleton()->is_profiling_capture(profiling_generation) && GDScriptLanguage::get_singleton()->profile_native_calls) {
+					// wgodot-changes::end
 					uint64_t t_taken = OS::get_singleton()->get_ticks_usec() - call_time;
 					_profile_native_call(t_taken, method->get_name(), method->get_instance_class());
 					function_call_time += t_taken;
@@ -2365,7 +2392,9 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 
 #ifdef DEBUG_ENABLED
 				uint64_t call_time = 0;
-				if (GDScriptLanguage::get_singleton()->profiling && GDScriptLanguage::get_singleton()->profile_native_calls) {
+				// wgodot-changes::begin
+				if (GDScriptLanguage::get_singleton()->is_profiling_capture(profiling_generation) && GDScriptLanguage::get_singleton()->profile_native_calls) {
+					// wgodot-changes::end
 					call_time = OS::get_singleton()->get_ticks_usec();
 				}
 #endif
@@ -2374,7 +2403,9 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 				method->validated_call(base_obj, (const Variant **)argptrs, ret);
 
 #ifdef DEBUG_ENABLED
-				if (GDScriptLanguage::get_singleton()->profiling && GDScriptLanguage::get_singleton()->profile_native_calls) {
+				// wgodot-changes::begin
+				if (GDScriptLanguage::get_singleton()->is_profiling_capture(profiling_generation) && GDScriptLanguage::get_singleton()->profile_native_calls) {
+					// wgodot-changes::end
 					uint64_t t_taken = OS::get_singleton()->get_ticks_usec() - call_time;
 					_profile_native_call(t_taken, method->get_name(), method->get_instance_class());
 					function_call_time += t_taken;
@@ -2416,7 +2447,9 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 				Variant **argptrs = instruction_args;
 #ifdef DEBUG_ENABLED
 				uint64_t call_time = 0;
-				if (GDScriptLanguage::get_singleton()->profiling && GDScriptLanguage::get_singleton()->profile_native_calls) {
+				// wgodot-changes::begin
+				if (GDScriptLanguage::get_singleton()->is_profiling_capture(profiling_generation) && GDScriptLanguage::get_singleton()->profile_native_calls) {
+					// wgodot-changes::end
 					call_time = OS::get_singleton()->get_ticks_usec();
 				}
 #endif
@@ -2426,7 +2459,9 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 				method->validated_call(base_obj, (const Variant **)argptrs, nullptr);
 
 #ifdef DEBUG_ENABLED
-				if (GDScriptLanguage::get_singleton()->profiling && GDScriptLanguage::get_singleton()->profile_native_calls) {
+				// wgodot-changes::begin
+				if (GDScriptLanguage::get_singleton()->is_profiling_capture(profiling_generation) && GDScriptLanguage::get_singleton()->profile_native_calls) {
+					// wgodot-changes::end
 					uint64_t t_taken = OS::get_singleton()->get_ticks_usec() - call_time;
 					_profile_native_call(t_taken, method->get_name(), method->get_instance_class());
 					function_call_time += t_taken;
@@ -4073,7 +4108,9 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 
 	OPCODES_OUT
 #ifdef DEBUG_ENABLED
-	if (GDScriptLanguage::get_singleton()->profiling) {
+	// wgodot-changes::begin
+	if (GDScriptLanguage::get_singleton()->is_profiling_capture(profiling_generation)) {
+		// wgodot-changes::end
 		uint64_t time_taken = OS::get_singleton()->get_ticks_usec() - function_start_time;
 		profile.total_time.add(time_taken);
 		profile.self_time.add(time_taken - function_call_time);

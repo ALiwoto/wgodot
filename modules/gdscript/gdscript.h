@@ -473,6 +473,12 @@ class GDScriptLanguage : public ScriptLanguage {
 	SelfList<GDScriptFunction>::List function_list;
 #ifdef DEBUG_ENABLED
 	bool profiling;
+	// wgodot-changes::begin
+	uint64_t profiling_generation = 0;
+	bool is_profiling_capture(uint64_t p_generation) const {
+		return profiling && p_generation == profiling_generation;
+	}
+	// wgodot-changes::end
 	bool profile_native_calls;
 	uint64_t script_frame_time;
 #endif

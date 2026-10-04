@@ -2356,6 +2356,9 @@ void GDScriptLanguage::finish() {
 void GDScriptLanguage::profiling_start() {
 #ifdef DEBUG_ENABLED
 	MutexLock lock(mutex);
+	// wgodot-changes::begin
+	profiling_generation++;
+	// wgodot-changes::end
 
 	SelfList<GDScriptFunction> *elem = function_list.first();
 	while (elem) {
@@ -2370,6 +2373,9 @@ void GDScriptLanguage::profiling_start() {
 		elem->self()->profile.last_frame_total_time = 0;
 		elem->self()->profile.native_calls.clear();
 		elem->self()->profile.last_native_calls.clear();
+		// wgodot-changes::begin
+		elem->self()->profile.accumulated_native_calls.clear();
+		// wgodot-changes::end
 		elem = elem->next();
 	}
 
@@ -2414,7 +2420,9 @@ int GDScriptLanguage::profiling_get_accumulated_data(ProfilingInfo *r_info_arr, 
 		// wgodot-changes::begin
 		uint64_t nat_time = 0;
 		// wgodot-changes::end
-		HashMap<String, GDScriptFunction::Profile::NativeProfile>::ConstIterator nat_calls = elem->self()->profile.native_calls.begin();
+		// wgodot-changes::begin
+		HashMap<String, GDScriptFunction::Profile::NativeProfile>::ConstIterator nat_calls = elem->self()->profile.accumulated_native_calls.begin();
+		// wgodot-changes::end
 		// wgodot-changes::begin
 		while (nat_calls && current < p_info_max) {
 			// Buffer slots are reused between frame and accumulated reports.
@@ -2488,7 +2496,14 @@ void GDScriptLanguage::profiling_collate_native_call_data(bool p_accumulated) {
 	HashMap<String, GDScriptFunction::Profile::NativeProfile *> seen_nat_calls;
 	SelfList<GDScriptFunction> *elem = function_list.first();
 	while (elem) {
-		HashMap<String, GDScriptFunction::Profile::NativeProfile> *nat_calls = p_accumulated ? &elem->self()->profile.native_calls : &elem->self()->profile.last_native_calls;
+		// wgodot-changes::begin
+		if (p_accumulated) {
+			// Include the current partial frame, which frame() has not rolled over.
+			elem->self()->profile.accumulate_native_calls();
+			elem->self()->profile.native_calls.clear();
+		}
+		HashMap<String, GDScriptFunction::Profile::NativeProfile> *nat_calls = p_accumulated ? &elem->self()->profile.accumulated_native_calls : &elem->self()->profile.last_native_calls;
+		// wgodot-changes::end
 		HashMap<String, GDScriptFunction::Profile::NativeProfile>::Iterator it = nat_calls->begin();
 
 		while (it != nat_calls->end()) {
@@ -2676,6 +2691,9 @@ void GDScriptLanguage::frame() {
 			elem->self()->profile.last_frame_call_count = elem->self()->profile.frame_call_count.get();
 			elem->self()->profile.last_frame_self_time = elem->self()->profile.frame_self_time.get();
 			elem->self()->profile.last_frame_total_time = elem->self()->profile.frame_total_time.get();
+			// wgodot-changes::begin
+			elem->self()->profile.accumulate_native_calls();
+			// wgodot-changes::end
 			elem->self()->profile.last_native_calls = elem->self()->profile.native_calls;
 			elem->self()->profile.frame_call_count.set(0);
 			elem->self()->profile.frame_self_time.set(0);
