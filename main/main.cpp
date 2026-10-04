@@ -155,6 +155,7 @@
 #ifdef MODULE_WGODOT_ENABLED
 #include "modules/wgodot/wgodot_cli.h"
 #include "modules/wgodot/wgodot_pause_controller.h"
+#include "modules/wgodot/wgodot_performance.h"
 #include "modules/wgodot/wgodot_wait_controller.h"
 #endif
 #if defined(MODULE_WGODOT_ENABLED) || defined(WGODOT_NATIVE_GAME)
@@ -5197,6 +5198,7 @@ bool Main::iteration() {
 	// wgodot-changes::begin
 #ifdef MODULE_WGODOT_ENABLED
 	WGodotWaitController::end_frame();
+	WGodotPerformance::end_frame();
 #endif
 	// wgodot-changes::end
 

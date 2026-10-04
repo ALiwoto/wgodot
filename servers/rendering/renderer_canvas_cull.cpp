@@ -38,6 +38,9 @@
 #include "servers/rendering/rendering_server_default.h"
 #include "servers/rendering/rendering_server_globals.h"
 #include "servers/rendering/storage/texture_storage.h"
+// wgodot-changes::begin
+#include "servers/rendering/wgodot_texture_capture.h"
+// wgodot-changes::end
 
 // Use the same antialiasing feather size as StyleBoxFlat's default
 // (but doubled, as it's specified for both sides here).
@@ -102,6 +105,13 @@ void RendererCanvasCull::_render_canvas_item_tree(RID p_to_render_target, Canvas
 	RENDER_TIMESTAMP("Render CanvasItems");
 
 	bool sdf_flag;
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(DEBUG_ENABLED)
+	if (p_modulate.a > 0.0 && WGodotTextureCapture::is_active()) {
+		WGodotTextureCapture::record_items(list, p_clip_rect, RSG::texture_storage->render_target_get_texture(p_to_render_target));
+	}
+#endif
+	// wgodot-changes::end
 	RSG::canvas_render->canvas_render_items(p_to_render_target, list, p_modulate, p_lights, p_directional_lights, p_transform, p_default_filter, p_default_repeat, p_snap_2d_vertices_to_pixel, sdf_flag, r_render_info);
 	if (sdf_flag) {
 		sdf_used = true;

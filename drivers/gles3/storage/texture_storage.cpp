@@ -1950,6 +1950,14 @@ void TextureStorage::texture_debug_usage(List<RenderingServerTypes::TextureInfo>
 			continue;
 		}
 		RenderingServerTypes::TextureInfo tinfo;
+		// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(DEBUG_ENABLED)
+		tinfo.texture = rid;
+		tinfo.debug_mipmaps = t->mipmaps;
+		tinfo.debug_proxy_to = t->is_proxy ? t->proxy_to : RID();
+		tinfo.debug_render_target = t->is_render_target;
+#endif
+		// wgodot-changes::end
 		tinfo.path = t->path;
 		tinfo.format = t->format;
 		tinfo.width = t->alloc_width;

@@ -63,6 +63,13 @@ struct TextureInfo {
 	int64_t bytes;
 	String path;
 	RSE::TextureType type;
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(DEBUG_ENABLED)
+	int debug_mipmaps = 0;
+	RID debug_proxy_to;
+	bool debug_render_target = false;
+#endif
+	// wgodot-changes::end
 };
 
 /* SHADER API */

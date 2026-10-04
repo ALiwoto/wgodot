@@ -48,6 +48,8 @@ constexpr const char *const FORWARDED_GAME_COMMANDS[] = {
 	"set_static",
 	"call_static",
 	"list",
+	"perf",
+	"textures",
 	"wait",
 	"pause",
 	"resume",
@@ -503,6 +505,9 @@ void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
 		p_connection.return_on_debug_break = call_command && !(bool)options.get("wait_through_breakpoint", false);
 		p_connection.wait_kind = PendingConnection::WAIT_GAME_RESPONSE;
 		p_connection.deadline_msec = OS::get_singleton()->get_ticks_msec() + ((bool)options.get("wait_through_breakpoint", false) ? WAIT_THROUGH_BREAKPOINT_TIMEOUT_MSEC : ASYNC_TIMEOUT_MSEC);
+		if (command == "perf" || command == "textures") {
+			p_connection.deadline_msec = OS::get_singleton()->get_ticks_msec() + uint64_t(CLAMP(int(options.get("timeout", 10)), 1, 30) + 5) * 1000;
+		}
 		return;
 	}
 

@@ -8,6 +8,7 @@
 #include "wgodot_debug_cli.h"
 #include "wgodot_format_cli.h"
 #include "wgodot_logs_cli.h"
+#include "wgodot_performance_cli.h"
 #include "wgodot_rename_cli.h"
 
 #include "core/config/project_settings.h"
@@ -202,6 +203,11 @@ void print_cli_help() {
 	print_line("  tree [options]                    Print the running game's scene tree.");
 	print_line("  ss [-o <path>] [--json]           Capture the running game viewport.");
 	print_line("  observe [options]                 Capture a screenshot and scene tree together.");
+	print_line("  perf [--frames <n>] [--timeout <seconds>] [--json] [--output <path>]  Snapshot or sample performance counters.");
+	print_line("  textures [--frames <n>] [--sort bytes|savings|ratio] [--limit <n>]    Inspect texture allocations and sampled 2D use.");
+	print_line("    --filter <text> --unused --headroom <factor> --timeout <seconds> --json --output <path>");
+	print_line("    Both accept --session <id>. Frames: 0 (snapshot) to 1800; timeout: 1..30 seconds (default 10).");
+	print_line("    --unused means not observed during capture. Resize estimates require --frames; default headroom is 1.25.");
 	print_line("  click <node-path>|<x> <y>         Click a Control or viewport position.");
 	print_line("  mouse <move|down|up|wheel> <node-path>|<x> <y> [--button left|right|middle] [--delta amount]");
 	print_line("  type <text>                       Type text into the running game.");
@@ -1355,6 +1361,10 @@ bool execute_if_requested(int &r_exit_code) {
 	}
 	if (command == "logs" || command == "clear_logs") {
 		r_exit_code = WGodotLogsCLI::run(command, arguments);
+		return true;
+	}
+	if (command == "perf" || command == "textures") {
+		r_exit_code = WGodotPerformanceCLI::run(command, arguments);
 		return true;
 	}
 	if (command == "breakpoint" || command == "bp") {

@@ -10,6 +10,7 @@
 
 #include "wgodot_member_list.h"
 #include "wgodot_pause_controller.h"
+#include "wgodot_performance.h"
 #include "wgodot_wait_controller.h"
 
 #include "core/debugger/engine_debugger.h"
@@ -997,6 +998,8 @@ Error parse_message(void *p_user, const String &p_message, const Array &p_argume
 		response = WGodotMemberList::execute(options);
 	} else if (command == "debug_inspect") {
 		response = WGodotDebugInspector::inspect_object(options);
+	} else if (command == "perf" || command == "textures") {
+		response = WGodotPerformance::execute(request_id, command, options, response_deferred);
 	} else if (command == "wait") {
 		const int count = options.get("count", 1);
 		const bool physics = options.get("physics", false);
@@ -1076,6 +1079,7 @@ void initialize() {
 
 void deinitialize() {
 #ifdef DEBUG_ENABLED
+	WGodotPerformance::reset();
 	if (capture_registered && EngineDebugger::has_capture(SNAME("wgodot"))) {
 		EngineDebugger::unregister_message_capture(SNAME("wgodot"));
 	}

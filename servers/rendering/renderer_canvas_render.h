@@ -139,6 +139,13 @@ public:
 	struct Polygon {
 		PolygonID polygon_id;
 		Rect2 rect_cache;
+		// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(DEBUG_ENABLED)
+		Transform2D debug_uv_to_local;
+		bool debug_uv_affine = false;
+		void debug_set_uv_mapping(const Vector<Vector2> &p_points, const Vector<Vector2> &p_uvs, bool p_skinned);
+#endif
+		// wgodot-changes::end
 
 		_FORCE_INLINE_ void create(const Vector<int> &p_indices, const Vector<Point2> &p_points, const Vector<Color> &p_colors, const Vector<Point2> &p_uvs = Vector<Point2>(), const Vector<int> &p_bones = Vector<int>(), const Vector<float> &p_weights = Vector<float>(), int p_count = -1) {
 			ERR_FAIL_COND(polygon_id != 0);
@@ -153,6 +160,11 @@ public:
 				}
 			}
 			polygon_id = singleton->request_polygon(p_indices, p_points, p_colors, p_uvs, p_bones, p_weights, count);
+			// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(DEBUG_ENABLED)
+			debug_set_uv_mapping(p_points, p_uvs, !p_bones.is_empty());
+#endif
+			// wgodot-changes::end
 		}
 
 		_FORCE_INLINE_ Polygon() { polygon_id = 0; }

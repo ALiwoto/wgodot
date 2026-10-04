@@ -29,6 +29,9 @@
 /**************************************************************************/
 
 #include "rendering_server_default.h"
+// wgodot-changes::begin
+#include "servers/rendering/wgodot_texture_capture.h"
+// wgodot-changes::end
 
 #include "core/object/callable_mp.h"
 #include "core/os/os.h"
@@ -113,6 +116,11 @@ void RenderingServerDefault::_draw(bool p_swap_buffers, double frame_step) {
 
 	GodotProfileZoneGrouped(_profile_zone, "rasterizer->end_frame");
 	RSG::rasterizer->end_frame(p_swap_buffers);
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(DEBUG_ENABLED)
+	WGodotTextureCapture::end_render_frame();
+#endif
+	// wgodot-changes::end
 
 #ifndef XR_DISABLED
 	if (xr_server != nullptr) {
