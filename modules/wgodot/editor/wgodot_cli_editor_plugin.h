@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "wgodot_profiler.h"
 #include "wgodot_project_check.h"
 
 #include "core/io/packet_peer.h"
@@ -26,6 +27,7 @@ class WGodotCLIEditorPlugin : public EditorPlugin {
 			WAIT_GAME_START,
 			WAIT_GAME_RESPONSE,
 			WAIT_DEBUG,
+			WAIT_PROFILE,
 			WAIT_EDITOR_REFRESH,
 			WAIT_PROJECT_REFRESH,
 		};
@@ -42,6 +44,7 @@ class WGodotCLIEditorPlugin : public EditorPlugin {
 		Dictionary debug_options;
 		WGodotProjectCheck project_check;
 		WGodotProjectRefresh project_refresh;
+		WGodotProfiler profiler;
 		String editor_command;
 		Dictionary editor_options;
 		WaitKind wait_kind = WAIT_NONE;

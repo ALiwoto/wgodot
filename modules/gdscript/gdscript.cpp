@@ -2411,9 +2411,15 @@ int GDScriptLanguage::profiling_get_accumulated_data(ProfilingInfo *r_info_arr, 
 		r_info_arr[current].signature = elem->self()->profile.signature;
 		current++;
 
-		int nat_time = 0;
+		// wgodot-changes::begin
+		uint64_t nat_time = 0;
+		// wgodot-changes::end
 		HashMap<String, GDScriptFunction::Profile::NativeProfile>::ConstIterator nat_calls = elem->self()->profile.native_calls.begin();
-		while (nat_calls) {
+		// wgodot-changes::begin
+		while (nat_calls && current < p_info_max) {
+			// Buffer slots are reused between frame and accumulated reports.
+			r_info_arr[current].internal_time = nat_calls->value.total_time;
+			// wgodot-changes::end
 			r_info_arr[current].call_count = nat_calls->value.call_count;
 			r_info_arr[current].total_time = nat_calls->value.total_time;
 			r_info_arr[current].self_time = nat_calls->value.total_time;
@@ -2450,9 +2456,13 @@ int GDScriptLanguage::profiling_get_frame_data(ProfilingInfo *r_info_arr, int p_
 			r_info_arr[current].signature = elem->self()->profile.signature;
 			current++;
 
-			int nat_time = 0;
+			// wgodot-changes::begin
+			uint64_t nat_time = 0;
+			// wgodot-changes::end
 			HashMap<String, GDScriptFunction::Profile::NativeProfile>::ConstIterator nat_calls = elem->self()->profile.last_native_calls.begin();
-			while (nat_calls) {
+			// wgodot-changes::begin
+			while (nat_calls && current < p_info_max) {
+				// wgodot-changes::end
 				r_info_arr[current].call_count = nat_calls->value.call_count;
 				r_info_arr[current].total_time = nat_calls->value.total_time;
 				r_info_arr[current].self_time = nat_calls->value.total_time;
@@ -2482,16 +2492,21 @@ void GDScriptLanguage::profiling_collate_native_call_data(bool p_accumulated) {
 		HashMap<String, GDScriptFunction::Profile::NativeProfile>::Iterator it = nat_calls->begin();
 
 		while (it != nat_calls->end()) {
-			Vector<String> sig = it->value.signature.split("::");
+			// wgodot-changes::begin
+			const auto current_call = it;
+			++it; // Erasing current_call invalidates that iterator.
+			Vector<String> sig = current_call->value.signature.split("::");
+			// wgodot-changes::end
 			HashMap<String, GDScriptFunction::Profile::NativeProfile *>::ConstIterator already_found = seen_nat_calls.find(sig[2]);
+			// wgodot-changes::begin
 			if (already_found) {
-				already_found->value->total_time += it->value.total_time;
-				already_found->value->call_count += it->value.call_count;
-				elem->self()->profile.last_native_calls.remove(it);
+				already_found->value->total_time += current_call->value.total_time;
+				already_found->value->call_count += current_call->value.call_count;
+				nat_calls->remove(current_call);
 			} else {
-				seen_nat_calls.insert(sig[2], &it->value);
+				seen_nat_calls.insert(sig[2], &current_call->value);
 			}
-			++it;
+			// wgodot-changes::end
 		}
 		elem = elem->next();
 	}

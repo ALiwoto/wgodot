@@ -171,6 +171,9 @@ bool WGodotCLIEditorPlugin::start_server() {
 }
 
 void WGodotCLIEditorPlugin::stop_server() {
+	for (PendingConnection &connection : connections) {
+		connection.profiler.cancel();
+	}
 	connections.clear();
 	game_session_states.clear();
 	if (debugger_bridge.is_valid()) {
@@ -462,6 +465,31 @@ void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
 		p_connection.deadline_msec = OS::get_singleton()->get_ticks_msec() + timeout_msec;
 		return;
 	}
+	if (command == "profile") {
+		Dictionary session_error;
+		int session = get_automatic_session(request, session_error);
+		const String action = options.get("action", "report");
+		if (session < 0 && (action == "status" || action == "report" || action == "frames" || action == "clear")) {
+			// Retained profiler data remains readable after the game exits.
+			EditorDebuggerNode *node = EditorDebuggerNode::get_singleton();
+			ScriptEditorDebugger *debugger = request.has("session") ? node->get_debugger(int(request["session"])) : node->get_current_debugger();
+			if (debugger != nullptr && (request.has("session") || String(session_error.get("error", String())) == "game_not_running")) {
+				session = node->get_debugger_id(debugger);
+			}
+		}
+		if (session < 0) {
+			finish_connection(p_connection, session_error);
+			return;
+		}
+		const Dictionary response = p_connection.profiler.start(session, options);
+		if (!response.is_empty()) {
+			finish_connection(p_connection, response);
+			return;
+		}
+		p_connection.wait_kind = PendingConnection::WAIT_PROFILE;
+		p_connection.deadline_msec = OS::get_singleton()->get_ticks_msec() + uint64_t(int(options.get("timeout", 10)) + 6) * 1000;
+		return;
+	}
 	if (is_forwarded_game_command(command)) {
 		Dictionary session_error;
 		const int session = get_automatic_session(request, session_error);
@@ -515,6 +543,13 @@ void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
 }
 
 void WGodotCLIEditorPlugin::poll_waiting_connection(PendingConnection &p_connection) {
+	if (p_connection.wait_kind == PendingConnection::WAIT_PROFILE) {
+		const Dictionary response = p_connection.profiler.poll();
+		if (!response.is_empty()) {
+			finish_connection(p_connection, response);
+		}
+		return;
+	}
 	if (p_connection.wait_kind == PendingConnection::WAIT_PROJECT_REFRESH) {
 		Dictionary response = p_connection.project_refresh.poll();
 		if (!response.is_empty()) {
@@ -691,12 +726,14 @@ void WGodotCLIEditorPlugin::poll_connections() {
 		if (connection.completed) {
 			connections.remove_at(i);
 		} else if (connection.tcp->get_status() != StreamPeerTCP::STATUS_CONNECTED) {
+			connection.profiler.cancel();
 			if (connection.wait_kind == PendingConnection::WAIT_DEBUG) {
 				WGodotDebugService::cancel_debug_wait(connection.game_session, static_cast<WGodotDebugService::WaitKind>(connection.debug_wait_kind));
 			}
 			connection.tcp->disconnect_from_host();
 			connections.remove_at(i);
 		} else if (connection.wait_kind != PendingConnection::WAIT_EDITOR_REFRESH && connection.wait_kind != PendingConnection::WAIT_PROJECT_REFRESH && now > connection.deadline_msec) {
+			connection.profiler.cancel();
 			if (connection.wait_kind == PendingConnection::WAIT_DEBUG) {
 				WGodotDebugService::cancel_debug_wait(connection.game_session, static_cast<WGodotDebugService::WaitKind>(connection.debug_wait_kind));
 				finish_connection(connection, make_error_response("debug_timeout", "Timed out while waiting for the debugger state transition."));

@@ -9,6 +9,7 @@
 #include "wgodot_format_cli.h"
 #include "wgodot_logs_cli.h"
 #include "wgodot_performance_cli.h"
+#include "wgodot_profiler_cli.h"
 #include "wgodot_rename_cli.h"
 
 #include "core/config/project_settings.h"
@@ -208,6 +209,14 @@ void print_cli_help() {
 	print_line("    --filter <text> --unused --headroom <factor> --timeout <seconds> --json --output <path>");
 	print_line("    Both accept --session <id>. Frames: 0 (snapshot) to 1800; timeout: 1..30 seconds (default 10).");
 	print_line("    --unused means not observed during capture. Resize estimates require --frames; default headroom is 1.25.");
+	print_line("  profile start|stop|capture|status|report|frames|clear             Control/read the editor's script profiler.");
+	print_line("    start [--max-functions 512] [--native]                       Start a fresh capture until stopped.");
+	print_line("    capture [--frames 120] [--timeout 10] [--max-functions 512] [--native]");
+	print_line("    stop [--timeout 10]                                         Stop and wait for accumulated totals.");
+	print_line("    report [--view total|frame] [--frame <n>]                     Read accumulated totals or a retained frame.");
+	print_line("    report/stop/capture: --sort self|inclusive|calls|native --filter <text> --limit 30");
+	print_line("    frames [--sort frame|frame_time|process|physics] [--limit 30]   Retained frames, newest or slowest first.");
+	print_line("    All profile actions accept --json, --output <path>, --session <id>.");
 	print_line("  click <node-path>|<x> <y>         Click a Control or viewport position.");
 	print_line("  mouse <move|down|up|wheel> <node-path>|<x> <y> [--button left|right|middle] [--delta amount]");
 	print_line("  type <text>                       Type text into the running game.");
@@ -1361,6 +1370,10 @@ bool execute_if_requested(int &r_exit_code) {
 	}
 	if (command == "logs" || command == "clear_logs") {
 		r_exit_code = WGodotLogsCLI::run(command, arguments);
+		return true;
+	}
+	if (command == "profile") {
+		r_exit_code = WGodotProfilerCLI::run(arguments);
 		return true;
 	}
 	if (command == "perf" || command == "textures") {

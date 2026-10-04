@@ -1382,18 +1382,22 @@ void ScriptEditorDebugger::_profiler_activate(bool p_enable, int p_type) {
 		case PROFILER_VISUAL:
 			_put_msg("profiler:visual", msg_data);
 			break;
-		case PROFILER_SCRIPTS_SERVERS:
+		// wgodot-changes::begin
+		case PROFILER_SCRIPTS_SERVERS: {
+			int max_funcs = EDITOR_GET("debugger/profiler_frame_max_functions");
+			bool include_native = EDITOR_GET("debugger/profile_native_calls");
+			profiler->wgodot_profile_toggled(p_enable, max_funcs, include_native);
 			if (p_enable) {
 				// Clear old script signatures. (should we move all this into the profiler?)
 				profiler_signature.clear();
 				// Add max funcs options to request.
-				int max_funcs = EDITOR_GET("debugger/profiler_frame_max_functions");
-				bool include_native = EDITOR_GET("debugger/profile_native_calls");
 				Array opts = { CLAMP(max_funcs, 16, 512), include_native };
 				msg_data.push_back(opts);
 			}
 			_put_msg("profiler:servers", msg_data);
 			break;
+		}
+		// wgodot-changes::end
 		default:
 			ERR_FAIL_MSG("Invalid profiler type");
 	}

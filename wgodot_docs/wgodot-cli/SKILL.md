@@ -1,6 +1,6 @@
 ---
 name: wgodot-cli
-description: Use WGodot's agent-oriented command-line interface to run, stop, pause, step, frame-sync, set breakpoints, or control a hard debugger pause; inspect logs, debugger errors, scene trees, class members, source declarations, and runtime or named-class static properties; modify properties; call runtime or static methods; semantically rename GDScript symbols; capture screenshots; inject input; query editor sessions; and check project GDScript. Use when an agent needs `godot --wg` commands while developing, inspecting, debugging, refactoring, or testing a WGodot project.
+description: Use WGodot's agent-oriented command-line interface to control a running game and debugger; inspect logs, scene trees, members, and source; edit properties, call methods, and rename GDScript symbols; capture screenshots and inject input; profile script hot paths, sample performance counters, audit texture memory and rendered sizes; and check project GDScript. Use when an agent needs `godot --wg` commands while developing, inspecting, debugging, refactoring, or testing a WGodot project.
 ---
 
 # WGodot CLI
@@ -516,6 +516,12 @@ godot --wg check
 Before validation, the matching editor scans for external filesystem changes and waits for discovery and imports to finish. This is the same editor filesystem path used after the window regains focus, so newly copied assets are imported, required `.uid` files are created, and GDScript class metadata is refreshed before checking. When there are no unsaved editor buffers, externally changed open scripts are then reloaded. Cached project parsers are always invalidated so changed inheritance/member APIs and transitive dependents are analyzed from current disk sources.
 
 The validation scan respects `.gdignore` directories. Treat a nonzero exit code as a failed check and address reported errors before continuing. The matching WGodot editor must be open; the game does not need to be running.
+
+## Performance and texture diagnosis
+
+Use `perf` for overall counters and frame intervals, `profile` for script-function timings/call counts from the editor's Profiler, and `textures` for GPU allocations and sampled 2D texture use (including downloaded/runtime textures).
+
+Read [performance reference](references/performance.md) before capturing or interpreting these reports. It covers accumulated versus single-frame timings, bounded captures, native-call profiling, texture sizing limits, backend asset labels, and JSON reports. Measure representative gameplay before optimizing, then compare the same scenario after changes. The CLI diagnostics are editor-only; an editor capture does not measure the performance of a compiled/exported game.
 
 ## Agent workflow
 

@@ -57,6 +57,18 @@ const EditorProfiler::Metric &EditorProfiler::_get_frame_metric(int index) const
 }
 
 void EditorProfiler::add_frame_metric(const Metric &p_metric, bool p_final) {
+	// wgodot-changes::begin
+	if (p_final && wgodot_capture.awaiting_total) {
+		wgodot_capture.awaiting_total = false;
+		wgodot_capture.has_total = true;
+	} else if (!p_final && (wgodot_capture.running || wgodot_capture.awaiting_total)) {
+		if (wgodot_capture.first_frame < 0) {
+			wgodot_capture.first_frame = p_metric.frame_number;
+		}
+		wgodot_capture.last_frame = p_metric.frame_number;
+		wgodot_capture.frames_received++;
+	}
+	// wgodot-changes::end
 	++last_metric;
 	if (last_metric >= frame_metrics.size()) {
 		last_metric = 0;
@@ -68,6 +80,9 @@ void EditorProfiler::add_frame_metric(const Metric &p_metric, bool p_final) {
 	}
 
 	frame_metrics.write[last_metric] = p_metric;
+	// wgodot-changes::begin
+	frame_metrics.write[last_metric].accumulated = p_final;
+	// wgodot-changes::end
 	_make_metric_ptrs(frame_metrics.write[last_metric]);
 
 	updating_frame = true;
@@ -93,7 +108,32 @@ void EditorProfiler::add_frame_metric(const Metric &p_metric, bool p_final) {
 	}
 }
 
-void EditorProfiler::clear() {
+// wgodot-changes::begin
+void EditorProfiler::wgodot_profile_toggled(bool p_enable, int &r_max_functions, bool &r_native_calls) {
+	if (p_enable) {
+		if (wgodot_next_max_functions >= 0) {
+			r_max_functions = wgodot_next_max_functions;
+			r_native_calls = wgodot_next_native_calls;
+			wgodot_next_max_functions = -1;
+		}
+		const uint64_t generation = wgodot_capture.generation + 1;
+		wgodot_capture = CaptureInfo();
+		wgodot_capture.generation = generation;
+		wgodot_capture.max_functions = CLAMP(r_max_functions, 16, 512);
+		wgodot_capture.native_calls = r_native_calls;
+		wgodot_capture.running = true;
+		display_internal_profiles->set_visible(r_native_calls);
+	} else if (wgodot_capture.running) {
+		wgodot_capture.running = false;
+		wgodot_capture.awaiting_total = true;
+	}
+}
+
+void EditorProfiler::clear(bool p_notify) {
+	const uint64_t generation = wgodot_capture.generation + 1;
+	wgodot_capture = CaptureInfo();
+	wgodot_capture.generation = generation;
+	// wgodot-changes::end
 	int metric_size = EDITOR_GET("debugger/profiler_frame_history_size");
 	metric_size = CLAMP(metric_size, 60, 10000);
 	frame_metrics.clear();
@@ -117,7 +157,11 @@ void EditorProfiler::clear() {
 
 	// Ensure button text (start, stop) is correct
 	_update_button_text();
-	emit_signal(SNAME("enable_profiling"), activate->is_pressed());
+	// wgodot-changes::begin
+	if (p_notify) {
+		emit_signal(SNAME("enable_profiling"), activate->is_pressed());
+	}
+	// wgodot-changes::end
 }
 
 String EditorProfiler::_get_time_as_text(const Metric &m, float p_time, int p_calls) {

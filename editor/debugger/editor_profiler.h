@@ -48,6 +48,9 @@ class EditorProfiler : public VBoxContainer {
 public:
 	struct Metric {
 		bool valid = false;
+		// wgodot-changes::begin
+		bool accumulated = false;
+		// wgodot-changes::end
 
 		int frame_number = 0;
 		float frame_time = 0;
@@ -173,6 +176,27 @@ protected:
 	static void _bind_methods();
 
 public:
+	// wgodot-changes::begin
+	struct CaptureInfo {
+		uint64_t generation = 0;
+		uint64_t frames_received = 0;
+		int first_frame = -1;
+		int last_frame = -1;
+		int max_functions = 0;
+		bool native_calls = false;
+		bool running = false;
+		bool awaiting_total = false;
+		bool has_total = false;
+	};
+
+	CaptureInfo wgodot_capture;
+	int wgodot_next_max_functions = -1;
+	bool wgodot_next_native_calls = false;
+	void wgodot_profile_toggled(bool p_enable, int &r_max_functions, bool &r_native_calls);
+	int wgodot_get_metric_count() const { return total_metrics; }
+	const Metric &wgodot_get_metric(int p_index) const { return _get_frame_metric(p_index); }
+	// wgodot-changes::end
+
 	void add_frame_metric(const Metric &p_metric, bool p_final = false);
 	void set_enabled(bool p_enable, bool p_clear = true);
 	void set_profiling(bool p_pressed);
@@ -180,7 +204,9 @@ public:
 	bool is_seeking() { return seeking; }
 	void disable_seeking();
 
-	void clear();
+	// wgodot-changes::begin
+	void clear(bool p_notify = true);
+	// wgodot-changes::end
 
 	Vector<Vector<String>> get_data_as_csv() const;
 

@@ -351,6 +351,7 @@ public:
 	int get_warning_count() const { return warning_count; }
 	// wgodot-changes::begin
 	void wgodot_clear_errors() { _clear_errors_list(); }
+	EditorProfiler *wgodot_get_profiler() const { return profiler; }
 	void wgodot_send_debug_message(const String &p_message, const Array &p_args);
 	void wgodot_suppress_break_presentation() { wgodot_suppress_next_break_presentation = true; }
 	// wgodot-changes::end
