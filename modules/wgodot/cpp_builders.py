@@ -159,6 +159,65 @@ def array_api(target, source, env):
     pathlib.Path(str(target[0])).write_text("\n".join(lines), encoding="utf-8")
 
 
+def native_binding_sources(source):
+    """Expand simple binding macros using their source definitions, not API names."""
+    comments = re.compile(r'("(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\')|//[^\n]*|/\*.*?\*/', re.DOTALL)
+    definition = re.compile(r'^\s*#define[ \t]+(\w+)\(([^)\n]*)\)[ \t]*([^\n]*)', re.MULTILINE)
+    texts = []
+    definitions = {}
+    for path in source:
+        text = pathlib.Path(str(path)).read_text(encoding="utf-8").replace("\\\n", "")
+        text = comments.sub(lambda match: match.group(1) or " ", text)
+        for name, parameters, body in definition.findall(text):
+            definitions.setdefault(name, set()).add((parameters, body))
+        texts.append(re.sub(r'^[ \t]*#[^\n]*', '', text, flags=re.MULTILINE))
+
+    # Only infer unambiguous definitions. Conditional/complex macros stay
+    # unsupported instead of guessing a C++ binding at export time.
+    macros = {name: next(iter(values)) for name, values in definitions.items() if len(values) == 1}
+    stringizers = set()
+    pending = True
+    while pending:
+        pending = False
+        for name, (parameter, body) in macros.items():
+            if name in stringizers or not parameter.isidentifier():
+                continue
+            forwarding = re.fullmatch(r'(\w+)\(\s*' + re.escape(parameter) + r'\s*\)', body)
+            if re.fullmatch(r'#\s*' + re.escape(parameter), body) or (forwarding and forwarding[1] in stringizers):
+                stringizers.add(name)
+                pending = True
+
+    quoted_or_word = re.compile(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|\b\w+\b')
+    stringize = re.compile(r'\b(' + '|'.join(sorted(map(re.escape, stringizers))) + r')\(\s*(\w+)\s*\)') if stringizers else None
+    adjacent_strings = re.compile(r'("(?:\\.|[^"\\])*")\s*("(?:\\.|[^"\\])*")')
+    for name, (parameters, body) in macros.items():
+        if not re.search(r'\bClassDB::bind_(?:static_)?method\(', body):
+            continue
+        parameters = [part.strip() for part in parameters.split(',')]
+        if not all(parameter.isidentifier() for parameter in parameters):
+            continue
+        # Flat arguments cover enum/class/member binding declarations. Nested
+        # macro expressions are deliberately left for the unsupported diagnostic.
+        invocation = re.compile(r'\b' + re.escape(name) + r'\(([^()\n]*)\)')
+
+        def expand(match):
+            arguments = [part.strip() for part in match[1].split(',')]
+            if len(arguments) != len(parameters) or not all(re.fullmatch(r'\w+(?:::\w+)*', argument) for argument in arguments):
+                return match[0]
+            values = dict(zip(parameters, arguments))
+            expanded = re.sub(r'(?<!#)#\s*(\w+)(?!#)', lambda token: json.dumps(values[token[1]]) if token[1] in values else token[0], body)
+            expanded = quoted_or_word.sub(lambda token: values.get(token[0], token[0]), expanded)
+            expanded = re.sub(r'\s*##\s*', '', expanded)
+            if stringize:
+                expanded = stringize.sub(lambda token: json.dumps(token[2]), expanded)
+            while adjacent_strings.search(expanded):
+                expanded = adjacent_strings.sub(lambda token: json.dumps(json.loads(token[1]) + json.loads(token[2])), expanded)
+            return expanded
+
+        texts = [invocation.sub(expand, text) for text in texts]
+    return texts
+
+
 def native_methods(target, source, env):
     bindings = {}
     forwarded = {}
@@ -175,10 +234,7 @@ def native_methods(target, source, env):
     )
     template_binding = re.compile(r'\b\w+<[^;{}()]+>\s*' + binding_arguments)
     inheritance = re.compile(r'\bclass\s+(\w+)\s*(?:final\s*)?:\s*([^;{}]+)\{')
-    comments = re.compile(r'("(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\')|//[^\n]*|/\*.*?\*/', re.DOTALL)
-    for implementation in source:
-        text = pathlib.Path(str(implementation)).read_text(encoding="utf-8")
-        text = comments.sub(lambda match: match.group(1) or " ", text)
+    for text in native_binding_sources(source):
         for name, owner, method in declaration.findall(text):
             owner = owner.rsplit("::", 1)[-1]  # ClassDB uses the unqualified class name.
             bindings.setdefault((owner, name), set()).add(method)
