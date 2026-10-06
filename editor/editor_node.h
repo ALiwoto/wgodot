@@ -125,6 +125,10 @@ struct EditorProgress {
 class EditorNode : public Node {
 	GDCLASS(EditorNode, Node);
 
+	// wgodot-changes::begin
+	friend class WGodotProjectRefresh;
+	// wgodot-changes::end
+
 public:
 	enum SceneNameCasing {
 		SCENE_NAME_CASING_AUTO,

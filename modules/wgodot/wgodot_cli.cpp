@@ -197,7 +197,7 @@ void print_cli_help() {
 	print_line("");
 	print_line("Commands:");
 	print_line("  export-cpp <directory> [--analyze-only] [--trace on|off|true|false] Generate native game C++; uses the running editor when available.");
-	print_line("  import                            Refresh project files and import assets in the running editor.");
+	print_line("  import                            Refresh/import assets and reload changed scenes in the running editor.");
 	print_line("  status [--json] [--session <id>]  Show the matching editor and running game sessions.");
 	print_line("  run [--current|<scene>] [--json]  Run the main, current, or specified scene.");
 	print_line("  stop [--json]                     Stop the running game.");
@@ -584,7 +584,8 @@ int print_command_response(const Dictionary &p_response, bool p_json_output) {
 	} else if (command == "stop") {
 		print_line((bool)p_response.get("was_running", false) ? "Game stopped." : "Game was not running.");
 	} else if (command == "import") {
-		print_line("Project files refreshed and assets imported.");
+		const PackedStringArray scenes = p_response.get("reloaded_scenes", PackedStringArray());
+		print_line(vformat("Project files refreshed and assets imported; %d changed scene(s) reloaded.", scenes.size()));
 	} else if (command == "tree") {
 		print_tree(p_response.get("tree", Array()));
 	} else if (command == "ss") {
