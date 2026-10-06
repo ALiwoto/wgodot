@@ -11,6 +11,8 @@
 #include "scene/gui/dialogs.h"
 #include "scene/resources/packed_scene.h"
 
+HashSet<String> WGodotProjectRefresh::changed_dependencies;
+
 namespace {
 
 Dictionary failure(const String &p_error, const String &p_message) {
@@ -21,7 +23,52 @@ Dictionary failure(const String &p_error, const String &p_message) {
 	return result;
 }
 
+bool depends_on_changes(const String &p_path, const HashSet<String> &p_changed, HashSet<String> &r_visited) {
+	if (p_changed.has(p_path)) {
+		return true;
+	}
+	if (r_visited.has(p_path)) {
+		return false;
+	}
+	r_visited.insert(p_path);
+	EditorFileSystemDirectory *directory = EditorFileSystem::get_singleton()->get_filesystem_path(p_path.get_base_dir());
+	if (!directory) {
+		return false;
+	}
+	const int index = directory->find_file_index(p_path.get_file());
+	if (index < 0) {
+		return false;
+	}
+	for (const String &dependency : directory->get_file_deps(index)) {
+		if (depends_on_changes(dependency, p_changed, r_visited)) {
+			return true;
+		}
+	}
+	return false;
+}
+
 } // namespace
+
+void WGodotProjectRefresh::resources_changed(const Vector<String> &p_paths) {
+	for (const String &path : p_paths) {
+		changed_dependencies.insert(path);
+	}
+}
+
+void WGodotProjectRefresh::remember_scene_changes() {
+	List<Ref<Resource>> cached;
+	ResourceCache::get_cached_resources(&cached);
+	for (const Ref<Resource> &resource : cached) {
+		const String path = resource->get_path();
+		if (!Object::cast_to<PackedScene>(resource.ptr()) || !path.is_resource_file() || !resource->get_import_path().is_empty()) {
+			continue;
+		}
+		const uint64_t modified = FileAccess::get_modified_time(path);
+		if (modified != 0 && modified != resource->get_last_modified_time()) {
+			changed_dependencies.insert(path);
+		}
+	}
+}
 
 Dictionary WGodotProjectRefresh::reload_scenes() {
 	EditorNode *editor = EditorNode::get_singleton();
@@ -29,6 +76,7 @@ Dictionary WGodotProjectRefresh::reload_scenes() {
 		return failure("editor_unavailable", "The scene editor is unavailable.");
 	}
 	EditorData &data = EditorNode::get_editor_data();
+	remember_scene_changes();
 	HashSet<String> changed;
 	List<Ref<Resource>> cached;
 	ResourceCache::get_cached_resources(&cached);
@@ -38,8 +86,8 @@ Dictionary WGodotProjectRefresh::reload_scenes() {
 			continue;
 		}
 		const String path = scene->get_path();
-		const uint64_t modified = FileAccess::get_modified_time(path);
-		if (modified != 0 && modified != scene->get_last_modified_time()) {
+		HashSet<String> visited;
+		if (depends_on_changes(path, changed_dependencies, visited)) {
 			changed.insert(path);
 		}
 	}
@@ -50,7 +98,8 @@ Dictionary WGodotProjectRefresh::reload_scenes() {
 			continue;
 		}
 		const uint64_t modified = FileAccess::get_modified_time(path);
-		if (modified != 0 && modified != data.get_scene_modified_time(i)) {
+		HashSet<String> visited;
+		if ((modified != 0 && modified != data.get_scene_modified_time(i)) || depends_on_changes(path, changed_dependencies, visited)) {
 			changed.insert(path);
 		}
 	}
@@ -86,13 +135,13 @@ Dictionary WGodotProjectRefresh::reload_scenes() {
 		}
 	}
 	if (!conflicts.is_empty()) {
-		Dictionary result = failure("scene_reload_conflict", "These open scenes have unsaved changes and are affected by scene files changed on disk. Save or resolve them in the editor before refreshing:\n" + String("\n").join(conflicts));
+		Dictionary result = failure("scene_reload_conflict", "These open scenes have unsaved changes and depend on files changed on disk. Save or resolve them in the editor before refreshing:\n" + String("\n").join(conflicts));
 		result["conflicts"] = conflicts;
 		return result;
 	}
 	if (!paths.is_empty()) {
-		// Refresh every changed PackedScene before reopening tabs, so nested scenes
-		// and script preloads also see the current objects through the normal cache.
+		// Resource/script edits can require rebuilding instances even when the scene
+		// itself is unchanged: soft script reload does not rerun _ready().
 		for (const String &path : paths) {
 			Error error = OK;
 			const Ref<PackedScene> scene = ResourceLoader::load(path, "PackedScene", ResourceLoader::CACHE_MODE_REPLACE, &error);
@@ -120,6 +169,7 @@ Dictionary WGodotProjectRefresh::reload_scenes() {
 	Dictionary result;
 	result["ok"] = true;
 	result["reloaded_scenes"] = paths;
+	changed_dependencies.clear();
 	return result;
 }
 
@@ -129,6 +179,7 @@ Dictionary WGodotProjectRefresh::start() {
 		return failure("filesystem_unavailable", "The editor filesystem is unavailable.");
 	}
 	deadline_msec = OS::get_singleton()->get_ticks_msec() + 60000;
+	remember_scene_changes(); // Keep changes before the filesystem refresh replaces cached scenes.
 	filesystem->scan_changes();
 	return Dictionary();
 }

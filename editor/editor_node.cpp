@@ -224,6 +224,11 @@
 #endif // ANDROID_ENABLED
 
 #include "modules/modules_enabled.gen.h" // For gdscript, mono.
+// wgodot-changes::begin
+#ifdef MODULE_WGODOT_ENABLED
+#include "modules/wgodot/editor/wgodot_project_refresh.h"
+#endif
+// wgodot-changes::end
 
 #include <cstdlib>
 
@@ -1332,6 +1337,11 @@ void EditorNode::_plugin_over_self_own(EditorPlugin *p_plugin) {
 }
 
 void EditorNode::_resources_changed(const Vector<String> &p_resources) {
+	// wgodot-changes::begin
+#ifdef MODULE_WGODOT_ENABLED
+	WGodotProjectRefresh::resources_changed(p_resources);
+#endif
+	// wgodot-changes::end
 	List<Ref<Resource>> changed;
 
 	int rc = p_resources.size();
