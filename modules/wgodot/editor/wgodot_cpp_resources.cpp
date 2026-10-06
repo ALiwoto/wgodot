@@ -353,8 +353,10 @@ class WGodotCppResources {
 				callback += "static_cast<" + method_owner->cpp_name + " *>(p_target), ";
 			}
 			callback += "&" + method_owner->cpp_name + "::m_" + symbol(method_name) + ", UINT64_C(0x" + slot + "))";
+			Vector<String> parameters;
 			Vector<String> defaults;
 			for (const auto *parameter : method->parameters) {
+				parameters.push_back(emitter.type(parameter->type_constraint, parameter));
 				if (parameter->initializer) {
 					defaults.push_back(emitter.converted(parameter->initializer, parameter->type_constraint, parameter));
 				}
@@ -362,6 +364,9 @@ class WGodotCppResources {
 			if (!defaults.is_empty()) {
 				callback += ".with_defaults(std::make_tuple(" + String(", ").join(defaults) + "))";
 			}
+			// Signal connections discard results, including native coroutine tasks.
+			// Adapt before binding/unbinding so neither path needs an engine result ABI.
+			callback = "WGodotNative::WCallable<void(" + String(", ").join(parameters) + ")>::adapt(" + callback + ")";
 			const Array binds = p_state->get_connection_binds(p_index);
 			if (binds.size() > int(method->parameters.size())) {
 				error("Scene connection binds exceed the native target's parameter count.");

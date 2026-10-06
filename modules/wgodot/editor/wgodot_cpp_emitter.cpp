@@ -404,6 +404,7 @@ String WGodotCppEmitter::literal(const Variant &p_value, const Parser::Node *p_o
 		case Variant::VECTOR3I:
 		case Variant::VECTOR4:
 		case Variant::VECTOR4I:
+		case Variant::QUATERNION:
 		case Variant::COLOR: {
 			const Variant::Type value_type = p_value.get_type();
 			const int count = value_type == Variant::VECTOR2 || value_type == Variant::VECTOR2I ? 2 : value_type == Variant::VECTOR3 || value_type == Variant::VECTOR3I ? 3
@@ -424,6 +425,14 @@ String WGodotCppEmitter::literal(const Variant &p_value, const Parser::Node *p_o
 			const Rect2i value = p_value;
 			return "Rect2i(" + literal(value.position, p_origin) + ", " + literal(value.size, p_origin) + ")";
 		}
+		case Variant::PLANE: {
+			const Plane value = p_value;
+			return "Plane(" + literal(value.normal, p_origin) + ", " + literal(value.d, p_origin) + ")";
+		}
+		case Variant::AABB: {
+			const AABB value = p_value;
+			return "AABB(" + literal(value.position, p_origin) + ", " + literal(value.size, p_origin) + ")";
+		}
 		case Variant::TRANSFORM2D: {
 			const Transform2D value = p_value;
 			return "Transform2D(" + literal(value[0], p_origin) + ", " + literal(value[1], p_origin) + ", " + literal(value[2], p_origin) + ")";
@@ -435,6 +444,10 @@ String WGodotCppEmitter::literal(const Variant &p_value, const Parser::Node *p_o
 		case Variant::TRANSFORM3D: {
 			const Transform3D value = p_value;
 			return "Transform3D(" + literal(value.basis, p_origin) + ", " + literal(value.origin, p_origin) + ")";
+		}
+		case Variant::PROJECTION: {
+			const Projection value = p_value;
+			return "Projection(" + literal(value[0], p_origin) + ", " + literal(value[1], p_origin) + ", " + literal(value[2], p_origin) + ", " + literal(value[3], p_origin) + ")";
 		}
 		case Variant::DICTIONARY:
 			if (Dictionary(p_value).is_empty()) {
