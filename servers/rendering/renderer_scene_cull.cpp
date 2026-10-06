@@ -4375,12 +4375,17 @@ void RendererSceneCull::_update_dirty_instance(Instance *p_instance) const {
 }
 
 void RendererSceneCull::update_dirty_instances() const {
-	while (_instance_update_list.first()) {
-		_update_dirty_instance(_instance_update_list.first()->self());
-	}
+	// wgodot-changes::begin
+	do {
+		while (_instance_update_list.first()) {
+			_update_dirty_instance(_instance_update_list.first()->self());
+		}
 
-	// Update dirty resources after dirty instances as instance updates may affect resources.
-	RSG::utilities->update_dirty_resources();
+		// Instance updates can dirty resources. Resource updates can in turn queue
+		// instance bounds (notably skeleton poses); settle those before culling.
+		RSG::utilities->update_dirty_resources();
+	} while (_instance_update_list.first());
+	// wgodot-changes::end
 }
 
 void RendererSceneCull::update() {
