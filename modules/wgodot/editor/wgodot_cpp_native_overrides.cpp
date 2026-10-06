@@ -15,8 +15,8 @@ bool WGodotCppEmitter::validate_native_arguments(const MethodBind *p_method, con
 		if (argument_type == Variant::ARRAY || argument_type == Variant::DICTIONARY) {
 			if (p_origin->type == Parser::Node::CALL) {
 				const auto *call = static_cast<const Parser::CallNode *>(p_origin);
-				if (argument_type == Variant::DICTIONARY && uint32_t(i) >= call->arguments.size()) {
-					continue; // An omitted engine default carries no caller-owned dictionary.
+				if (uint32_t(i) >= call->arguments.size()) {
+					continue; // An omitted engine default carries no caller-owned container.
 				}
 				if (uint32_t(i) < call->arguments.size() && (argument_type == Variant::ARRAY ? is_array_duplicate(call->arguments[i]) : is_dictionary_duplicate(call->arguments[i]))) {
 					continue; // Explicit independent copy, never shared native storage.
@@ -37,8 +37,8 @@ bool WGodotCppEmitter::validate_builtin_arguments(Variant::Type p_type, const St
 		if (argument_type == Variant::ARRAY || argument_type == Variant::DICTIONARY) {
 			if (p_origin->type == Parser::Node::CALL) {
 				const auto *call = static_cast<const Parser::CallNode *>(p_origin);
-				if (argument_type == Variant::DICTIONARY && uint32_t(i) >= call->arguments.size()) {
-					continue;
+				if (uint32_t(i) >= call->arguments.size()) {
+					continue; // Defaults are lowered independently of script container storage.
 				}
 				if (uint32_t(i) < call->arguments.size() && (argument_type == Variant::ARRAY ? is_array_duplicate(call->arguments[i]) : is_dictionary_duplicate(call->arguments[i]))) {
 					continue;

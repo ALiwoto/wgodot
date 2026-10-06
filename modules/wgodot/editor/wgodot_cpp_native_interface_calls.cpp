@@ -18,7 +18,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::native_interface_call(const Parser::Ca
 	int index = 0;
 	for (const PropertyInfo &parameter : method.arguments) {
 		const bool supplied = index < int(p_call->arguments.size());
-		if ((parameter.type == Variant::ARRAY && !(supplied && is_array_duplicate(p_call->arguments[index]))) || (parameter.type == Variant::DICTIONARY && supplied && !is_dictionary_duplicate(p_call->arguments[index]))) {
+		if (supplied && ((parameter.type == Variant::ARRAY && !is_array_duplicate(p_call->arguments[index])) || (parameter.type == Variant::DICTIONARY && !is_dictionary_duplicate(p_call->arguments[index])))) {
 			unsupported(p_call, "native interface container argument " + String(p_call->function_name) + "; pass .duplicate() or add an explicit native handler");
 			return String();
 		}
