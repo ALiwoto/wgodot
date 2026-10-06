@@ -6,6 +6,10 @@
 using Parser = GDScriptParser;
 
 bool WGodotCppEmitter::validate_native_arguments(const MethodBind *p_method, const Parser::Node *p_origin) {
+	if (!p_method->wgodot_get_native_export_error().is_empty()) {
+		unsupported(p_origin, p_method->wgodot_get_native_export_error());
+		return false;
+	}
 	for (int i = 0; i < p_method->get_argument_count(); i++) {
 		const Variant::Type argument_type = p_method->get_argument_type(i);
 		if (argument_type == Variant::ARRAY || argument_type == Variant::DICTIONARY) {

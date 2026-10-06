@@ -6,7 +6,9 @@ param(
 	[switch]$Game,
 	[switch]$Release,
 	[switch]$Optimize,
-	[string]$BuildProfilePath
+	[string]$BuildProfilePath,
+	[ValidatePattern('^([a-z][a-z0-9_]*)?$')]
+	[string]$GameName = ''
 )
 
 $ErrorActionPreference = "Stop"
@@ -19,6 +21,9 @@ if ($Release -and !($Game -or $Templates)) {
 }
 if ($BuildProfilePath -and !$Game) {
 	throw "-BuildProfilePath requires -Game."
+}
+if ($GameName -and !$Game) {
+	throw "-GameName requires -Game."
 }
 if ($BuildProfilePath) {
 	$BuildProfilePath = (Resolve-Path -LiteralPath $BuildProfilePath).Path
@@ -50,6 +55,11 @@ if (!$Optimize) {
 $binarySuffix = ""
 if ($Game) {
 	$gameModulePath = Join-Path $PSScriptRoot "generated/main_game"
+	$gameSuffix = "game"
+	if ($GameName) {
+		$gameModulePath = Join-Path $PSScriptRoot "generated/$GameName/main_game"
+		$gameSuffix = "$GameName.game"
+	}
 	foreach ($moduleFile in @("SCsub", "config.py", "register_types.h", "main_game.json")) {
 		if (!(Test-Path -LiteralPath (Join-Path $gameModulePath $moduleFile) -PathType Leaf)) {
 			throw "Generated native game module is missing '$moduleFile': $gameModulePath. The Plan Z C++ exporter must generate this module before -Game can build it."
@@ -60,13 +70,14 @@ if ($Game) {
 		throw "Incomplete or unsupported native game manifest: $gameModulePath/main_game.json. Run the C++ exporter again."
 	}
 
-	$binarySuffix = ".game"
+	$binarySuffix = ".$gameSuffix"
 	$sconsArgs += @(
 		"custom_modules=$gameModulePath",
 		"custom_modules_recursive=no",
 		"module_main_game_enabled=yes",
 		"module_gdscript_enabled=no",
-		"extra_suffix=game"
+		# Godot applies this to objects and libraries too, preserving each game's builds.
+		"extra_suffix=$gameSuffix"
 	)
 	if ($BuildProfilePath) {
 		$sconsArgs += "build_profile=$BuildProfilePath"

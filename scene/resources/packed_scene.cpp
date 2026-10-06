@@ -202,6 +202,9 @@ Ref<Resource> SceneState::get_remap_resource(const Ref<Resource> &p_resource, Ha
 			p_fallback->set(E.name, value);
 		}
 		remap_cache[p_for_scene][p_resource] = p_fallback;
+		// wgodot-changes::begin
+		p_resource->_wgodot_copy_local_scene(p_fallback.ptr(), p_for_scene, remap_cache[p_for_scene]);
+		// wgodot-changes::end
 		return p_fallback;
 	}
 
@@ -391,7 +394,9 @@ Node *SceneState::instantiate(GenEditState p_edit_state) const {
 			}
 		} else {
 			// Node belongs to this scene and must be created.
-			Object *obj = ClassDB::instantiate(snames[n.type]);
+			// wgodot-changes::begin
+			Object *obj = n.native_constructor ? n.native_constructor() : ClassDB::instantiate(snames[n.type]);
+			// wgodot-changes::end
 
 			node = Object::cast_to<Node>(obj);
 
@@ -469,6 +474,9 @@ Node *SceneState::instantiate(GenEditState p_edit_state) const {
 						dnp.value = props[nprops[j].value];
 						dnp.base = node->get_instance_id();
 						dnp.property = snames[name_idx];
+						// wgodot-changes::begin
+						dnp.native = nprops[j].native;
+						// wgodot-changes::end
 						deferred_node_paths.push_back(dnp);
 						continue;
 					}
@@ -515,7 +523,9 @@ Node *SceneState::instantiate(GenEditState p_edit_state) const {
 							//handle resources that are local to scene by duplicating them if needed
 							Ref<Resource> res = value;
 							if (res.is_valid()) {
-								value = make_local_resource(value, n, resources_local_to_scenes, node, snames[nprops[j].name], i, ret_nodes, p_edit_state);
+								// wgodot-changes::begin
+								value = make_local_resource(value, n, resources_local_to_scenes, node, snames[nprops[j].name], i, ret_nodes, p_edit_state, nprops[j].native);
+								// wgodot-changes::end
 							}
 						} else {
 							// Making sure that instances of inherited scenes don't share the same
@@ -528,7 +538,10 @@ Node *SceneState::instantiate(GenEditState p_edit_state) const {
 						if (value.get_type() == Variant::ARRAY) {
 							Array set_array = value;
 							bool is_get_valid = false;
-							Variant get_value = node->get(snames[nprops[j].name], &is_get_valid);
+							// wgodot-changes::begin
+							Variant get_value = nprops[j].native ? nprops[j].native->read(node) : node->get(snames[nprops[j].name], &is_get_valid);
+							is_get_valid |= nprops[j].native != nullptr;
+							// wgodot-changes::end
 
 							if (is_get_valid && get_value.get_type() == Variant::ARRAY) {
 								Array get_array = get_value;
@@ -539,13 +552,18 @@ Node *SceneState::instantiate(GenEditState p_edit_state) const {
 								}
 							}
 
-							value = setup_resources_in_array(set_array, n, resources_local_to_scenes, node, snames[nprops[j].name], i, ret_nodes, p_edit_state);
+							// wgodot-changes::begin
+							value = setup_resources_in_array(set_array, n, resources_local_to_scenes, node, snames[nprops[j].name], i, ret_nodes, p_edit_state, nprops[j].native);
+							// wgodot-changes::end
 						}
 
 						if (value.get_type() == Variant::DICTIONARY) {
 							Dictionary set_dict = value;
 							bool is_get_valid = false;
-							Variant get_value = node->get(snames[nprops[j].name], &is_get_valid);
+							// wgodot-changes::begin
+							Variant get_value = nprops[j].native ? nprops[j].native->read(node) : node->get(snames[nprops[j].name], &is_get_valid);
+							is_get_valid |= nprops[j].native != nullptr;
+							// wgodot-changes::end
 
 							if (is_get_valid && get_value.get_type() == Variant::DICTIONARY) {
 								Dictionary get_dict = get_value;
@@ -556,7 +574,9 @@ Node *SceneState::instantiate(GenEditState p_edit_state) const {
 								}
 							}
 
-							value = setup_resources_in_dictionary(set_dict, n, resources_local_to_scenes, node, snames[nprops[j].name], i, ret_nodes, p_edit_state);
+							// wgodot-changes::begin
+							value = setup_resources_in_dictionary(set_dict, n, resources_local_to_scenes, node, snames[nprops[j].name], i, ret_nodes, p_edit_state, nprops[j].native);
+							// wgodot-changes::end
 						}
 
 						bool set_valid = true;
@@ -569,7 +589,13 @@ Node *SceneState::instantiate(GenEditState p_edit_state) const {
 						}
 
 						if (set_valid) {
-							node->set(snames[nprops[j].name], value, &valid);
+							// wgodot-changes::begin
+							if (nprops[j].native) {
+								nprops[j].native->write(node, value);
+							} else {
+								node->set(snames[nprops[j].name], value, &valid);
+							}
+							// wgodot-changes::end
 						}
 						if (p_edit_state == GEN_EDIT_STATE_INSTANCE && value.get_type() != Variant::OBJECT) {
 							value = value.duplicate(true); // Duplicate arrays and dictionaries for the editor.
@@ -676,11 +702,29 @@ Node *SceneState::instantiate(GenEditState p_edit_state) const {
 		// Replace properties stored as NodePaths with actual Nodes.
 		Node *base = ObjectDB::get_instance<Node>(dnp.base);
 		ERR_CONTINUE_EDMSG(!base, vformat("Failed to set deferred property '%s' as the base node disappeared.", dnp.property));
+		// wgodot-changes::begin
+		auto read = [&](bool &r_valid) {
+			if (dnp.native) {
+				r_valid = true;
+				return dnp.native->read(base);
+			}
+			return base->get(dnp.property, &r_valid);
+		};
+		auto write = [&](const Variant &p_value) {
+			if (dnp.native) {
+				dnp.native->write(base, p_value);
+			} else {
+				base->set(dnp.property, p_value);
+			}
+		};
+		// wgodot-changes::end
 		if (dnp.value.get_type() == Variant::ARRAY) {
 			Array paths = dnp.value;
 
 			bool valid;
-			Array array = base->get(dnp.property, &valid);
+			// wgodot-changes::begin
+			Array array = read(valid);
+			// wgodot-changes::end
 			ERR_CONTINUE_EDMSG(!valid, vformat("Failed to get property '%s' from node '%s'.", dnp.property, base->get_name()));
 			array = array.duplicate();
 
@@ -688,12 +732,16 @@ Node *SceneState::instantiate(GenEditState p_edit_state) const {
 			for (int i = 0; i < array.size(); i++) {
 				array.set(i, base->get_node_or_null(paths[i]));
 			}
-			base->set(dnp.property, array);
+			// wgodot-changes::begin
+			write(array);
+			// wgodot-changes::end
 		} else if (dnp.value.get_type() == Variant::DICTIONARY) {
 			Dictionary paths = dnp.value;
 
 			bool valid;
-			Dictionary dict = base->get(dnp.property, &valid);
+			// wgodot-changes::begin
+			Dictionary dict = read(valid);
+			// wgodot-changes::end
 			ERR_CONTINUE_EDMSG(!valid, vformat("Failed to get property '%s' from node '%s'.", dnp.property, base->get_name()));
 			dict = dict.duplicate();
 			bool convert_key = dict.get_typed_key_builtin() == Variant::OBJECT &&
@@ -712,9 +760,13 @@ Node *SceneState::instantiate(GenEditState p_edit_state) const {
 				}
 				dict[key] = value;
 			}
-			base->set(dnp.property, dict);
+			// wgodot-changes::begin
+			write(dict);
+			// wgodot-changes::end
 		} else {
-			base->set(dnp.property, base->get_node_or_null(dnp.value));
+			// wgodot-changes::begin
+			write(base->get_node_or_null(dnp.value));
+			// wgodot-changes::end
 		}
 	}
 
@@ -741,13 +793,18 @@ Node *SceneState::instantiate(GenEditState p_edit_state) const {
 			continue;
 		}
 
-		Callable callable(cto, snames[c.method]);
-
 		Array binds;
 
 		for (int bind : c.binds) {
 			binds.push_back(props[bind]);
 		}
+		// wgodot-changes::begin
+		if (c.native) {
+			c.native->connect(cfrom, cto, binds, CONNECT_PERSIST | c.flags);
+			continue;
+		}
+		// wgodot-changes::end
+		Callable callable(cto, snames[c.method]);
 
 		if (!binds.is_empty()) {
 			callable = callable.bindv(binds);
@@ -778,7 +835,9 @@ Node *SceneState::instantiate(GenEditState p_edit_state) const {
 	return ret_nodes[0];
 }
 
-Variant SceneState::make_local_resource(Variant &p_value, const SceneState::NodeData &p_node_data, HashMap<Node *, HashMap<Ref<Resource>, Ref<Resource>>> &p_resources_local_to_scenes, Node *p_node, const StringName p_sname, int p_i, Node **p_ret_nodes, SceneState::GenEditState p_edit_state) const {
+// wgodot-changes::begin
+Variant SceneState::make_local_resource(Variant &p_value, const SceneState::NodeData &p_node_data, HashMap<Node *, HashMap<Ref<Resource>, Ref<Resource>>> &p_resources_local_to_scenes, Node *p_node, const StringName p_sname, int p_i, Node **p_ret_nodes, SceneState::GenEditState p_edit_state, const WGodotSceneProperty *p_native) const {
+// wgodot-changes::end
 	Ref<Resource> res = p_value;
 	if (res.is_null() || !res->is_local_to_scene()) {
 		return p_value;
@@ -787,7 +846,9 @@ Variant SceneState::make_local_resource(Variant &p_value, const SceneState::Node
 	Node *base = (p_i == 0 || p_node->is_instance()) ? p_node : (p_node->get_owner() ? p_node->get_owner() : p_ret_nodes[0]);
 
 	if (p_node_data.type == TYPE_INSTANTIATED) { // For the (root) nodes of sub-scenes, treat them as parts of the sub-scenes.
-		return get_remap_resource(res, p_resources_local_to_scenes, p_node->get(p_sname), base);
+		// wgodot-changes::begin
+		return get_remap_resource(res, p_resources_local_to_scenes, (p_native ? p_native->read(p_node) : p_node->get(p_sname)), base);
+		// wgodot-changes::end
 	}
 
 	// Find the shared copy of the source resource.
@@ -808,16 +869,22 @@ Variant SceneState::make_local_resource(Variant &p_value, const SceneState::Node
 	return local_dupe;
 }
 
-Array SceneState::setup_resources_in_array(Array &p_array_to_scan, const SceneState::NodeData &p_n, HashMap<Node *, HashMap<Ref<Resource>, Ref<Resource>>> &p_resources_local_to_scenes, Node *p_node, const StringName p_sname, int p_i, Node **p_ret_nodes, SceneState::GenEditState p_edit_state) const {
+// wgodot-changes::begin
+Array SceneState::setup_resources_in_array(Array &p_array_to_scan, const SceneState::NodeData &p_n, HashMap<Node *, HashMap<Ref<Resource>, Ref<Resource>>> &p_resources_local_to_scenes, Node *p_node, const StringName p_sname, int p_i, Node **p_ret_nodes, SceneState::GenEditState p_edit_state, const WGodotSceneProperty *p_native) const {
+// wgodot-changes::end
 	for (int i = 0; i < p_array_to_scan.size(); i++) {
 		if (p_array_to_scan[i].get_type() == Variant::OBJECT) {
-			p_array_to_scan[i] = make_local_resource(p_array_to_scan[i], p_n, p_resources_local_to_scenes, p_node, p_sname, p_i, p_ret_nodes, p_edit_state);
+			// wgodot-changes::begin
+			p_array_to_scan[i] = make_local_resource(p_array_to_scan[i], p_n, p_resources_local_to_scenes, p_node, p_sname, p_i, p_ret_nodes, p_edit_state, p_native);
+			// wgodot-changes::end
 		}
 	}
 	return p_array_to_scan;
 }
 
-Dictionary SceneState::setup_resources_in_dictionary(Dictionary &p_dictionary_to_scan, const SceneState::NodeData &p_n, HashMap<Node *, HashMap<Ref<Resource>, Ref<Resource>>> &p_resources_local_to_scenes, Node *p_node, const StringName p_sname, int p_i, Node **p_ret_nodes, SceneState::GenEditState p_edit_state) const {
+// wgodot-changes::begin
+Dictionary SceneState::setup_resources_in_dictionary(Dictionary &p_dictionary_to_scan, const SceneState::NodeData &p_n, HashMap<Node *, HashMap<Ref<Resource>, Ref<Resource>>> &p_resources_local_to_scenes, Node *p_node, const StringName p_sname, int p_i, Node **p_ret_nodes, SceneState::GenEditState p_edit_state, const WGodotSceneProperty *p_native) const {
+// wgodot-changes::end
 	const Array keys = p_dictionary_to_scan.keys();
 	const Array values = p_dictionary_to_scan.values();
 
@@ -825,8 +892,10 @@ Dictionary SceneState::setup_resources_in_dictionary(Dictionary &p_dictionary_to
 		Array duplicated_keys = keys.duplicate(true);
 		Array duplicated_values = values.duplicate(true);
 
-		duplicated_keys = setup_resources_in_array(duplicated_keys, p_n, p_resources_local_to_scenes, p_node, p_sname, p_i, p_ret_nodes, p_edit_state);
-		duplicated_values = setup_resources_in_array(duplicated_values, p_n, p_resources_local_to_scenes, p_node, p_sname, p_i, p_ret_nodes, p_edit_state);
+		// wgodot-changes::begin
+		duplicated_keys = setup_resources_in_array(duplicated_keys, p_n, p_resources_local_to_scenes, p_node, p_sname, p_i, p_ret_nodes, p_edit_state, p_native);
+		duplicated_values = setup_resources_in_array(duplicated_values, p_n, p_resources_local_to_scenes, p_node, p_sname, p_i, p_ret_nodes, p_edit_state, p_native);
+		// wgodot-changes::end
 		p_dictionary_to_scan.clear();
 
 		for (int i = 0; i < keys.size(); i++) {
@@ -1553,6 +1622,9 @@ Error SceneState::copy_from(const Ref<SceneState> &p_scene_state) {
 		editable_instances.append(E);
 	}
 	base_scene_idx = p_scene_state->base_scene_idx;
+	// wgodot-changes::begin
+	ids = p_scene_state->ids;
+	// wgodot-changes::end
 
 	return OK;
 }
@@ -2692,7 +2764,12 @@ void PackedScene::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("can_instantiate"), &PackedScene::can_instantiate);
 	ClassDB::bind_method(D_METHOD("_set_bundled_scene", "scene"), &PackedScene::_set_bundled_scene);
 	ClassDB::bind_method(D_METHOD("_get_bundled_scene"), &PackedScene::_get_bundled_scene);
-	ClassDB::bind_method(D_METHOD("get_state"), &PackedScene::get_state);
+	// wgodot-changes::begin
+	[[maybe_unused]] MethodBind *native_state_method = ClassDB::bind_method(D_METHOD("get_state"), &PackedScene::get_state);
+#ifdef TOOLS_ENABLED
+	native_state_method->wgodot_set_native_export_error("PackedScene.get_state() is not supported for compiled native scenes.");
+#endif
+	// wgodot-changes::end
 
 	ADD_PROPERTY(PropertyInfo(Variant::DICTIONARY, "_bundled", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE | PROPERTY_USAGE_INTERNAL), "_set_bundled_scene", "_get_bundled_scene");
 

@@ -3171,6 +3171,9 @@ void Node::_duplicate_properties(const Node *p_root, const Node *p_original, Nod
 		}
 	}
 
+	// wgodot-changes::begin
+	p_original->_wgodot_native_copy(p_copy, p_root, p_flags);
+	// wgodot-changes::end
 	for (int i = 0; i < p_original->get_child_count(false); i++) {
 		Node *copy_child = p_copy->get_child(i, false);
 		ERR_FAIL_NULL_MSG(copy_child, "Child node disappeared while duplicating.");
@@ -3221,6 +3224,17 @@ void Node::_duplicate_signals(const Node *p_original, Node *p_copy) const {
 					copytarget = p_copy->get_node(ptarget);
 				}
 
+				// wgodot-changes::begin
+				if (copy && copytarget && E.callable.is_custom()) {
+					const Callable native_copy = E.callable.get_custom()->wgodot_retarget(copytarget);
+					if (!native_copy.is_null()) {
+						if (!copy->is_connected(E.signal.get_name(), native_copy)) {
+							copy->connect(E.signal.get_name(), native_copy, E.flags);
+						}
+						continue;
+					}
+				}
+				// wgodot-changes::end
 				if (copy && copytarget && E.callable.get_method() != StringName()) {
 					Callable copy_callable = Callable(copytarget, E.callable.get_method());
 					if (!copy->is_connected(E.signal.get_name(), copy_callable)) {
@@ -3237,6 +3251,12 @@ void Node::_duplicate_signals(const Node *p_original, Node *p_copy) const {
 			}
 		}
 
+		// wgodot-changes::begin
+		Node *native_copy = p_copy->get_node_or_null(p_original->get_path_to(n));
+		if (native_copy) {
+			n->_wgodot_native_copy_signals(native_copy, p_original);
+		}
+		// wgodot-changes::end
 		for (int i = 0; i < n->get_child_count(); i++) {
 			process_list.push_back(n->get_child(i));
 		}

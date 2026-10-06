@@ -32,6 +32,7 @@
 bin
 # wgodot-changes::begin
 /generated/main_game/
+/generated/*/main_game/
 # wgodot-changes::end
 *.gen.*
 compile_commands.json

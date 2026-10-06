@@ -577,6 +577,7 @@ String WGodotCppEmitter::leaf_expression(const Parser::ExpressionNode *p_express
 Error WGodotCppEmitter::generate() {
 	WGodotGDScriptExportTransform::ExportAnalysis::Scope scope(*project.export_analysis);
 	files.clear();
+	reflection_default_classes.clear();
 	resource_ids.clear();
 	preload_indices.clear();
 	preloads = project.get_preloads();
@@ -607,6 +608,7 @@ Error WGodotCppEmitter::generate() {
 			emit_class(entry);
 		}
 	} while (required_classes.size() != required_count);
+	emit_resources();
 	HashSet<StringName> emitted_interfaces;
 	while (emitted_interfaces.size() < used_native_interfaces.size()) {
 		Vector<StringName> pending;
@@ -635,7 +637,7 @@ Error WGodotCppEmitter::generate() {
 	files.insert("register_types.h", "// wgodot-changes::file\n#pragma once\n#include \"modules/register_module_types.h\"\nvoid initialize_main_game_module(ModuleInitializationLevel p_level);\nvoid uninitialize_main_game_module(ModuleInitializationLevel p_level);\n");
 	String registration = "// wgodot-changes::file\n#include \"register_types.h\"\n#include \"modules/wgodot/native/wgodot_native_static.h\"\n#include \"modules/wgodot/native/wgodot_native_task.h\"\n#include \"core/object/wgodot_native_interfaces.h\"\n";
 	emit_preloads();
-	registration += "#include \"modules/wgodot/wgodot_preloads.h\"\nvoid register_main_game_preloads();\n";
+	registration += "#include \"modules/wgodot/wgodot_preloads.h\"\n#include \"core/io/wgodot_native_resources.h\"\nvoid register_main_game_preloads();\nvoid register_main_game_resources();\n";
 	String body;
 	if (trace_enabled) {
 		body += "#ifdef DEBUG_ENABLED\n\tWGodotNative::NativeDebug::initialize();\n#endif\n";
@@ -648,7 +650,16 @@ Error WGodotCppEmitter::generate() {
 			register_class(entry, registered, body);
 		}
 	}
-	registration += "\nusing namespace WGodotGame;\nvoid initialize_main_game_module(ModuleInitializationLevel p_level) {\n\tif (p_level != MODULE_INITIALIZATION_LEVEL_SCENE) { return; }\n" + body + "}\nvoid uninitialize_main_game_module(ModuleInitializationLevel p_level) {\n\tif (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {\n\t\tWGodotNative::NativeTask::clear_all();\n\t\tWGodotNative::StaticRegistry::get().clear();\n\t\tWGodotNative::NativeConnections::clear();\n\t\tWGodotNativeInterfaces::clear();\n\t\tWGodotPreloads::deinitialize();\n\t}\n}\n";
+	body += "\tregister_main_game_resources();\n";
+	Vector<String> default_classes;
+	for (const String &name : reflection_default_classes) {
+		default_classes.push_back(name);
+	}
+	default_classes.sort();
+	for (const String &name : default_classes) {
+		body += "\t" + name + "::bind_reflection_defaults();\n";
+	}
+	registration += "\nusing namespace WGodotGame;\nvoid initialize_main_game_module(ModuleInitializationLevel p_level) {\n\tif (p_level != MODULE_INITIALIZATION_LEVEL_SCENE) { return; }\n" + body + "}\nvoid uninitialize_main_game_module(ModuleInitializationLevel p_level) {\n\tif (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {\n\t\tWGodotNativeResources::clear();\n\t\tWGodotNative::NativeTask::clear_all();\n\t\tWGodotNative::StaticRegistry::get().clear();\n\t\tWGodotNative::NativeConnections::clear();\n\t\tWGodotNativeInterfaces::clear();\n\t\tWGodotPreloads::deinitialize();\n\t}\n}\n";
 	// No class namespace is needed when there are no runtime classes.
 	if (registered.is_empty()) {
 		registration = registration.replace("using namespace WGodotGame;\n", "");
@@ -726,6 +737,9 @@ Error WGodotCppEmitter::write(const String &p_directory) const {
 	}
 	manifest["sources"] = sources;
 	manifest["native_classes"] = native_classes;
+	manifest["compiled_resources"] = compiled_resources;
+	manifest["compiled_resource_aliases"] = compiled_resource_aliases;
+	manifest["resource_sources"] = resource_sources;
 	Dictionary resource_paths;
 	for (const KeyValue<String, int64_t> &entry : resource_ids) {
 		resource_paths[entry.key] = entry.value;

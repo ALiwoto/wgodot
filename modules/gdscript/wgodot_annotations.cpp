@@ -10,6 +10,7 @@
 #include "gdscript_parser.h"
 
 void GDScriptParser::register_wgodot_annotations() {
+	register_annotation(MethodInfo("@export_reflection"), AnnotationInfo::CLASS_LEVEL | AnnotationInfo::ENUM, &GDScriptParser::wgodot_export_reflection_annotation);
 	register_annotation(MethodInfo("@override"), AnnotationInfo::FUNCTION, &GDScriptParser::wgodot_override_annotation);
 	register_annotation(MethodInfo("@private"), AnnotationInfo::CLASS_LEVEL, &GDScriptParser::wgodot_private_annotation);
 	register_annotation(MethodInfo("@protected"), AnnotationInfo::CLASS_LEVEL, &GDScriptParser::wgodot_protected_annotation);
@@ -18,6 +19,15 @@ void GDScriptParser::register_wgodot_annotations() {
 	register_annotation(MethodInfo("@no_mangle"), AnnotationInfo::CONSTANT | AnnotationInfo::STATEMENT | AnnotationInfo::ENUM, &GDScriptParser::wgodot_no_mangle_annotation);
 	register_annotation(MethodInfo("@no_string_mangle"), AnnotationInfo::SCRIPT | AnnotationInfo::CLASS | AnnotationInfo::FUNCTION, &GDScriptParser::wgodot_no_string_mangle_annotation);
 	register_annotation(MethodInfo("@partial", PropertyInfo(Variant::STRING, "path")), AnnotationInfo::SCRIPT | AnnotationInfo::CLASS, &GDScriptParser::wgodot_noop_annotation, Vector<Variant>(), true);
+}
+
+bool GDScriptParser::wgodot_export_reflection_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class) {
+	if (!p_target || p_target->wgodot_export_reflection) {
+		push_error("@export_reflection must be applied once to a class member.", p_annotation);
+		return false;
+	}
+	p_target->wgodot_export_reflection = true;
+	return true;
 }
 
 bool GDScriptParser::wgodot_noop_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class) {

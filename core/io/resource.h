@@ -64,6 +64,10 @@ protected:
 		bool deep = false;
 		ResourceDeepDuplicateMode subres_mode = RESOURCE_DEEP_DUPLICATE_MAX;
 		Node *local_scene = nullptr;
+		// wgodot-changes::begin
+		bool copy_only = false;
+		HashMap<Ref<Resource>, Ref<Resource>> *native_cache = nullptr;
+		// wgodot-changes::end
 	};
 
 private:
@@ -122,6 +126,11 @@ protected:
 	GDVIRTUAL0(_reset_state);
 
 	virtual Ref<Resource> _duplicate(const DuplicateParams &p_params) const;
+	// wgodot-changes::begin
+	virtual void _wgodot_native_copy(Resource *p_copy, const DuplicateParams &p_params) const {}
+	void _wgodot_copy_local_scene(Resource *p_copy, Node *p_scene, DuplicateRemapCacheT &p_cache) const;
+	Variant _wgodot_duplicate_value(const Variant &p_value, const DuplicateParams &p_params, uint32_t p_usage) const;
+	// wgodot-changes::end
 	virtual String _to_string() override;
 
 public:

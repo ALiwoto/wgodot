@@ -370,6 +370,9 @@ public:
 		int end_column = -1;
 		Node *next = nullptr;
 		List<AnnotationNode *> annotations;
+		// wgodot-changes::begin
+		bool wgodot_export_reflection = false;
+		// wgodot-changes::end
 
 		virtual bool is_expression() const { return false; }
 
@@ -1685,6 +1688,9 @@ private:
 	template <PropertyHint t_hint, Variant::Type t_type>
 	bool export_annotations(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	bool export_storage_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
+	// wgodot-changes::begin
+	bool wgodot_export_reflection_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
+	// wgodot-changes::end
 	bool export_custom_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	bool export_tool_button_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	template <PropertyUsageFlags t_usage>

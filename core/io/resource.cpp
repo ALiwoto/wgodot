@@ -255,6 +255,11 @@ Error Resource::copy_from(const Ref<Resource> &p_resource) {
 		set(E.name, p_resource->get(E.name));
 	}
 
+	// wgodot-changes::begin
+	DuplicateParams native_params;
+	native_params.copy_only = true;
+	p_resource->_wgodot_native_copy(this, native_params);
+	// wgodot-changes::end
 	_unblock_emit_changed();
 
 	return OK;
@@ -424,6 +429,13 @@ Ref<Resource> Resource::_duplicate(const DuplicateParams &p_params) const {
 		AFTER_USER_CODE
 	}
 
+	// wgodot-changes::begin
+	DuplicateParams native_params = p_params;
+	native_params.native_cache = thread_duplicate_remap_cache;
+	BEFORE_USER_CODE
+	_wgodot_native_copy(r.ptr(), native_params);
+	AFTER_USER_CODE
+	// wgodot-changes::end
 	return r;
 
 #undef BEFORE_USER_CODE

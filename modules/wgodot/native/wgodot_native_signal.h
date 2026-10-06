@@ -6,6 +6,7 @@
 
 #include "core/os/mutex.h"
 #include "core/templates/safe_refcount.h"
+#include "scene/main/node.h"
 
 namespace WGodotNative {
 
@@ -30,6 +31,7 @@ class WSignal {
 		SafeFlag active{ true };
 		uint64_t next_id = 1;
 		Vector<Connection> connections;
+		std::function<WSignal(Object *)> resolve_owner;
 	};
 	std::shared_ptr<State> state;
 	mutable Signal engine_signal;
@@ -81,7 +83,41 @@ public:
 					// Validity can be checked while a different signal holds its mutex.
 					return source.state ? source.state->active.is_set() : source.engine_signal.get_object() != nullptr;
 				},
-				get_object_id(), std::move(identity));
+				get_object_id(), std::move(identity))
+				.with_retarget([source](Object *p_target) {
+					if (source.state && source.state->resolve_owner) {
+						return source.state->resolve_owner(p_target).emit_callable();
+					}
+					return WSignal(Signal(p_target, source.engine_signal.get_name())).emit_callable();
+				});
+	}
+	void duplicate_connections_to(const WSignal &p_copy, const Node *p_root, const Node *p_source, Node *p_copy_node) const {
+		if (!state) {
+			return;
+		}
+		Vector<Connection> snapshot;
+		{
+			MutexLock lock(state->mutex);
+			snapshot = state->connections;
+		}
+		for (const Connection &connection : snapshot) {
+			if (!(connection.flags & Object::CONNECT_PERSIST)) {
+				continue;
+			}
+			Object *receiver = ObjectDB::get_instance(connection.callback.get_object_id());
+			Node *target = Object::cast_to<Node>(receiver);
+			Callback callback = connection.callback;
+			if (target && (target == p_root || p_root->is_ancestor_of(target))) {
+				receiver = p_copy_node->get_node_or_null(p_source->get_path_to(target));
+				callback = callback.retarget(receiver);
+			}
+			if (callback.is_valid() && !p_copy.is_connected(callback)) {
+				const int count = MAX(1, connection.references);
+				for (int i = 0; i < count; i++) {
+					p_copy.connect(callback, connection.flags);
+				}
+			}
+		}
 	}
 	template <class Signature>
 	Error connect(const WCallable<Signature> &p_callback, int64_t p_flags = 0) const {
@@ -136,7 +172,7 @@ public:
 		ERR_PRINT("Native signal callback is not connected.");
 	}
 	void emit(Args... p_args) const {
-		if (!state) {
+		if (!state || !engine_signal.is_null()) {
 			if constexpr ((std::is_constructible_v<Variant, Args> && ...)) {
 				std::array<Variant, sizeof...(Args)> values{ Variant(p_args)... };
 				std::array<const Variant *, sizeof...(Args)> pointers{};
@@ -219,10 +255,20 @@ class SignalSource {
 	WSignal<Args...> value;
 
 public:
-	explicit SignalSource(Object *p_owner = nullptr) {
+	explicit SignalSource(Object *p_owner = nullptr, const StringName &p_reflected_name = StringName(), std::function<WSignal<Args...>(Object *)> p_resolve_owner = {}) {
 		value.state = std::make_shared<typename WSignal<Args...>::State>();
+		value.state->resolve_owner = std::move(p_resolve_owner);
 		if (p_owner) {
 			value.state->owner = p_owner->get_instance_id();
+			if (!p_reflected_name.is_empty()) {
+				value.engine_signal = Signal(p_owner, p_reflected_name);
+				WSignal<Args...> native = value;
+				native.engine_signal = Signal();
+				auto callback = WCallable<void(Args...)>::make([native](Args... p_args) { native.emit(p_args...); }, {}, p_owner->get_instance_id());
+				if constexpr ((std::is_constructible_v<Variant, Args> && ...)) {
+					value.engine_signal.connect(callback.to_callable());
+				}
+			}
 		}
 	}
 	SignalSource(const SignalSource &) = delete;

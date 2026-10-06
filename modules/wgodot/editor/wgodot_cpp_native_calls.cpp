@@ -118,6 +118,10 @@ WGodotCppEmitter::Value WGodotCppEmitter::native_call(const Parser::CallNode *p_
 }
 
 WGodotCppEmitter::Value WGodotCppEmitter::native_invoke(const MethodBind *p_method, Value p_receiver, Vector<Value> p_arguments, const String &p_result, const Parser::Node *p_origin) {
+	if (!p_method->wgodot_get_native_export_error().is_empty()) {
+		unsupported(p_origin, p_method->wgodot_get_native_export_error());
+		return Value();
+	}
 	class_call_headers.insert("modules/wgodot/native/wgodot_native_calls.h");
 	Parser::DataType owner_type;
 	owner_type.kind = Parser::DataType::NATIVE;

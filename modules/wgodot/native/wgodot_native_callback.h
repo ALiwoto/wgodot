@@ -85,6 +85,14 @@ struct EngineCallbackIdentity : CallbackIdentity {
 template <class Signature>
 class WCallable;
 
+template <class R, class Tuple, class Indices>
+struct BoundCallable;
+
+template <class R, class Tuple, size_t... I>
+struct BoundCallable<R, Tuple, std::index_sequence<I...>> {
+	using Type = WCallable<R(std::tuple_element_t<I, Tuple>...)>;
+};
+
 template <class R, class... Args>
 class WCallable<R(Args...)> {
 	template <class>
@@ -98,6 +106,7 @@ class WCallable<R(Args...)> {
 	};
 	std::shared_ptr<const Invocation> invocation;
 	std::shared_ptr<CallbackIdentity> identity;
+	std::shared_ptr<const std::function<WCallable(Object *)>> rebinder;
 	ObjectID owner;
 	std::tuple<Args...> defaults{};
 	int default_count = 0;
@@ -127,8 +136,8 @@ class WCallable<R(Args...)> {
 		default_count = sizeof...(I);
 	}
 	template <class Tuple, size_t... I>
-	auto bind_tuple(Tuple p_bound, std::index_sequence<I...>) const {
-		using Bound = WCallable<R(std::tuple_element_t<I, std::tuple<Args...>>...)>;
+	typename BoundCallable<R, std::tuple<Args...>, std::index_sequence<I...>>::Type bind_tuple(Tuple p_bound, std::index_sequence<I...>) const {
+		using Bound = typename BoundCallable<R, std::tuple<Args...>, std::index_sequence<I...>>::Type;
 		if (is_null()) {
 			return Bound();
 		}
@@ -140,6 +149,9 @@ class WCallable<R(Args...)> {
 				invocation->valid, owner, std::make_shared<BoundIdentity<Tuple>>(identity, bound));
 		result.defaults = std::make_tuple(std::get<I>(defaults)...);
 		result.default_count = MAX(0, default_count - int(std::tuple_size_v<Tuple>));
+		result = result.with_retarget([source, bound](Object *p_target) {
+			return source.retarget(p_target).bind_tuple(*bound, std::index_sequence<I...>());
+		});
 #ifdef WGODOT_NATIVE_TRACE_ACTIVE
 		result.debug_source = debug_source;
 #endif
@@ -151,6 +163,20 @@ public:
 	using Arguments = std::tuple<Args...>;
 	static constexpr size_t argument_count = sizeof...(Args);
 	WCallable() = default;
+	WCallable with_retarget(std::function<WCallable(Object *)> p_rebinder) const {
+		WCallable result = *this;
+		result.rebinder = std::make_shared<const std::function<WCallable(Object *)>>(std::move(p_rebinder));
+		return result;
+	}
+	WCallable retarget(Object *p_target) const {
+		if (!rebinder) {
+			return p_target && p_target->get_instance_id() == owner ? *this : WCallable();
+		}
+		WCallable result = (*rebinder)(p_target);
+		result.defaults = defaults;
+		result.default_count = default_count;
+		return result;
+	}
 #ifdef WGODOT_NATIVE_TRACE_ACTIVE
 	WCallable with_debug_source(DebugSource p_source) const {
 		WCallable result = *this;
@@ -238,6 +264,7 @@ public:
 			result.defaults = p_source.defaults;
 			result.default_count = p_source.default_count;
 		}
+		result = result.with_retarget([p_source](Object *p_target) { return adapt(p_source.retarget(p_target)); });
 #ifdef WGODOT_NATIVE_TRACE_ACTIVE
 		result.debug_source = p_source.debug_source;
 #endif
@@ -259,6 +286,7 @@ public:
 			return call_unbound(p_source, args, std::make_index_sequence<sizeof...(Args) - Count>());
 		},
 				[p_source]() { return p_source.is_valid(); }, p_source.owner, std::make_shared<UnboundIdentity>(p_source.identity, Count));
+		result = result.with_retarget([p_source](Object *p_target) { return unbind<Count>(p_source.retarget(p_target)); });
 #ifdef WGODOT_NATIVE_TRACE_ACTIVE
 		result.debug_source = p_source.debug_source;
 #endif
@@ -273,7 +301,20 @@ public:
 			Callable::CallError error;
 			p_callable.callp(pointers.data(), pointers.size(), result, error);
 			if (error.error != Callable::CallError::CALL_OK) { ERR_PRINT("Engine callback invocation failed."); }
-			if constexpr (!std::is_void_v<R>) { return convert<R>(result); } }, [p_callable]() { return p_callable.is_valid(); }, p_callable.get_object_id(), std::make_shared<EngineCallbackIdentity>(p_callable));
+			if constexpr (!std::is_void_v<R>) { return convert<R>(result); } }, [p_callable]() { return p_callable.is_valid(); }, p_callable.get_object_id(), std::make_shared<EngineCallbackIdentity>(p_callable))
+				.with_retarget([p_callable](Object *p_target) {
+					if (!p_target) {
+						return WCallable();
+					}
+					if (p_callable.is_custom() && p_callable.get_method().is_empty()) {
+						return from_callable(p_callable.get_custom()->wgodot_retarget(p_target));
+					}
+					Callable target(p_target, p_callable.get_method());
+					if (p_callable.get_unbound_arguments_count() > 0) {
+						target = target.unbind(p_callable.get_unbound_arguments_count());
+					}
+					return from_callable(target.bindv(p_callable.get_bound_arguments()));
+				});
 	}
 	Callable to_callable() const;
 	template <class... Values>
@@ -321,6 +362,7 @@ public:
 	CompareLessFunc get_compare_less_func() const override { return &less; }
 	ObjectID get_object() const override { return callback.get_object_id(); }
 	bool is_valid() const override { return callback.is_valid(); }
+	Callable wgodot_retarget(Object *p_target) const override { return callback.retarget(p_target).to_callable(); }
 	int get_argument_count(bool &r_valid) const override {
 		r_valid = true;
 		return sizeof...(Args);
@@ -371,12 +413,13 @@ void WCallable<R(Args...)>::call_deferred(Values... p_args) const {
 }
 
 template <class Instance, class Owner, class R, class... Args>
-auto method_callable(Instance *p_owner, R (Owner::*p_method)(Args...), uint64_t p_slot) {
+WCallable<R(Args...)> method_callable(Instance *p_owner, R (Owner::*p_method)(Args...), uint64_t p_slot) {
 	if (!p_owner) {
 		return WCallable<R(Args...)>();
 	}
 	const ObjectID id = p_owner->get_instance_id();
-	return WCallable<R(Args...)>::make([id, p_method](Args... p_args) -> R { return (static_cast<Owner *>(ObjectDB::get_instance(id))->*p_method)(p_args...); }, [id]() { return ObjectDB::get_instance(id) != nullptr; }, id, std::make_shared<MethodIdentity>(id, p_slot));
+	return WCallable<R(Args...)>::make([id, p_method](Args... p_args) -> R { return (static_cast<Owner *>(ObjectDB::get_instance(id))->*p_method)(p_args...); }, [id]() { return ObjectDB::get_instance(id) != nullptr; }, id, std::make_shared<MethodIdentity>(id, p_slot))
+			.with_retarget([p_method, p_slot](Object *p_target) { return method_callable(Object::cast_to<Owner>(p_target), p_method, p_slot); });
 }
 
 template <class R, class... Args>

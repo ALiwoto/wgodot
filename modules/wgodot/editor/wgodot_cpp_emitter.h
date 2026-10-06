@@ -9,9 +9,11 @@
 
 class MethodBind;
 class WGodotCppAsync;
+class WGodotCppResources;
 
 class WGodotCppEmitter {
 	friend class WGodotCppAsync;
+	friend class WGodotCppResources;
 	using Value = WGodotCppExpression;
 	const WGodotCppProject &project;
 	const bool trace_enabled;
@@ -32,6 +34,7 @@ class WGodotCppEmitter {
 	HashSet<String> class_dependencies;
 	HashSet<const GDScriptParser::ClassNode *> required_classes;
 	HashSet<const GDScriptParser::ClassNode *> inherited_classes;
+	HashSet<String> reflection_default_classes;
 	HashSet<String> class_call_headers;
 	HashMap<String, int> preload_indices;
 	Vector<WGodotCppProject::Preload> preloads;
@@ -99,6 +102,10 @@ class WGodotCppEmitter {
 
 	void unsupported(const GDScriptParser::Node *p_node, const String &p_feature);
 	HashMap<String, int64_t> resource_ids;
+	Dictionary compiled_resources;
+	Dictionary compiled_resource_aliases;
+	Dictionary resource_sources;
+	void emit_resources();
 	int64_t resource_id(const String &p_path);
 	Value resource_path_constant(const Variant &p_value);
 	String source_header(const String &p_path, const String &p_class) const;
@@ -205,6 +212,7 @@ class WGodotCppEmitter {
 	String function(const GDScriptParser::FunctionNode *p_function, String &r_declaration, const String &p_cpp_name = String());
 	String lambda(const GDScriptParser::LambdaNode *p_lambda);
 	void emit_class(const WGodotCppProject::Class &p_class);
+	void emit_reflection(const WGodotCppProject::Class &p_class, String &r_declaration, String &r_definitions);
 	void emit_class_lifecycle(const WGodotCppProject::Class &p_class, const String &p_initialization, String p_static_fields, String p_static_initialization, String &r_declaration, String &r_definitions);
 	void emit_interface(const WGodotCppProject::Class &p_class);
 	bool is_interface_type(const GDScriptParser::DataType &p_type) const;

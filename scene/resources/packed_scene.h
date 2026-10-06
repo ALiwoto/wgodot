@@ -32,6 +32,9 @@
 
 #include "core/io/resource.h"
 #include "scene/main/node.h"
+// wgodot-changes::begin
+#include "wgodot_scene_property.h"
+// wgodot-changes::end
 
 class PackedScene;
 
@@ -66,16 +69,25 @@ class SceneState : public RefCounted {
 		struct Property {
 			int name = 0;
 			int value = 0;
+			// wgodot-changes::begin
+			const WGodotSceneProperty *native = nullptr;
+			// wgodot-changes::end
 		};
 
 		Vector<Property> properties;
 		Vector<int> groups;
+		// wgodot-changes::begin
+		Node *(*native_constructor)() = nullptr;
+		// wgodot-changes::end
 	};
 
 	struct DeferredNodePathProperties {
 		ObjectID base;
 		StringName property;
 		Variant value;
+		// wgodot-changes::begin
+		const WGodotSceneProperty *native = nullptr;
+		// wgodot-changes::end
 	};
 
 	Vector<NodeData> nodes;
@@ -88,6 +100,9 @@ class SceneState : public RefCounted {
 		int flags = 0;
 		int unbinds = 0;
 		Vector<int> binds;
+		// wgodot-changes::begin
+		const WGodotSceneConnection *native = nullptr;
+		// wgodot-changes::end
 	};
 
 	Vector<ConnectionData> connections;
@@ -164,9 +179,11 @@ public:
 	bool can_instantiate() const;
 	Node *instantiate(GenEditState p_edit_state) const;
 
-	Array setup_resources_in_array(Array &array_to_scan, const SceneState::NodeData &n, HashMap<Node *, HashMap<Ref<Resource>, Ref<Resource>>> &p_resources_local_to_scenes, Node *node, const StringName sname, int i, Node **ret_nodes, SceneState::GenEditState p_edit_state) const;
-	Dictionary setup_resources_in_dictionary(Dictionary &p_dictionary_to_scan, const SceneState::NodeData &p_n, HashMap<Node *, HashMap<Ref<Resource>, Ref<Resource>>> &p_resources_local_to_scenes, Node *p_node, const StringName p_sname, int p_i, Node **p_ret_nodes, SceneState::GenEditState p_edit_state) const;
-	Variant make_local_resource(Variant &value, const SceneState::NodeData &p_node_data, HashMap<Node *, HashMap<Ref<Resource>, Ref<Resource>>> &p_resources_local_to_scenes, Node *p_node, const StringName p_sname, int p_i, Node **p_ret_nodes, SceneState::GenEditState p_edit_state) const;
+	// wgodot-changes::begin
+	Array setup_resources_in_array(Array &array_to_scan, const SceneState::NodeData &n, HashMap<Node *, HashMap<Ref<Resource>, Ref<Resource>>> &p_resources_local_to_scenes, Node *node, const StringName sname, int i, Node **ret_nodes, SceneState::GenEditState p_edit_state, const WGodotSceneProperty *p_native = nullptr) const;
+	Dictionary setup_resources_in_dictionary(Dictionary &p_dictionary_to_scan, const SceneState::NodeData &p_n, HashMap<Node *, HashMap<Ref<Resource>, Ref<Resource>>> &p_resources_local_to_scenes, Node *p_node, const StringName p_sname, int p_i, Node **p_ret_nodes, SceneState::GenEditState p_edit_state, const WGodotSceneProperty *p_native = nullptr) const;
+	Variant make_local_resource(Variant &value, const SceneState::NodeData &p_node_data, HashMap<Node *, HashMap<Ref<Resource>, Ref<Resource>>> &p_resources_local_to_scenes, Node *p_node, const StringName p_sname, int p_i, Node **p_ret_nodes, SceneState::GenEditState p_edit_state, const WGodotSceneProperty *p_native = nullptr) const;
+	// wgodot-changes::end
 	bool has_local_resource(const Array &p_array) const;
 
 	Ref<SceneState> get_base_scene_state() const;
@@ -225,6 +242,12 @@ public:
 	void set_base_scene(int p_idx);
 	void add_connection(int p_from, int p_to, int p_signal, int p_method, int p_flags, int p_unbinds, const Vector<int> &p_binds);
 	void add_editable_instance(const NodePath &p_path);
+	// wgodot-changes::begin
+	void set_native_node(int p_node, Node *(*p_constructor)());
+	void set_native_property(int p_node, int p_property, const WGodotSceneProperty *p_accessor);
+	void set_native_connection(int p_connection, const WGodotSceneConnection *p_connection_data);
+	void copy_native_accessors_from(const Ref<SceneState> &p_source);
+	// wgodot-changes::end
 
 	bool remove_group_references(const StringName &p_name);
 	bool rename_group_references(const StringName &p_old_name, const StringName &p_new_name);
@@ -258,6 +281,9 @@ protected:
 	virtual bool editor_can_reload_from_file() override { return false; } // this is handled by editor better
 	static void _bind_methods();
 	virtual void reset_state() override;
+	// wgodot-changes::begin
+	void _wgodot_native_copy(Resource *p_copy, const DuplicateParams &p_params) const override;
+	// wgodot-changes::end
 
 public:
 	enum GenEditState {

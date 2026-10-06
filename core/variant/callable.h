@@ -154,6 +154,7 @@ public:
 	virtual CallableCustomBind *as_bind() { return nullptr; }
 	virtual CallableCustomUnbind *as_unbind() { return nullptr; }
 	virtual void *get_userdata(void *p_token) const { return nullptr; }
+	virtual Callable wgodot_retarget(Object *p_target) const { return Callable(); }
 	// wgodot-changes::end
 
 	typedef bool (*CompareEqualFunc)(const CallableCustom *p_a, const CallableCustom *p_b);

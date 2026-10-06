@@ -17,6 +17,7 @@ class WGodotResourceExport {
 	HashMap<String, int64_t> ids;
 	HashMap<int64_t, Entry> entries;
 	HashSet<int64_t> payloads;
+	HashSet<int64_t> native_resources;
 	HashSet<int64_t> required;
 	HashMap<uint32_t, String> formats;
 	int64_t next_id = 1;
@@ -29,6 +30,7 @@ class WGodotResourceExport {
 
 public:
 	void initialize(const Dictionary &p_paths);
+	void add_native_resource(const String &p_path, const String &p_type, const String &p_target = String());
 	String path(const String &p_original);
 	Variant rewrite_value(const Variant &p_value, const PropertyInfo &p_property = PropertyInfo());
 	Error export_file(String &r_path, Vector<uint8_t> &r_data);

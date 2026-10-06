@@ -1,5 +1,6 @@
 // wgodot-changes::file
 #include "wgodot_resource_export.h"
+#include "wgodot_resource_rewrite.h"
 
 #include "core/config/project_settings.h"
 #include "core/io/config_file.h"
@@ -11,40 +12,14 @@
 #include "core/io/stream_peer.h"
 #include "core/io/wgodot_resource_paths.h"
 #include "core/io/wgodot_resource_serialization.h"
-#include "core/string/string_builder.h"
 #include "core/variant/variant_parser.h"
 #include "editor/file_system/editor_paths.h"
-
-namespace {
-PropertyInfo container_element_property(const PropertyInfo &p_container, int p_index = 0) {
-	PropertyInfo property;
-	if (p_container.hint != PROPERTY_HINT_TYPE_STRING && p_container.hint != PROPERTY_HINT_ARRAY_TYPE && p_container.hint != PROPERTY_HINT_DICTIONARY_TYPE) {
-		return property;
-	}
-	String hint = p_container.hint_string;
-	if (p_container.type == Variant::DICTIONARY) {
-		const PackedStringArray types = hint.split(";", true, 1);
-		if (p_index >= types.size()) {
-			return property;
-		}
-		hint = types[p_index];
-	}
-	// Container hints encode each element as type/hint:hint_string.
-	const int separator = hint.find_char(':');
-	if (separator >= 0) {
-		const String type = hint.substr(0, separator);
-		property.type = Variant::Type(type.get_slicec('/', 0).to_int());
-		property.hint = PropertyHint(type.get_slicec('/', 1).to_int());
-		property.hint_string = hint.substr(separator + 1);
-	}
-	return property;
-}
-} // namespace
 
 void WGodotResourceExport::initialize(const Dictionary &p_paths) {
 	ids.clear();
 	entries.clear();
 	payloads.clear();
+	native_resources.clear();
 	required.clear();
 	formats.clear();
 	next_id = 1;
@@ -57,6 +32,18 @@ void WGodotResourceExport::initialize(const Dictionary &p_paths) {
 		}
 		next_id = MAX(next_id, id + 1);
 	}
+}
+
+void WGodotResourceExport::add_native_resource(const String &p_path, const String &p_type, const String &p_target) {
+	const int64_t id = identify(p_path);
+	Entry entry;
+	entry.format = String("native").hash();
+	entry.type = p_type;
+	if (!p_target.is_empty()) {
+		entry.target = identify(p_target);
+	}
+	entries.insert(id, entry);
+	native_resources.insert(id);
 }
 
 int64_t WGodotResourceExport::identify(const String &p_path) {
@@ -85,98 +72,11 @@ String WGodotResourceExport::path(const String &p_original) {
 }
 
 Variant WGodotResourceExport::rewrite_value(const Variant &p_value, const PropertyInfo &p_property) {
-	// Directory settings describe locations, not resources in the pack catalog.
-	if (p_property.hint == PROPERTY_HINT_DIR || p_property.hint == PROPERTY_HINT_GLOBAL_DIR) {
-		return p_value;
-	}
-	switch (p_value.get_type()) {
-		case Variant::STRING:
-		case Variant::STRING_NAME: {
-			const String value = p_value;
-			String replacement = value;
-			if (value.begins_with("res://") || value.begins_with("uid://")) {
-				int suffix = value.find("::", 6);
-				if (suffix < 0) {
-					suffix = value.rfind(":"); // Translation remap locale suffix.
-				}
-				replacement = suffix > 5 ? path(value.substr(0, suffix)) + value.substr(suffix) : path(value);
-			} else if (value.begins_with("*res://") || value.begins_with("*uid://")) {
-				replacement = "*" + path(value.substr(1));
-			}
-			return p_value.get_type() == Variant::STRING_NAME ? Variant(StringName(replacement)) : Variant(replacement);
-		}
-		case Variant::PACKED_STRING_ARRAY: {
-			PackedStringArray result = p_value;
-			const PropertyInfo element = container_element_property(p_property);
-			for (int i = 0; i < result.size(); i++) {
-				result.set(i, rewrite_value(result[i], element));
-			}
-			return result;
-		}
-		case Variant::ARRAY: {
-			const Array source = p_value;
-			Array result;
-			const PropertyInfo element = container_element_property(p_property);
-			for (const Variant &value : source) {
-				result.push_back(rewrite_value(value, element));
-			}
-			return result;
-		}
-		case Variant::DICTIONARY: {
-			const Dictionary source = p_value;
-			Dictionary result;
-			const PropertyInfo key_property = container_element_property(p_property);
-			const PropertyInfo value_property = container_element_property(p_property, 1);
-			for (const KeyValue<Variant, Variant> &entry : source) {
-				result[rewrite_value(entry.key, key_property)] = rewrite_value(entry.value, value_property);
-			}
-			return result;
-		}
-		default:
-			return p_value;
-	}
+	return WGodotResourceRewrite::value(p_value, p_property, [this](const String &p_original) { return path(p_original); });
 }
 
 String WGodotResourceExport::rewrite_text(const String &p_text, const String &p_source) {
-	// Rewrite complete string tokens, preserving all other serialized values.
-	// Shader include operands and external resource paths may be relative.
-	StringBuilder result;
-	int copied = 0;
-	for (int i = 0; i < p_text.length(); i++) {
-		if (p_text[i] != '"') {
-			continue;
-		}
-		const int begin = i++;
-		while (i < p_text.length() && p_text[i] != '"') {
-			if (p_text[i] == '\\') {
-				i++;
-			}
-			i++;
-		}
-		if (i >= p_text.length()) {
-			break;
-		}
-		const String value = p_text.substr(begin + 1, i - begin - 1).c_unescape();
-		String replacement = value;
-		const int line_begin = p_text.rfind("\n", begin) + 1;
-		const String prefix = p_text.substr(line_begin, begin - line_begin).strip_edges();
-		if (prefix.ends_with("uid=") && value.begins_with("uid://")) {
-			continue; // UID attributes remain numeric identities; the UID cache is rewritten.
-		} else if (value.begins_with("res://") || value.begins_with("uid://")) {
-			replacement = rewrite_value(value);
-		} else if ((prefix.ends_with("path=") && prefix.begins_with("[ext_resource")) || prefix == "#include") {
-			replacement = path(p_source.get_base_dir().path_join(value).simplify_path());
-		} else if (value.contains("#include")) {
-			replacement = rewrite_text(value, p_source);
-		}
-		if (replacement != value) {
-			result += p_text.substr(copied, begin - copied);
-			result += "\"" + replacement.c_escape() + "\"";
-			copied = i + 1;
-		}
-	}
-	result += p_text.substr(copied);
-	return result.as_string();
+	return WGodotResourceRewrite::text(p_text, p_source, [this](const String &p_original) { return path(p_original); });
 }
 
 Error WGodotResourceExport::import_remap(const String &p_source, const Vector<uint8_t> &p_data) {
@@ -185,6 +85,9 @@ Error WGodotResourceExport::import_remap(const String &p_source, const Vector<ui
 	RETURN_IF_ERROR(config->parse(String::utf8(reinterpret_cast<const char *>(p_data.ptr()), p_data.size())));
 	const String source = p_source.get_basename();
 	const int64_t id = identify(source);
+	if (native_resources.has(id)) {
+		return OK;
+	}
 	Entry entry;
 	entry.format = source.get_extension().to_lower().hash();
 	entry.type = config->get_value("remap", "type", ResourceLoader::get_resource_type(source));
@@ -276,6 +179,10 @@ Error WGodotResourceExport::export_file(String &r_path, Vector<uint8_t> &r_data)
 		return OK;
 	}
 	const int64_t id = identify(source);
+	if (native_resources.has(id)) {
+		r_path = String();
+		return OK;
+	}
 	Entry entry = entries.has(id) ? entries[id] : Entry();
 	const String extension = source.get_extension().to_lower();
 	entry.format = extension.hash();
@@ -326,7 +233,7 @@ Error WGodotResourceExport::finish(Vector<uint8_t> &r_catalog) {
 		if (entry->target != 0) {
 			RETURN_IF_ERROR(p_self(p_self, entry->target));
 		} else if (entry->variants.is_empty()) {
-			ERR_FAIL_COND_V_MSG(!payloads.has(p_id), ERR_FILE_MISSING_DEPENDENCIES, "Native resource has no payload: " + itos(p_id));
+			ERR_FAIL_COND_V_MSG(!payloads.has(p_id) && !native_resources.has(p_id), ERR_FILE_MISSING_DEPENDENCIES, "Native resource has no payload: " + itos(p_id));
 		}
 		for (const KeyValue<String, int64_t> &variant : entry->variants) {
 			RETURN_IF_ERROR(p_self(p_self, variant.value));

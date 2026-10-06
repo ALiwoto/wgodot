@@ -91,6 +91,9 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 	}
 	const Parser::ClassNode *node = p_class.node;
 	const bool is_static = node->wgodot_static_class;
+	if (node->wgodot_export_reflection && is_static) {
+		unsupported(node, "reflection of a static class without a Godot object type");
+	}
 	const bool game_parent = node->base_type.kind == Parser::DataType::CLASS;
 	const String parent = is_static ? "" : class_name(node->base_type, node);
 	const String &name = p_class.cpp_name;
@@ -114,6 +117,8 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 	String initialization;
 	String static_fields;
 	String static_initialization;
+	String native_copy;
+	String native_signals;
 	if (!is_static) {
 		declaration += " : public " + parent + interface_bases + " {\n\tGDCLASS(" + name + ", " + parent + ");\n\npublic:\n";
 	} else {
@@ -164,8 +169,8 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 				}
 				const auto datatype = variable_type(variable);
 				const String field_type = type(datatype, variable);
-				if (native_only(datatype) && variable->exported) {
-					unsupported(variable, "exported native container/callback property " + entry.get_name() + "; scene serialization needs an explicit adapter");
+				if (WGodotCppSignatures::contains_signature(datatype) && (variable->exported || variable->wgodot_export_reflection)) {
+					unsupported(variable, "serialized callback/signal field " + entry.get_name());
 				}
 				const String field_name = "v_" + symbol(variable->identifier->name);
 				if (variable->is_static) {
@@ -190,25 +195,51 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 				const String storage = String(variable->is_static ? "static_fields()." : "") + field_name;
 				// Only serialization and interface forwarding use these wrappers.
 				// Ordinary property access calls script accessors or uses storage directly.
-				const bool serialized = !is_static && variable->exported && !native_only(datatype);
-				if (serialized || interface_property_getters.has(variable)) {
+				const bool serialized = !is_static && variable->wgodot_export_reflection;
+				const bool scene_field = !is_static && variable->exported && !variable->is_static;
+				const bool node_field = !is_static && !variable->is_static && ClassDB::is_parent_class(native_base(node->self_type), SNAME("Node"));
+				if (serialized || scene_field || node_field || interface_property_getters.has(variable)) {
 					declaration += "\t" + static_modifier + field_type + " " + getter + "()" + getter_const + ";\n";
 					definitions += field_type + " " + name + "::" + getter + "()" + getter_const + " { return " + (property_getter.is_empty() ? storage : "m_" + symbol(property_getter) + "()") + "; }\n";
 				}
-				if (serialized || interface_property_setters.has(variable)) {
+				if (serialized || scene_field || node_field || interface_property_setters.has(variable)) {
 					declaration += "\t" + static_modifier + "void " + setter + "(" + field_type + " p_value);\n";
 					definitions += "void " + name + "::" + setter + "(" + field_type + " p_value) { " + (property_setter.is_empty() ? storage + " = p_value" : "m_" + symbol(property_setter) + "(p_value)") + "; }\n";
 				}
 				if (serialized) {
 					const String property = quoted(variable->identifier->name);
-					property_reads += "\tif (p_name == " + property + ") { r_value = const_cast<" + name + " *>(this)->" + getter + "(); return true; }\n";
-					String decoded = "WGodotNative::convert<" + field_type + ">(p_value)";
+					class_call_headers.insert("modules/wgodot/native/wgodot_native_serialization.h");
+					property_reads += "\tif (p_name == " + property + ") { r_value = WGodotNative::serialized_value(const_cast<" + name + " *>(this)->" + getter + "()); return true; }\n";
+					String decoded = "WGodotNative::deserialize_value<" + field_type + ">(p_value)";
 					if (datatype.wgodot_resource_path) {
 						class_call_headers.insert("core/io/wgodot_resource_paths.h");
 						decoded = "WGodotResourcePaths::from_variant(p_value)";
 					}
 					property_writes += "\tif (p_name == " + property + ") { " + setter + "(" + decoded + "); return true; }\n";
-					property_list += "\t{ PropertyInfo info = GetTypeInfo<" + field_type + ">::get_class_info(); info.name = " + property + "; info.usage = " + String(variable->is_static ? "PROPERTY_USAGE_NONE" : "PROPERTY_USAGE_STORAGE") + "; p_list->push_back(info); }\n";
+					property_list += "\t{ PropertyInfo info = GetTypeInfo<" + String(is_warray(datatype) ? "Array" : is_wdictionary(datatype) ? "Dictionary" : field_type) + ">::get_class_info(); info.name = " + property + "; info.usage = " + itos(scene_field ? variable->export_info.usage & ~PROPERTY_USAGE_EDITOR : PROPERTY_USAGE_NONE) + "; p_list->push_back(info); }\n";
+				}
+				const bool stored_field = scene_field && (variable->export_info.usage & PROPERTY_USAGE_STORAGE);
+				if (!serialized && (node_field || (stored_field && ClassDB::is_parent_class(native_base(node->self_type), SNAME("Resource"))))) {
+					class_call_headers.insert("modules/wgodot/native/wgodot_native_serialization.h");
+					const String read = "const_cast<" + name + " *>(this)->" + getter + "()";
+					const String source = "WGodotNative::serialized_value(" + read + ")";
+					const String copy_value = ClassDB::is_parent_class(native_base(node->self_type), SNAME("Resource")) ? "_wgodot_duplicate_value(" + source + ", p_params, " + itos(variable->export_info.usage) + ")" : "WGodotNative::duplicate_node_value(" + source + ", p_root, this, p_copy, " + String(variable->export_info.usage & PROPERTY_USAGE_ALWAYS_DUPLICATE ? "true" : "false") + ")";
+					String decoded = "WGodotNative::deserialize_value<" + field_type + ">(" + copy_value + ")";
+					if (node_field && (datatype.is_coroutine || WGodotCppSignatures::contains_signature(datatype))) {
+						decoded = read;
+					}
+					if (ClassDB::is_parent_class(native_base(node->self_type), SNAME("Resource")) && (is_warray(datatype) || is_wdictionary(datatype))) {
+						decoded = "p_params.deep ? " + decoded + " : " + read;
+					}
+					if (ClassDB::is_parent_class(native_base(node->self_type), SNAME("Resource"))) {
+						decoded = "p_params.copy_only ? " + read + " : (" + decoded + ")";
+					}
+					const String assignment = "static_cast<" + name + " *>(p_copy)->" + setter + "(" + decoded + ");";
+					if (node_field && !stored_field) {
+						native_copy += "\tif (p_flags & Node::DUPLICATE_INTERNAL_STATE) {\n\t\t" + assignment + "\n\t}\n";
+					} else {
+						native_copy += "\t" + assignment + "\n";
+					}
 				}
 				if (variable->property == Parser::VariableNode::PROP_INLINE) {
 					for (const auto *accessor : { variable->getter, variable->setter }) {
@@ -224,7 +255,11 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 			case Parser::ClassNode::Member::SIGNAL: {
 				const auto *signal = entry.signal;
 				const String signal_type = signature_type(signal, true).replace("WSignal<", "SignalSource<");
-				declaration += "\t" + signal_type + " s_" + symbol(signal->identifier->name) + "{this};\n";
+				const String signal_field = "s_" + symbol(signal->identifier->name);
+				declaration += "\t" + signal_type + " " + signal_field + "{this, " + String(signal->wgodot_export_reflection ? "SNAME(" + quoted(signal->identifier->name) + ")" : "StringName()") + ", [](Object *p_owner) { return Object::cast_to<" + name + ">(p_owner)->" + signal_field + ".signal(); }};\n";
+				if (ClassDB::is_parent_class(native_base(node->self_type), SNAME("Node"))) {
+					native_signals += "\t" + signal_field + ".signal().duplicate_connections_to(static_cast<" + name + " *>(p_copy)->" + signal_field + ".signal(), p_root, this, p_copy);\n";
+				}
 				break;
 			}
 			case Parser::ClassNode::Member::CONSTANT: {
@@ -232,6 +267,11 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 				const auto *initializer = entry.constant->initializer;
 				if (initializer->reduced && !initializer->type_constraint.is_meta_type && initializer->reduced_value.get_type() == Variant::OBJECT) {
 					(void)literal(initializer->reduced_value, initializer);
+				}
+				if (entry.constant->wgodot_export_reflection) {
+					class_call_headers.insert("modules/wgodot/native/wgodot_native_serialization.h");
+					property_reads += "\tif (p_name == " + quoted(entry.get_name()) + ") { r_value = WGodotNative::serialized_value(" + expression(initializer) + "); return true; }\n";
+					property_list += "\t{ PropertyInfo info(Variant::Type(" + itos(initializer->reduced_value.get_type()) + "), " + quoted(entry.get_name()) + "); info.usage = PROPERTY_USAGE_READ_ONLY; p_list->push_back(info); }\n";
 				}
 				break;
 			}
@@ -252,6 +292,18 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 		definitions += "void " + name + "::_get_property_list(List<PropertyInfo> *p_list) const {\n" + property_list + "}\n\n";
 	}
 	emit_container_constants(p_class, declaration, definitions);
+	if (!native_copy.is_empty()) {
+		const bool resource = ClassDB::is_parent_class(native_base(node->self_type), SNAME("Resource"));
+		const String parameters = resource ? "Resource *p_copy, const DuplicateParams &p_params" : "Node *p_copy, const Node *p_root, int p_flags";
+		const String arguments = resource ? "p_copy, p_params" : "p_copy, p_root, p_flags";
+		declaration += "protected:\n\tvoid _wgodot_native_copy(" + parameters + ") const override;\npublic:\n";
+		definitions += "void " + name + "::_wgodot_native_copy(" + parameters + ") const {\n\t" + parent + "::_wgodot_native_copy(" + arguments + ");\n" + native_copy + "}\n\n";
+	}
+	emit_reflection(p_class, declaration, definitions);
+	if (!native_signals.is_empty()) {
+		declaration += "protected:\n\tvoid _wgodot_native_copy_signals(Node *p_copy, const Node *p_root) const override;\npublic:\n";
+		definitions += "void " + name + "::_wgodot_native_copy_signals(Node *p_copy, const Node *p_root) const {\n\t" + parent + "::_wgodot_native_copy_signals(p_copy, p_root);\n" + native_signals + "}\n\n";
+	}
 	emit_class_lifecycle(p_class, initialization, static_fields, static_initialization, declaration, definitions);
 	if (!is_static) {
 		emit_virtuals(p_class, declaration, definitions);
@@ -321,6 +373,9 @@ void WGodotCppEmitter::register_class(const WGodotCppProject::Class &p_class, Ha
 	}
 	r_registered.insert(p_class.cpp_name);
 	r_code += String(p_class.node->is_abstract ? "\tGDREGISTER_ABSTRACT_CLASS(" : "\tGDREGISTER_CLASS(") + p_class.cpp_name + ");\n";
+	if (p_class.node->wgodot_export_reflection) {
+		r_code += "\tClassDB::add_compatibility_class(" + quoted(p_class.node->fqcn) + ", " + quoted(p_class.cpp_name) + ");\n";
+	}
 	if (trace_enabled) {
 		r_code += "#ifdef DEBUG_ENABLED\n\tWGodotNative::NativeDebug::register_class(" + quoted(p_class.cpp_name) + ", { " + quoted("res://" + itos(resource_id(p_class.script_path))) + ", " + itos(p_class.node->start_line) + ", " + quoted(p_class.cpp_name) + " });\n#endif\n";
 	}

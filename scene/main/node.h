@@ -387,6 +387,10 @@ protected:
 	void _propagate_replace_owner(Node *p_owner, Node *p_by_owner);
 
 	static void _bind_methods();
+	// wgodot-changes::begin
+	virtual void _wgodot_native_copy(Node *p_copy, const Node *p_root, int p_flags) const {}
+	virtual void _wgodot_native_copy_signals(Node *p_copy, const Node *p_root) const {}
+	// wgodot-changes::end
 	static String _get_name_num_separator();
 
 	friend class SceneState;

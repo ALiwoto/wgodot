@@ -29,6 +29,9 @@
 /**************************************************************************/
 
 #include "gdscript.h"
+// wgodot-changes::begin
+#include "wgodot_export_inheritance_scope.h"
+// wgodot-changes::end
 
 // wgodot-changes::begin
 #include "core/profiling/wgodot_startup_profile.h"
@@ -531,10 +534,10 @@ String GDScript::get_class_icon_path() const {
 bool GDScript::_update_exports(bool *r_err, bool p_recursive_call, PlaceHolderScriptInstance *p_instance_to_update, bool p_base_exports_changed) {
 #ifdef TOOLS_ENABLED
 
-	static Vector<GDScript *> base_caches;
-	if (!p_recursive_call) {
-		base_caches.clear();
-	}
+	// wgodot-changes::begin
+	static thread_local Vector<GDScript *> base_caches;
+	WGodotExportInheritanceScope inheritance_scope(base_caches, p_recursive_call);
+	// wgodot-changes::end
 	base_caches.append(this);
 
 	bool changed = p_base_exports_changed;
@@ -621,11 +624,16 @@ bool GDScript::_update_exports(bool *r_err, bool p_recursive_call, PlaceHolderSc
 					*r_err = true;
 				}
 				valid = false; // to show error in the editor
+				// wgodot-changes::begin
+				const String cyclic_base_path = base_cache->get_script_path();
+				// wgodot-changes::end
 				base_cache->valid = false;
 				base_cache->inheriters_cache.clear(); // to prevent future stackoverflows
 				base_cache.unref();
 				base.unref();
-				ERR_FAIL_V_MSG(false, "Cyclic inheritance in script class.");
+				// wgodot-changes::begin
+				ERR_FAIL_V_MSG(false, vformat("Cyclic inheritance in script class '%s', base '%s'.", get_script_path(), cyclic_base_path));
+				// wgodot-changes::end
 			}
 		}
 		if (base_cache->_update_exports(r_err, true)) {

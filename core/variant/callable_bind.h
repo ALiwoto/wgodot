@@ -43,6 +43,13 @@ class CallableCustomBind : public CallableCustom {
 public:
 	// wgodot-changes::begin
 	CallableCustomBind *as_bind() override { return this; }
+	Callable wgodot_retarget(Object *p_target) const override {
+		if (!callable.is_custom()) {
+			return Callable();
+		}
+		const Callable result = callable.get_custom()->wgodot_retarget(p_target);
+		return result.is_null() ? Callable() : Callable(memnew(CallableCustomBind(result, binds)));
+	}
 	// wgodot-changes::end
 
 	//for every type that inherits, these must always be the same for this type
@@ -76,6 +83,13 @@ class CallableCustomUnbind : public CallableCustom {
 public:
 	// wgodot-changes::begin
 	CallableCustomUnbind *as_unbind() override { return this; }
+	Callable wgodot_retarget(Object *p_target) const override {
+		if (!callable.is_custom()) {
+			return Callable();
+		}
+		const Callable result = callable.get_custom()->wgodot_retarget(p_target);
+		return result.is_null() ? Callable() : result.unbind(argcount);
+	}
 	// wgodot-changes::end
 
 	//for every type that inherits, these must always be the same for this type

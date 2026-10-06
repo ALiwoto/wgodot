@@ -98,6 +98,8 @@ decltype(auto) convert(From &&p_value) {
 		return Target::adapt(p_value);
 	} else if constexpr (IsWArray<Target>::value || IsWArray<Source>::value || IsWDictionary<Target>::value || IsWDictionary<Source>::value) {
 		static_assert(std::is_same_v<Target, Source>, "Native containers require an explicit boundary handler; implicit Godot container/Variant conversion is forbidden.");
+	} else if constexpr (std::is_same_v<Source, Variant>) {
+		return VariantCaster<Target>::cast(p_value);
 	} else if constexpr (std::is_convertible_v<From &&, Target>) {
 		return Target(std::forward<From>(p_value));
 	} else if constexpr (IsPacked<Source>::value) {

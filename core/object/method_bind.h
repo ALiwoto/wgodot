@@ -45,6 +45,9 @@ class MethodBind {
 	int argument_count = 0;
 	// wgodot-changes::begin
 	uint64_t wgodot_resource_path_arguments = 0;
+#ifdef TOOLS_ENABLED
+	String wgodot_native_export_error;
+#endif
 	// wgodot-changes::end
 
 	bool _static = false;
@@ -68,6 +71,10 @@ protected:
 
 public:
 	// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+	void wgodot_set_native_export_error(const String &p_error) { wgodot_native_export_error = p_error; }
+	const String &wgodot_get_native_export_error() const { return wgodot_native_export_error; }
+#endif
 	void wgodot_set_resource_path_argument(int p_argument) {
 		ERR_FAIL_INDEX(p_argument, 64);
 		ERR_FAIL_COND(get_argument_type(p_argument) != Variant::STRING);
