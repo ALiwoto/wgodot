@@ -889,6 +889,27 @@ void Animation::_get_property_list(List<PropertyInfo> *p_list) const {
 	}
 }
 
+// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+void Animation::get_reference_property_list(List<PropertyInfo> *p_list) const {
+	get_property_list(p_list);
+	for (List<PropertyInfo>::Element *element = p_list->front(); element;) {
+		List<PropertyInfo>::Element *next = element->next();
+		const String property_name = element->get().name;
+		if (property_name.begins_with("tracks/") && property_name.get_slicec('/', 2) == "keys") {
+			const TrackType type = track_get_type(property_name.get_slicec('/', 1).to_int());
+			if (type != TYPE_VALUE && type != TYPE_METHOD && type != TYPE_AUDIO) {
+				// Numeric keys and animation names cannot contain references. Reading
+				// their serialized property would rebuild every keyframe needlessly.
+				p_list->erase(element);
+			}
+		}
+		element = next;
+	}
+}
+#endif
+// wgodot-changes::end
+
 void Animation::reset_state() {
 	clear();
 }

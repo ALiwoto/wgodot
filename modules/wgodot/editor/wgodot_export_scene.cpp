@@ -2,6 +2,7 @@
 #include "wgodot_export_scene.h"
 
 #include "wgodot_cpp_project.h"
+#include "wgodot_native_resource_policy.h"
 
 #include "core/object/class_db.h"
 #include "core/object/script_language.h"
@@ -158,7 +159,7 @@ class SceneFilter {
 				return; // Independent scene/script analysis owns these contents.
 			}
 			List<PropertyInfo> properties;
-			resource->get_property_list(&properties);
+			WGodotNativeResourcePolicy::get_reference_properties(resource, properties);
 			const Ref<Script> script = resource->get_script();
 			GDScriptParser *parser = script.is_valid() ? project.find_parser(script->get_path()) : nullptr;
 			for (const PropertyInfo &property : properties) {

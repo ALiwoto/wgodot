@@ -9,4 +9,5 @@ namespace WGodotNativeResourcePolicy {
 bool is_authored(const String &p_path);
 bool needs_factory(const Ref<Resource> &p_resource);
 Error validate_external(const Ref<Resource> &p_resource, String &r_error);
+void get_reference_properties(const Ref<Resource> &p_resource, List<PropertyInfo> &r_properties);
 } // namespace WGodotNativeResourcePolicy

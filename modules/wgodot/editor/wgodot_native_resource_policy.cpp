@@ -6,6 +6,7 @@
 #include "core/io/file_access.h"
 #include "core/object/script_language.h"
 #include "core/templates/hash_set.h"
+#include "scene/resources/animation.h"
 #include "scene/resources/packed_scene.h"
 
 namespace {
@@ -48,7 +49,7 @@ public:
 				}
 			}
 			List<PropertyInfo> properties;
-			resource->get_property_list(&properties);
+			WGodotNativeResourcePolicy::get_reference_properties(resource, properties);
 			for (const PropertyInfo &property : properties) {
 				if ((property.usage & PROPERTY_USAGE_STORAGE) && property.name != SNAME("script")) {
 					visit(resource->get(property.name));
@@ -72,6 +73,24 @@ public:
 	}
 };
 } // namespace
+
+void WGodotNativeResourcePolicy::get_reference_properties(const Ref<Resource> &p_resource, List<PropertyInfo> &r_properties) {
+	const Animation *animation = Object::cast_to<Animation>(p_resource.ptr());
+	if (animation) {
+		animation->get_reference_property_list(&r_properties);
+	} else {
+		p_resource->get_property_list(&r_properties);
+	}
+	for (List<PropertyInfo>::Element *element = r_properties.front(); element;) {
+		List<PropertyInfo>::Element *next = element->next();
+		const PropertyInfo &property = element->get();
+		const bool references = property.type == Variant::OBJECT || property.type == Variant::NODE_PATH || property.type == Variant::ARRAY || property.type == Variant::DICTIONARY || (property.type == Variant::NIL && (property.usage & PROPERTY_USAGE_NIL_IS_VARIANT));
+		if (!(property.usage & PROPERTY_USAGE_STORAGE) || !references) {
+			r_properties.erase(element);
+		}
+		element = next;
+	}
+}
 
 bool WGodotNativeResourcePolicy::is_authored(const String &p_path) {
 	const String extension = p_path.get_extension().to_lower();

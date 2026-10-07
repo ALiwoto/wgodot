@@ -427,6 +427,12 @@ public:
 
 	void track_set_path(int p_track, const NodePath &p_path);
 	NodePath track_get_path(int p_track) const;
+	// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+	// Stored properties relevant to resource/NodePath dependency traversal.
+	void get_reference_property_list(List<PropertyInfo> *p_list) const;
+#endif
+	// wgodot-changes::end
 	int find_track(const NodePath &p_path, const TrackType p_type) const;
 
 	TrackCacheID track_get_unique_id(int p_track) const;
