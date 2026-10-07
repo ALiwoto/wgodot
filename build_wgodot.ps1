@@ -181,6 +181,10 @@ if ($withPostgreSQL) {
 if ($Game) {
 	$buildManifest = @{
 		target = $gameManifest.target
+		engine_target = $target
+		debug_symbols = $debugSymbols -eq 'yes'
+		optimize = if ($Optimize) { 'default' } else { 'none' }
+		lto = if ($Optimize) { 'default' } else { 'none' }
 		generation = $gameManifest.generation
 		binary_sha256 = (Get-FileHash -LiteralPath $binaryPath -Algorithm SHA256).Hash.ToLowerInvariant()
 		runtime_libraries = $runtimeLibraries

@@ -107,6 +107,9 @@ public:
 	void ping_interval(int p_interval);
 	void reset();
 	int send(uint8_t p_channel, ENetPacket *p_packet);
+	// wgodot-changes::begin
+	Error send_bounded(int p_channel, const PackedByteArray &p_packet, bool p_reliable, int p_max_pending_packets, int p_max_pending_bytes);
+	// wgodot-changes::end
 	void throttle_configure(int interval, int acceleration, int deceleration);
 	void set_timeout(int p_timeout, int p_timeout_min, int p_timeout_max);
 	double get_statistic(PeerStatistic p_stat);

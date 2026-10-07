@@ -206,6 +206,9 @@ Error ENetPacketPeer::_send(int p_channel, PackedByteArray p_packet, int p_flags
 }
 
 void ENetPacketPeer::_bind_methods() {
+	// wgodot-changes::begin
+	ClassDB::bind_method(D_METHOD("send_bounded", "channel", "packet", "reliable", "max_pending_packets", "max_pending_bytes"), &ENetPacketPeer::send_bounded);
+	// wgodot-changes::end
 	ClassDB::bind_method(D_METHOD("peer_disconnect", "data"), &ENetPacketPeer::peer_disconnect, DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("peer_disconnect_later", "data"), &ENetPacketPeer::peer_disconnect_later, DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("peer_disconnect_now", "data"), &ENetPacketPeer::peer_disconnect_now, DEFVAL(0));

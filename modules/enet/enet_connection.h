@@ -31,6 +31,9 @@
 #pragma once
 
 #include "enet_packet_peer.h"
+// wgodot-changes::begin
+#include "enet_connection_event.h"
+// wgodot-changes::end
 
 #include "core/crypto/crypto.h"
 #include "core/object/ref_counted.h"
@@ -114,6 +117,10 @@ public:
 	void destroy();
 	Ref<ENetPacketPeer> connect_to_host(const String &p_address, int p_port, int p_channels, int p_data = 0);
 	EventType service(int p_timeout, Event &r_event);
+	// wgodot-changes::begin
+	EventType poll_event(const Ref<ENetConnectionEvent> &p_event);
+	Error set_packet_limits(int p_mtu, int p_max_packet_size, int p_max_waiting_data);
+	// wgodot-changes::end
 	int check_events(EventType &r_type, Event &r_event);
 	void flush();
 	void bandwidth_limit(int p_in_bandwidth = 0, int p_out_bandwidth = 0);

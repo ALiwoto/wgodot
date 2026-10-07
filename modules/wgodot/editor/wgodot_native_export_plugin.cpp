@@ -276,10 +276,6 @@ void WGodotNativeExportPlugin::_export_project_settings(HashMap<String, Variant>
 }
 
 Error WGodotNativeExportPlugin::_export_pack_file(String &r_path, Vector<uint8_t> &r_data) {
-	if (validated && !target.includes(r_path.begins_with("res://") ? r_path : "res://" + r_path)) {
-		r_path = String();
-		return OK;
-	}
 	return validated ? resources.export_file(r_path, r_data) : OK;
 }
 

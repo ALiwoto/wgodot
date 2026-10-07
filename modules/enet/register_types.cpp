@@ -53,6 +53,9 @@ void initialize_enet_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(ENetMultiplayerPeer);
 	GDREGISTER_ABSTRACT_CLASS(ENetPacketPeer);
 	GDREGISTER_CLASS(ENetConnection);
+	// wgodot-changes::begin
+	GDREGISTER_CLASS(ENetConnectionEvent);
+	// wgodot-changes::end
 }
 
 void uninitialize_enet_module(ModuleInitializationLevel p_level) {

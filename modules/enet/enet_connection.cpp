@@ -169,10 +169,15 @@ ENetConnection::EventType ENetConnection::service(int p_timeout, Event &r_event)
 	// enet_peer_disconnect*) do not trigger DISCONNECTED events.
 	List<Ref<ENetPacketPeer>>::Element *E = peers.front();
 	while (E) {
+		// wgodot-changes::begin
+		List<Ref<ENetPacketPeer>>::Element *next = E->next();
+		// wgodot-changes::end
 		if (!E->get()->is_active()) {
 			peers.erase(E->get());
 		}
-		E = E->next();
+		// wgodot-changes::begin
+		E = next;
+		// wgodot-changes::end
 	}
 
 	ENetEvent event;
@@ -378,6 +383,10 @@ void ENetConnection::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("destroy"), &ENetConnection::destroy);
 	ClassDB::bind_method(D_METHOD("connect_to_host", "address", "port", "channels", "data"), &ENetConnection::connect_to_host, DEFVAL(0), DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("service", "timeout"), &ENetConnection::_service, DEFVAL(0));
+	// wgodot-changes::begin
+	ClassDB::bind_method(D_METHOD("poll_event", "event"), &ENetConnection::poll_event);
+	ClassDB::bind_method(D_METHOD("set_packet_limits", "mtu", "max_packet_size", "max_waiting_data"), &ENetConnection::set_packet_limits);
+	// wgodot-changes::end
 	ClassDB::bind_method(D_METHOD("flush"), &ENetConnection::flush);
 	ClassDB::bind_method(D_METHOD("bandwidth_limit", "in_bandwidth", "out_bandwidth"), &ENetConnection::bandwidth_limit, DEFVAL(0), DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("channel_limit", "limit"), &ENetConnection::channel_limit);

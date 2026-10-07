@@ -27,7 +27,8 @@ Error WGodotExportTarget::load(const String &p_target, String &r_error) {
 	const bool exists = FileAccess::exists(CONFIG_PATH);
 	// Include project settings: entry scenes, autoloads and feature overrides must
 	// not change between generation and packaging without a new build identity.
-	fingerprint = (target + "\n" + (exists ? FileAccess::get_sha256(CONFIG_PATH) : String()) + "\n" + FileAccess::get_sha256("res://project.godot")).sha256_text();
+	const String project_identity = target + "\n" + FileAccess::get_sha256("res://project.godot");
+	fingerprint = project_identity.sha256_text();
 	if (!exists) {
 		if (target == "server") {
 			r_error = "Server export requires res://wgodot_targets.cfg with explicit ownership and server settings.";
@@ -37,6 +38,8 @@ Error WGodotExportTarget::load(const String &p_target, String &r_error) {
 	}
 	Ref<ConfigFile> config;
 	config.instantiate();
+	Ref<ConfigFile> active_config;
+	active_config.instantiate();
 	Error error = config->load(CONFIG_PATH);
 	if (error != OK) {
 		r_error = "Cannot read " + String(CONFIG_PATH);
@@ -49,6 +52,9 @@ Error WGodotExportTarget::load(const String &p_target, String &r_error) {
 		}
 		for (const String &key : config->get_section_keys(section)) {
 			const Variant value = config->get_value(section, key);
+			if (section == "paths" || section == target) {
+				active_config->set_value(section, key, value);
+			}
 			if (section == "paths") {
 				const String path = key == "res://" ? key : key.trim_suffix("/");
 				if (!key.begins_with("res://") || path.simplify_path() != path || value.get_type() != Variant::STRING || !valid_owner(value)) {
@@ -67,6 +73,9 @@ Error WGodotExportTarget::load(const String &p_target, String &r_error) {
 			}
 		}
 	}
+	// A server setting must not invalidate an otherwise identical client build.
+	// Ownership rule order remains significant because the last match wins.
+	fingerprint = (project_identity + "\n" + active_config->encode_to_text()).sha256_text();
 	return OK;
 }
 

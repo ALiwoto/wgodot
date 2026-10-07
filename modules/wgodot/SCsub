@@ -33,7 +33,7 @@ if env.editor_build:
     env_wgodot.Depends("editor/wgodot_cpp_operators.cpp", operator_api)
     headers = []
     implementations = []
-    for directory in ("core", "scene", "servers"):
+    for directory in ("core", "main", "scene", "servers"):
         headers.extend(str(path) for path in (root / directory).rglob("*.h") if not path.name.endswith(".gen.h"))
         implementations.extend(str(path) for path in (root / directory).rglob("*.cpp") if not path.name.endswith(".gen.cpp"))
     # These APIs include Godot's native stubs on other targets (e.g. Web APIs

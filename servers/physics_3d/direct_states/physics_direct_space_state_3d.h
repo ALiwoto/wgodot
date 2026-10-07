@@ -51,6 +51,9 @@ protected:
 	static void _bind_methods();
 
 public:
+	// wgodot-changes::begin
+	bool is_ray_obstructed(const Vector3 &p_from, const Vector3 &p_to, uint32_t p_collision_mask = UINT32_MAX);
+	// wgodot-changes::end
 	virtual bool intersect_ray(const PS3DT::RayParameters &p_parameters, PS3DT::RayResult &r_result) = 0;
 
 	virtual int intersect_point(const PS3DT::PointParameters &p_parameters, PS3DT::ShapeResult *r_results, int p_result_max) = 0;

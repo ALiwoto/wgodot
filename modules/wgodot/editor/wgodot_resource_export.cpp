@@ -185,6 +185,12 @@ Error WGodotResourceExport::export_file(String &r_path, Vector<uint8_t> &r_data)
 		r_data = ResourceUID::encode_binary_cache(records);
 		return error;
 	}
+	// Bootstrap files above are engine-owned, even when the target's default
+	// ownership rule excludes ordinary project content.
+	if (target && !target->includes(source)) {
+		r_path = String();
+		return OK;
+	}
 	if (source.ends_with(".import") || source.ends_with(".remap")) {
 		RETURN_IF_ERROR(import_remap(source, r_data));
 		r_path = String();

@@ -359,17 +359,21 @@ public:
 		// TODO limits? Maybe we can better enforce allowed connections!
 		if (udp_server->is_connection_available()) {
 			Ref<PacketPeerUDP> udp = udp_server->take_connection();
-			IPAddress peer_ip = udp->get_packet_address();
-			int peer_port = udp->get_packet_port();
-			Ref<PacketPeerDTLS> peer = server->take_connection(udp);
-			PacketPeerDTLS::Status status = peer->get_status();
-			if (peers.size() < max_clients && status == PacketPeerDTLS::STATUS_HANDSHAKING || status == PacketPeerDTLS::STATUS_CONNECTED) {
-				String key = String(peer_ip) + ":" + itos(peer_port);
-				Peer p;
-				p.conn = peer;
-				p.timeout = OS::get_singleton()->get_ticks_msec() + ENET_DTLS_TIMEOUT_MS;
-				peers[key] = p;
+			// wgodot-changes::begin
+			if (peers.size() < max_clients) {
+				IPAddress peer_ip = udp->get_packet_address();
+				int peer_port = udp->get_packet_port();
+				Ref<PacketPeerDTLS> peer = server->take_connection(udp);
+				PacketPeerDTLS::Status status = peer->get_status();
+				if (status == PacketPeerDTLS::STATUS_HANDSHAKING || status == PacketPeerDTLS::STATUS_CONNECTED) {
+					String key = String(peer_ip) + ":" + itos(peer_port);
+					Peer p;
+					p.conn = peer;
+					p.timeout = OS::get_singleton()->get_ticks_msec() + ENET_DTLS_TIMEOUT_MS;
+					peers[key] = p;
+				}
 			}
+			// wgodot-changes::end
 		}
 
 		List<String> remove;

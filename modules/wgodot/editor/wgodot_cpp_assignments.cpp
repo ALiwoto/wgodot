@@ -180,7 +180,8 @@ WGodotCppEmitter::Value WGodotCppEmitter::assignment(const Parser::AssignmentNod
 	}
 	const auto *subscript = static_cast<const Parser::SubscriptNode *>(target);
 	const auto &base_type = subscript->base->type_constraint;
-	if (!compound && subscript->is_attribute && !base_type.is_meta_type && (base_type.kind == Parser::DataType::CLASS || base_type.kind == Parser::DataType::NATIVE)) {
+	const bool runtime_base = !base_type.is_meta_type || value_facts(subscript->base, String()).object_pointer;
+	if (!compound && subscript->is_attribute && runtime_base && (base_type.kind == Parser::DataType::CLASS || base_type.kind == Parser::DataType::NATIVE)) {
 		// An Object property has no value-type parents to write back. Evaluate
 		// its receiver before the RHS, then assign directly or call its setter.
 		Vector<Value> operands{ lower_receiver(subscript->base), assigned_value };
@@ -221,7 +222,8 @@ WGodotCppEmitter::Value WGodotCppEmitter::assignment(const Parser::AssignmentNod
 	};
 	// Borrow the root slot, but own intermediate get results as the language does.
 	// Read the RHS before the final index, and only then read a compound target.
-	if (!root->type_constraint.is_meta_type) {
+	// Engine singleton names are metatypes with a runtime object receiver.
+	if (!root->type_constraint.is_meta_type || value_facts(root, String()).object_pointer) {
 		Value root_value = lower(root);
 		Vector<Value> roots{ root_value };
 		result.setup.append_array(sequence(roots).setup);

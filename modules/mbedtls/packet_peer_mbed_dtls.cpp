@@ -31,6 +31,9 @@
 #include "packet_peer_mbed_dtls.h"
 
 #include "core/object/class_db.h"
+// wgodot-changes::begin
+#include "core/config/project_settings.h"
+// wgodot-changes::end
 
 int PacketPeerMbedDTLS::bio_send(void *ctx, const unsigned char *buf, size_t len) {
 	if (buf == nullptr || len == 0) {
@@ -122,6 +125,9 @@ Error PacketPeerMbedDTLS::connect_to_peer(Ref<PacketPeerUDP> p_base, const Strin
 
 	mbedtls_ssl_set_bio(tls_ctx->get_context(), this, bio_send, bio_recv, nullptr);
 	mbedtls_ssl_set_timer_cb(tls_ctx->get_context(), &timer, mbedtls_timing_set_delay, mbedtls_timing_get_delay);
+	// wgodot-changes::begin
+	mbedtls_ssl_set_mtu(tls_ctx->get_context(), CLAMP(int(GLOBAL_GET("network/limits/dtls/max_datagram_size")), 576, 16384));
+	// wgodot-changes::end
 
 	status = STATUS_HANDSHAKING;
 
@@ -152,6 +158,9 @@ Error PacketPeerMbedDTLS::accept_peer(Ref<PacketPeerUDP> p_base, Ref<TLSOptions>
 
 	mbedtls_ssl_set_bio(tls_ctx->get_context(), this, bio_send, bio_recv, nullptr);
 	mbedtls_ssl_set_timer_cb(tls_ctx->get_context(), &timer, mbedtls_timing_set_delay, mbedtls_timing_get_delay);
+	// wgodot-changes::begin
+	mbedtls_ssl_set_mtu(tls_ctx->get_context(), CLAMP(int(GLOBAL_GET("network/limits/dtls/max_datagram_size")), 576, 16384));
+	// wgodot-changes::end
 
 	status = STATUS_HANDSHAKING;
 
