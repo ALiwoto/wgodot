@@ -23,7 +23,7 @@ protected:
 	void _export_global_class_list(Array &r_classes) override;
 	void _export_project_settings(HashMap<String, Variant> &r_settings) override;
 	void _export_cache_paths(HashSet<String> &r_paths) override;
-	Error _export_pack_file(String &r_path, Vector<uint8_t> &r_data) override;
+	Error _export_pack_file(String &r_path, Vector<uint8_t> &r_data, const String &p_source_path) override;
 	Error _export_pack_finish(HashMap<String, Vector<uint8_t>> &r_files) override;
 
 public:

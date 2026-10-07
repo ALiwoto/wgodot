@@ -80,7 +80,7 @@ public:
 		EditorExportPlatform::SaveFileInfo info = p_info;
 		Vector<uint8_t> data = p_data;
 		for (const Ref<EditorExportPlugin> &plugin : plugins) {
-			const Error error = plugin->_export_pack_file(info.path, data);
+			const Error error = plugin->_export_pack_file(info.path, data, p_info.source_path);
 			if (error != OK) {
 				return error;
 			}

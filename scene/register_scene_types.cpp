@@ -1068,10 +1068,17 @@ void register_scene_types() {
 	GDREGISTER_CLASS(ConcavePolygonShape2D);
 #endif // PHYSICS_2D_DISABLED
 
+// wgodot-changes::begin
+#endif // _2D_DISABLED
+// NavigationMesh is shared by 2D and 3D navigation.
+// wgodot-changes::end
 #if !defined(NAVIGATION_2D_DISABLED) || !defined(NAVIGATION_3D_DISABLED)
 	GDREGISTER_CLASS(NavigationMesh);
 #endif // !defined(NAVIGATION_2D_DISABLED) || !defined(NAVIGATION_3D_DISABLED)
 
+// wgodot-changes::begin
+#ifndef _2D_DISABLED
+// wgodot-changes::end
 #ifndef NAVIGATION_2D_DISABLED
 	GDREGISTER_CLASS(NavigationMeshSourceGeometryData2D);
 	GDREGISTER_CLASS(NavigationPolygon);

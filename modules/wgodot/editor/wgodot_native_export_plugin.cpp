@@ -266,8 +266,15 @@ void WGodotNativeExportPlugin::_export_project_settings(HashMap<String, Variant>
 	}
 }
 
-Error WGodotNativeExportPlugin::_export_pack_file(String &r_path, Vector<uint8_t> &r_data) {
-	return validated ? resources.export_file(r_path, r_data) : OK;
+Error WGodotNativeExportPlugin::_export_pack_file(String &r_path, Vector<uint8_t> &r_data, const String &p_source_path) {
+	if (!validated) {
+		return OK;
+	}
+	if (r_path != p_source_path) {
+		// Godot's generated payload retains the ownership of its authored source.
+		target.add_import(r_path, p_source_path);
+	}
+	return resources.export_file(r_path, r_data);
 }
 
 Error WGodotNativeExportPlugin::_export_pack_finish(HashMap<String, Vector<uint8_t>> &r_files) {
