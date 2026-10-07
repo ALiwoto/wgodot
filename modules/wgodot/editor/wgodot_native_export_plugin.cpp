@@ -1,18 +1,15 @@
 // wgodot-changes::file
 #include "wgodot_native_export_plugin.h"
 
-#include "wgodot_native_resource_export.h"
+#include "wgodot_native_resource_policy.h"
 
 #include "core/config/project_settings.h"
-#include "core/io/dir_access.h"
 #include "core/io/file_access.h"
 #include "core/io/json.h"
 #include "core/io/resource_loader.h"
-#include "core/io/resource_saver.h"
 #include "core/io/wgodot_resource_paths.h"
 #include "core/object/class_db.h"
 #include "editor/export/editor_export_preset.h"
-#include "editor/file_system/editor_paths.h"
 
 namespace {
 Dictionary read_manifest(const String &p_path) {
@@ -143,9 +140,16 @@ void WGodotNativeExportPlugin::_export_paths_ready(const HashSet<String> &p_path
 			set_export_error(ERR_INVALID_DATA, "Script was added after native generation; regenerate and rebuild: " + path);
 			return;
 		}
-		if ((path.get_extension() == "tres" || path.get_extension() == "res" || ResourceLoader::get_resource_type(path) == "PackedScene") && !compiled.has(path) && !aliases.has(path)) {
-			set_export_error(ERR_INVALID_DATA, "Resource was added after native generation; regenerate and rebuild: " + path);
-			return;
+		if (WGodotNativeResourcePolicy::is_authored(path) && !compiled.has(path) && !aliases.has(path)) {
+			const Ref<Resource> resource = ResourceLoader::load(path);
+			if (resource.is_null()) {
+				set_export_error(ERR_CANT_OPEN, "Cannot load native export resource: " + path);
+				return;
+			}
+			if (WGodotNativeResourcePolicy::needs_factory(resource)) {
+				set_export_error(ERR_INVALID_DATA, "Resource was added after native generation; regenerate and rebuild: " + path);
+				return;
+			}
 		}
 	}
 	const Dictionary classes = manifest["native_classes"];
@@ -194,34 +198,21 @@ void WGodotNativeExportPlugin::_export_file(const String &p_path, const String &
 		skip();
 		return;
 	}
-	const bool binary = extension == "scn" || extension == "res";
-	if (!binary && extension != "tscn" && extension != "tres") {
+	if (p_type != "PackedScene" && extension != "scn" && extension != "tscn" && extension != "res" && extension != "tres") {
 		return;
 	}
-	String source_path = p_path;
-	String output_path = p_path;
-	if (binary) {
-		const Ref<Resource> resource = ResourceLoader::load(p_path);
-		const String text_extension = p_type == "PackedScene" ? ".tscn" : ".tres";
-		source_path = EditorPaths::get_singleton()->get_temp_dir().path_join("wgodot_native_" + p_path.sha256_text() + text_extension);
-		if (resource.is_null() || ResourceSaver::save(resource, source_path) != OK) {
-			set_export_error(ERR_CANT_CREATE, "Cannot serialize native export resource: " + p_path);
-			return;
-		}
-		output_path = p_path + ".native" + text_extension;
+	const Ref<Resource> resource = ResourceLoader::load(p_path);
+	if (resource.is_null()) {
+		set_export_error(ERR_CANT_OPEN, "Cannot load external resource: " + p_path);
+		return;
 	}
-	String output;
 	String message;
-	const Error error = wgodot_export_native_resource(FileAccess::get_file_as_string(source_path), manifest["native_classes"], output, message);
-	if (binary) {
-		DirAccess::remove_absolute(source_path);
-	}
+	const Error error = WGodotNativeResourcePolicy::validate_external(resource, message);
 	if (error != OK) {
 		set_export_error(error, p_path + ": " + message);
-		return;
 	}
-	add_file(output_path, output.to_utf8_buffer(), binary);
-	skip();
+	// Keep the original binary payload. The pack writer remaps its resource
+	// references without expanding mesh/animation data into C++ or text scenes.
 }
 
 void WGodotNativeExportPlugin::_export_global_class_list(Array &r_classes) {

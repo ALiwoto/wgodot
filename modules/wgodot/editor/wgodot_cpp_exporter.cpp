@@ -9,10 +9,12 @@
 #include "core/io/dir_access.h"
 #include "core/io/file_access.h"
 #include "core/io/json.h"
+#include "core/os/os.h"
 #include "core/string/print_string.h"
 #include "editor/editor_interface.h"
 #include "editor/editor_node.h"
 #include "editor/script/script_editor_plugin.h"
+#include "editor/wgodot_editor_activity.h"
 
 namespace {
 
@@ -30,17 +32,20 @@ Dictionary failure(const String &p_message) {
 } // namespace
 
 int WGodotCppExporter::run(const Vector<String> &p_arguments) {
-	const String usage = "Usage: wg export-cpp <absolute-output-directory> [--target client|server] [--analyze-only] [--trace on|off|true|false] (defaults: client, trace off)";
+	const String usage = "Usage: wg export-cpp <absolute-output-directory> [--target client|server] [--analyze-only] [--standalone] [--trace on|off|true|false] (defaults: client, trace off). --standalone exports saved files in this process without using the editor.";
 	if (p_arguments.is_empty()) {
 		print_error(usage);
 		return 2;
 	}
 	bool analyze_only = false;
+	bool standalone = false;
 	bool trace_enabled = false;
 	String target = "client";
 	for (int i = 1; i < p_arguments.size(); i++) {
 		if (p_arguments[i] == "--analyze-only") {
 			analyze_only = true;
+		} else if (p_arguments[i] == "--standalone") {
+			standalone = true;
 		} else if (p_arguments[i] == "--target") {
 			if (++i >= p_arguments.size() || (p_arguments[i] != "client" && p_arguments[i] != "server")) {
 				print_error("--target requires client or server.");
@@ -81,26 +86,30 @@ int WGodotCppExporter::run(const Vector<String> &p_arguments) {
 	options["analyze_only"] = analyze_only;
 	options["trace"] = trace_enabled;
 	options["target"] = target;
-	Dictionary status_request;
-	status_request["protocol"] = WGodotCLI::PROTOCOL_VERSION;
-	status_request["command"] = "status";
 	Dictionary response;
-	const int status_result = WGodotCLI::request_editor_command(status_request, response);
-	if (status_result == 0 && (bool)response.get("ok", false)) {
-		Dictionary request;
-		request["protocol"] = WGodotCLI::PROTOCOL_VERSION;
-		request["command"] = "export-cpp";
-		request["options"] = options;
-		const int connection_result = WGodotCLI::request_editor_command(request, response);
-		if (connection_result != 0) {
-			print_error(response.get("message", "Could not connect to the project editor."));
-			return connection_result;
-		}
-	} else if (status_result != 0 && String(response.get("error", String())) == "editor_not_found") {
+	if (standalone) {
 		response = execute(options);
 	} else {
-		print_error(response.get("message", "Could not connect to the project editor."));
-		return status_result != 0 ? status_result : 1;
+		Dictionary status_request;
+		status_request["protocol"] = WGodotCLI::PROTOCOL_VERSION;
+		status_request["command"] = "status";
+		const int status_result = WGodotCLI::request_editor_command(status_request, response);
+		if (status_result == 0 && (bool)response.get("ok", false)) {
+			Dictionary request;
+			request["protocol"] = WGodotCLI::PROTOCOL_VERSION;
+			request["command"] = "export-cpp";
+			request["options"] = options;
+			const int connection_result = WGodotCLI::request_editor_command(request, response);
+			if (connection_result != 0) {
+				print_error(response.get("message", "Could not connect to the project editor."));
+				return connection_result;
+			}
+		} else if (status_result != 0 && String(response.get("error", String())) == "editor_not_found") {
+			response = execute(options);
+		} else {
+			print_error(response.get("message", "Could not connect to the project editor."));
+			return status_result != 0 ? status_result : 1;
+		}
 	}
 	const PackedStringArray diagnostics = response.get("diagnostics", PackedStringArray());
 	for (const String &diagnostic : diagnostics) {
@@ -137,16 +146,26 @@ Dictionary WGodotCppExporter::execute(const Dictionary &p_options) {
 	}
 	const bool analyze_only = p_options.get("analyze_only", false);
 	const bool trace_enabled = p_options.get("trace", false);
+	WGodotEditorActivity activity("Exporting native C++", output);
 	WGodotCppProject project;
+	uint64_t started = OS::get_singleton()->get_ticks_msec();
+	print_line("Analyzing native scripts...");
 	Error result = project.analyze(p_options.get("target", "client"));
+	print_line(vformat("Native analysis: %d ms", OS::get_singleton()->get_ticks_msec() - started));
 	Dictionary report = project.describe();
 	Vector<String> diagnostics = project.get_diagnostics();
 	if (result == OK && !analyze_only) {
 		WGodotCppEmitter emitter(project, trace_enabled);
+		started = OS::get_singleton()->get_ticks_msec();
+		print_line("Generating native scripts and authored scene/resource factories...");
 		result = emitter.generate();
+		print_line(vformat("Native generation: %d ms", OS::get_singleton()->get_ticks_msec() - started));
 		diagnostics = emitter.get_diagnostics();
 		if (result == OK) {
+			started = OS::get_singleton()->get_ticks_msec();
+			print_line("Writing native output...");
 			result = emitter.write(output);
+			print_line(vformat("Native output: %d ms", OS::get_singleton()->get_ticks_msec() - started));
 		}
 	}
 	report["diagnostics"] = diagnostics;

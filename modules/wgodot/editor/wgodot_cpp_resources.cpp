@@ -2,10 +2,10 @@
 #include "wgodot_cpp_emitter.h"
 #include "wgodot_cpp_names.h"
 #include "wgodot_export_scene.h"
+#include "wgodot_native_resource_policy.h"
 #include "wgodot_resource_rewrite.h"
 
 #include "core/config/project_settings.h"
-#include "core/io/config_file.h"
 #include "core/io/dir_access.h"
 #include "core/io/file_access.h"
 #include "core/io/resource_loader.h"
@@ -119,8 +119,7 @@ class WGodotCppResources {
 			}
 			const String path = resource->get_path();
 			const String root = path.get_slice("::", 0);
-			const bool imported = emitter.compiled_resource_aliases.get(root, String()) == source_path;
-			if (!path.is_empty() && root != source_path && !imported) {
+			if (!path.is_empty() && root != source_path) {
 				return;
 			}
 			if (!embedded.has(resource.ptr())) {
@@ -670,11 +669,10 @@ class WGodotCppResources {
 				scan(path);
 				continue;
 			}
-			const String extension = path.get_extension();
 			if (!emitter.project.get_target().includes(path)) {
 				continue;
 			}
-			if (extension != "tres" && extension != "res" && ResourceLoader::get_resource_type(path) != "PackedScene") {
+			if (!WGodotNativeResourcePolicy::is_authored(path)) {
 				continue;
 			}
 			const Ref<Resource> resource = ResourceLoader::load(path);
@@ -682,27 +680,12 @@ class WGodotCppResources {
 				emitter.diagnostics.push_back("Cannot load resource for native generation: " + path);
 				continue;
 			}
+			if (!WGodotNativeResourcePolicy::needs_factory(resource)) {
+				continue;
+			}
 			definitions.insert(path, resource);
 			paths.push_back(path);
 			emitter.resource_sources[path] = FileAccess::get_sha256(path);
-			if (FileAccess::exists(path + ".import")) {
-				emitter.resource_sources[path + ".import"] = FileAccess::get_sha256(path + ".import");
-				Ref<ConfigFile> import;
-				import.instantiate();
-				if (import->load(path + ".import") != OK) {
-					emitter.diagnostics.push_back("Cannot read native resource import: " + path + ".import");
-					continue;
-				}
-				for (const String &key : import->get_section_keys("remap")) {
-					if (key != "path" && !key.begins_with("path.")) {
-						continue;
-					}
-					const String imported_path = import->get_value("remap", key);
-					emitter.compiled_resource_aliases[imported_path] = path;
-					emitter.resource_sources[imported_path] = FileAccess::get_sha256(imported_path);
-					emitter.resource_id(imported_path);
-				}
-			}
 		}
 	}
 
