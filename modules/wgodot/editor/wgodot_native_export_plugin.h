@@ -1,8 +1,10 @@
 // wgodot-changes::file
 #pragma once
 
-#include "editor/export/editor_export_plugin.h"
+#include "wgodot_export_target.h"
 #include "wgodot_resource_export.h"
+
+#include "editor/export/editor_export_plugin.h"
 
 class WGodotNativeExportPlugin : public EditorExportPlugin {
 	GDCLASS(WGodotNativeExportPlugin, EditorExportPlugin);
@@ -11,6 +13,7 @@ class WGodotNativeExportPlugin : public EditorExportPlugin {
 	Dictionary manifest;
 	Dictionary autoloads;
 	WGodotResourceExport resources;
+	WGodotExportTarget target;
 
 protected:
 	void _get_export_options(const Ref<EditorExportPlatform> &p_platform, List<EditorExportPlatform::ExportOption> *r_options) const override;

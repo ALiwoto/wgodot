@@ -10,6 +10,7 @@
 #include "gdscript_parser.h"
 
 void GDScriptParser::register_wgodot_annotations() {
+	register_annotation(MethodInfo("@editor_only"), AnnotationInfo::SCRIPT | AnnotationInfo::CLASS_LEVEL | AnnotationInfo::ENUM, &GDScriptParser::wgodot_noop_annotation);
 	register_annotation(MethodInfo("@export_reflection"), AnnotationInfo::CLASS_LEVEL | AnnotationInfo::ENUM, &GDScriptParser::wgodot_export_reflection_annotation);
 	register_annotation(MethodInfo("@override"), AnnotationInfo::FUNCTION, &GDScriptParser::wgodot_override_annotation);
 	register_annotation(MethodInfo("@private"), AnnotationInfo::CLASS_LEVEL, &GDScriptParser::wgodot_private_annotation);

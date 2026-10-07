@@ -18,6 +18,7 @@ class ExportAnalysis {
 	HashMap<String, Ref<GDScript>> scripts;
 	HashMap<StringName, String> global_classes;
 	HashMap<String, StringName> external_native_bases;
+	HashMap<String, HashSet<StringName>> excluded_members;
 	HashMap<uint64_t, String> decoded_string_resources;
 	bool strings_decoded = false;
 	static thread_local ExportAnalysis *active;
@@ -40,6 +41,8 @@ public:
 	ExportAnalysis(const ExportAnalysis &) = delete;
 	ExportAnalysis &operator=(const ExportAnalysis &) = delete;
 	static ExportAnalysis *get_active() { return active; }
+	void set_excluded_members(const HashMap<String, HashSet<StringName>> &p_members) { excluded_members = p_members; }
+	bool is_excluded_member(const String &p_class, const StringName &p_member) const;
 	const HashMap<uint64_t, String> &get_decoded_string_resources();
 	bool is_global_class(const StringName &p_name) const { return global_classes.has(p_name); }
 	String get_global_class_path(const StringName &p_name) const;

@@ -30,16 +30,23 @@ Dictionary failure(const String &p_message) {
 } // namespace
 
 int WGodotCppExporter::run(const Vector<String> &p_arguments) {
-	const String usage = "Usage: wg export-cpp <absolute-output-directory> [--analyze-only] [--trace on|off|true|false] (default: off)";
+	const String usage = "Usage: wg export-cpp <absolute-output-directory> [--target client|server] [--analyze-only] [--trace on|off|true|false] (defaults: client, trace off)";
 	if (p_arguments.is_empty()) {
 		print_error(usage);
 		return 2;
 	}
 	bool analyze_only = false;
 	bool trace_enabled = false;
+	String target = "client";
 	for (int i = 1; i < p_arguments.size(); i++) {
 		if (p_arguments[i] == "--analyze-only") {
 			analyze_only = true;
+		} else if (p_arguments[i] == "--target") {
+			if (++i >= p_arguments.size() || (p_arguments[i] != "client" && p_arguments[i] != "server")) {
+				print_error("--target requires client or server.");
+				return 2;
+			}
+			target = p_arguments[i];
 		} else if (p_arguments[i] == "--trace") {
 			if (++i >= p_arguments.size()) {
 				print_error("--trace requires on, off, true, or false.");
@@ -73,6 +80,7 @@ int WGodotCppExporter::run(const Vector<String> &p_arguments) {
 	options["output"] = output;
 	options["analyze_only"] = analyze_only;
 	options["trace"] = trace_enabled;
+	options["target"] = target;
 	Dictionary status_request;
 	status_request["protocol"] = WGodotCLI::PROTOCOL_VERSION;
 	status_request["command"] = "status";
@@ -130,7 +138,7 @@ Dictionary WGodotCppExporter::execute(const Dictionary &p_options) {
 	const bool analyze_only = p_options.get("analyze_only", false);
 	const bool trace_enabled = p_options.get("trace", false);
 	WGodotCppProject project;
-	Error result = project.analyze();
+	Error result = project.analyze(p_options.get("target", "client"));
 	Dictionary report = project.describe();
 	Vector<String> diagnostics = project.get_diagnostics();
 	if (result == OK && !analyze_only) {

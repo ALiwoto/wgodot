@@ -51,6 +51,11 @@ bool is_export_analysis() {
 	return ExportAnalysis::get_active() != nullptr;
 }
 
+bool is_excluded_member(const String &p_class, const StringName &p_member) {
+	auto *analysis = ExportAnalysis::get_active();
+	return analysis && analysis->is_excluded_member(p_class, p_member);
+}
+
 bool get_parser_override(const String &p_path, GDScriptParserRef::Status p_status, Error &r_error, Ref<GDScriptParserRef> &r_parser) {
 	if (auto *analysis = ExportAnalysis::get_active()) {
 		r_parser = analysis->get_parser(p_path, p_status, r_error);

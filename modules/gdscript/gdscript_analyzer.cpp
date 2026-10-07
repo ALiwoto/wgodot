@@ -4552,6 +4552,14 @@ void GDScriptAnalyzer::reduce_identifier_from_base(GDScriptParser::IdentifierNod
 			name = "_init";
 		}
 
+		// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+		if (WGodotGDScriptResolution::is_excluded_member(script_class->fqcn, name)) {
+			push_error(vformat("Runtime code cannot reference @editor_only member '%s' of '%s'.", name, script_class->fqcn), p_identifier);
+			return;
+		}
+#endif
+		// wgodot-changes::end
 		if (script_class->has_member(name)) {
 			resolve_class_member(script_class, name, p_identifier);
 
@@ -6511,6 +6519,14 @@ bool GDScriptAnalyzer::get_function_signature(GDScriptParser::Node *p_source, bo
 	// wgodot-changes::end
 
 	while (found_function == nullptr && base_class != nullptr) {
+		// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+		if (WGodotGDScriptResolution::is_excluded_member(base_class->fqcn, function_name)) {
+			push_error(vformat("Runtime code cannot reference @editor_only method '%s' of '%s'.", function_name, base_class->fqcn), p_source);
+			return false;
+		}
+#endif
+		// wgodot-changes::end
 		if (base_class->has_member(function_name)) {
 			if (base_class->get_member(function_name).type != GDScriptParser::ClassNode::Member::FUNCTION) {
 				// TODO: If this is Callable it can have a better error message.

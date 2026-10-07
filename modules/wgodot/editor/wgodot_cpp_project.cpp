@@ -65,8 +65,15 @@ Error WGodotCppProject::collect_scripts(const String &p_directory, Vector<String
 			if (error != OK) {
 				return error;
 			}
-		} else if (entry.get_extension() == "gd") {
+		} else if (entry.get_extension() == "gd" && target.includes(path)) {
 			r_scripts.push_back(path);
+		} else if (entry.get_extension() == "import") {
+			String message;
+			error = target.read_import(path.get_basename(), message);
+			if (error != OK) {
+				diagnostics.push_back(message);
+				return error;
+			}
 		}
 	}
 	return OK;
@@ -104,7 +111,12 @@ Error WGodotCppProject::prepare_sources(const Vector<String> &p_scripts) {
 		diagnostics.push_back("no_export: " + error_text);
 		return error;
 	}
+	error = prepare_editor_only();
+	if (error != OK) {
+		return error;
+	}
 	export_analysis = memnew(ExportAnalysis(export_project, export_context));
+	export_analysis->set_excluded_members(editor_members);
 	return OK;
 }
 
@@ -122,13 +134,20 @@ void WGodotCppProject::collect_classes(const String &p_script_path, GDScriptPars
 	}
 }
 
-Error WGodotCppProject::analyze() {
+Error WGodotCppProject::analyze(const String &p_target) {
 	ERR_FAIL_COND_V(!ProjectSettings::get_singleton()->is_project_loaded(), ERR_UNCONFIGURED);
 	classes.clear();
 	class_indices.clear();
 	resource_dependencies.clear();
 	preloads.clear();
 	diagnostics.clear();
+	editor_members.clear();
+	String target_error;
+	Error target_result = target.load(p_target, target_error);
+	if (target_result != OK) {
+		diagnostics.push_back(target_error);
+		return target_result;
+	}
 	parsers.clear();
 	if (export_analysis) {
 		memdelete(export_analysis);
@@ -155,6 +174,9 @@ Error WGodotCppProject::analyze() {
 	WGodotGDScriptExportTransform::ExportAnalysis::Scope scope(*export_analysis);
 	ResourceDependencies dependencies;
 	for (const String &path : scripts) {
+		if (!target.includes(path)) {
+			continue;
+		}
 		Ref<GDScriptParserRef> parser = export_analysis->get_parser(path, GDScriptParserRef::FULLY_SOLVED, error);
 		if (parser.is_valid()) {
 			parsers.push_back(parser);
@@ -165,7 +187,7 @@ Error WGodotCppProject::analyze() {
 					diagnostics.push_back(vformat("%s:%d:%d: %s", path, parse_error.start_line, parse_error.start_column, parse_error.message));
 				}
 			}
-			diagnostics.push_back(vformat("Cannot analyze %s: %s", path, error_names[error]));
+			diagnostics.push_back(vformat("Cannot analyze %s for %s: %s. Dependencies must be shared or owned by this target.", path, target.get_name(), error_names[error]));
 			continue;
 		}
 		collect_classes(path, parser->get_parser()->get_tree());
@@ -174,6 +196,10 @@ Error WGodotCppProject::analyze() {
 		}
 	}
 	for (const auto &dependency : dependencies.paths) {
+		if (!target.includes(dependency.key)) {
+			diagnostics.push_back(target.dependency_error(dependency.key));
+			continue;
+		}
 		resource_dependencies.push_back(dependency.key);
 	}
 	resource_dependencies.sort();
@@ -209,6 +235,7 @@ GDScriptAnalyzer *WGodotCppProject::find_analyzer(const String &p_script_path) c
 Dictionary WGodotCppProject::describe() const {
 	Dictionary result;
 	result["format"] = 1;
+	result["target"] = target.get_name();
 	result["script_count"] = parsers.size();
 	result["resource_dependencies"] = resource_dependencies;
 	Array preload_list;

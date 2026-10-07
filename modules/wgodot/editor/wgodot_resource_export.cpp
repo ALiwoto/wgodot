@@ -1,5 +1,7 @@
 // wgodot-changes::file
 #include "wgodot_resource_export.h"
+
+#include "wgodot_export_target.h"
 #include "wgodot_resource_rewrite.h"
 
 #include "core/config/project_settings.h"
@@ -15,7 +17,8 @@
 #include "core/variant/variant_parser.h"
 #include "editor/file_system/editor_paths.h"
 
-void WGodotResourceExport::initialize(const Dictionary &p_paths) {
+void WGodotResourceExport::initialize(const Dictionary &p_paths, const WGodotExportTarget *p_target) {
+	target = p_target;
 	ids.clear();
 	entries.clear();
 	payloads.clear();
@@ -52,6 +55,11 @@ int64_t WGodotResourceExport::identify(const String &p_path) {
 		source = "res://" + source;
 	}
 	source = ProjectSettings::get_singleton()->localize_path(source).simplify_path();
+	if (target && !target->includes(source)) {
+		error = ERR_INVALID_DATA;
+		ERR_PRINT(target->dependency_error(source));
+		return 0;
+	}
 	if (!source.begins_with("res://")) {
 		error = ERR_INVALID_DATA;
 		ERR_PRINT("Cannot export a resource outside the project: " + p_path);
@@ -134,7 +142,8 @@ Error WGodotResourceExport::rewrite_binary(const String &p_source, Vector<uint8_
 				return context->exporter->rewrite_text(p_value, context->source);
 			}
 			return String(context->exporter->rewrite_value(p_value));
-		}, &context);
+		},
+				&context);
 		ResourceFormatSaverBinaryInstance saver;
 		const uint32_t flags = memcmp(r_data.ptr(), "RSCC", 4) == 0 ? ResourceSaver::FLAG_COMPRESS : ResourceSaver::FLAG_NONE;
 		result = saver.save(temporary, resource, flags);
@@ -165,6 +174,9 @@ Error WGodotResourceExport::export_file(String &r_path, Vector<uint8_t> &r_data)
 		for (uint32_t i = 0; i < count; i++) {
 			const ResourceUID::ID uid = input->get_u64();
 			const String original = input->get_utf8_string();
+			if (target && !target->includes(original)) {
+				continue;
+			}
 			const int64_t id = identify(original);
 			if (entries.has(id)) {
 				records.push_back({ uid, WGodotResourcePaths::to_path(id) });

@@ -1,5 +1,6 @@
 // wgodot-changes::file
 #include "wgodot_native_export_plugin.h"
+
 #include "wgodot_native_resource_export.h"
 
 #include "core/config/project_settings.h"
@@ -10,8 +11,8 @@
 #include "core/io/resource_saver.h"
 #include "core/io/wgodot_resource_paths.h"
 #include "core/object/class_db.h"
-#include "editor/file_system/editor_paths.h"
 #include "editor/export/editor_export_preset.h"
+#include "editor/file_system/editor_paths.h"
 
 namespace {
 Dictionary read_manifest(const String &p_path) {
@@ -25,6 +26,7 @@ Dictionary read_manifest(const String &p_path) {
 
 void WGodotNativeExportPlugin::_get_export_options(const Ref<EditorExportPlatform> &p_platform, List<EditorExportPlatform::ExportOption> *r_options) const {
 	r_options->push_back(EditorExportPlatform::ExportOption(PropertyInfo(Variant::STRING, "wgodot/native_module", PROPERTY_HINT_GLOBAL_DIR), ""));
+	r_options->push_back(EditorExportPlatform::ExportOption(PropertyInfo(Variant::STRING, "wgodot/native_target", PROPERTY_HINT_ENUM, "client,server"), "client"));
 }
 
 void WGodotNativeExportPlugin::_export_begin(const HashSet<String> &p_features, bool p_debug, const String &p_path, int p_flags) {
@@ -44,14 +46,24 @@ void WGodotNativeExportPlugin::_export_begin(const HashSet<String> &p_features, 
 		return;
 	}
 	const String directory = get_export_preset()->get("wgodot/native_module");
+	String target_error;
+	const Error target_result = target.load(get_export_preset()->get("wgodot/native_target"), target_error);
+	if (target_result != OK) {
+		set_export_error(target_result, target_error);
+		return;
+	}
 	manifest = read_manifest(directory.path_join("main_game.json"));
 	if (int(manifest.get("format", 0)) != 1 || !manifest.has("native_classes") || !manifest.has("sources") || !manifest.has("resource_paths") || !manifest.has("compiled_resources") || !manifest.has("compiled_resource_aliases") || !manifest.has("resource_sources")) {
 		set_export_error(ERR_UNCONFIGURED, "Generate the native module first with wg export-cpp. Invalid manifest in: " + directory);
 		return;
 	}
+	if (manifest.get("target", "") != target.get_name() || manifest.get("target_fingerprint", "") != target.get_fingerprint()) {
+		set_export_error(ERR_INVALID_DATA, "Native target or project/target settings changed. Regenerate with --target " + target.get_name() + " and rebuild.");
+		return;
+	}
 	const String template_path = get_export_preset()->get(p_debug ? "custom_template/debug" : "custom_template/release");
 	const Dictionary build = read_manifest(template_path + ".native.json");
-	if (build.get("generation", "") != manifest["generation"] || String(build.get("binary_sha256", "")) != FileAccess::get_sha256(template_path)) {
+	if (build.get("target", "") != target.get_name() || build.get("generation", "") != manifest["generation"] || String(build.get("binary_sha256", "")) != FileAccess::get_sha256(template_path)) {
 		set_export_error(ERR_UNCONFIGURED, "Native template does not match this generation. Run build_wgodot.ps1 -Game (and -Release for release export). Template: " + template_path);
 		return;
 	}
@@ -62,7 +74,15 @@ void WGodotNativeExportPlugin::_export_begin(const HashSet<String> &p_features, 
 			return;
 		}
 	}
-	resources.initialize(manifest["resource_paths"]);
+	const Dictionary editor_scripts = manifest.get("editor_only_scripts", Dictionary());
+	for (const KeyValue<Variant, Variant> &source : editor_scripts) {
+		if (!FileAccess::exists(source.key) || FileAccess::get_sha256(source.key) != String(source.value)) {
+			set_export_error(ERR_INVALID_DATA, "Editor-only script changed after native generation; regenerate: " + String(source.key));
+			return;
+		}
+		target.exclude_script(source.key);
+	}
+	resources.initialize(manifest["resource_paths"], &target);
 	const Dictionary resource_sources = manifest["resource_sources"];
 	for (const KeyValue<Variant, Variant> &source : resource_sources) {
 		if (!FileAccess::exists(source.key) || FileAccess::get_sha256(source.key) != String(source.value)) {
@@ -88,7 +108,23 @@ void WGodotNativeExportPlugin::_export_paths_ready(const HashSet<String> &p_path
 	const Dictionary sources = manifest["sources"];
 	const Dictionary compiled = manifest["compiled_resources"];
 	const Dictionary aliases = manifest["compiled_resource_aliases"];
+	// Imported payloads live under .godot rather than beside their source. Keep
+	// ownership tied to that source, including alternate platform payloads.
 	for (const String &path : p_paths) {
+		if (!FileAccess::exists(path + ".import")) {
+			continue;
+		}
+		String message;
+		const Error error = target.read_import(path, message);
+		if (error != OK) {
+			set_export_error(error, message);
+			return;
+		}
+	}
+	for (const String &path : p_paths) {
+		if (!target.includes(path)) {
+			continue;
+		}
 		if (path.get_extension() == "gd" && !sources.has(path)) {
 			set_export_error(ERR_INVALID_DATA, "Script was added after native generation; regenerate and rebuild: " + path);
 			return;
@@ -100,6 +136,10 @@ void WGodotNativeExportPlugin::_export_paths_ready(const HashSet<String> &p_path
 	}
 	const Dictionary classes = manifest["native_classes"];
 	for (const KeyValue<StringName, ProjectSettings::AutoloadInfo> &entry : ProjectSettings::get_singleton()->get_autoload_list()) {
+		if (!target.includes(entry.value.path)) {
+			autoloads["autoload/" + String(entry.key)] = Variant();
+			continue;
+		}
 		if (entry.value.path.get_extension() != "gd") {
 			continue;
 		}
@@ -123,6 +163,10 @@ void WGodotNativeExportPlugin::_export_paths_ready(const HashSet<String> &p_path
 
 void WGodotNativeExportPlugin::_export_file(const String &p_path, const String &p_type, const HashSet<String> &p_features) {
 	if (!enabled) {
+		return;
+	}
+	if (!target.includes(p_path)) {
+		skip();
 		return;
 	}
 	const String extension = p_path.get_extension().to_lower();
@@ -178,7 +222,7 @@ void WGodotNativeExportPlugin::_export_cache_paths(HashSet<String> &r_paths) {
 	}
 	Vector<String> scripts;
 	for (const String &path : r_paths) {
-		if (path.get_extension() == "gd") {
+		if (path.get_extension() == "gd" || !target.includes(path)) {
 			scripts.push_back(path);
 		}
 	}
@@ -192,6 +236,9 @@ void WGodotNativeExportPlugin::_export_project_settings(HashMap<String, Variant>
 		return;
 	}
 	for (const KeyValue<Variant, Variant> &entry : autoloads) {
+		r_settings[entry.key] = entry.value;
+	}
+	for (const KeyValue<String, Variant> &entry : target.get_settings()) {
 		r_settings[entry.key] = entry.value;
 	}
 	List<PropertyInfo> properties;
@@ -215,6 +262,10 @@ void WGodotNativeExportPlugin::_export_project_settings(HashMap<String, Variant>
 }
 
 Error WGodotNativeExportPlugin::_export_pack_file(String &r_path, Vector<uint8_t> &r_data) {
+	if (validated && !target.includes(r_path.begins_with("res://") ? r_path : "res://" + r_path)) {
+		r_path = String();
+		return OK;
+	}
 	return validated ? resources.export_file(r_path, r_data) : OK;
 }
 

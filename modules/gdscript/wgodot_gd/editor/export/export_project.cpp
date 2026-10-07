@@ -166,4 +166,15 @@ Error ExportProject::apply(const HashMap<String, Vector<SourceEdit>> &p_edits, c
 	return OK;
 }
 
+ExportProject ExportProject::without_scripts(const HashSet<String> &p_paths) const {
+	ExportProject output = *this;
+	for (const String &path : p_paths) {
+		output.sources.erase(path);
+		output.script_paths.erase(path);
+		output.exported_paths.erase(path);
+	}
+	output.revision++;
+	return output;
+}
+
 } // namespace WGodotGDScriptExportTransform

@@ -1,6 +1,7 @@
 // wgodot-changes::file
 #include "wgodot_cpp_emitter.h"
 #include "wgodot_cpp_names.h"
+#include "wgodot_export_scene.h"
 #include "wgodot_resource_rewrite.h"
 
 #include "core/config/project_settings.h"
@@ -17,6 +18,7 @@ using namespace WGodotCppNames;
 
 class WGodotCppResources {
 	WGodotCppEmitter &emitter;
+	WGodotExportScene scenes;
 	Parser::ClassNode origin;
 	HashMap<String, Ref<Resource>> definitions;
 	Vector<String> paths;
@@ -89,7 +91,8 @@ class WGodotCppResources {
 		}
 		if (closest >= 0) {
 			const Ref<PackedScene> instance = p_state->get_node_instance(closest);
-			const String relative = prefix == "." ? path : path == prefix ? "." : path.substr(prefix.length() + 1);
+			const String relative = prefix == "." ? path : path == prefix ? "."
+																		  : path.substr(prefix.length() + 1);
 			return node_class(instance->get_state(), NodePath(relative));
 		}
 		const Ref<SceneState> base = p_state->get_base_scene_state();
@@ -415,7 +418,7 @@ class WGodotCppResources {
 	}
 
 	void scene(const Ref<PackedScene> &p_scene, const String &p_target) {
-		const Ref<SceneState> state = p_scene->get_state();
+		const Ref<SceneState> state = scenes.filter(p_scene);
 		Dictionary bundled = state->get_bundled_scene();
 		PackedStringArray names = bundled["names"];
 		const PackedInt32Array nodes = bundled["nodes"];
@@ -560,12 +563,16 @@ class WGodotCppResources {
 			collecting_resource = i;
 			const Ref<PackedScene> packed = graph[i];
 			if (packed.is_valid()) {
-				const Dictionary bundled = packed->get_state()->get_bundled_scene();
+				const Dictionary bundled = scenes.filter(packed)->get_bundled_scene();
 				collect(bundled["variants"]);
 			}
 			List<PropertyInfo> properties;
 			graph[i]->get_property_list(&properties);
+			const auto *game = resource_class(graph[i]);
 			for (const PropertyInfo &property : properties) {
+				if (game && emitter.project.is_editor_member(game->node, property.name)) {
+					continue;
+				}
 				if ((property.usage & PROPERTY_USAGE_STORAGE) && property.name != SNAME("script") && !(packed.is_valid() && property.name == SNAME("_bundled"))) {
 					collect(graph[i]->get(property.name));
 				}
@@ -574,7 +581,8 @@ class WGodotCppResources {
 		for (int i = 0; i < graph.size(); i++) {
 			const auto *game = resource_class(graph[i]);
 			const bool mapped = game || emitter.native_headers.has(graph[i]->get_class());
-			const String type = game ? game->cpp_name : mapped ? native_class(graph[i]->get_class()) : "Resource";
+			const String type = game ? game->cpp_name : mapped ? native_class(graph[i]->get_class())
+															   : "Resource";
 			if (game) {
 				emitter.class_dependencies.insert(type);
 			}
@@ -612,6 +620,9 @@ class WGodotCppResources {
 			graph[i]->get_property_list(&properties);
 			for (const PropertyInfo &property : properties) {
 				if (!(property.usage & PROPERTY_USAGE_STORAGE) || property.name == SNAME("script") || property.name == SNAME("resource_path") || (packed.is_valid() && property.name == SNAME("_bundled"))) {
+					continue;
+				}
+				if (game && emitter.project.is_editor_member(game->node, property.name)) {
 					continue;
 				}
 				assign(target, graph[i]->get_class(), game, property.name, graph[i]->get(property.name));
@@ -660,6 +671,9 @@ class WGodotCppResources {
 				continue;
 			}
 			const String extension = path.get_extension();
+			if (!emitter.project.get_target().includes(path)) {
+				continue;
+			}
 			if (extension != "tres" && extension != "res" && ResourceLoader::get_resource_type(path) != "PackedScene") {
 				continue;
 			}
@@ -693,11 +707,11 @@ class WGodotCppResources {
 	}
 
 public:
-	explicit WGodotCppResources(WGodotCppEmitter &p_emitter) : emitter(p_emitter) {}
+	explicit WGodotCppResources(WGodotCppEmitter &p_emitter) : emitter(p_emitter), scenes(p_emitter.project, p_emitter.diagnostics) {}
 	void generate() {
 		scan("res://");
 		for (const KeyValue<StringName, ProjectSettings::AutoloadInfo> &entry : ProjectSettings::get_singleton()->get_autoload_list()) {
-			if (entry.value.path.get_extension() != "gd") {
+			if (entry.value.path.get_extension() != "gd" || !emitter.project.get_target().includes(entry.value.path)) {
 				continue;
 			}
 			const Ref<Script> script = ResourceLoader::load(entry.value.path);

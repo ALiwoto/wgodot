@@ -58,6 +58,7 @@ class ExportProject {
 public:
 	Error capture(const HashSet<String> &p_exported_paths, const HashSet<String> &p_script_paths, String &r_error);
 	Error apply(const HashMap<String, Vector<SourceEdit>> &p_edits, const StringName &p_pass, ExportProject &r_output, String &r_error) const;
+	ExportProject without_scripts(const HashSet<String> &p_paths) const;
 	uint64_t get_revision() const { return revision; }
 	const ExportSource *get_source(const String &p_path) const { return sources.getptr(p_path); }
 	const Vector<String> &get_script_paths() const { return script_paths; }

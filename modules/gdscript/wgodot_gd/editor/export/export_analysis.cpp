@@ -84,6 +84,11 @@ String ExportAnalysis::resolve_path(const String &p_path) const {
 	return ResourceUID::ensure_path(p_path);
 }
 
+bool ExportAnalysis::is_excluded_member(const String &p_class, const StringName &p_member) const {
+	const HashSet<StringName> *members = excluded_members.getptr(p_class);
+	return members && members->has(p_member);
+}
+
 const ExportSource *ExportAnalysis::get_source(const String &p_path) const {
 	return project.get_source(resolve_path(p_path));
 }

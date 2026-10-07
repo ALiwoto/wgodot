@@ -17,6 +17,10 @@ int64_t WGodotCppEmitter::resource_id(const String &p_path) {
 		diagnostics.push_back("WResPath must identify a packaged project resource: " + p_path);
 		return 0;
 	}
+	if (!project.get_target().includes(path)) {
+		diagnostics.push_back(project.get_target().dependency_error(path));
+		return 0;
+	}
 	if (const int64_t *id = resource_ids.getptr(path)) {
 		return *id;
 	}

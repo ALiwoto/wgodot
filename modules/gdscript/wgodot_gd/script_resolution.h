@@ -20,6 +20,7 @@ bool resource_exists(const String &p_path);
 String get_resource_type(const String &p_path);
 
 bool is_export_analysis();
+bool is_excluded_member(const String &p_class, const StringName &p_member);
 bool get_parser_override(const String &p_path, GDScriptParserRef::Status p_status, Error &r_error, Ref<GDScriptParserRef> &r_parser);
 bool has_parser_override(const String &p_path, bool &r_exists);
 bool get_shallow_script_override(const String &p_path, Error &r_error, Ref<GDScript> &r_script);

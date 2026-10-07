@@ -711,6 +711,7 @@ Error WGodotCppEmitter::write(const String &p_directory) const {
 	}
 	names.sort();
 	StringBuilder fingerprint;
+	fingerprint += project.get_target().get_fingerprint() + "\n";
 	for (const String &name : names) {
 		const String &contents = files[name];
 		fingerprint += name + "\n" + contents.sha256_text() + "\n";
@@ -732,6 +733,8 @@ Error WGodotCppEmitter::write(const String &p_directory) const {
 	}
 	Dictionary manifest;
 	manifest["format"] = 1;
+	manifest["target"] = project.get_target().get_name();
+	manifest["target_fingerprint"] = project.get_target().get_fingerprint();
 	manifest["trace"] = trace_enabled;
 	manifest["generation"] = fingerprint.as_string().sha256_text();
 	manifest["files"] = names;
@@ -749,6 +752,11 @@ Error WGodotCppEmitter::write(const String &p_directory) const {
 		}
 	}
 	manifest["sources"] = sources;
+	Dictionary editor_scripts;
+	for (const String &path : project.get_target().get_excluded_scripts()) {
+		editor_scripts[path] = FileAccess::get_sha256(path);
+	}
+	manifest["editor_only_scripts"] = editor_scripts;
 	manifest["native_classes"] = native_classes;
 	manifest["compiled_resources"] = compiled_resources;
 	manifest["compiled_resource_aliases"] = compiled_resource_aliases;

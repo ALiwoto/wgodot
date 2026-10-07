@@ -120,6 +120,7 @@ finally {
 Write-Host "Built: $binaryPath"
 if ($Game) {
 	$buildManifest = @{
+		target = $gameManifest.target
 		generation = $gameManifest.generation
 		binary_sha256 = (Get-FileHash -LiteralPath $binaryPath -Algorithm SHA256).Hash.ToLowerInvariant()
 	} | ConvertTo-Json

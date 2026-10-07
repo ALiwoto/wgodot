@@ -7,6 +7,8 @@
 #include "core/templates/hash_set.h"
 #include "core/variant/dictionary.h"
 
+class WGodotExportTarget;
+
 class WGodotResourceExport {
 	struct Entry {
 		int64_t target = 0;
@@ -22,6 +24,7 @@ class WGodotResourceExport {
 	HashMap<uint32_t, String> formats;
 	int64_t next_id = 1;
 	Error error = OK;
+	const WGodotExportTarget *target = nullptr;
 
 	int64_t identify(const String &p_path);
 	String rewrite_text(const String &p_text, const String &p_source);
@@ -29,7 +32,7 @@ class WGodotResourceExport {
 	Error import_remap(const String &p_source, const Vector<uint8_t> &p_data);
 
 public:
-	void initialize(const Dictionary &p_paths);
+	void initialize(const Dictionary &p_paths, const WGodotExportTarget *p_target = nullptr);
 	void add_native_resource(const String &p_path, const String &p_type, const String &p_target = String());
 	String path(const String &p_original);
 	Variant rewrite_value(const Variant &p_value, const PropertyInfo &p_property = PropertyInfo());

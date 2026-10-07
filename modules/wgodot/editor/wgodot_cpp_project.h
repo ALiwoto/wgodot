@@ -1,6 +1,8 @@
 // wgodot-changes::file
 #pragma once
 
+#include "wgodot_export_target.h"
+
 #include "core/templates/hash_map.h"
 #include "core/templates/vector.h"
 #include "core/variant/dictionary.h"
@@ -28,6 +30,7 @@ public:
 	};
 
 private:
+	WGodotExportTarget target;
 	WGodotGDScriptExportTransform::ExportProject export_project;
 	WGodotGDScriptExportTransform::ExportContext export_context;
 	WGodotGDScriptExportTransform::ExportAnalysis *export_analysis = nullptr;
@@ -37,9 +40,11 @@ private:
 	Vector<String> resource_dependencies;
 	Vector<Preload> preloads;
 	Vector<String> diagnostics;
+	HashMap<String, HashSet<StringName>> editor_members;
 
 	Error collect_scripts(const String &p_directory, Vector<String> &r_scripts);
 	Error prepare_sources(const Vector<String> &p_scripts);
+	Error prepare_editor_only();
 	void collect_classes(const String &p_script_path, GDScriptParser::ClassNode *p_class);
 
 public:
@@ -48,7 +53,9 @@ public:
 	WGodotCppProject(const WGodotCppProject &) = delete;
 	WGodotCppProject &operator=(const WGodotCppProject &) = delete;
 
-	Error analyze();
+	Error analyze(const String &p_target = "client");
+	const WGodotExportTarget &get_target() const { return target; }
+	bool is_editor_member(const GDScriptParser::ClassNode *p_class, const StringName &p_member) const;
 	const Vector<Class> &get_classes() const { return classes; }
 	const Vector<Preload> &get_preloads() const { return preloads; }
 	const Class *find_class(const GDScriptParser::ClassNode *p_node) const;

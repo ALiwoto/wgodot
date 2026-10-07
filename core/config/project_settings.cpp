@@ -1292,6 +1292,12 @@ Error ProjectSettings::save_custom(const String &p_path, const CustomMap &p_cust
 	}
 
 	for (const KeyValue<String, Variant> &E : p_custom) {
+		// wgodot-changes::begin
+		// Nil overrides remove settings from an export, including their names.
+		if (E.value.get_type() == Variant::NIL) {
+			continue;
+		}
+		// wgodot-changes::end
 		// Lookup global prop to store in the same order
 		RBMap<StringName, VariantContainer>::Iterator global_prop = props.find(E.key);
 
