@@ -7,6 +7,7 @@ param(
 	[switch]$Release,
 	[switch]$Optimize,
 	[string]$BuildProfilePath,
+	[string]$PostgreSQLPath,
 	[ValidatePattern('^([a-z][a-z0-9_]*)?$')]
 	[string]$GameName = '',
 	[ValidateSet('client', 'server')]
@@ -48,6 +49,20 @@ if ($Game) {
 	}
 }
 
+$withPostgreSQL = (!$Game -and !$Templates) -or ($Game -and $nativeBuild.GameTarget -eq 'server')
+if ($withPostgreSQL) {
+	if (!$PostgreSQLPath) {
+		$PostgreSQLPath = Get-ChildItem -LiteralPath "$env:ProgramFiles/PostgreSQL" -Directory -ErrorAction SilentlyContinue |
+			Where-Object { $_.Name -match '^\d+(\.\d+)*$' } |
+			Sort-Object { [version]($_.Name + '.0') } -Descending |
+			Select-Object -First 1 -ExpandProperty FullName
+	}
+	if (!$PostgreSQLPath -or !(Test-Path -LiteralPath "$PostgreSQLPath/include/libpq-fe.h" -PathType Leaf)) {
+		throw 'Editor/server builds require an installed libpq SDK. Supply -PostgreSQLPath with its installation directory.'
+	}
+	$PostgreSQLPath = (Resolve-Path -LiteralPath $PostgreSQLPath).Path
+}
+
 $sconsArgs = @(
 	"platform=windows",
 	"arch=x86_64",
@@ -59,6 +74,11 @@ $sconsArgs = @(
 	"d3d12=no",
 	"winrt=no"
 )
+if ($withPostgreSQL) {
+	$sconsArgs += @('module_postgresql_enabled=yes', "postgresql_path=$PostgreSQLPath")
+} else {
+	$sconsArgs += 'module_postgresql_enabled=no'
+}
 
 if (!$Optimize) {
 	$sconsArgs += @("optimize=none", "lto=none")
@@ -82,6 +102,7 @@ if ($Game) {
 	}
 
 	$sconsArgs += @(
+		"wgodot_target=$($nativeBuild.GameTarget)",
 		"custom_modules=$gameModulePath",
 		"custom_modules_recursive=no",
 		"module_main_game_enabled=yes",
@@ -121,11 +142,48 @@ finally {
 	Pop-Location
 }
 Write-Host "Built: $binaryPath"
+$runtimeLibraries = @{}
+if ($withPostgreSQL) {
+	# Ship libpq and its installed DLL dependencies; system DLLs stay with Windows.
+	$pendingLibraries = @('libpq.dll')
+	while ($pendingLibraries.Count) {
+		$libraryName = $pendingLibraries[0]
+		$pendingLibraries = @($pendingLibraries | Select-Object -Skip 1)
+		if ($runtimeLibraries.ContainsKey($libraryName)) {
+			continue
+		}
+		$libraryPath = Join-Path $PostgreSQLPath "bin/$libraryName"
+		$dependencies = & dumpbin /nologo /dependents $libraryPath
+		if ($LASTEXITCODE -ne 0) {
+			throw "Cannot inspect PostgreSQL runtime dependencies: $libraryPath"
+		}
+		foreach ($line in $dependencies) {
+			if ($line -match '^\s+([\w.-]+\.dll)\s*$') {
+				$dependency = $matches[1]
+				if (Test-Path -LiteralPath (Join-Path $PostgreSQLPath "bin/$dependency") -PathType Leaf) {
+					$pendingLibraries += $dependency
+				}
+			}
+		}
+		$libraryHash = (Get-FileHash -LiteralPath $libraryPath -Algorithm SHA256).Hash.ToLowerInvariant()
+		$destination = Join-Path (Split-Path -Parent $binaryPath) $libraryName
+		# Identical SDK files can already be loaded by an editor in this directory.
+		$needsCopy = !(Test-Path -LiteralPath $destination -PathType Leaf)
+		if (!$needsCopy) {
+			$needsCopy = (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $libraryHash
+		}
+		if ($needsCopy) {
+			Copy-Item -LiteralPath $libraryPath -Destination $destination -Force
+		}
+		$runtimeLibraries[$libraryName] = $libraryHash
+	}
+}
 if ($Game) {
 	$buildManifest = @{
 		target = $gameManifest.target
 		generation = $gameManifest.generation
 		binary_sha256 = (Get-FileHash -LiteralPath $binaryPath -Algorithm SHA256).Hash.ToLowerInvariant()
+		runtime_libraries = $runtimeLibraries
 	} | ConvertTo-Json
 	[IO.File]::WriteAllText("$binaryPath.native.json", $buildManifest, [Text.UTF8Encoding]::new($false))
 }

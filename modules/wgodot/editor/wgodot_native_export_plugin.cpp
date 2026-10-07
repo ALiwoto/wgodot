@@ -68,6 +68,20 @@ void WGodotNativeExportPlugin::_export_begin(const HashSet<String> &p_features, 
 		return;
 	}
 	const Dictionary sources = manifest["sources"];
+	const Dictionary runtime_libraries = build.get("runtime_libraries", Dictionary());
+	for (const KeyValue<Variant, Variant> &library : runtime_libraries) {
+		const String name = library.key;
+		if (name.is_empty() || name != name.get_file() || name == "." || name == "..") {
+			set_export_error(ERR_INVALID_DATA, "Invalid native runtime library name.");
+			return;
+		}
+		const String path = template_path.get_base_dir().path_join(name);
+		if (!FileAccess::exists(path) || FileAccess::get_sha256(path) != String(library.value)) {
+			set_export_error(ERR_INVALID_DATA, "Native runtime library changed or is missing: " + path);
+			return;
+		}
+		add_shared_object(path, Vector<String>());
+	}
 	for (const KeyValue<Variant, Variant> &source : sources) {
 		if (!FileAccess::exists(source.key) || FileAccess::get_sha256(source.key) != String(source.value)) {
 			set_export_error(ERR_INVALID_DATA, "Script changed after native generation; regenerate and rebuild: " + String(source.key));

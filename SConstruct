@@ -270,6 +270,9 @@ opts.Add(
 )
 opts.Add(BoolVariable("werror", "Treat compiler warnings as errors", False))
 opts.Add("extra_suffix", "Custom extra suffix added to the base filename of all generated binary files", "")
+# wgodot-changes::begin
+opts.Add(EnumVariable("wgodot_target", "Native game content target", "client", ["client", "server"]))
+# wgodot-changes::end
 opts.Add("object_prefix", "Custom prefix added to the base filename of all generated object files", "")
 opts.Add(BoolVariable("vsproj", "Generate a Visual Studio solution", False))
 opts.Add("vsproj_name", "Name of the Visual Studio solution", "godot")
@@ -940,9 +943,9 @@ elif env.msvc:
     env.Append(CXXFLAGS=["/EHsc"])
 
 # wgodot-changes::begin
-from misc.utility.wgodot_rtti import configure_release
+from misc.utility.wgodot_rtti import configure_runtime
 
-configure_release(env)
+configure_runtime(env)
 # wgodot-changes::end
 
 # Configure compiler warnings

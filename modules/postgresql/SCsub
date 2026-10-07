@@ -1,0 +1,12 @@
+# wgodot-changes::file
+from pathlib import Path
+
+Import("env")
+Import("env_modules")
+
+env_postgresql = env_modules.Clone()
+if env["postgresql_path"]:
+    env_postgresql.Prepend(CPPPATH=[str(Path(env["postgresql_path"]) / "include")])
+else:
+    env_postgresql.ParseConfig("pkg-config --cflags libpq")
+env_postgresql.add_source_files(env.modules_sources, "*.cpp")

@@ -9,14 +9,14 @@ def _set_rtti(env, enabled):
     env.AppendUnique(CXXFLAGS=[flag])
 
 
-def configure_release(env):
-    if env["target"] == "template_release":
+def configure_runtime(env):
+    if not env.editor_build:
         _set_rtti(env, False)
         env.AppendUnique(CPPDEFINES=["WGODOT_NO_RTTI"])
 
 
 def enable_for_c_library(env):
-    # Only the library's private clone may opt out. Godot wrappers keep the release flags.
+    # Only the library's private clone may opt out. Godot wrappers keep the runtime flags.
     if "WGODOT_NO_RTTI" in env["CPPDEFINES"]:
         _set_rtti(env, True)
         env["CPPDEFINES"] = [define for define in env["CPPDEFINES"] if define != "WGODOT_NO_RTTI"]

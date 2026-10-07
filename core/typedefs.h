@@ -42,7 +42,7 @@ static_assert(__cplusplus >= 201703L, "Minimum of C++17 required.");
 
 // wgodot-changes::begin
 #if defined(WGODOT_NO_RTTI) && (defined(__cpp_rtti) || defined(__GXX_RTTI) || defined(_CPPRTTI))
-#error Release engine and game code must be compiled without C++ RTTI.
+#error Runtime engine and game code must be compiled without C++ RTTI.
 #endif
 // wgodot-changes::end
 

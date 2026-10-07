@@ -86,29 +86,31 @@ struct OnreadyWithCast final {
 
 // Infrastructure ===================================================================
 
-template <typename T>
+// wgodot-changes::begin
+// Parser nodes already carry their kind, including all AssignableNode subclasses.
+template <GDScriptParser::Node::Type... node_types, typename T>
 void _FORCE_INLINE_ validated(const GDScriptParser::Node *p_node, GDScriptParser &p_sink, GDScriptLinter::Callback<T> *p_callback) {
-	const T *casted = dynamic_cast<const T *>(p_node);
-	if (casted) {
-		p_callback(casted, p_sink);
+	if (((p_node->type == node_types) || ...)) {
+		p_callback(static_cast<const T *>(p_node), p_sink);
 	}
 }
 
-#define LINTER_CHECK(m_method) [](const GDScriptParser::Node *p_node, GDScriptParser &p_sink) { validated(p_node, p_sink, &m_method); }
+#define LINTER_CHECK(m_method, ...) [](const GDScriptParser::Node *p_node, GDScriptParser &p_sink) { validated<__VA_ARGS__>(p_node, p_sink, &m_method); }
 
 constexpr GDScriptLinter::CallbackWithValidation *const GDScriptLinter::checks[] = {
-	LINTER_CHECK(ConfusableIdentifier::check_assignable),
-	LINTER_CHECK(ConfusableIdentifier::check_class),
-	LINTER_CHECK(ConfusableIdentifier::check_enum),
-	LINTER_CHECK(ConfusableIdentifier::check_for),
-	LINTER_CHECK(ConfusableIdentifier::check_function),
-	LINTER_CHECK(ConfusableIdentifier::check_pattern),
-	LINTER_CHECK(ConfusableIdentifier::check_signal),
+	LINTER_CHECK(ConfusableIdentifier::check_assignable, GDScriptParser::Node::CONSTANT, GDScriptParser::Node::PARAMETER, GDScriptParser::Node::VARIABLE),
+	LINTER_CHECK(ConfusableIdentifier::check_class, GDScriptParser::Node::CLASS),
+	LINTER_CHECK(ConfusableIdentifier::check_enum, GDScriptParser::Node::ENUM),
+	LINTER_CHECK(ConfusableIdentifier::check_for, GDScriptParser::Node::FOR),
+	LINTER_CHECK(ConfusableIdentifier::check_function, GDScriptParser::Node::FUNCTION),
+	LINTER_CHECK(ConfusableIdentifier::check_pattern, GDScriptParser::Node::PATTERN),
+	LINTER_CHECK(ConfusableIdentifier::check_signal, GDScriptParser::Node::SIGNAL),
 
-	LINTER_CHECK(OnreadyWithCast::check_variable),
+	LINTER_CHECK(OnreadyWithCast::check_variable, GDScriptParser::Node::VARIABLE),
 };
 
 #undef LINTER_CHECK
+// wgodot-changes::end
 
 Error GDScriptLinter::lint() {
 	// We use the fact that all nodes form a linked list for memory management purposes to iterate all nodes without actually walking the tree.
