@@ -39,6 +39,9 @@ void InstanceUniforms::free(RID p_self) {
 		RSG::material_storage->global_shader_parameters_instance_free(p_self);
 		_location = -1;
 	}
+	// wgodot-changes::begin
+	_allocated_slots = 0;
+	// wgodot-changes::end
 
 	_invalidate_items();
 }
@@ -74,30 +77,9 @@ void InstanceUniforms::materials_append(RID p_material) {
 }
 
 bool InstanceUniforms::materials_finish(RID p_self) {
-	ERR_FAIL_COND_V(p_self.is_null(), false);
-
-	if (_parameters.is_empty()) {
-		if (is_allocated()) {
-			free(p_self);
-			return true;
-		}
-		return false;
-	}
-
-	const bool should_alloc = !is_allocated();
-
-	if (should_alloc) {
-		_location = RSG::material_storage->global_shader_parameters_instance_allocate(p_self);
-	}
-
-	for (KeyValue<StringName, Item> &kv : _parameters) {
-		Item &i = kv.value;
-		if (i.is_valid()) {
-			RSG::material_storage->global_shader_parameters_instance_update(p_self, i.index, i.value, i.flags);
-		}
-	}
-
-	return should_alloc;
+	// wgodot-changes::begin
+	return _wgodot_finish_materials(p_self);
+	// wgodot-changes::end
 }
 
 Variant InstanceUniforms::get(const StringName &p_name) const {

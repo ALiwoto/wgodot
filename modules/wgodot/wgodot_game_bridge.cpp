@@ -46,6 +46,16 @@ namespace WGodotGameBridge {
 namespace {
 
 bool capture_registered = false;
+bool rendering = false;
+thread_local bool debugging = false;
+
+struct PendingCapture {
+	uint64_t request_id = 0;
+	String command;
+	Dictionary options;
+};
+
+Vector<PendingCapture> pending_captures;
 
 Dictionary make_error(const String &p_command, const String &p_error, const String &p_message) {
 	Dictionary response;
@@ -919,6 +929,27 @@ Dictionary make_pause_response(const String &p_command) {
 	return response;
 }
 
+Dictionary capture_frame(const String &p_command, const Dictionary &p_options) {
+	Dictionary response;
+	if (p_command == "observe") {
+		Dictionary tree_error;
+		response["tree"] = collect_tree(p_options, tree_error);
+		if (!tree_error.is_empty()) {
+			tree_error["command"] = p_command;
+			return tree_error;
+		}
+	}
+	const Dictionary screenshot = take_screenshot(p_options);
+	if (screenshot.has("ok") && !(bool)screenshot["ok"]) {
+		response = screenshot;
+	} else {
+		response["ok"] = true;
+		response["screenshot"] = screenshot;
+	}
+	response["command"] = p_command;
+	return response;
+}
+
 Error parse_message(void *p_user, const String &p_message, const Array &p_arguments, bool &r_captured) {
 	if (p_message == "conditional_breakpoints_sync") {
 		r_captured = true;
@@ -935,6 +966,17 @@ Error parse_message(void *p_user, const String &p_message, const Array &p_argume
 	const uint64_t request_id = p_arguments[0];
 	const String command = p_arguments[1];
 	const Dictionary options = p_arguments[2];
+	if ((command == "ss" || command == "observe") && !debugging) {
+		// Debugger messages can arrive inside a compositor callback. Readback must
+		// wait until rendering has closed its command lists.
+		pending_captures.push_back({ request_id, command, options });
+		return OK;
+	}
+	if ((command == "ss" || command == "observe") && rendering) {
+		const Dictionary error = make_error(command, "rendering_paused", "Resume the debugger before capturing a frame paused inside rendering.");
+		EngineDebugger::get_singleton()->send_message("wgodot:response", { request_id, error });
+		return OK;
+	}
 	Dictionary response;
 	bool response_deferred = false;
 	if (command == "tree") {
@@ -947,33 +989,8 @@ Error parse_message(void *p_user, const String &p_message, const Array &p_argume
 			response["command"] = "tree";
 			response["tree"] = tree;
 		}
-	} else if (command == "ss") {
-		const Dictionary screenshot = take_screenshot(options);
-		if (screenshot.has("ok") && !(bool)screenshot["ok"]) {
-			response = screenshot;
-		} else {
-			response["ok"] = true;
-			response["command"] = "ss";
-			response["screenshot"] = screenshot;
-		}
-	} else if (command == "observe") {
-		Dictionary tree_error;
-		const Array tree = collect_tree(options, tree_error);
-		if (!tree_error.is_empty()) {
-			response = tree_error;
-			response["command"] = "observe";
-		} else {
-			const Dictionary screenshot = take_screenshot(options);
-			if (screenshot.has("ok") && !(bool)screenshot["ok"]) {
-				response = screenshot;
-				response["command"] = "observe";
-			} else {
-				response["ok"] = true;
-				response["command"] = "observe";
-				response["tree"] = tree;
-				response["screenshot"] = screenshot;
-			}
-		}
+	} else if (command == "ss" || command == "observe") {
+		response = capture_frame(command, options);
 	} else if (command == "click" || command == "mouse") {
 		response = pointer_input(command, options);
 	} else if (command == "type") {
@@ -1067,8 +1084,33 @@ Error parse_message(void *p_user, const String &p_message, const Array &p_argume
 
 #endif // DEBUG_ENABLED
 
+void set_rendering(bool p_rendering) {
+#ifdef DEBUG_ENABLED
+	rendering = p_rendering;
+#endif
+}
+
+void end_frame() {
+#ifdef DEBUG_ENABLED
+	Vector<PendingCapture> captures;
+	SWAP(captures, pending_captures);
+	for (const PendingCapture &capture : captures) {
+		const Dictionary response = capture_frame(capture.command, capture.options);
+		EngineDebugger::get_singleton()->send_message("wgodot:response", { capture.request_id, response });
+	}
+#endif
+}
+
+void set_debugging(bool p_debugging) {
+#ifdef DEBUG_ENABLED
+	debugging = p_debugging;
+#endif
+}
+
 void initialize() {
 #ifdef DEBUG_ENABLED
+	rendering = false;
+	pending_captures.clear();
 	WGodotConditionalBreakpointEvaluator::reset();
 	if (EngineDebugger::is_active() && !EngineDebugger::has_capture(SNAME("wgodot"))) {
 		EngineDebugger::register_message_capture(SNAME("wgodot"), EngineDebugger::Capture(nullptr, parse_message));
@@ -1079,6 +1121,7 @@ void initialize() {
 
 void deinitialize() {
 #ifdef DEBUG_ENABLED
+	pending_captures.clear();
 	WGodotPerformance::reset();
 	if (capture_registered && EngineDebugger::has_capture(SNAME("wgodot"))) {
 		EngineDebugger::unregister_message_capture(SNAME("wgodot"));

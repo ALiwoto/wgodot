@@ -48,6 +48,7 @@
 #include "modules/modules_enabled.gen.h"
 #ifdef MODULE_WGODOT_ENABLED
 #include "modules/wgodot/wgodot_conditional_breakpoint_evaluator.h"
+#include "modules/wgodot/wgodot_game_bridge.h"
 #endif
 // wgodot-changes::end
 
@@ -428,6 +429,7 @@ void RemoteDebugger::debug(bool p_can_continue, bool p_is_error_breakpoint) {
 	// wgodot-changes::begin
 	Dictionary wgodot_breakpoint_hit;
 #ifdef MODULE_WGODOT_ENABLED
+	WGodotGameBridge::set_debugging(true);
 	wgodot_breakpoint_hit = WGodotConditionalBreakpointEvaluator::consume_breakpoint_hit();
 #endif
 	// wgodot-changes::end
@@ -654,6 +656,11 @@ void RemoteDebugger::debug(bool p_can_continue, bool p_is_error_breakpoint) {
 		}
 	}
 
+	// wgodot-changes::begin
+#ifdef MODULE_WGODOT_ENABLED
+	WGodotGameBridge::set_debugging(false);
+#endif
+	// wgodot-changes::end
 	send_message("debug_exit", Array());
 
 	// wgodot-changes::begin

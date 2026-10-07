@@ -24,6 +24,7 @@
 #include "core/os/time.h"
 #include "editor/debugger/editor_debugger_node.h"
 #include "editor/debugger/script_editor_debugger.h"
+#include "editor/file_system/editor_file_system.h"
 #include "editor/run/editor_run_bar.h"
 
 namespace {
@@ -31,7 +32,6 @@ namespace {
 constexpr uint64_t CONNECTION_TIMEOUT_MSEC = 5000;
 constexpr uint64_t ASYNC_TIMEOUT_MSEC = 15000;
 constexpr uint64_t WAIT_THROUGH_BREAKPOINT_TIMEOUT_MSEC = 60000;
-constexpr int MAX_PACKET_SIZE = 4 * 1024 * 1024;
 constexpr const char *const FORWARDED_GAME_COMMANDS[] = {
 	"tree",
 	"ss",
@@ -90,19 +90,6 @@ String WGodotCLIEditorPlugin::generate_random_hex(int p_byte_count) {
 		return String();
 	}
 	return String::hex_encode_buffer(random_bytes.ptr(), random_bytes.size());
-}
-
-bool WGodotCLIEditorPlugin::secure_token_matches(const String &p_expected, const String &p_received) {
-	const CharString expected = p_expected.utf8();
-	const CharString received = p_received.utf8();
-	const int expected_length = expected.length();
-	const int received_length = received.length();
-	uint32_t difference = static_cast<uint32_t>(expected_length ^ received_length);
-	for (int i = 0; i < expected_length; i++) {
-		const uint8_t received_byte = i < received_length ? static_cast<uint8_t>(received[i]) : 0;
-		difference |= static_cast<uint8_t>(expected[i]) ^ received_byte;
-	}
-	return difference == 0;
 }
 
 bool WGodotCLIEditorPlugin::start_server() {
@@ -167,10 +154,16 @@ bool WGodotCLIEditorPlugin::start_server() {
 		return false;
 	}
 
+	if (listener.start(server, token, project_key) != OK) {
+		ERR_PRINT("WGodot CLI server could not start its listener thread.");
+		stop_server();
+		return false;
+	}
 	return true;
 }
 
 void WGodotCLIEditorPlugin::stop_server() {
+	listener.stop();
 	for (PendingConnection &connection : connections) {
 		connection.profiler.cancel();
 	}
@@ -194,22 +187,12 @@ void WGodotCLIEditorPlugin::stop_server() {
 }
 
 void WGodotCLIEditorPlugin::accept_connections() {
-	if (server.is_null()) {
-		return;
-	}
-	while (server->is_connection_available()) {
-		Ref<StreamPeerTCP> tcp = server->take_connection();
-		if (tcp.is_null()) {
-			break;
-		}
-
+	for (const WGodotCLIListener::Request &request : listener.take_requests()) {
 		PendingConnection connection;
-		connection.tcp = tcp;
-		connection.packet.instantiate();
-		connection.packet->set_input_buffer_max_size(MAX_PACKET_SIZE);
-		connection.packet->set_output_buffer_max_size(MAX_PACKET_SIZE);
-		connection.packet->set_stream_peer(tcp);
-		connection.accepted_at_msec = OS::get_singleton()->get_ticks_msec();
+		connection.tcp = request.tcp;
+		connection.packet = request.packet;
+		connection.request = request.data;
+		connection.accepted_at_msec = request.accepted_at_msec;
 		connection.deadline_msec = connection.accepted_at_msec + CONNECTION_TIMEOUT_MSEC;
 		connections.push_back(connection);
 	}
@@ -323,28 +306,20 @@ void WGodotCLIEditorPlugin::finish_connection(PendingConnection &p_connection, c
 }
 
 void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
-	const uint8_t *buffer = nullptr;
-	int buffer_size = 0;
-	if (p_connection.packet->get_packet(&buffer, buffer_size) != OK || buffer_size <= 0 || buffer_size > MAX_PACKET_SIZE) {
-		p_connection.tcp->disconnect_from_host();
-		p_connection.completed = true;
+	// An import may have started after the listener handed this request over.
+	const Dictionary busy = WGodotCLIListener::busy_response();
+	if (!busy.is_empty()) {
+		finish_connection(p_connection, busy);
 		return;
 	}
-
-	Dictionary request;
-	JSON json;
-	if (json.parse(String::utf8(reinterpret_cast<const char *>(buffer), buffer_size)) == OK && json.get_data().get_type() == Variant::DICTIONARY) {
-		request = json.get_data();
-	}
-
-	const String received_token = request.get("token", String());
-	if (!secure_token_matches(token, received_token) || String(request.get("project_key", String())) != project_key) {
-		finish_connection(p_connection, make_error_response("authentication_failed", "Authentication failed."));
-		return;
-	} else if ((int)request.get("protocol", 0) != WGodotCLI::PROTOCOL_VERSION) {
-		finish_connection(p_connection, make_error_response("protocol_mismatch", "The CLI and editor protocol versions do not match."));
+	// Cover the handoff between a completed background scan and its main-thread
+	// import phase, when there may briefly be no active synchronous scope.
+	EditorFileSystem *filesystem = EditorFileSystem::get_singleton();
+	if (filesystem && (filesystem->is_scanning() || filesystem->is_importing())) {
+		finish_connection(p_connection, make_error_response("editor_busy", "The editor is refreshing assets. Wait for it to finish, then retry the command."));
 		return;
 	}
+	const Dictionary request = p_connection.request;
 
 	const String command = request.get("command", String());
 	const Dictionary options = request.get("options", Dictionary());
@@ -718,7 +693,7 @@ void WGodotCLIEditorPlugin::poll_connections() {
 			connections.remove_at(i);
 			continue;
 		}
-		if (connection.wait_kind == PendingConnection::WAIT_NONE && connection.packet->get_available_packet_count() > 0) {
+		if (connection.wait_kind == PendingConnection::WAIT_NONE) {
 			process_request(connection);
 		} else if (connection.wait_kind != PendingConnection::WAIT_NONE) {
 			poll_waiting_connection(connection);
@@ -761,9 +736,17 @@ void WGodotCLIEditorPlugin::_notification(int p_what) {
 			}
 		} break;
 		case NOTIFICATION_PROCESS: {
+			// Editor progress dialogs pump Main::iteration() during synchronous
+			// commands. A nested pass must neither execute the same request again
+			// nor mutate the vector while the outer pass holds a connection reference.
+			if (processing_connections) {
+				break;
+			}
+			processing_connections = true;
 			WGodotDebugService::process();
 			accept_connections();
 			poll_connections();
+			processing_connections = false;
 		} break;
 		case NOTIFICATION_EXIT_TREE: {
 			set_process(false);

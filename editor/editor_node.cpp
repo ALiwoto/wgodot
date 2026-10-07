@@ -34,6 +34,11 @@
 
 #include "editor_node.h"
 
+// wgodot-changes::begin
+#include "core/io/wgodot_resource_trace.h"
+#include "editor/wgodot_editor_activity.h"
+// wgodot-changes::end
+
 #include "core/config/engine.h"
 #include "core/config/project_settings.h"
 #include "core/extension/gdextension_manager.h"
@@ -1370,7 +1375,15 @@ void EditorNode::_resources_changed(const Vector<String> &p_resources) {
 	}
 
 	if (changed.size()) {
+		// wgodot-changes::begin
+		EditorProgress progress("reload_changed_resources", TTR("Reloading changed resources"), changed.size());
+		int completed = 0;
+		// wgodot-changes::end
 		for (Ref<Resource> &res : changed) {
+			// wgodot-changes::begin
+			WGodotEditorActivity activity("Reloading changed resource", res->get_path());
+			progress.step(res->get_path().get_file(), completed++, false);
+			// wgodot-changes::end
 			res->reload_from_file();
 		}
 	}
@@ -1479,6 +1492,10 @@ void EditorNode::_fs_changed() {
 }
 
 void EditorNode::_resources_reimporting(const Vector<String> &p_resources) {
+	// wgodot-changes::begin
+	WGodotResourceTrace trace("editor.prepare_reimport");
+	WGodotEditorActivity activity("Preserving scene edits before import");
+	// wgodot-changes::end
 	// This will copy all the modified properties of the nodes into 'scenes_modification_table'
 	// before they are actually reimported. It's important to do this before the reimportation
 	// because if a mesh is present in an inherited scene, the resource will be modified in
@@ -1508,6 +1525,10 @@ void EditorNode::_resources_reimporting(const Vector<String> &p_resources) {
 }
 
 void EditorNode::_resources_reimported(const Vector<String> &p_resources) {
+	// wgodot-changes::begin
+	WGodotResourceTrace trace("editor.finish_reimport");
+	WGodotEditorActivity activity("Rebuilding imported scene instances");
+	// wgodot-changes::end
 	int current_tab = scene_tabs->get_current_tab();
 
 	for (const String &res_path : resources_reimported) {
@@ -4954,6 +4975,9 @@ int EditorNode::new_scene() {
 }
 
 Error EditorNode::load_scene(const String &p_scene, bool p_ignore_broken_deps, bool p_set_inherited, bool p_force_open_imported, bool p_update_tabs) {
+	// wgodot-changes::begin
+	WGodotEditorActivity activity("Loading scene", p_scene);
+	// wgodot-changes::end
 	const String lpath = ProjectSettings::get_singleton()->localize_path(ResourceUID::ensure_path(p_scene));
 	_update_prev_closed_scenes(lpath, false);
 
@@ -5114,6 +5138,10 @@ Error EditorNode::open_scene(const String &p_scene, bool p_ignore_broken_deps, b
 
 HashMap<StringName, Variant> EditorNode::get_modified_properties_for_node(Node *p_node, bool p_node_references_only) {
 	HashMap<StringName, Variant> modified_property_map;
+	// wgodot-changes::begin
+	// All properties on this node share the same inheritance/ownership stack.
+	const Vector<SceneState::PackState> states_stack = PropertyUtils::get_node_states_stack(p_node);
+	// wgodot-changes::end
 
 	List<PropertyInfo> pinfo;
 	p_node->get_property_list(&pinfo);
@@ -5124,7 +5152,9 @@ HashMap<StringName, Variant> EditorNode::get_modified_properties_for_node(Node *
 				continue;
 			}
 			bool is_valid_revert = false;
-			Variant revert_value = EditorPropertyRevert::get_property_revert_value(p_node, E.name, &is_valid_revert);
+			// wgodot-changes::begin
+			Variant revert_value = EditorPropertyRevert::get_property_revert_value(p_node, E.name, &is_valid_revert, &states_stack);
+			// wgodot-changes::end
 			Variant current_value = p_node->get(E.name);
 			if (is_valid_revert) {
 				if (PropertyUtils::is_property_value_different(p_node, current_value, revert_value)) {
@@ -7320,6 +7350,9 @@ void EditorNode::preload_reimporting_with_path_in_edited_scenes(const List<Strin
 			SceneModificationsEntry scene_modifications;
 
 			for (const String &instance_path : p_scenes) {
+				// wgodot-changes::begin
+				WGodotResourceTrace trace("editor.prepare_scene_instances", instance_path);
+				// wgodot-changes::end
 				if (editor_data.get_scene_path(current_scene_idx) == instance_path) {
 					continue;
 				}
@@ -7361,6 +7394,9 @@ void EditorNode::preload_reimporting_with_path_in_edited_scenes(const List<Strin
 }
 
 void EditorNode::reload_instances_with_path_in_edited_scenes() {
+	// wgodot-changes::begin
+	WGodotResourceTrace trace("editor.reload_instances");
+	// wgodot-changes::end
 	if (scenes_modification_table.is_empty()) {
 		return;
 	}

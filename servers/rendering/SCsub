@@ -4,6 +4,9 @@ from misc.utility.scons_hints import *
 Import("env")
 
 env.add_source_files(env.servers_sources, "instance_uniforms.cpp")
+# wgodot-changes::begin
+env.add_source_files(env.servers_sources, "wgodot_instance_uniforms.cpp")
+# wgodot-changes::end
 env.add_source_files(env.servers_sources, "renderer_canvas_cull.cpp")
 env.add_source_files(env.servers_sources, "renderer_canvas_render.cpp")
 env.add_source_files(env.servers_sources, "renderer_compositor.cpp")

@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "wgodot_cli_listener.h"
 #include "wgodot_profiler.h"
 #include "wgodot_project_check.h"
 
@@ -34,6 +35,7 @@ class WGodotCLIEditorPlugin : public EditorPlugin {
 
 		Ref<StreamPeerTCP> tcp;
 		Ref<PacketPeerStream> packet;
+		Dictionary request;
 		uint64_t accepted_at_msec = 0;
 		uint64_t deadline_msec = 0;
 		uint64_t game_request_id = 0;
@@ -61,8 +63,10 @@ class WGodotCLIEditorPlugin : public EditorPlugin {
 	};
 
 	Ref<TCPServer> server;
+	WGodotCLIListener listener;
 	Ref<WGodotCLIDebuggerBridge> debugger_bridge;
 	Vector<PendingConnection> connections;
+	bool processing_connections = false;
 	HashMap<int, GameSessionState> game_session_states;
 	uint64_t next_game_request_id = 1;
 	String token;
@@ -81,7 +85,6 @@ class WGodotCLIEditorPlugin : public EditorPlugin {
 	Dictionary make_status_response(const Dictionary &p_request) const;
 	int get_automatic_session(const Dictionary &p_request, Dictionary &r_error) const;
 
-	static bool secure_token_matches(const String &p_expected, const String &p_received);
 	static String generate_random_hex(int p_byte_count);
 
 protected:

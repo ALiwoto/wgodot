@@ -30,6 +30,14 @@
 
 #include "resource_format_text.h"
 
+// wgodot-changes::begin
+#include "wgodot_resource_text_scan.h"
+// wgodot-changes::end
+
+// wgodot-changes::begin
+#include "core/io/wgodot_resource_trace.h"
+// wgodot-changes::end
+
 #include "core/config/project_settings.h"
 #include "core/error/error_macros.h"
 #include "core/io/dir_access.h"
@@ -411,32 +419,10 @@ Ref<PackedScene> ResourceLoaderText::_parse_node_tag(const Ref<PackedScene> &p_c
 }
 
 void ResourceLoaderText::_count_resources() {
-	Ref<FileAccess> scan_f = FileAccess::open(f->get_path(), FileAccess::READ);
-	if (scan_f.is_null()) {
-		return;
-	}
-
-	resources_total = 0;
+	// wgodot-changes::begin
+	resources_total = WGodotResourceTextScan::count_resources(f->get_path());
 	resource_current = 0;
-
-	bool has_main_resource = false;
-	while (!scan_f->eof_reached()) {
-		String line = scan_f->get_line().strip_edges();
-
-		// Only count resources that contribute to progress
-		// (ext_resources are loaded asynchronously and don't count).
-		// Note: nodes are all parsed together as part of the main resource (PackedScene),
-		// so they only contribute 1 to the progress count, not one per node.
-		if (line.begins_with("[sub_resource ")) {
-			resources_total++;
-		} else if (line.begins_with("[resource]") || line.begins_with("[node ")) {
-			// Main resource or scene with nodes - only count once.
-			if (!has_main_resource) {
-				resources_total++;
-				has_main_resource = true;
-			}
-		}
-	}
+	// wgodot-changes::end
 }
 
 Error ResourceLoaderText::load() {
@@ -1405,6 +1391,9 @@ ResourceUID::ID ResourceLoaderText::get_uid(Ref<FileAccess> p_f) {
 /////////////////////
 
 Ref<Resource> ResourceFormatLoaderText::load(const String &p_path, const String &p_original_path, Error *r_error, bool p_use_sub_threads, float *r_progress, CacheMode p_cache_mode) {
+	// wgodot-changes::begin
+	WGodotResourceTrace trace("load.text", p_path);
+	// wgodot-changes::end
 	if (r_error) {
 		*r_error = ERR_CANT_OPEN;
 	}

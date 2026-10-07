@@ -36,6 +36,10 @@
 #include "scene/gui/panel_container.h"
 #include "scene/gui/scroll_container.h"
 
+// wgodot-changes::begin
+#include "scene/resources/packed_scene.h"
+// wgodot-changes::end
+
 class AddMetadataDialog;
 class AcceptDialog;
 class EditorInspector;
@@ -51,7 +55,9 @@ class Timer;
 
 class EditorPropertyRevert {
 public:
-	static Variant get_property_revert_value(Object *p_object, const StringName &p_property, bool *r_is_valid);
+	// wgodot-changes::begin
+	static Variant get_property_revert_value(Object *p_object, const StringName &p_property, bool *r_is_valid, const Vector<SceneState::PackState> *p_states_stack_cache = nullptr);
+	// wgodot-changes::end
 	static bool can_property_revert(Object *p_object, const StringName &p_property, const Variant *p_custom_current_value = nullptr);
 };
 

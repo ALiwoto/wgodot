@@ -30,6 +30,10 @@
 
 #include "resource.h"
 
+// wgodot-changes::begin
+#include "core/io/wgodot_resource_trace.h"
+// wgodot-changes::end
+
 #include "core/io/resource_loader.h"
 #include "core/math/math_funcs.h"
 #include "core/math/random_pcg.h"
@@ -266,6 +270,9 @@ Error Resource::copy_from(const Ref<Resource> &p_resource) {
 }
 
 void Resource::reload_from_file() {
+	// wgodot-changes::begin
+	WGodotResourceTrace trace("reload.resource", get_path());
+	// wgodot-changes::end
 	String path = get_path();
 	if (!path.is_resource_file()) {
 		return;

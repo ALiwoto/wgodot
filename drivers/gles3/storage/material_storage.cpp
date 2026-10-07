@@ -2095,14 +2095,17 @@ GLuint MaterialStorage::global_shader_parameters_get_uniform_buffer() const {
 	return global_shader_uniforms.buffer;
 }
 
-int32_t MaterialStorage::global_shader_parameters_instance_allocate(RID p_instance) {
+// wgodot-changes::begin
+int32_t MaterialStorage::global_shader_parameters_instance_allocate(RID p_instance, uint32_t p_slots) {
 	ERR_FAIL_COND_V(global_shader_uniforms.instance_buffer_pos.has(p_instance), -1);
-	int32_t pos = _global_shader_uniform_allocate(ShaderLanguage::MAX_INSTANCE_UNIFORM_INDICES);
-	global_shader_uniforms.instance_buffer_pos[p_instance] = pos; //save anyway
+	int32_t pos = _global_shader_uniform_allocate(p_slots);
 	ERR_FAIL_COND_V_MSG(pos < 0, -1, vformat("Too many instances using shader instance variables. Consider increasing rendering/limits/global_shader_variables/buffer_size in the Project Settings. Maximum items supported by this hardware is: %d.", Config::get_singleton()->max_uniform_buffer_size / sizeof(GlobalShaderUniforms::Value)));
-	global_shader_uniforms.buffer_usage[pos].elements = ShaderLanguage::MAX_INSTANCE_UNIFORM_INDICES;
+	// Failed allocations must remain retryable and must not leave stale RID entries.
+	global_shader_uniforms.instance_buffer_pos[p_instance] = pos;
+	global_shader_uniforms.buffer_usage[pos].elements = p_slots;
 	return pos;
 }
+// wgodot-changes::end
 
 void MaterialStorage::global_shader_parameters_instance_free(RID p_instance) {
 	ERR_FAIL_COND(!global_shader_uniforms.instance_buffer_pos.has(p_instance));

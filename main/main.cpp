@@ -154,6 +154,7 @@
 // wgodot-changes::begin
 #ifdef MODULE_WGODOT_ENABLED
 #include "modules/wgodot/wgodot_cli.h"
+#include "modules/wgodot/wgodot_game_bridge.h"
 #include "modules/wgodot/wgodot_pause_controller.h"
 #include "modules/wgodot/wgodot_performance.h"
 #include "modules/wgodot/wgodot_wait_controller.h"
@@ -5181,6 +5182,11 @@ bool Main::iteration() {
 								 DisplayServer::get_singleton()->has_additional_outputs()) &&
 			RenderingServer::get_singleton()->is_render_loop_enabled();
 
+	// wgodot-changes::begin
+#ifdef MODULE_WGODOT_ENABLED
+	WGodotGameBridge::set_rendering(true);
+#endif
+	// wgodot-changes::end
 	if (wants_present || has_pending_resources_for_processing) {
 		wants_present |= force_redraw_requested;
 		if ((!force_redraw_requested) && OS::get_singleton()->is_in_low_processor_usage_mode()) {
@@ -5197,6 +5203,8 @@ bool Main::iteration() {
 
 	// wgodot-changes::begin
 #ifdef MODULE_WGODOT_ENABLED
+	WGodotGameBridge::set_rendering(false);
+	WGodotGameBridge::end_frame();
 	WGodotWaitController::end_frame();
 	WGodotPerformance::end_frame();
 #endif

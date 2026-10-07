@@ -30,6 +30,10 @@
 
 #include "packed_scene.h"
 
+// wgodot-changes::begin
+#include "core/io/wgodot_resource_trace.h"
+// wgodot-changes::end
+
 #include "core/config/engine.h"
 #include "core/io/file_access.h"
 #include "core/io/missing_resource.h"
@@ -2693,6 +2697,9 @@ void PackedScene::recreate_state() {
 
 #ifdef TOOLS_ENABLED
 HashSet<StringName> PackedScene::get_scene_groups(const String &p_path) {
+	// wgodot-changes::begin
+	WGodotResourceTrace trace("metadata.scene_groups", p_path);
+	// wgodot-changes::end
 	{
 		Ref<PackedScene> packed_scene = ResourceCache::get_ref(p_path);
 		if (packed_scene.is_valid()) {

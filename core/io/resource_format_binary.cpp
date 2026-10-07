@@ -31,6 +31,10 @@
 #include "resource_format_binary.h"
 
 // wgodot-changes::begin
+#include "core/io/wgodot_resource_trace.h"
+// wgodot-changes::end
+
+// wgodot-changes::begin
 #include "core/io/wgodot_resource_serialization.h"
 // wgodot-changes::end
 
@@ -1150,6 +1154,9 @@ String ResourceLoaderBinary::recognize_script_class(Ref<FileAccess> p_file) {
 }
 
 Ref<Resource> ResourceFormatLoaderBinary::load(const String &p_path, const String &p_original_path, Error *r_error, bool p_use_sub_threads, float *r_progress, CacheMode p_cache_mode) {
+	// wgodot-changes::begin
+	WGodotResourceTrace trace("load.binary", p_path);
+	// wgodot-changes::end
 	if (r_error) {
 		*r_error = ERR_FILE_CANT_OPEN;
 	}

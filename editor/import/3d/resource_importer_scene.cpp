@@ -30,6 +30,10 @@
 
 #include "resource_importer_scene.h"
 
+// wgodot-changes::begin
+#include "core/io/wgodot_resource_trace.h"
+// wgodot-changes::end
+
 #include "core/error/error_macros.h"
 #include "core/io/dir_access.h"
 #include "core/io/resource_loader.h"
@@ -2863,6 +2867,9 @@ Node *ResourceImporterScene::_generate_meshes(Node *p_node, const Dictionary &p_
 				}
 
 				if (generate_lods) {
+					// wgodot-changes::begin
+					WGodotResourceTrace lod_trace("import.mesh_lods", importer_mesh->get_name());
+					// wgodot-changes::end
 					Array skin_pose_transform_array = _get_skinned_pose_transforms(src_mesh_node);
 					importer_mesh->generate_lods(merge_angle, skin_pose_transform_array);
 				}
@@ -3226,6 +3233,9 @@ Error ResourceImporterScene::_check_resource_save_paths(ResourceUID::ID p_source
 }
 
 Error ResourceImporterScene::import(ResourceUID::ID p_source_id, const String &p_source_file, const String &p_save_path, const HashMap<StringName, Variant> &p_options, List<String> *r_platform_variants, List<String> *r_gen_files, Variant *r_metadata) {
+	// wgodot-changes::begin
+	WGodotResourceTrace trace("import.scene", p_source_file);
+	// wgodot-changes::end
 	const String &src_path = p_source_file;
 
 	Ref<EditorSceneFormatImporter> importer;
@@ -3298,6 +3308,9 @@ Error ResourceImporterScene::import(ResourceUID::ID p_source_id, const String &p
 
 	List<String> missing_deps; // for now, not much will be done with this
 	Node *scene = importer->import_scene(src_path, import_flags, p_options, &missing_deps, &err);
+	// wgodot-changes::begin
+	trace.phase("postprocess");
+	// wgodot-changes::end
 	if (!scene || err != OK) {
 		return err;
 	}
@@ -3389,6 +3402,9 @@ Error ResourceImporterScene::import(ResourceUID::ID p_source_id, const String &p
 		occluder_instance->set_owner(scene);
 	}
 
+	// wgodot-changes::begin
+	trace.phase("generate_meshes");
+	// wgodot-changes::end
 	bool gen_lods = bool(p_options["meshes/generate_lods"]);
 	bool create_shadow_meshes = bool(p_options["meshes/create_shadow_meshes"]);
 	int light_bake_mode = p_options["meshes/light_baking"];
@@ -3406,6 +3422,9 @@ Error ResourceImporterScene::import(ResourceUID::ID p_source_id, const String &p
 	}
 
 	scene = _generate_meshes(scene, mesh_data, gen_lods, create_shadow_meshes, LightBakeMode(light_bake_mode), lightmap_texel_size, src_lightmap_cache, mesh_lightmap_caches);
+	// wgodot-changes::begin
+	trace.phase("custom_and_save");
+	// wgodot-changes::end
 
 	if (mesh_lightmap_caches.size()) {
 		Ref<FileAccess> f = FileAccess::open(p_source_file + ".unwrap_cache", FileAccess::WRITE);

@@ -30,6 +30,11 @@
 
 #include "editor_file_system.h"
 
+// wgodot-changes::begin
+#include "core/io/wgodot_resource_trace.h"
+#include "editor/wgodot_editor_activity.h"
+// wgodot-changes::end
+
 #include "core/config/project_settings.h"
 #include "core/extension/gdextension_manager.h"
 #include "core/io/dir_access.h"
@@ -850,6 +855,10 @@ bool EditorFileSystem::_scan_import_support(const Vector<String> &reimports) {
 }
 
 bool EditorFileSystem::_update_scan_actions() {
+	// wgodot-changes::begin
+	WGodotResourceTrace trace("filesystem.apply_changes");
+	WGodotEditorActivity activity("Refreshing project files");
+	// wgodot-changes::end
 	sources_changed.clear();
 
 	// We need to update the script global class names before the reimports to be sure that
@@ -1656,6 +1665,10 @@ int EditorFileSystem::_insert_actions_delete_files_directory(EditorFileSystemDir
 }
 
 void EditorFileSystem::_thread_func_sources(void *_userdata) {
+	// wgodot-changes::begin
+	WGodotResourceTrace trace("filesystem.scan_changes");
+	WGodotEditorActivity activity("Scanning changed assets");
+	// wgodot-changes::end
 	EditorFileSystem *efs = (EditorFileSystem *)_userdata;
 	if (efs->filesystem) {
 		EditorProgressBG pr("sources", TTR("ScanSources"), 1000);
@@ -2295,6 +2308,9 @@ bool EditorFileSystem::_should_reload_script(const String &p_path) {
 }
 
 void EditorFileSystem::_process_update_pending() {
+	// wgodot-changes::begin
+	WGodotResourceTrace trace("filesystem.metadata");
+	// wgodot-changes::end
 	_update_script_classes();
 	// Parse documentation second, as it requires the class names to be loaded
 	// because _update_script_documentation loads the scripts completely.
@@ -2384,6 +2400,11 @@ void EditorFileSystem::update_file(const String &p_file) {
 }
 
 void EditorFileSystem::update_files(const Vector<String> &p_script_paths) {
+	// wgodot-changes::begin
+	WGodotResourceTrace trace("filesystem.update_files");
+	WGodotEditorActivity activity("Updating resource metadata");
+	bool late_update_changed = false;
+	// wgodot-changes::end
 	bool updated = false;
 	bool update_files_icon_cache = false;
 	Vector<EditorFileSystemDirectory::FileInfo *> files_to_update_icon_path;
@@ -2464,7 +2485,9 @@ void EditorFileSystem::update_files(const Vector<String> &p_script_paths) {
 				//the file exists and it was updated, and was not added in this step.
 				//this means we must force upon next restart to scan it again, to get proper type and dependencies
 				late_update_files.insert(file);
-				_save_late_updated_files(); //files need to be updated in the re-scan
+				// wgodot-changes::begin
+				late_update_changed = true;
+				// wgodot-changes::end
 			}
 
 			EditorFileSystemDirectory::FileInfo *fi = fs->files[cpos];
@@ -2486,7 +2509,9 @@ void EditorFileSystem::update_files(const Vector<String> &p_script_paths) {
 					ResourceUID::get_singleton()->add_id(uid, file);
 				}
 
-				ResourceUID::get_singleton()->update_cache();
+				// wgodot-changes::begin
+				// Persist the UID cache once after the complete batch below.
+				// wgodot-changes::end
 			} else {
 				if (ResourceLoader::should_create_uid_file(file)) {
 					Ref<FileAccess> f = FileAccess::open(file + ".uid", FileAccess::WRITE);
@@ -2527,7 +2552,16 @@ void EditorFileSystem::update_files(const Vector<String> &p_script_paths) {
 		}
 	}
 
+	// wgodot-changes::begin
+	// Rewriting an ever-growing list for every file makes a bulk update quadratic.
+	if (late_update_changed) {
+		_save_late_updated_files();
+	}
+	// wgodot-changes::end
 	if (updated) {
+		// wgodot-changes::begin
+		ResourceUID::get_singleton()->update_cache();
+		// wgodot-changes::end
 		if (update_files_icon_cache) {
 			_update_files_icon_path();
 		} else {
@@ -2797,6 +2831,10 @@ Error EditorFileSystem::_reimport_group(const String &p_group_file, const Vector
 }
 
 Error EditorFileSystem::_reimport_file(const String &p_file, const HashMap<StringName, Variant> &p_custom_options, const String &p_custom_importer, Variant *p_generator_parameters, bool p_update_file_system) {
+	// wgodot-changes::begin
+	WGodotResourceTrace trace("import.file", p_file);
+	WGodotEditorActivity activity("Importing asset", p_file);
+	// wgodot-changes::end
 	print_verbose(vformat("EditorFileSystem: Importing file: %s", p_file));
 	uint64_t start_time = OS::get_singleton()->get_ticks_msec();
 
@@ -2926,6 +2964,9 @@ Error EditorFileSystem::_reimport_file(const String &p_file, const HashMap<Strin
 	List<String> gen_files;
 	Variant meta;
 	Error err = importer->import(uid, p_file, base_path, params, &import_variants, &gen_files, &meta);
+	// wgodot-changes::begin
+	trace.phase("write_metadata");
+	// wgodot-changes::end
 
 	// As import is complete, save the .import file.
 
@@ -3236,6 +3277,10 @@ void EditorFileSystem::_reimport_thread(uint32_t p_index, ImportThreadData *p_im
 }
 
 void EditorFileSystem::reimport_files(const Vector<String> &p_files) {
+	// wgodot-changes::begin
+	WGodotResourceTrace trace("import.batch");
+	WGodotEditorActivity activity("Importing assets");
+	// wgodot-changes::end
 	ERR_FAIL_COND_MSG(importing, "Attempted to call reimport_files() recursively, this is not allowed.");
 	importing = true;
 
@@ -3350,11 +3395,17 @@ void EditorFileSystem::reimport_files(const Vector<String> &p_files) {
 					int imported_count = 0;
 					while (true) {
 						while (true) {
-							ep->step(reimport_files[imported_count].path.get_file(), from + imported_count, false);
+							// wgodot-changes::begin
+							ep->step(reimport_files[from + imported_count].path.get_file(), from + imported_count, false);
+							// wgodot-changes::end
 							if (imported_sem.try_wait()) {
 								imported_count++;
 								break;
 							}
+							// wgodot-changes::begin
+							// Yield to the import workers between progress updates.
+							OS::get_singleton()->delay_usec(1000);
+							// wgodot-changes::end
 						}
 						if (imported_count == item_count) {
 							break;

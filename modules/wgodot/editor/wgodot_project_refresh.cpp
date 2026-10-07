@@ -4,10 +4,12 @@
 
 #include "core/io/file_access.h"
 #include "core/io/resource_loader.h"
+#include "core/io/wgodot_resource_trace.h"
 #include "core/os/os.h"
 #include "editor/editor_node.h"
 #include "editor/file_system/editor_file_system.h"
 #include "editor/script/script_editor_plugin.h"
+#include "editor/wgodot_editor_activity.h"
 #include "scene/gui/dialogs.h"
 #include "scene/resources/packed_scene.h"
 
@@ -71,6 +73,8 @@ void WGodotProjectRefresh::remember_scene_changes() {
 }
 
 Dictionary WGodotProjectRefresh::reload_scenes() {
+	WGodotResourceTrace trace("refresh.scenes");
+	WGodotEditorActivity activity("Refreshing open scenes");
 	EditorNode *editor = EditorNode::get_singleton();
 	if (!editor) {
 		return failure("editor_unavailable", "The scene editor is unavailable.");
@@ -140,6 +144,7 @@ Dictionary WGodotProjectRefresh::reload_scenes() {
 		return result;
 	}
 	if (!paths.is_empty()) {
+		trace.phase("replace_cached_scenes");
 		// Resource/script edits can require rebuilding instances even when the scene
 		// itself is unchanged: soft script reload does not rerun _ready().
 		for (const String &path : paths) {
@@ -153,6 +158,7 @@ Dictionary WGodotProjectRefresh::reload_scenes() {
 		// Reload dependent tabs as well; replacing cached resources alone does not
 		// reconstruct their already-instantiated nodes.
 		for (const String &path : tabs) {
+			WGodotResourceTrace tab_trace("refresh.scene_tab", path);
 			editor->reload_scene(path);
 			const int index = data.get_edited_scene_from_path(path);
 			if (index < 0 || data.get_scene_modified_time(index) != FileAccess::get_modified_time(path)) {
