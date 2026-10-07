@@ -8,7 +8,9 @@ param(
 	[switch]$Optimize,
 	[string]$BuildProfilePath,
 	[ValidatePattern('^([a-z][a-z0-9_]*)?$')]
-	[string]$GameName = ''
+	[string]$GameName = '',
+	[ValidateSet('client', 'server')]
+	[string]$GameTarget = 'client'
 )
 
 $ErrorActionPreference = "Stop"
@@ -25,15 +27,25 @@ if ($BuildProfilePath -and !$Game) {
 if ($GameName -and !$Game) {
 	throw "-GameName requires -Game."
 }
+if ($PSBoundParameters.ContainsKey('GameTarget') -and !$Game) {
+	throw "-GameTarget requires -Game."
+}
 if ($BuildProfilePath) {
 	$BuildProfilePath = (Resolve-Path -LiteralPath $BuildProfilePath).Path
 }
 
 $target = "editor"
 $debugSymbols = "yes"
-if ($Templates -or $Game) {
+if ($Templates) {
 	$target = if ($Release) { "template_release" } else { "template_debug" }
 	$debugSymbols = "no"
+}
+if ($Game) {
+	$nativeBuild = & "$PSScriptRoot/get_native_game_build.ps1" -GameName $GameName -GameTarget $GameTarget -Release:$Release
+	$target = $nativeBuild.EngineTarget
+	if ($Release) {
+		$debugSymbols = "no"
+	}
 }
 
 $sconsArgs = @(
@@ -52,14 +64,10 @@ if (!$Optimize) {
 	$sconsArgs += @("optimize=none", "lto=none")
 }
 
-$binarySuffix = ""
+$binaryPath = Join-Path $PSScriptRoot "bin/godot.windows.$target.x86_64.exe"
 if ($Game) {
-	$gameModulePath = Join-Path $PSScriptRoot "generated/main_game"
-	$gameSuffix = "game"
-	if ($GameName) {
-		$gameModulePath = Join-Path $PSScriptRoot "generated/$GameName/main_game"
-		$gameSuffix = "$GameName.game"
-	}
+	$gameModulePath = $nativeBuild.ModuleDirectory
+	$binaryPath = $nativeBuild.TemplatePath
 	foreach ($moduleFile in @("SCsub", "config.py", "register_types.h", "main_game.json")) {
 		if (!(Test-Path -LiteralPath (Join-Path $gameModulePath $moduleFile) -PathType Leaf)) {
 			throw "Generated native game module is missing '$moduleFile': $gameModulePath. The Plan Z C++ exporter must generate this module before -Game can build it."
@@ -69,30 +77,25 @@ if ($Game) {
 	if ($gameManifest.format -ne 1 -or !$gameManifest.generation -or !$gameManifest.files) {
 		throw "Incomplete or unsupported native game manifest: $gameModulePath/main_game.json. Run the C++ exporter again."
 	}
+	if ($gameManifest.target -cne $nativeBuild.GameTarget) {
+		throw "Native module target '$($gameManifest.target)' does not match requested target '$($nativeBuild.GameTarget)'. Regenerate this module with --target $($nativeBuild.GameTarget): $gameModulePath"
+	}
 
-	$binarySuffix = ".$gameSuffix"
 	$sconsArgs += @(
 		"custom_modules=$gameModulePath",
 		"custom_modules_recursive=no",
 		"module_main_game_enabled=yes",
 		"module_gdscript_enabled=no",
-		# Godot applies this to objects and libraries too, preserving each game's builds.
-		"extra_suffix=$gameSuffix"
+		# Godot applies this to objects and libraries too, preserving both targets.
+		"extra_suffix=$($nativeBuild.ExtraSuffix)"
 	)
 	if ($BuildProfilePath) {
 		$sconsArgs += "build_profile=$BuildProfilePath"
-	}
-	if (!$Release) {
-		# Include symbols for debugging native game builds.
-		$sconsArgs = $sconsArgs | Where-Object { $_ -ne "debug_symbols=no" }
-		$sconsArgs += "debug_symbols=yes"
 	}
 }
 if ($Release) {
 	$sconsArgs += "production=yes"
 }
-
-$binaryPath = Join-Path $PSScriptRoot "bin/godot.windows.$target.x86_64$binarySuffix.exe"
 
 $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
 if (!$vs) {
