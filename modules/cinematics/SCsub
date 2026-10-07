@@ -1,0 +1,9 @@
+# wgodot-changes::file
+
+Import("env")
+Import("env_modules")
+
+env_cinematics = env_modules.Clone()
+env_cinematics.add_source_files(env.modules_sources, "*.cpp")
+if env.editor_build:
+    env_cinematics.add_source_files(env.modules_sources, "editor/*.cpp")
