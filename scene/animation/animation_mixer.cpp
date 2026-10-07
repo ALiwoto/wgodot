@@ -31,6 +31,10 @@
 #include "animation_mixer.h"
 #include "animation_mixer.compat.inc"
 
+// wgodot-changes::begin
+#include "wgodot_animation_audio.h"
+// wgodot-changes::end
+
 #include "core/config/engine.h"
 #include "core/config/project_settings.h"
 #include "core/object/callable_mp.h"
@@ -1789,6 +1793,11 @@ void AnimationMixer::_blend_process(double p_delta, bool p_update_only) {
 						if (seeked) {
 							start_ofs += time - a->track_get_key_time(i, idx);
 						}
+						// wgodot-changes::begin
+						if (wgodot_animation_audio_has_ended(*stream.ptr(), start_ofs, end_ofs)) {
+							continue;
+						}
+						// wgodot-changes::end
 
 						if (t_obj->call(SNAME("get_stream")) != t->audio_stream) {
 							t_obj->call(SNAME("set_stream"), t->audio_stream);
