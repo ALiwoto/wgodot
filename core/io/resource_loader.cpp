@@ -496,7 +496,9 @@ void ResourceLoader::_run_load_task(void *p_userdata) {
 				// This is not the most optimal thing to do, but it is safe. Either the
 				// dependency will complete soon, or will block soon when we can safely
 				// yield.
-				OS::get_singleton()->delay_usec(1000);
+				// wgodot-changes::begin
+				WorkerThreadPool::get_singleton()->wgodot_delay_usec(1000);
+				// wgodot-changes::end
 			}
 			// wgodot-changes::begin
 			// Cancellation is checked while holding the mutex at the start of each pass.

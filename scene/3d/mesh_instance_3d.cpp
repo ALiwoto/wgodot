@@ -959,3 +959,12 @@ MeshInstance3D::MeshInstance3D() {
 	}
 #endif
 }
+
+// wgodot-changes::begin
+MeshInstance3D::~MeshInstance3D() {
+	// Detach geometry before member destruction releases its surface materials.
+	// VisualInstance3D frees the instance after those references are gone, and
+	// that operation can flush pending renderer updates which still use them.
+	set_base(RID());
+}
+// wgodot-changes::end

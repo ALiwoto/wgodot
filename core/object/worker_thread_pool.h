@@ -224,6 +224,9 @@ private:
 	};
 
 	void _wait_collaboratively(ThreadData *p_caller_pool_thread, Task *p_task);
+	// wgodot-changes::begin
+	void wgodot_process_pending_group_tasks(Group *p_group);
+	// wgodot-changes::end
 
 	void _switch_runlevel(Runlevel p_runlevel);
 	bool _handle_runlevel(ThreadData *p_thread_data, MutexLock<BinaryMutex> &p_lock);
@@ -257,6 +260,9 @@ public:
 
 	void yield();
 	void notify_yield_over(TaskID p_task_id);
+	// wgodot-changes::begin
+	void wgodot_delay_usec(uint32_t p_usec);
+	// wgodot-changes::end
 
 	template <typename C, typename M, typename U>
 	GroupID add_template_group_task(C *p_instance, M p_method, U p_userdata, int p_elements, int p_tasks = -1, bool p_high_priority = false, const String &p_description = String()) {

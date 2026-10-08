@@ -743,6 +743,11 @@ void WorkerThreadPool::wait_for_group_task_completion(GroupID p_group) {
 		if (this == singleton) {
 			_unlock_unlockable_mutexes();
 		}
+		// wgodot-changes::begin
+		// Resource loaders can fill the pool while waiting for shader groups.
+		// Complete queued work from this group before blocking the worker.
+		wgodot_process_pending_group_tasks(group);
+		// wgodot-changes::end
 		group->done_semaphore.wait();
 		if (this == singleton) {
 			_lock_unlockable_mutexes();

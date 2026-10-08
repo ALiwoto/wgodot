@@ -135,4 +135,7 @@ public:
 	virtual PackedStringArray get_configuration_warnings() const override;
 
 	MeshInstance3D();
+	// wgodot-changes::begin
+	~MeshInstance3D();
+	// wgodot-changes::end
 };
