@@ -15,7 +15,40 @@
 #include "wgodot_stdlib.h"
 
 #include "core/config/project_settings.h"
+#include "core/io/file_access.h"
 #include "core/object/class_db.h"
+
+bool GDScriptAnalyzer::wgodot_is_ignored_script() const {
+	if (wgodot_script_path_checked) {
+		return wgodot_script_ignored;
+	}
+	wgodot_script_path_checked = true;
+	// Analyze the current script, not its caller. Dependencies outside ignored
+	// folders retain their own policy. Cache only for this analyzer's lifetime.
+	const String path = ProjectSettings::get_singleton()->localize_path(parser->script_path.get_slice("::", 0));
+	if (!path.begins_with("res://")) {
+		return false;
+	}
+	const String project_data = ProjectSettings::get_singleton()->get_project_data_path();
+	String directory = path.get_base_dir();
+	while (directory.begins_with("res://")) {
+		if (FileAccess::exists(directory.path_join(".gdignore"))) {
+			wgodot_script_ignored = true;
+			break;
+		}
+		if (directory == "res://") {
+			break;
+		}
+		// Match Godot's filesystem scan, including hidden directories and nested projects.
+		if (directory.get_file().begins_with(".") || FileAccess::get_hidden_attribute(directory) ||
+				directory == project_data || FileAccess::exists(directory.path_join("project.godot"))) {
+			wgodot_script_ignored = true;
+			break;
+		}
+		directory = directory.get_base_dir();
+	}
+	return wgodot_script_ignored;
+}
 
 void GDScriptAnalyzer::wgodot_reduce_enum_query(GDScriptParser::CallNode *p_call) {
 	if (p_call->get_callee_type() != GDScriptParser::Node::SUBSCRIPT || p_call->is_super) {
@@ -208,6 +241,9 @@ void GDScriptAnalyzer::wgodot_validate_override_annotation(GDScriptParser::Funct
 }
 
 bool GDScriptAnalyzer::wgodot_strict_override_checking_enabled() const {
+	if (wgodot_is_ignored_script()) {
+		return false;
+	}
 	if (GLOBAL_GET_CACHED(bool, "wgodot/gdscript/disable_strict_override_checking_for_addons") &&
 			parser->script_path.begins_with("res://addons/")) {
 		return false;
@@ -225,6 +261,9 @@ bool GDScriptAnalyzer::wgodot_strict_type_checking_enabled() const {
 #ifndef TOOLS_ENABLED
 	return false;
 #else
+	if (wgodot_is_ignored_script()) {
+		return false;
+	}
 	if (GLOBAL_GET_CACHED(bool, "wgodot/gdscript/disable_strict_type_checking_for_addons") &&
 			parser->script_path.begins_with("res://addons/")) {
 		return false;
@@ -283,7 +322,7 @@ bool GDScriptAnalyzer::wgodot_validate_strict_datatype(const GDScriptParser::Dat
 void GDScriptAnalyzer::wgodot_validate_strict_signal_parameter(const GDScriptParser::SignalNode *p_signal, const GDScriptParser::ParameterNode *p_parameter) {
 	// Validate signal contracts during editing/export, including addon scripts.
 	// The general strict-type helper can exempt addons.
-	if (!GLOBAL_GET_CACHED(bool, "wgodot/gdscript/strict_type_checking")) {
+	if (wgodot_is_ignored_script() || !GLOBAL_GET_CACHED(bool, "wgodot/gdscript/strict_type_checking")) {
 		return;
 	}
 	const GDScriptParser::DataType &datatype = p_parameter->type_constraint;
@@ -777,6 +816,9 @@ bool GDScriptAnalyzer::wgodot_try_get_callable_info(const GDScriptParser::Expres
 }
 
 bool GDScriptAnalyzer::wgodot_strict_signal_callable_checking_enabled() const {
+	if (wgodot_is_ignored_script()) {
+		return false;
+	}
 	const char *setting = "wgodot/gdscript/strict_signal_callable_checking";
 	if (!ProjectSettings::get_singleton()->has_setting(setting)) {
 		return true;

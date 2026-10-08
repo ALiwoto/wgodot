@@ -117,6 +117,9 @@ class GDScriptAnalyzer {
 	void resolve_return(GDScriptParser::ReturnNode *p_return);
 
 	// wgodot-changes::begin
+	mutable bool wgodot_script_path_checked = false;
+	mutable bool wgodot_script_ignored = false;
+	bool wgodot_is_ignored_script() const;
 	void wgodot_reduce_enum_query(GDScriptParser::CallNode *p_call);
 	void wgodot_validate_readonly_variable(GDScriptParser::VariableNode *p_variable, bool p_is_local);
 	bool wgodot_validate_readonly_assignment(GDScriptParser::AssignmentNode *p_assignment);
@@ -185,6 +188,7 @@ class GDScriptAnalyzer {
 	// Reduction functions.
 	// wgodot-changes::begin
 	static GDScriptParser::DataType wgodot_resource_path_type();
+	static GDScriptParser::DataType wgodot_resource_path_runtime_type(const GDScriptParser::DataType &p_type);
 	void wgodot_resource_container_signature(const GDScriptParser::DataType &p_container, const StringName &p_method, GDScriptParser::DataType &r_result, List<GDScriptParser::DataType> &r_arguments);
 	bool wgodot_validate_resource_path_argument(GDScriptParser::ExpressionNode *p_expression, const GDScriptParser::DataType &p_target);
 	bool wgodot_validate_resource_utility(const GDScriptParser::CallNode *p_call, const MethodInfo &p_info);

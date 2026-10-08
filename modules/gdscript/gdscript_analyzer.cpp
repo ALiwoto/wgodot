@@ -2512,7 +2512,7 @@ void GDScriptAnalyzer::resolve_for(GDScriptParser::ForNode *p_for) {
 
 		list_type = p_for->list->type_constraint;
 		// wgodot-changes::begin
-		if (list_type.wgodot_resource_path) {
+		if (list_type.wgodot_resource_path && !wgodot_is_ignored_script()) {
 			push_error("WResPath cannot be iterated as a string.", p_for->list);
 			return;
 		}
@@ -3551,7 +3551,7 @@ void GDScriptAnalyzer::reduce_call(GDScriptParser::CallNode *p_call, bool p_is_a
 		if (builtin_type < Variant::VARIANT_MAX) {
 			// wgodot-changes::begin
 			for (const GDScriptParser::ExpressionNode *argument : p_call->arguments) {
-				if (argument->type_constraint.wgodot_resource_path && builtin_type != Variant::BOOL) {
+				if (argument->type_constraint.wgodot_resource_path && builtin_type != Variant::BOOL && !wgodot_is_ignored_script()) {
 					push_error("WResPath cannot be converted to another value type.", argument);
 					return;
 				}
@@ -4145,7 +4145,7 @@ void GDScriptAnalyzer::reduce_cast(GDScriptParser::CastNode *p_cast) {
 	if (!wgodot_validate_resource_path_argument(p_cast->operand, cast_type)) {
 		return;
 	}
-	if (p_cast->operand->type_constraint.wgodot_resource_path && !cast_type.wgodot_resource_path) {
+	if (p_cast->operand->type_constraint.wgodot_resource_path && !cast_type.wgodot_resource_path && !wgodot_is_ignored_script()) {
 		push_error("WResPath cannot be cast to a string or another value type.", p_cast);
 		return;
 	}
@@ -5219,7 +5219,7 @@ void GDScriptAnalyzer::reduce_subscript(GDScriptParser::SubscriptNode *p_subscri
 		reduce_expression(p_subscript->base);
 	}
 	// wgodot-changes::begin
-	if (p_subscript->base->type_constraint.wgodot_resource_path) {
+	if (p_subscript->base->type_constraint.wgodot_resource_path && !wgodot_is_ignored_script()) {
 		push_error("WResPath has no string members or character indexing.", p_subscript);
 		return;
 	}
@@ -6420,7 +6420,7 @@ GDScriptParser::DataType GDScriptAnalyzer::type_from_property(const PropertyInfo
 
 bool GDScriptAnalyzer::get_function_signature(GDScriptParser::Node *p_source, bool p_is_constructor, GDScriptParser::DataType p_base_type, const StringName &p_function, GDScriptParser::DataType &r_return_type, List<GDScriptParser::DataType> &r_par_types, int &r_default_arg_count, BitField<MethodFlags> &r_method_flags, StringName *r_native_class) {
 	// wgodot-changes::begin
-	if (p_base_type.wgodot_resource_path) {
+	if (p_base_type.wgodot_resource_path && !wgodot_is_ignored_script()) {
 		push_error("WResPath has no string methods.", p_source);
 		return false;
 	}
@@ -6945,6 +6945,11 @@ bool GDScriptAnalyzer::is_type_compatible(const GDScriptParser::DataType &p_targ
 		}
 	}
 #endif // DEBUG_ENABLED
+	// wgodot-changes::begin
+	if (wgodot_is_ignored_script()) {
+		return check_type_compatibility(wgodot_resource_path_runtime_type(p_target), wgodot_resource_path_runtime_type(p_source), p_allow_implicit_conversion, p_source_node);
+	}
+	// wgodot-changes::end
 	return check_type_compatibility(p_target, p_source, p_allow_implicit_conversion, p_source_node);
 }
 

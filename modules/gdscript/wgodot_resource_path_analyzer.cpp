@@ -3,6 +3,17 @@
 
 using Parser = GDScriptParser;
 
+Parser::DataType GDScriptAnalyzer::wgodot_resource_path_runtime_type(const Parser::DataType &p_type) {
+	// Ignored scripts run in the VM, where WResPath is an ordinary String.
+	// Do not mutate types belonging to production-script dependencies.
+	Parser::DataType result = p_type;
+	result.wgodot_resource_path = false;
+	for (int i = 0; i < result.get_container_element_type_count(); i++) {
+		result.set_container_element_type(i, wgodot_resource_path_runtime_type(result.get_container_element_type(i)));
+	}
+	return result;
+}
+
 void GDScriptAnalyzer::wgodot_resource_container_signature(const Parser::DataType &p_container, const StringName &p_method, Parser::DataType &r_result, List<Parser::DataType> &r_arguments) {
 	const auto key = p_container.get_container_element_type_or_variant(0);
 	const auto value = p_container.get_container_element_type_or_variant(1);
@@ -78,7 +89,7 @@ Parser::DataType GDScriptAnalyzer::wgodot_resource_path_type() {
 }
 
 bool GDScriptAnalyzer::wgodot_validate_resource_path_argument(Parser::ExpressionNode *p_expression, const Parser::DataType &p_target) {
-	if (!p_target.wgodot_resource_path) {
+	if (wgodot_is_ignored_script() || !p_target.wgodot_resource_path) {
 		return true;
 	}
 	if (p_expression->type_constraint.wgodot_resource_path) {
@@ -94,6 +105,9 @@ bool GDScriptAnalyzer::wgodot_validate_resource_path_argument(Parser::Expression
 }
 
 bool GDScriptAnalyzer::wgodot_validate_resource_utility(const Parser::CallNode *p_call, const MethodInfo &p_info) {
+	if (wgodot_is_ignored_script()) {
+		return true;
+	}
 	for (uint32_t i = 0; i < p_call->arguments.size(); i++) {
 		const Parser::ExpressionNode *argument = p_call->arguments[i];
 		if (argument->type_constraint.wgodot_resource_path &&
@@ -106,7 +120,7 @@ bool GDScriptAnalyzer::wgodot_validate_resource_utility(const Parser::CallNode *
 }
 
 bool GDScriptAnalyzer::wgodot_validate_resource_path_operation(Variant::Operator p_operator, const Parser::DataType &p_left, const Parser::DataType &p_right, const Parser::Node *p_source) {
-	if (!p_left.wgodot_resource_path && !p_right.wgodot_resource_path) {
+	if (wgodot_is_ignored_script() || (!p_left.wgodot_resource_path && !p_right.wgodot_resource_path)) {
 		return true;
 	}
 	if (p_operator == Variant::OP_NOT || p_operator == Variant::OP_AND || p_operator == Variant::OP_OR) {
