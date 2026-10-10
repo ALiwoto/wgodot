@@ -929,6 +929,9 @@ public:
 	};
 
 	struct SceneModificationsEntry {
+		// wgodot-changes::begin
+		List<String> reimported_paths;
+		// wgodot-changes::end
 		List<InstanceModificationsEntry> instance_list;
 		HashMap<NodePath, ModificationNodeEntry> other_instances_modifications;
 	};

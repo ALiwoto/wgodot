@@ -1895,6 +1895,14 @@ void ResourceFormatSaverBinaryInstance::write_variant(Ref<FileAccess> r_file, co
 			int len = arr.size();
 			r_file->store_32(uint32_t(len));
 			const int32_t *r = arr.ptr();
+			// wgodot-changes::begin
+			if (!r_file->is_big_endian()) {
+				if (len > 0) {
+					r_file->store_buffer(reinterpret_cast<const uint8_t *>(r), uint64_t(len) * sizeof(int32_t));
+				}
+				break;
+			}
+			// wgodot-changes::end
 			for (int i = 0; i < len; i++) {
 				r_file->store_32(uint32_t(r[i]));
 			}
@@ -1906,6 +1914,14 @@ void ResourceFormatSaverBinaryInstance::write_variant(Ref<FileAccess> r_file, co
 			int len = arr.size();
 			r_file->store_32(uint32_t(len));
 			const int64_t *r = arr.ptr();
+			// wgodot-changes::begin
+			if (!r_file->is_big_endian()) {
+				if (len > 0) {
+					r_file->store_buffer(reinterpret_cast<const uint8_t *>(r), uint64_t(len) * sizeof(int64_t));
+				}
+				break;
+			}
+			// wgodot-changes::end
 			for (int i = 0; i < len; i++) {
 				r_file->store_64(uint64_t(r[i]));
 			}
@@ -1917,6 +1933,14 @@ void ResourceFormatSaverBinaryInstance::write_variant(Ref<FileAccess> r_file, co
 			int len = arr.size();
 			r_file->store_32(uint32_t(len));
 			const float *r = arr.ptr();
+			// wgodot-changes::begin
+			if (!r_file->is_big_endian()) {
+				if (len > 0) {
+					r_file->store_buffer(reinterpret_cast<const uint8_t *>(r), uint64_t(len) * sizeof(float));
+				}
+				break;
+			}
+			// wgodot-changes::end
 			for (int i = 0; i < len; i++) {
 				r_file->store_float(r[i]);
 			}
@@ -1928,6 +1952,14 @@ void ResourceFormatSaverBinaryInstance::write_variant(Ref<FileAccess> r_file, co
 			int len = arr.size();
 			r_file->store_32(uint32_t(len));
 			const double *r = arr.ptr();
+			// wgodot-changes::begin
+			if (!r_file->is_big_endian()) {
+				if (len > 0) {
+					r_file->store_buffer(reinterpret_cast<const uint8_t *>(r), uint64_t(len) * sizeof(double));
+				}
+				break;
+			}
+			// wgodot-changes::end
 			for (int i = 0; i < len; i++) {
 				r_file->store_double(r[i]);
 			}
@@ -1950,6 +1982,14 @@ void ResourceFormatSaverBinaryInstance::write_variant(Ref<FileAccess> r_file, co
 			int len = arr.size();
 			r_file->store_32(uint32_t(len));
 			const Vector2 *r = arr.ptr();
+			// wgodot-changes::begin
+			if (!r_file->is_big_endian()) {
+				if (len > 0) {
+					r_file->store_buffer(reinterpret_cast<const uint8_t *>(r), uint64_t(len) * sizeof(Vector2));
+				}
+				break;
+			}
+			// wgodot-changes::end
 			for (int i = 0; i < len; i++) {
 				r_file->store_real(r[i].x);
 				r_file->store_real(r[i].y);
@@ -1962,6 +2002,14 @@ void ResourceFormatSaverBinaryInstance::write_variant(Ref<FileAccess> r_file, co
 			int len = arr.size();
 			r_file->store_32(uint32_t(len));
 			const Vector3 *r = arr.ptr();
+			// wgodot-changes::begin
+			if (!r_file->is_big_endian()) {
+				if (len > 0) {
+					r_file->store_buffer(reinterpret_cast<const uint8_t *>(r), uint64_t(len) * sizeof(Vector3));
+				}
+				break;
+			}
+			// wgodot-changes::end
 			for (int i = 0; i < len; i++) {
 				r_file->store_real(r[i].x);
 				r_file->store_real(r[i].y);
@@ -1975,6 +2023,14 @@ void ResourceFormatSaverBinaryInstance::write_variant(Ref<FileAccess> r_file, co
 			int len = arr.size();
 			r_file->store_32(uint32_t(len));
 			const Color *r = arr.ptr();
+			// wgodot-changes::begin
+			if (!r_file->is_big_endian()) {
+				if (len > 0) {
+					r_file->store_buffer(reinterpret_cast<const uint8_t *>(r), uint64_t(len) * sizeof(Color));
+				}
+				break;
+			}
+			// wgodot-changes::end
 			for (int i = 0; i < len; i++) {
 				r_file->store_float(r[i].r);
 				r_file->store_float(r[i].g);
@@ -1989,6 +2045,14 @@ void ResourceFormatSaverBinaryInstance::write_variant(Ref<FileAccess> r_file, co
 			int len = arr.size();
 			r_file->store_32(uint32_t(len));
 			const Vector4 *r = arr.ptr();
+			// wgodot-changes::begin
+			if (!r_file->is_big_endian()) {
+				if (len > 0) {
+					r_file->store_buffer(reinterpret_cast<const uint8_t *>(r), uint64_t(len) * sizeof(Vector4));
+				}
+				break;
+			}
+			// wgodot-changes::end
 			for (int i = 0; i < len; i++) {
 				r_file->store_real(r[i].x);
 				r_file->store_real(r[i].y);

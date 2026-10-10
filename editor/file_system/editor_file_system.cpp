@@ -32,6 +32,7 @@
 
 // wgodot-changes::begin
 #include "core/io/wgodot_resource_trace.h"
+#include "editor/file_system/wgodot_mesh_collision_settings.h"
 #include "editor/wgodot_editor_activity.h"
 // wgodot-changes::end
 
@@ -2640,12 +2641,18 @@ Error EditorFileSystem::_reimport_group(const String &p_group_file, const Vector
 	HashMap<String, HashMap<StringName, Variant>> source_file_options;
 	HashMap<String, ResourceUID::ID> uids;
 	HashMap<String, String> base_paths;
+	// wgodot-changes::begin
+	HashMap<String, String> mesh_collision_metadata;
+	// wgodot-changes::end
 	for (int i = 0; i < p_files.size(); i++) {
 		Ref<ConfigFile> config;
 		config.instantiate();
 		Error err = config->load(p_files[i] + ".import");
 		ERR_CONTINUE(err != OK);
 		ERR_CONTINUE(!config->has_section_key("remap", "importer"));
+		// wgodot-changes::begin
+		mesh_collision_metadata[p_files[i]] = WGodotMeshCollisionSettings::import_metadata(config);
+		// wgodot-changes::end
 		String file_importer_name = config->get_value("remap", "importer");
 		ERR_CONTINUE(file_importer_name.is_empty());
 
@@ -2772,6 +2779,9 @@ Error EditorFileSystem::_reimport_group(const String &p_group_file, const Vector
 				VariantWriter::write_to_string(v, value, true);
 				f->store_line(base + "=" + value);
 			}
+			// wgodot-changes::begin
+			f->store_string(mesh_collision_metadata[file]);
+			// wgodot-changes::end
 		}
 
 		// Store the md5's of the various files. These are stored separately so that the .import files can be version controlled.
@@ -2848,6 +2858,9 @@ Error EditorFileSystem::_reimport_file(const String &p_file, const HashMap<Strin
 	//try to obtain existing params
 
 	HashMap<StringName, Variant> params(p_custom_options);
+	// wgodot-changes::begin
+	String mesh_collision_metadata;
+	// wgodot-changes::end
 	String importer_name; //empty by default though
 
 	if (!p_custom_importer.is_empty()) {
@@ -2867,6 +2880,9 @@ Error EditorFileSystem::_reimport_file(const String &p_file, const HashMap<Strin
 		cf.instantiate();
 		Error err = cf->load(p_file + ".import");
 		if (err == OK) {
+			// wgodot-changes::begin
+			mesh_collision_metadata = WGodotMeshCollisionSettings::import_metadata(cf);
+			// wgodot-changes::end
 			if (cf->has_section("params")) {
 				Vector<String> sk = cf->get_section_keys("params");
 				for (const String &E : sk) {
@@ -3064,6 +3080,9 @@ Error EditorFileSystem::_reimport_file(const String &p_file, const HashMap<Strin
 			VariantWriter::write_to_string(params[base], value, true);
 			f->store_line(base + "=" + value);
 		}
+		// wgodot-changes::begin
+		f->store_string(mesh_collision_metadata);
+		// wgodot-changes::end
 	}
 
 	// Store the md5's of the various files. These are stored separately so that the .import files can be version controlled.

@@ -45,6 +45,9 @@ class MeshInstance3DEditor : public Control {
 
 	enum Menu {
 		MENU_OPTION_CREATE_COLLISION_SHAPE,
+		// wgodot-changes::begin
+		MENU_OPTION_EDIT_ASSET_COLLISION,
+		// wgodot-changes::end
 		MENU_OPTION_CREATE_NAVMESH,
 		MENU_OPTION_CREATE_OUTLINE_MESH,
 		MENU_OPTION_CREATE_DEBUG_TANGENTS,

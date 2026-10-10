@@ -69,6 +69,9 @@ private:
 	String res_type;
 
 	bool ignore_resource_parsing = false;
+	// wgodot-changes::begin
+	bool reused_subresource = false;
+	// wgodot-changes::end
 
 	HashMap<String, ExtResource> ext_resources;
 	HashMap<String, Ref<Resource>> int_resources;

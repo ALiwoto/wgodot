@@ -20,7 +20,7 @@ struct SceneNode {
 };
 
 class SceneFilter {
-	const WGodotCppProject &project;
+	const WGodotCppProject *project;
 	const WGodotExportTarget &target;
 	Vector<String> &diagnostics;
 	String source;
@@ -29,10 +29,13 @@ class SceneFilter {
 	Vector<String> excluded;
 
 	bool editor_member(const SceneNode &p_node, const StringName &p_name) const {
+		if (String(p_name).begins_with("metadata/_edit_")) {
+			return true;
+		}
 		const Variant *value = p_node.properties.getptr(SNAME("script"));
 		const Ref<Script> script = value ? *value : Variant();
-		GDScriptParser *parser = script.is_valid() ? project.find_parser(script->get_path()) : nullptr;
-		return parser && project.is_editor_member(parser->get_tree(), p_name);
+		GDScriptParser *parser = project && script.is_valid() ? project->find_parser(script->get_path()) : nullptr;
+		return parser && project->is_editor_member(parser->get_tree(), p_name);
 	}
 
 	void error(const String &p_message) {
@@ -161,9 +164,9 @@ class SceneFilter {
 			List<PropertyInfo> properties;
 			WGodotNativeResourcePolicy::get_reference_properties(resource, properties);
 			const Ref<Script> script = resource->get_script();
-			GDScriptParser *parser = script.is_valid() ? project.find_parser(script->get_path()) : nullptr;
+			GDScriptParser *parser = project && script.is_valid() ? project->find_parser(script->get_path()) : nullptr;
 			for (const PropertyInfo &property : properties) {
-				if (parser && project.is_editor_member(parser->get_tree(), property.name)) {
+				if (parser && project->is_editor_member(parser->get_tree(), property.name)) {
 					continue;
 				}
 				if (property.usage & PROPERTY_USAGE_STORAGE) {
@@ -178,7 +181,7 @@ class SceneFilter {
 	}
 
 public:
-	SceneFilter(const WGodotCppProject &p_project, Vector<String> &r_diagnostics, const String &p_source) : project(p_project), target(p_project.get_target()), diagnostics(r_diagnostics), source(p_source) {}
+	SceneFilter(const WGodotCppProject *p_project, const WGodotExportTarget &p_target, Vector<String> &r_diagnostics, const String &p_source) : project(p_project), target(p_target), diagnostics(r_diagnostics), source(p_source) {}
 
 	Ref<SceneState> run(const Ref<SceneState> &p_state) {
 		gather(p_state, ".");
@@ -292,8 +295,13 @@ Ref<SceneState> WGodotExportScene::filter(const Ref<PackedScene> &p_scene) {
 	if (const Ref<SceneState> *state = states.getptr(p_scene.ptr())) {
 		return *state;
 	}
-	SceneFilter filter(project, diagnostics, p_scene->get_path());
+	SceneFilter filter(&project, project.get_target(), diagnostics, p_scene->get_path());
 	const Ref<SceneState> state = filter.run(p_scene->get_state());
 	states.insert(p_scene.ptr(), state);
 	return state;
+}
+
+Ref<SceneState> WGodotExportScene::filter_external(const Ref<PackedScene> &p_scene, const WGodotExportTarget &p_target, Vector<String> &r_diagnostics) {
+	SceneFilter filter(nullptr, p_target, r_diagnostics, p_scene->get_path());
+	return filter.run(p_scene->get_state());
 }

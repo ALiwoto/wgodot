@@ -20,5 +20,6 @@ public:
 	WGodotResourceSerialization(Rewrite p_callback, void *p_context);
 	~WGodotResourceSerialization();
 	static String rewrite(const String &p_value);
+	static bool is_active() { return current != nullptr; }
 };
 #endif

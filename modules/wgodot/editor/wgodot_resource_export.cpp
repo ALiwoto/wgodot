@@ -2,6 +2,7 @@
 #include "wgodot_resource_export.h"
 
 #include "wgodot_export_target.h"
+#include "wgodot_native_resource_policy.h"
 #include "wgodot_resource_rewrite.h"
 
 #include "core/config/project_settings.h"
@@ -116,8 +117,8 @@ Error WGodotResourceExport::import_remap(const String &p_source, const Vector<ui
 }
 
 Error WGodotResourceExport::rewrite_binary(const String &p_source, Vector<uint8_t> &r_data) {
-	// Re-serialize through Godot, transforming serialized strings only. This
-	// covers dependency tables and properties without changing editor resources.
+	// Filter and re-serialize an uncached copy through Godot. Mesh/animation
+	// payloads stay binary and the editor's resources remain unchanged.
 	const String temporary = EditorPaths::get_singleton()->get_temp_dir().path_join("wgodot_ids_" + p_source.sha256_text() + ".res");
 	{
 		Ref<FileAccess> file = FileAccess::open(temporary, FileAccess::WRITE);
@@ -127,9 +128,16 @@ Error WGodotResourceExport::rewrite_binary(const String &p_source, Vector<uint8_
 	Error result = OK;
 	Ref<ResourceFormatLoaderBinary> loader;
 	loader.instantiate();
-	const Ref<Resource> resource = loader->load(temporary, p_source, &result, false, nullptr, ResourceFormatLoader::CACHE_MODE_IGNORE_DEEP);
+	Ref<Resource> resource = loader->load(temporary, p_source, &result, false, nullptr, ResourceFormatLoader::CACHE_MODE_IGNORE_DEEP);
 	if (resource.is_null() && result == OK) {
 		result = ERR_FILE_CORRUPT;
+	}
+	if (resource.is_valid() && result == OK && target) {
+		String message;
+		result = WGodotNativeResourcePolicy::prepare_external(resource, *target, message);
+		if (result != OK) {
+			ERR_PRINT(p_source + ": " + message);
+		}
 	}
 	if (resource.is_valid() && result == OK) {
 		struct Context {

@@ -7348,6 +7348,9 @@ void EditorNode::preload_reimporting_with_path_in_edited_scenes(const List<Strin
 
 		if (edited_scene_root) {
 			SceneModificationsEntry scene_modifications;
+			// wgodot-changes::begin
+			HashSet<Node *> prepared_instances;
+			// wgodot-changes::end
 
 			for (const String &instance_path : p_scenes) {
 				// wgodot-changes::begin
@@ -7360,10 +7363,21 @@ void EditorNode::preload_reimporting_with_path_in_edited_scenes(const List<Strin
 				HashSet<Node *> instances_to_reimport;
 				find_all_instances_inheriting_path_in_node(edited_scene_root, edited_scene_root, instance_path, instances_to_reimport);
 				if (instances_to_reimport.size() > 0) {
+					// wgodot-changes::begin
+					// Several changed meshes can resolve to the same enclosing scene.
+					// Reload every dependency, but capture and replace that scene only once.
+					scene_modifications.reimported_paths.push_back(instance_path);
+					// wgodot-changes::end
 					editor_data.set_edited_scene(current_scene_idx);
 
 					List<Node *> instance_list_with_children;
 					for (Node *original_node : instances_to_reimport) {
+						// wgodot-changes::begin
+						if (prepared_instances.has(original_node)) {
+							continue;
+						}
+						prepared_instances.insert(original_node);
+						// wgodot-changes::end
 						InstanceModificationsEntry instance_modifications;
 
 						// Fetching all the modified properties of the nodes reimported scene.
@@ -7376,6 +7390,11 @@ void EditorNode::preload_reimporting_with_path_in_edited_scenes(const List<Strin
 						instance_list_with_children.push_back(original_node);
 						get_children_nodes(original_node, instance_list_with_children);
 					}
+					// wgodot-changes::begin
+					if (instance_list_with_children.is_empty()) {
+						continue;
+					}
+					// wgodot-changes::end
 
 					// Search the scene to find nodes that references the nodes will be recreated.
 					get_preload_modifications_reference_to_nodes(edited_scene_root, edited_scene_root, instances_to_reimport, instance_list_with_children, scene_modifications.other_instances_modifications);
@@ -7409,16 +7428,18 @@ void EditorNode::reload_instances_with_path_in_edited_scenes() {
 
 	// Reload the new instances.
 	for (KeyValue<int, SceneModificationsEntry> &scene_modifications_elem : scenes_modification_table) {
-		for (InstanceModificationsEntry instance_modifications : scene_modifications_elem.value.instance_list) {
-			if (!local_scene_cache.has(instance_modifications.instance_path)) {
-				Ref<PackedScene> instance_scene_packed_scene = ResourceLoader::load(instance_modifications.instance_path, "", ResourceFormatLoader::CACHE_MODE_REPLACE, &err);
+		// wgodot-changes::begin
+		for (const String &instance_path : scene_modifications_elem.value.reimported_paths) {
+			if (!local_scene_cache.has(instance_path)) {
+				Ref<PackedScene> instance_scene_packed_scene = ResourceLoader::load(instance_path, "", ResourceFormatLoader::CACHE_MODE_REPLACE, &err);
 
 				ERR_FAIL_COND(err != OK);
 				ERR_FAIL_COND(instance_scene_packed_scene.is_null());
 
-				local_scene_cache[instance_modifications.instance_path] = instance_scene_packed_scene;
+				local_scene_cache[instance_path] = instance_scene_packed_scene;
 			}
 		}
+		// wgodot-changes::end
 	}
 
 	// Save the current scene state/selection in case of lost.

@@ -31,6 +31,10 @@
 #include "resource_format_text.h"
 
 // wgodot-changes::begin
+#include "wgodot_text_resource_cache.h"
+// wgodot-changes::end
+
+// wgodot-changes::begin
 #include "wgodot_resource_text_scan.h"
 // wgodot-changes::end
 
@@ -617,6 +621,7 @@ Error ResourceLoaderText::load() {
 		}
 		// wgodot-changes::begin
 		int_resources[id] = res; // Use the resource that won cache registration.
+		reused_subresource |= !do_assign;
 		// wgodot-changes::end
 
 		Dictionary missing_resource_properties;
@@ -1444,11 +1449,50 @@ Ref<Resource> ResourceFormatLoaderText::load(const String &p_path, const String 
 	loader.progress = r_progress;
 	loader.res_path = loader.local_path;
 	loader.open(f);
+	// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+	// Only self-contained .tres payloads are independent of script defaults,
+	// imports and external resources. Scenes retain their normal authoring path.
+	const bool cache_candidate = loader.error == OK && !loader.is_scene && loader.next_tag.name != "ext_resource";
+	WGodotTextResourceCache binary_cache(cache_candidate ? p_path : String());
+	if (cache_candidate) {
+		Ref<Resource> cached = binary_cache.load(loader.local_path, p_use_sub_threads, r_progress, p_cache_mode);
+		if (cached.is_valid()) {
+			if (r_error) {
+				*r_error = OK;
+			}
+			return cached;
+		}
+	}
+#endif
+	// wgodot-changes::end
 	err = loader.load();
 	if (r_error) {
 		*r_error = err;
 	}
 	if (err == OK) {
+		// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+		if (cache_candidate && !loader.reused_subresource) {
+			bool native_data = true;
+			Vector<Ref<Resource>> resources;
+			resources.push_back(loader.get_resource());
+			for (const KeyValue<String, Ref<Resource>> &entry : loader.int_resources) {
+				resources.push_back(entry.value);
+			}
+			for (const Ref<Resource> &resource : resources) {
+				const Ref<Script> script = resource->get_script();
+				if (script.is_valid() || Object::cast_to<Script>(resource.ptr()) || Object::cast_to<MissingResource>(resource.ptr())) {
+					native_data = false;
+					break;
+				}
+			}
+			if (native_data) {
+				binary_cache.store(loader.get_resource());
+			}
+		}
+#endif
+		// wgodot-changes::end
 		return loader.get_resource();
 	} else {
 		return Ref<Resource>();

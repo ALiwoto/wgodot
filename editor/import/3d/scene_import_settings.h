@@ -60,6 +60,9 @@ class SceneImportSettingsDialog : public ConfirmationDialog {
 		ACTION_EXTRACT_MATERIALS,
 		ACTION_CHOOSE_MESH_SAVE_PATHS,
 		ACTION_CHOOSE_ANIMATION_SAVE_PATHS,
+		// wgodot-changes::begin
+		ACTION_EDIT_MESH_COLLISION,
+		// wgodot-changes::end
 	};
 
 	Node *scene = nullptr;

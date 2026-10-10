@@ -16,4 +16,5 @@ class WGodotExportScene {
 public:
 	WGodotExportScene(const WGodotCppProject &p_project, Vector<String> &r_diagnostics) : project(p_project), diagnostics(r_diagnostics) {}
 	Ref<SceneState> filter(const Ref<PackedScene> &p_scene);
+	static Ref<SceneState> filter_external(const Ref<PackedScene> &p_scene, const WGodotExportTarget &p_target, Vector<String> &r_diagnostics);
 };

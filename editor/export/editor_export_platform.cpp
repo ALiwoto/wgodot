@@ -56,6 +56,9 @@
 #include "editor/export/editor_export_plugin.h"
 #include "editor/file_system/editor_file_system.h"
 #include "editor/file_system/editor_paths.h"
+// wgodot-changes::begin
+#include "editor/file_system/wgodot_mesh_collision_settings.h"
+// wgodot-changes::end
 #include "editor/script/script_editor_plugin.h"
 #include "editor/settings/editor_settings.h"
 #include "editor/themes/editor_scale.h"
@@ -1545,6 +1548,9 @@ Error EditorExportPlatform::export_project_files(const Ref<EditorExportPreset> &
 			}
 
 			String importer_type = config->get_value("remap", "importer");
+			// wgodot-changes::begin
+			WGodotMeshCollisionSettings::strip_export_metadata(config);
+			// wgodot-changes::end
 
 			if (importer_type == "skip") {
 				// Skip file.

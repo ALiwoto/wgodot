@@ -29,6 +29,9 @@
 /**************************************************************************/
 
 #include "resource_importer_scene.h"
+// wgodot-changes::begin
+#include "wgodot_mesh_collision.h"
+// wgodot-changes::end
 
 // wgodot-changes::begin
 #include "core/io/wgodot_resource_trace.h"
@@ -3492,6 +3495,15 @@ Error ResourceImporterScene::import(ResourceUID::ID p_source_id, const String &p
 	}
 
 	progress.step(TTR("Saving..."), 104);
+	// wgodot-changes::begin
+	if (_scene_import_type == "PackedScene") {
+		const Error collision_error = WGodotMeshCollision::append_to_scene(scene, p_source_file);
+		if (collision_error != OK) {
+			memdelete(scene);
+			return collision_error;
+		}
+	}
+	// wgodot-changes::end
 
 	int flags = 0;
 	if (EditorSettings::get_singleton() && EDITOR_GET("filesystem/on_save/compress_binary_resources")) {

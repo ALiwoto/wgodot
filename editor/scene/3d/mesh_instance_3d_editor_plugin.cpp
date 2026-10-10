@@ -29,6 +29,9 @@
 /**************************************************************************/
 
 #include "mesh_instance_3d_editor_plugin.h"
+// wgodot-changes::begin
+#include "wgodot_mesh_collision_editor_plugin.h"
+// wgodot-changes::end
 
 #include "core/io/resource_loader.h"
 #include "core/object/callable_mp.h"
@@ -437,6 +440,11 @@ void MeshInstance3DEditor::_menu_option(int p_option) {
 		case MENU_OPTION_CREATE_COLLISION_SHAPE: {
 			shape_dialog->popup_centered();
 		} break;
+		// wgodot-changes::begin
+		case MENU_OPTION_EDIT_ASSET_COLLISION: {
+			WGodotMeshCollisionEditorPlugin::get_singleton()->edit_asset(mesh->get_path());
+		} break;
+			// wgodot-changes::end
 
 		case MENU_OPTION_CREATE_NAVMESH: {
 			navigation_mesh_dialog->popup_centered(Vector2(200, 90));
@@ -803,6 +811,9 @@ MeshInstance3DEditor::MeshInstance3DEditor() {
 	Node3DEditor::get_singleton()->add_control_to_menu_panel(options);
 
 	options->get_popup()->add_item(TTR("Create Collision Shape..."), MENU_OPTION_CREATE_COLLISION_SHAPE);
+	// wgodot-changes::begin
+	options->get_popup()->add_item(TTR("Edit Mesh Collision..."), MENU_OPTION_EDIT_ASSET_COLLISION);
+	// wgodot-changes::end
 	options->get_popup()->add_item(TTR("Create Navigation Mesh"), MENU_OPTION_CREATE_NAVMESH);
 	options->get_popup()->add_separator();
 	options->get_popup()->add_item(TTR("Create Outline Mesh..."), MENU_OPTION_CREATE_OUTLINE_MESH);

@@ -1,6 +1,7 @@
 // wgodot-changes::file
 #include "wgodot_native_resource_policy.h"
 
+#include "wgodot_export_scene.h"
 #include "wgodot_export_target.h"
 
 #include "core/io/file_access.h"
@@ -101,10 +102,25 @@ bool WGodotNativeResourcePolicy::needs_factory(const Ref<Resource> &p_resource) 
 	return Object::cast_to<PackedScene>(p_resource.ptr()) || OwnedResources(p_resource).scripted;
 }
 
-Error WGodotNativeResourcePolicy::validate_external(const Ref<Resource> &p_resource, String &r_error) {
-	const OwnedResources contents(p_resource);
+Error WGodotNativeResourcePolicy::prepare_external(Ref<Resource> &r_resource, const WGodotExportTarget &p_target, String &r_error) {
+	const Ref<PackedScene> scene = r_resource;
+	if (scene.is_valid()) {
+		Vector<String> diagnostics;
+		const Ref<SceneState> state = WGodotExportScene::filter_external(scene, p_target, diagnostics);
+		if (!diagnostics.is_empty()) {
+			r_error = String("\n").join(diagnostics);
+			return ERR_INVALID_DATA;
+		}
+		// A separate scene keeps the editor's cached resource and its meshes intact.
+		Ref<PackedScene> filtered;
+		filtered.instantiate();
+		filtered->replace_state(state);
+		filtered->set_path_cache(scene->get_path());
+		r_resource = filtered;
+	}
+	const OwnedResources contents(r_resource);
 	if (contents.scripted || contents.target_nodes) {
-		r_error = "External asset contains script attachments or target-specific nodes. Put these in an authored .tscn/.tres wrapper so its native bindings and target filtering can be compiled: " + p_resource->get_path();
+		r_error = "External asset contains script attachments or embedded target-specific scenes. Put these in an authored .tscn/.tres wrapper so its native bindings and target filtering can be compiled: " + r_resource->get_path();
 		return ERR_UNAVAILABLE;
 	}
 	return OK;

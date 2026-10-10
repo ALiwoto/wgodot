@@ -96,6 +96,10 @@
 #include "editor/scene/3d/gpu_particles_collision_sdf_editor_plugin.h"
 #include "editor/scene/3d/lightmap_gi_editor_plugin.h"
 #include "editor/scene/3d/mesh_editor_plugin.h"
+// wgodot-changes::begin
+#include "editor/scene/3d/wgodot_mesh_audit_editor_plugin.h"
+#include "editor/scene/3d/wgodot_mesh_collision_editor_plugin.h"
+// wgodot-changes::end
 #include "editor/scene/3d/mesh_instance_3d_editor_plugin.h"
 #include "editor/scene/3d/mesh_library_editor_plugin.h"
 #include "editor/scene/3d/multimesh_editor_plugin.h"
@@ -282,6 +286,10 @@ void register_editor_types() {
 	EditorPlugins::add_by_type<GPUParticlesCollisionSDF3DEditorPlugin>();
 	EditorPlugins::add_by_type<LightmapGIEditorPlugin>();
 	EditorPlugins::add_by_type<MeshEditorPlugin>();
+	// wgodot-changes::begin
+	EditorPlugins::add_by_type<WGodotMeshCollisionEditorPlugin>();
+	EditorPlugins::add_by_type<WGodotMeshAuditEditorPlugin>();
+	// wgodot-changes::end
 	EditorPlugins::add_by_type<MeshInstance3DEditorPlugin>();
 	EditorPlugins::add_by_type<MeshLibraryEditorPlugin>();
 	EditorPlugins::add_by_type<OccluderInstance3DEditorPlugin>();

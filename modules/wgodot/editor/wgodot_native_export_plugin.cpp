@@ -201,18 +201,18 @@ void WGodotNativeExportPlugin::_export_file(const String &p_path, const String &
 	if (p_type != "PackedScene" && extension != "scn" && extension != "tscn" && extension != "res" && extension != "tres") {
 		return;
 	}
-	const Ref<Resource> resource = ResourceLoader::load(p_path);
+	Ref<Resource> resource = ResourceLoader::load(p_path);
 	if (resource.is_null()) {
 		set_export_error(ERR_CANT_OPEN, "Cannot load external resource: " + p_path);
 		return;
 	}
 	String message;
-	const Error error = WGodotNativeResourcePolicy::validate_external(resource, message);
+	const Error error = WGodotNativeResourcePolicy::prepare_external(resource, target, message);
 	if (error != OK) {
 		set_export_error(error, p_path + ": " + message);
 	}
-	// Keep the original binary payload. The pack writer remaps its resource
-	// references without expanding mesh/animation data into C++ or text scenes.
+	// The pack writer applies the same scene filter and remaps references while
+	// retaining mesh/animation data as binary payloads rather than generated C++.
 }
 
 void WGodotNativeExportPlugin::_export_global_class_list(Array &r_classes) {

@@ -29,6 +29,9 @@
 /**************************************************************************/
 
 #include "scene_import_settings.h"
+// wgodot-changes::begin
+#include "editor/scene/3d/wgodot_mesh_collision_editor_plugin.h"
+// wgodot-changes::end
 
 #include "core/config/project_settings.h"
 #include "core/io/resource_importer.h"
@@ -1407,6 +1410,13 @@ void SceneImportSettingsDialog::_notification(int p_what) {
 }
 
 void SceneImportSettingsDialog::_menu_callback(int p_id) {
+	// wgodot-changes::begin
+	if (p_id == ACTION_EDIT_MESH_COLLISION) {
+		hide();
+		callable_mp(WGodotMeshCollisionEditorPlugin::get_singleton(), &WGodotMeshCollisionEditorPlugin::edit_asset).call_deferred(base_path);
+		return;
+	}
+	// wgodot-changes::end
 	switch (p_id) {
 		case ACTION_EXTRACT_MATERIALS: {
 			save_path->set_title(TTR("Select folder to extract material resources"));
@@ -1706,6 +1716,10 @@ SceneImportSettingsDialog::SceneImportSettingsDialog() {
 	action_menu->get_popup()->add_separator();
 	action_menu->get_popup()->add_item(TTR("Set Animation Save Paths"), ACTION_CHOOSE_ANIMATION_SAVE_PATHS);
 	action_menu->get_popup()->add_item(TTR("Set Mesh Save Paths"), ACTION_CHOOSE_MESH_SAVE_PATHS);
+	// wgodot-changes::begin
+	action_menu->get_popup()->add_separator();
+	action_menu->get_popup()->add_item(TTR("Edit Mesh Collision..."), ACTION_EDIT_MESH_COLLISION);
+	// wgodot-changes::end
 
 	action_menu->get_popup()->connect(SceneStringName(id_pressed), callable_mp(this, &SceneImportSettingsDialog::_menu_callback));
 

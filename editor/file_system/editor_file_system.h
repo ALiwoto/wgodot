@@ -392,6 +392,9 @@ public:
 	void scan_changes();
 	void update_file(const String &p_file);
 	void update_files(const Vector<String> &p_script_paths);
+	// wgodot-changes::begin
+	Error set_mesh_collision_not_needed(const String &p_source, const String &p_mesh, bool p_not_needed);
+	// wgodot-changes::end
 	HashSet<String> get_valid_extensions() const;
 	void register_global_class_script(const String &p_search_path, const String &p_target_path);
 

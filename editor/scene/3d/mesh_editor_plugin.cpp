@@ -29,6 +29,11 @@
 /**************************************************************************/
 
 #include "mesh_editor_plugin.h"
+// wgodot-changes::begin
+#include "wgodot_mesh_collision_editor_plugin.h"
+
+#include "core/io/file_access.h"
+// wgodot-changes::end
 
 #include "core/config/project_settings.h"
 #include "core/object/callable_mp.h"
@@ -185,6 +190,15 @@ void EditorInspectorPluginMesh::parse_begin(Object *p_object) {
 	MeshEditor *editor = memnew(MeshEditor);
 	editor->edit(m);
 	add_custom_control(editor);
+	// wgodot-changes::begin
+	const String source = m->get_path().get_slice("::", 0);
+	if (FileAccess::exists(source + ".import")) {
+		Button *collision = memnew(Button);
+		collision->set_text(TTR("Edit Mesh Collision..."));
+		collision->connect("pressed", callable_mp(WGodotMeshCollisionEditorPlugin::get_singleton(), &WGodotMeshCollisionEditorPlugin::edit_asset).bind(source));
+		add_custom_control(collision);
+	}
+	// wgodot-changes::end
 }
 
 MeshEditorPlugin::MeshEditorPlugin() {
