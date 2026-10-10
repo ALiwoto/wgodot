@@ -1,6 +1,8 @@
 // wgodot-changes::file
 #pragma once
 
+#ifdef DEBUG_ENABLED
+
 #include "core/math/vector3.h"
 #include "core/object/object_id.h"
 #include "core/templates/rid.h"
@@ -8,7 +10,7 @@
 class GodotBody3D;
 class GodotCollisionObject3D;
 
-// Opt-in, per-thread counters for CharacterBody motion queries. No per-face
+// Debug-only, opt-in, per-thread counters for CharacterBody motion queries. No per-face
 // logging, allocations or clock reads when --verbose is absent.
 namespace WGodotMotionDiagnostics {
 enum Phase {
@@ -77,3 +79,5 @@ public:
 
 void record_gjk(uint64_t p_started, uint32_t p_iterations, bool p_failed);
 } // namespace WGodotMotionDiagnostics
+
+#endif // DEBUG_ENABLED

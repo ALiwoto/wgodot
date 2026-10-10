@@ -1,6 +1,8 @@
 // wgodot-changes::file
 #include "wgodot_motion_diagnostics.h"
 
+#ifdef DEBUG_ENABLED
+
 #include "godot_body_3d.h"
 
 #include "core/os/os.h"
@@ -214,3 +216,5 @@ void record_gjk(uint64_t p_started, uint32_t p_iterations, bool p_failed) {
 	current->gjk_iteration_histogram[bin]++;
 }
 } // namespace WGodotMotionDiagnostics
+
+#endif // DEBUG_ENABLED

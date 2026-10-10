@@ -31,7 +31,9 @@
 #include "godot_space_3d.h"
 
 // wgodot-changes::begin
+#ifdef DEBUG_ENABLED
 #include "wgodot_motion_diagnostics.h"
+#endif
 // wgodot-changes::end
 
 #include "godot_area_pair_3d.h"
@@ -640,7 +642,9 @@ int GodotSpace3D::_cull_aabb_for_body(GodotBody3D *p_body, const AABB &p_aabb) {
 
 bool GodotSpace3D::test_body_motion(GodotBody3D *p_body, const PS3DT::MotionParameters &p_parameters, PS3DT::MotionResult *r_result) {
 	// wgodot-changes::begin
+#ifdef DEBUG_ENABLED
 	WGodotMotionDiagnostics::Motion diagnostics(p_body, p_parameters.from.origin, p_parameters.motion);
+#endif
 	// wgodot-changes::end
 	//give me back regular physics engine logic
 	//this is madness
@@ -697,7 +701,9 @@ bool GodotSpace3D::test_body_motion(GodotBody3D *p_body, const PS3DT::MotionPara
 	{
 		//STEP 1, FREE BODY IF STUCK
 		// wgodot-changes::begin
+#ifdef DEBUG_ENABLED
 		WGodotMotionDiagnostics::PhaseScope diagnostics_phase(WGodotMotionDiagnostics::RECOVERY);
+#endif
 		// wgodot-changes::end
 
 		const int max_results = 32;
@@ -719,10 +725,12 @@ bool GodotSpace3D::test_body_motion(GodotBody3D *p_body, const PS3DT::MotionPara
 
 			int amount = _cull_aabb_for_body(p_body, body_aabb);
 			// wgodot-changes::begin
+#ifdef DEBUG_ENABLED
 			if (WGodotMotionDiagnostics::current) {
 				WGodotMotionDiagnostics::current->broadphase_candidates += amount;
 				WGodotMotionDiagnostics::current->recovery_passes++;
 			}
+#endif
 			// wgodot-changes::end
 
 			for (int j = 0; j < p_body->get_shape_count(); j++) {
@@ -744,7 +752,9 @@ bool GodotSpace3D::test_body_motion(GodotBody3D *p_body, const PS3DT::MotionPara
 
 					int shape_idx = intersection_query_subindex_results[i];
 					// wgodot-changes::begin
+#ifdef DEBUG_ENABLED
 					WGodotMotionDiagnostics::ColliderScope diagnostics_collider(col_obj);
+#endif
 					// wgodot-changes::end
 
 					if (GodotCollisionSolver3D::solve_static(body_shape, body_shape_xform, col_obj->get_shape(shape_idx), col_obj->get_transform() * col_obj->get_shape_transform(shape_idx), cbkres, cbkptr, nullptr, margin)) {
@@ -806,7 +816,9 @@ bool GodotSpace3D::test_body_motion(GodotBody3D *p_body, const PS3DT::MotionPara
 	{
 		// STEP 2 ATTEMPT MOTION
 		// wgodot-changes::begin
+#ifdef DEBUG_ENABLED
 		WGodotMotionDiagnostics::PhaseScope diagnostics_phase(WGodotMotionDiagnostics::SWEEP);
+#endif
 		// wgodot-changes::end
 
 		AABB motion_aabb = body_aabb;
@@ -815,9 +827,11 @@ bool GodotSpace3D::test_body_motion(GodotBody3D *p_body, const PS3DT::MotionPara
 
 		int amount = _cull_aabb_for_body(p_body, motion_aabb);
 		// wgodot-changes::begin
+#ifdef DEBUG_ENABLED
 		if (WGodotMotionDiagnostics::current) {
 			WGodotMotionDiagnostics::current->broadphase_candidates += amount;
 		}
+#endif
 		// wgodot-changes::end
 
 		for (int j = 0; j < p_body->get_shape_count(); j++) {
@@ -859,7 +873,9 @@ bool GodotSpace3D::test_body_motion(GodotBody3D *p_body, const PS3DT::MotionPara
 
 				int shape_idx = intersection_query_subindex_results[i];
 				// wgodot-changes::begin
+#ifdef DEBUG_ENABLED
 				WGodotMotionDiagnostics::ColliderScope diagnostics_collider(col_obj);
+#endif
 				// wgodot-changes::end
 
 				//test initial overlap, does it collide if going all the way?
@@ -884,9 +900,11 @@ bool GodotSpace3D::test_body_motion(GodotBody3D *p_body, const PS3DT::MotionPara
 				real_t fraction_coeff = 0.5;
 				for (int k = 0; k < 8; k++) { //steps should be customizable..
 					// wgodot-changes::begin
+#ifdef DEBUG_ENABLED
 					if (WGodotMotionDiagnostics::current) {
 						WGodotMotionDiagnostics::current->refinements++;
 					}
+#endif
 					// wgodot-changes::end
 					real_t fraction = low + (hi - low) * fraction_coeff;
 
@@ -947,7 +965,9 @@ bool GodotSpace3D::test_body_motion(GodotBody3D *p_body, const PS3DT::MotionPara
 	bool collided = false;
 	if ((p_parameters.recovery_as_collision && recovered) || (safe < 1)) {
 		// wgodot-changes::begin
+#ifdef DEBUG_ENABLED
 		WGodotMotionDiagnostics::PhaseScope diagnostics_phase(WGodotMotionDiagnostics::CONTACT);
+#endif
 		// wgodot-changes::end
 		if (safe >= 1) {
 			best_shape = -1; //no best shape with cast, reset to -1
@@ -971,9 +991,11 @@ bool GodotSpace3D::test_body_motion(GodotBody3D *p_body, const PS3DT::MotionPara
 		body_aabb.position += p_parameters.motion * unsafe;
 		int amount = _cull_aabb_for_body(p_body, body_aabb);
 		// wgodot-changes::begin
+#ifdef DEBUG_ENABLED
 		if (WGodotMotionDiagnostics::current) {
 			WGodotMotionDiagnostics::current->broadphase_candidates += amount;
 		}
+#endif
 		// wgodot-changes::end
 
 		int from_shape = best_shape != -1 ? best_shape : 0;
@@ -998,7 +1020,9 @@ bool GodotSpace3D::test_body_motion(GodotBody3D *p_body, const PS3DT::MotionPara
 
 				int shape_idx = intersection_query_subindex_results[i];
 				// wgodot-changes::begin
+#ifdef DEBUG_ENABLED
 				WGodotMotionDiagnostics::ColliderScope diagnostics_collider(col_obj);
+#endif
 				// wgodot-changes::end
 
 				rcd.object = col_obj;

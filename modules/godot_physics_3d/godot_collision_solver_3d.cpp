@@ -31,7 +31,9 @@
 #include "godot_collision_solver_3d.h"
 
 // wgodot-changes::begin
+#ifdef DEBUG_ENABLED
 #include "wgodot_motion_diagnostics.h"
+#endif
 // wgodot-changes::end
 
 #include "gjk_epa.h"
@@ -521,9 +523,11 @@ bool GodotCollisionSolver3D::solve_distance_world_boundary(const GodotShape3D *p
 
 bool GodotCollisionSolver3D::solve_distance(const GodotShape3D *p_shape_A, const Transform3D &p_transform_A, const GodotShape3D *p_shape_B, const Transform3D &p_transform_B, Vector3 &r_point_A, Vector3 &r_point_B, const AABB &p_concave_hint, Vector3 *r_sep_axis) {
 	// wgodot-changes::begin
+#ifdef DEBUG_ENABLED
 	if (WGodotMotionDiagnostics::current) {
 		WGodotMotionDiagnostics::current->distance_calls++;
 	}
+#endif
 	// wgodot-changes::end
 	if (p_shape_B->get_type() == PS3DE::SHAPE_WORLD_BOUNDARY) {
 		Vector3 a, b;

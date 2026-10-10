@@ -31,8 +31,10 @@
 #include "gjk_epa.h"
 
 // wgodot-changes::begin
+#ifdef DEBUG_ENABLED
 #include "wgodot_motion_diagnostics.h"
 #include "core/os/os.h"
+#endif
 // wgodot-changes::end
 
 /* Disabling formatting for thirdparty code snippet */
@@ -220,7 +222,9 @@ struct	GJK
 		eStatus::_			Evaluate(const tShape& shapearg,const Vector3& guess)
 		{
 			// wgodot-changes::begin
+#ifdef DEBUG_ENABLED
 			const uint64_t diagnostic_start = WGodotMotionDiagnostics::current ? OS::get_singleton()->get_ticks_usec() : 0;
+#endif
 			// wgodot-changes::end
 			U			iterations=0;
 			real_t	sqdist=0;
@@ -341,9 +345,11 @@ struct	GJK
 			default: {}
 			}
 			// wgodot-changes::begin
+#ifdef DEBUG_ENABLED
 			if (WGodotMotionDiagnostics::current) {
 				WGodotMotionDiagnostics::record_gjk(diagnostic_start, MIN(iterations + 1, U(GJK_MAX_ITERATIONS)), m_status == eStatus::Failed);
 			}
+#endif
 			// wgodot-changes::end
 			return(m_status);
 		}

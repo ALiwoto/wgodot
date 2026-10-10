@@ -31,7 +31,9 @@
 #include "godot_shape_3d.h"
 
 // wgodot-changes::begin
+#ifdef DEBUG_ENABLED
 #include "wgodot_motion_diagnostics.h"
+#endif
 // wgodot-changes::end
 
 #include "core/io/image.h"
@@ -1419,9 +1421,11 @@ Vector3 GodotConcavePolygonShape3D::get_closest_point_to(const Vector3 &p_point)
 
 bool GodotConcavePolygonShape3D::_cull(int p_idx, _CullParams *p_params) const {
 	// wgodot-changes::begin
+#ifdef DEBUG_ENABLED
 	if (WGodotMotionDiagnostics::current) {
 		WGodotMotionDiagnostics::current->bvh_nodes++;
 	}
+#endif
 	// wgodot-changes::end
 	const BVH *params_bvh = &p_params->bvh[p_idx];
 
@@ -1433,9 +1437,11 @@ bool GodotConcavePolygonShape3D::_cull(int p_idx, _CullParams *p_params) const {
 		const Face *f = &p_params->faces[params_bvh->face_index];
 		GodotFaceShape3D *face = p_params->face;
 		// wgodot-changes::begin
+#ifdef DEBUG_ENABLED
 		if (WGodotMotionDiagnostics::current) {
 			WGodotMotionDiagnostics::current->triangle_candidates++;
 		}
+#endif
 		// wgodot-changes::end
 		face->normal = f->normal;
 		face->vertex[0] = p_params->vertices[f->indices[0]];
