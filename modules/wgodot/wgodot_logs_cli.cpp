@@ -111,6 +111,8 @@ void print_output_entries(const Dictionary &p_response) {
 	}
 }
 
+} // namespace
+
 void print_debugger_entries(const Dictionary &p_response) {
 	if (!p_response.has("debugger")) {
 		return;
@@ -154,8 +156,6 @@ void print_debugger_entries(const Dictionary &p_response) {
 		}
 	}
 }
-
-} // namespace
 
 int run(const String &p_command, const Vector<String> &p_arguments) {
 	LogOptions options;

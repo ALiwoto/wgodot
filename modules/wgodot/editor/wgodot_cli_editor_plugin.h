@@ -40,9 +40,13 @@ class WGodotCLIEditorPlugin : public EditorPlugin {
 		uint64_t deadline_msec = 0;
 		uint64_t game_request_id = 0;
 		uint64_t debug_generation = 0;
+		uint64_t game_start_check_at_msec = 0;
+		int64_t game_pid = 0;
 		int game_session = -1;
 		int debug_wait_kind = 0;
 		String game_command;
+		String game_scene;
+		Dictionary game_start_response;
 		Dictionary debug_options;
 		WGodotProjectCheck project_check;
 		WGodotProjectRefresh project_refresh;
@@ -82,6 +86,7 @@ class WGodotCLIEditorPlugin : public EditorPlugin {
 	void process_request(PendingConnection &p_connection);
 	void finish_connection(PendingConnection &p_connection, const Dictionary &p_response);
 	void poll_waiting_connection(PendingConnection &p_connection);
+	void poll_game_start(PendingConnection &p_connection);
 	Dictionary make_status_response(const Dictionary &p_request) const;
 	int get_automatic_session(const Dictionary &p_request, Dictionary &r_error) const;
 

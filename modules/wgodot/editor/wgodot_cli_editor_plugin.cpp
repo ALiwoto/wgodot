@@ -31,6 +31,7 @@ namespace {
 
 constexpr uint64_t CONNECTION_TIMEOUT_MSEC = 5000;
 constexpr uint64_t ASYNC_TIMEOUT_MSEC = 15000;
+constexpr uint64_t GAME_START_OBSERVATION_MSEC = 5000;
 constexpr uint64_t WAIT_THROUGH_BREAKPOINT_TIMEOUT_MSEC = 60000;
 constexpr const char *const FORWARDED_GAME_COMMANDS[] = {
 	"tree",
@@ -334,6 +335,7 @@ void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
 			return;
 		}
 		game_session_states.clear();
+		p_connection.wait_kind = PendingConnection::WAIT_GAME_START;
 		if (mode == "main") {
 			EditorRunBar::get_singleton()->play_main_scene(false);
 		} else if (mode == "current") {
@@ -345,7 +347,8 @@ void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
 			finish_connection(p_connection, make_error_response("game_start_failed", "The editor did not start the game."));
 			return;
 		}
-		p_connection.wait_kind = PendingConnection::WAIT_GAME_START;
+		p_connection.game_scene = EditorRunBar::get_singleton()->get_playing_scene();
+		p_connection.game_start_check_at_msec = OS::get_singleton()->get_ticks_msec() + GAME_START_OBSERVATION_MSEC;
 		p_connection.deadline_msec = OS::get_singleton()->get_ticks_msec() + ASYNC_TIMEOUT_MSEC;
 		return;
 	}
@@ -579,21 +582,94 @@ void WGodotCLIEditorPlugin::poll_waiting_connection(PendingConnection &p_connect
 		return;
 	}
 
-	Dictionary session_error;
-	const int session = get_automatic_session(Dictionary(), session_error);
-	if (session < 0) {
+	poll_game_start(p_connection);
+}
+
+void WGodotCLIEditorPlugin::poll_game_start(PendingConnection &p_connection) {
+	const uint64_t now = OS::get_singleton()->get_ticks_msec();
+	const int session = p_connection.game_session;
+	ScriptEditorDebugger *debugger = session >= 0 ? EditorDebuggerNode::get_singleton()->get_debugger(session) : nullptr;
+	const bool active = debugger && debugger->is_session_active() && debugger->get_remote_pid() == p_connection.game_pid;
+	if (active && !debugger->is_breaked() && p_connection.game_request_id == 0) {
+		// A debugger PID alone does not prove that scene startup completed.
+		// Start the observation window after a normal process frame completes.
+		p_connection.game_request_id = next_game_request_id++;
+		Dictionary options;
+		options["count"] = 1;
+		if (debugger_bridge.is_null() || !debugger_bridge->send_request(session, p_connection.game_request_id, "wait", options)) {
+			p_connection.game_start_response = make_error_response("game_request_failed", "Could not confirm that the game finished a startup frame.");
+		}
+	}
+	if (now < p_connection.game_start_check_at_msec) {
 		return;
 	}
-	ScriptEditorDebugger *debugger = EditorDebuggerNode::get_singleton()->get_debugger(session);
-	if (!debugger || debugger->get_remote_pid() == 0) {
+	const bool timed_out = now >= p_connection.deadline_msec;
+	if (p_connection.game_session < 0 && EditorRunBar::get_singleton()->is_playing() && !timed_out) {
 		return;
 	}
+
+	const Dictionary debug_state = WGodotDebugService::get_state(session, "state");
+	const bool breaked = active && (bool)debug_state.get("breaked", false);
+	const String reason = debug_state.get("reason", String());
+
 	Dictionary response;
-	response["ok"] = true;
+	if (session >= 0) {
+		Dictionary log_options;
+		log_options["session"] = session;
+		log_options["sources"] = PackedStringArray({ "debugger" });
+		log_options["levels"] = PackedStringArray({ "error" });
+		response = WGodotLogService::get_logs(log_options);
+	}
+	const bool has_errors = (int)response.get("debugger_matching", 0) > 0 ||
+			(breaked && !(bool)debug_state.get("can_debug", false));
+	const bool frame_failed = !p_connection.game_start_response.is_empty() && !(bool)p_connection.game_start_response.get("ok", false);
+	const bool frame_ready = p_connection.game_start_response.get("ok", false);
+
+	if (active && !breaked && !has_errors && !frame_failed && !timed_out && !frame_ready) {
+		return;
+	}
+
 	response["command"] = "run";
-	response["scene"] = EditorRunBar::get_singleton()->get_playing_scene();
+	response["protocol"] = WGodotCLI::PROTOCOL_VERSION;
+	response["scene"] = p_connection.game_scene;
 	response["session"] = session;
-	response["pid"] = debugger->get_remote_pid();
+	response["pid"] = p_connection.game_pid;
+	response["state"] = !active ? "not_running" : (breaked ? "breaked" : "running");
+	response["reason"] = reason;
+	response["frame"] = debug_state.get("frame", Dictionary());
+	response["ok"] = false;
+	if (has_errors) {
+		response["error"] = "game_start_errors";
+		response["message"] = breaked ? "Game is in hard breakpoint mode due to startup errors." : "Game reported errors during startup.";
+	} else if (breaked) {
+		response["error"] = "game_start_breakpoint";
+		response["message"] = "Game reached a hard breakpoint during startup; it is not running.";
+	} else if (!active) {
+		response["error"] = "game_start_failed";
+		response["message"] = session >= 0 ? "Game exited before the startup check completed." : "Game did not establish a debugger session during startup.";
+	} else if (frame_failed) {
+		response["error"] = p_connection.game_start_response.get("error", "game_start_failed");
+		response["message"] = p_connection.game_start_response.get("message", "Game did not complete a startup frame.");
+	} else if (!frame_ready) {
+		response["error"] = "game_start_timeout";
+		response["message"] = "Timed out waiting for the game to complete a startup frame.";
+	} else {
+		response["ok"] = true;
+	}
+	if (!(bool)response["ok"]) {
+		String guidance;
+		if (breaked) {
+			guidance = vformat("Inspect the current stack and variables with `wg debug stack --session %d` and `wg debug vars --session %d`. ", session, session);
+		}
+		if (has_errors) {
+			guidance += "After inspection, run `wg stop`, fix the errors, then rerun `wg run`. Do not continue or resume an error breakpoint; restart with the fix.";
+		} else if (breaked) {
+			guidance += "Check `wg debug state` to inspect the breakpoint before deciding how to proceed.";
+		} else {
+			guidance += "Inspect `wg logs`, then run `wg stop`, fix the startup issue, and rerun `wg run`.";
+		}
+		response["guidance"] = guidance;
+	}
 	finish_connection(p_connection, response);
 }
 
@@ -609,6 +685,14 @@ void WGodotCLIEditorPlugin::handle_game_response(int p_session, uint64_t p_reque
 	}
 
 	for (PendingConnection &connection : connections) {
+		if (!connection.completed && connection.wait_kind == PendingConnection::WAIT_GAME_START && connection.game_request_id == p_request_id && connection.game_session == p_session) {
+			connection.game_start_response = p_response;
+			if ((bool)p_response.get("ok", false)) {
+				connection.game_start_check_at_msec = OS::get_singleton()->get_ticks_msec() + GAME_START_OBSERVATION_MSEC;
+				connection.deadline_msec = MAX(connection.deadline_msec, connection.game_start_check_at_msec);
+			}
+			return;
+		}
 		if (!connection.completed && connection.wait_kind == PendingConnection::WAIT_GAME_RESPONSE && connection.game_request_id == p_request_id && connection.game_session == p_session) {
 			Dictionary response = p_response;
 			response["session"] = p_session;
@@ -663,6 +747,15 @@ void WGodotCLIEditorPlugin::handle_debugger_errors_cleared(int p_session) {
 
 void WGodotCLIEditorPlugin::handle_debugger_started(int p_session) {
 	WGodotDebugService::debugger_started(p_session);
+	for (PendingConnection &connection : connections) {
+		if (!connection.completed && connection.wait_kind == PendingConnection::WAIT_GAME_START && connection.game_session < 0) {
+			// Retain this session even if it exits before the next connection poll.
+			connection.game_session = p_session;
+			connection.game_pid = EditorDebuggerNode::get_singleton()->get_debugger(p_session)->get_remote_pid();
+			connection.game_start_check_at_msec = OS::get_singleton()->get_ticks_msec() + GAME_START_OBSERVATION_MSEC;
+			connection.deadline_msec = OS::get_singleton()->get_ticks_msec() + ASYNC_TIMEOUT_MSEC;
+		}
+	}
 }
 
 void WGodotCLIEditorPlugin::handle_debugger_stopped(int p_session) {

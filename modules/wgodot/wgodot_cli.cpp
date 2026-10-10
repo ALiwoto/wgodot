@@ -575,6 +575,21 @@ int print_command_response(const Dictionary &p_response, bool p_json_output) {
 	}
 	if (!(bool)p_response.get("ok", false)) {
 		print_line("wgodot: " + String(p_response.get("message", "The editor rejected the request.")));
+		if (String(p_response.get("command", String())) == "run") {
+			const String reason = p_response.get("reason", String());
+			if (!reason.is_empty()) {
+				print_line("Reason: " + reason);
+			}
+			const Dictionary frame = p_response.get("frame", Dictionary());
+			if (!frame.is_empty()) {
+				print_line(vformat("Frame #%d: %s:%d @ %s", (int)frame.get("index", 0), String(frame.get("file", String())), (int)frame.get("line", 0), String(frame.get("function", String()))));
+			}
+			WGodotLogsCLI::print_debugger_entries(p_response);
+			const String guidance = p_response.get("guidance", String());
+			if (!guidance.is_empty()) {
+				print_line(guidance);
+			}
+		}
 		return 4;
 	}
 
