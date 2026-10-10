@@ -304,6 +304,9 @@ public:
 	FreelookScheme get_freelook_scheme() const { return freelook_scheme; }
 	void set_freelook_base_speed(const float p_speed);
 	float get_freelook_speed() const { return freelook_speed; }
+	// wgodot-changes::begin
+	void set_freelook_speed(float p_speed) { freelook_speed = p_speed; }
+	// wgodot-changes::end
 	void set_freelook_sensitivity(const float p_sensitivity) { freelook_sensitivity = p_sensitivity; }
 	void set_freelook_inertia(const float p_inertia) { freelook_inertia = p_inertia; }
 	void set_freelook_speed_zoom_link(const bool p_enabled) { freelook_speed_zoom_link = p_enabled; }

@@ -31,6 +31,10 @@
 #include "editor_file_system.h"
 
 // wgodot-changes::begin
+#include "editor/import/3d/wgodot_mesh_collision.h"
+// wgodot-changes::end
+
+// wgodot-changes::begin
 #include "core/io/wgodot_resource_trace.h"
 #include "editor/file_system/wgodot_mesh_collision_settings.h"
 #include "editor/wgodot_editor_activity.h"
@@ -1286,7 +1290,10 @@ void EditorFileSystem::_process_file_system(const ScannedDirectory *p_scan_dir, 
 				// all the destination files still exist without reading the .import file.
 				// If something is different, we will queue a test for reimportation that will check
 				// the md5 of all files and import settings and, if necessary, execute a reimportation.
-				if (_is_test_for_reimport_needed(path, fc->modification_time, mt, fc->import_modification_time, import_mt, fi->import_dest_paths) ||
+				// wgodot-changes::begin
+				const bool collision_changed = fi->type == "PackedScene" && WGodotMeshCollision::import_dependency_changed(path, import_mt, fc->deps);
+				// wgodot-changes::end
+				if (collision_changed || _is_test_for_reimport_needed(path, fc->modification_time, mt, fc->import_modification_time, import_mt, fi->import_dest_paths) ||
 						(revalidate_import_files && !ResourceFormatImporter::get_singleton()->are_import_settings_valid(path))) {
 					ItemAction ia;
 					ia.action = ItemAction::ACTION_FILE_TEST_REIMPORT;
@@ -1587,7 +1594,10 @@ void EditorFileSystem::_scan_fs_changes(EditorFileSystemDirectory *p_dir, ScanPr
 			// each time the user switch back to Godot.
 			uint64_t mt = FileAccess::get_modified_time(path);
 			uint64_t import_mt = FileAccess::get_modified_time(path + ".import");
-			if (_is_test_for_reimport_needed(path, p_dir->files[i]->modified_time, mt, p_dir->files[i]->import_modified_time, import_mt, p_dir->files[i]->import_dest_paths)) {
+			// wgodot-changes::begin
+			const bool collision_changed = p_dir->files[i]->type == "PackedScene" && WGodotMeshCollision::import_dependency_changed(path, import_mt, p_dir->files[i]->deps);
+			// wgodot-changes::end
+			if (collision_changed || _is_test_for_reimport_needed(path, p_dir->files[i]->modified_time, mt, p_dir->files[i]->import_modified_time, import_mt, p_dir->files[i]->import_dest_paths)) {
 				ItemAction ia;
 				ia.action = ItemAction::ACTION_FILE_TEST_REIMPORT;
 				ia.dir = p_dir;

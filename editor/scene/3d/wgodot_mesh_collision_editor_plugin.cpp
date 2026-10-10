@@ -1,12 +1,14 @@
 // wgodot-changes::file
 #include "wgodot_mesh_collision_editor_plugin.h"
 
+#include "core/config/project_settings.h"
 #include "core/io/file_access.h"
 #include "core/io/resource_loader.h"
 #include "core/io/resource_saver.h"
 #include "core/io/resource_uid.h"
 #include "core/math/quick_hull.h"
 #include "core/object/callable_mp.h"
+#include "core/os/os.h"
 #include "editor/editor_interface.h"
 #include "editor/editor_node.h"
 #include "editor/editor_undo_redo_manager.h"
@@ -21,8 +23,10 @@
 #include "scene/gui/box_container.h"
 #include "scene/gui/button.h"
 #include "scene/gui/dialogs.h"
+#include "scene/gui/grid_container.h"
 #include "scene/gui/label.h"
 #include "scene/gui/menu_button.h"
+#include "scene/gui/popup_menu.h"
 #include "scene/gui/spin_box.h"
 #include "scene/resources/3d/box_shape_3d.h"
 #include "scene/resources/3d/capsule_shape_3d.h"
@@ -41,10 +45,38 @@ void WGodotMeshCollisionEditorPlugin::edit_asset(const String &p_path) {
 	}
 	const String path = WGodotMeshCollision::sidecar_path(source);
 	if (!FileAccess::exists(path)) {
-		StaticBody3D *body = memnew(StaticBody3D);
+		StaticBody3D *body = nullptr;
+		const String imported = WGodotMeshCollision::imported_path(source);
+		if (FileAccess::exists(imported)) {
+			Ref<PackedScene> original = ResourceLoader::load(imported);
+			ERR_FAIL_COND_MSG(original.is_null(), "Cannot load imported collision: " + imported);
+			Node *root = original->instantiate();
+			body = Object::cast_to<StaticBody3D>(root);
+			if (!body) {
+				memdelete(root);
+				ERR_FAIL_MSG("Imported collision must have a StaticBody3D root: " + imported);
+			}
+			body->set_scene_file_path(String());
+			// The new authored sidecar owns its shapes. Editing it must neither
+			// mutate the imported defaults nor depend on them in exported packages.
+			for (int i = 0; i < body->get_child_count(); i++) {
+				CollisionShape3D *shape = Object::cast_to<CollisionShape3D>(body->get_child(i));
+				if (shape && shape->get_shape().is_valid()) {
+					shape->set_shape(shape->get_shape()->duplicate(true));
+				}
+			}
+		} else {
+			body = memnew(StaticBody3D);
+			body->set_collision_layer(1);
+			body->set_collision_mask(0);
+		}
+		if (body->get_collision_layer() == 0) {
+			// Authoring a custom collider overrides the asset's NoCollision default.
+			// Explicit placement overrides are still applied by the containing scene.
+			body->set_collision_layer(1);
+			body->set_process_mode(Node::PROCESS_MODE_INHERIT);
+		}
 		body->set_name("MeshCollision");
-		body->set_collision_layer(1);
-		body->set_collision_mask(0);
 		const ResourceUID::ID uid = ResourceLoader::get_resource_uid(source);
 		body->set_meta(WGodotMeshCollision::SOURCE_META, uid == ResourceUID::INVALID_ID ? source : ResourceUID::get_singleton()->id_to_text(uid));
 		Ref<PackedScene> scene;
@@ -113,6 +145,12 @@ void WGodotMeshCollisionEditorPlugin::_scene_changed(Node *p_root) {
 	_clear_preview();
 	edited_root = ObjectID();
 	toolbar->hide();
+	convex_dialog->hide();
+	delete_dialog->hide();
+	deletion_root = ObjectID();
+	if (!decomposition_thread.is_started()) {
+		status->hide();
+	}
 	StaticBody3D *body = Object::cast_to<StaticBody3D>(p_root);
 	if (!body || !body->has_meta(WGodotMeshCollision::SOURCE_META)) {
 		return;
@@ -136,23 +174,122 @@ void WGodotMeshCollisionEditorPlugin::_scene_changed(Node *p_root) {
 	_collect_meshes(model, Transform3D(), preview, true);
 	memdelete(model);
 	edited_root = body->get_instance_id();
-	show_mesh->set_pressed(true);
-	status->set_text(TTR("Collision sidecar"));
-	status->set_tooltip_text(TTR("Select a collision shape to move, rotate or resize it. Edit numeric transforms and shape dimensions in the Inspector. Ctrl+S saves."));
-	add_shape->set_disabled(mesh_faces.is_empty());
-	auto_convex->set_disabled(mesh_faces.is_empty() || decomposition_thread.is_started() || !Mesh::convex_decomposition_function);
+	show_menu->get_popup()->set_item_checked(show_menu->get_popup()->get_item_index(SHOW_MESH), true);
+	_update_controls();
 	toolbar->show();
-	// Frame the mesh, including assets whose origin is far from their geometry.
-	Dictionary view;
-	view["position"] = mesh_bounds.get_center();
-	view["distance"] = MAX(mesh_bounds.get_longest_axis_size() * 2.0, 1.0);
-	Node3DEditor::get_singleton()->get_editor_viewport(0)->set_state(view);
+	// Frame only on first opening; preserve Godot's restored view on later visits.
+	const int scene_index = EditorNode::get_editor_data().get_edited_scene();
+	const Dictionary editor_states = EditorNode::get_editor_data().get_scene_editor_states(scene_index);
+	if (!editor_states.has("3D")) {
+		Dictionary view;
+		view["position"] = mesh_bounds.get_center();
+		view["distance"] = MAX(mesh_bounds.get_longest_axis_size() * 2.0, 1.0);
+		Node3DEditor::get_singleton()->get_editor_viewport(0)->set_state(view);
+	}
 }
 
-void WGodotMeshCollisionEditorPlugin::_show_mesh(bool p_visible) {
+Dictionary WGodotMeshCollisionEditorPlugin::get_personal_state() const {
+	Dictionary state;
 	Node3D *preview = Object::cast_to<Node3D>(ObjectDB::get_instance(preview_root));
 	if (preview) {
-		preview->set_visible(p_visible);
+		state["show_mesh"] = preview->is_visible();
+		state["hull_count"] = hull_count->get_value();
+		state["hull_vertices"] = hull_vertices->get_value();
+		state["precision"] = precision->get_value();
+	}
+	return state;
+}
+
+void WGodotMeshCollisionEditorPlugin::set_personal_state(const Dictionary &p_state) {
+	Node3D *preview = Object::cast_to<Node3D>(ObjectDB::get_instance(preview_root));
+	if (!preview) {
+		return;
+	}
+	if (p_state.has("show_mesh")) {
+		const bool visible = p_state["show_mesh"];
+		preview->set_visible(visible);
+		show_menu->get_popup()->set_item_checked(show_menu->get_popup()->get_item_index(SHOW_MESH), visible);
+	}
+	hull_count->set_value(p_state.get("hull_count", 8));
+	hull_vertices->set_value(p_state.get("hull_vertices", 16));
+	precision->set_value(p_state.get("precision", 100000));
+}
+
+void WGodotMeshCollisionEditorPlugin::_update_controls() {
+	PopupMenu *popup = collision_menu->get_popup();
+	for (int option : { BOX, SPHERE, CAPSULE, CYLINDER, CONVEX }) {
+		popup->set_item_disabled(popup->get_item_index(option), mesh_faces.is_empty());
+	}
+	const bool convex_available = !mesh_faces.is_empty() && Mesh::convex_decomposition_function;
+	const bool generating = decomposition_thread.is_started();
+	popup->set_item_disabled(popup->get_item_index(DELETE_CUSTOM_COLLISIONS), generating);
+	// Keep the command available during generation so its progress can be reopened.
+	popup->set_item_disabled(popup->get_item_index(AUTO_CONVEX), !convex_available);
+	convex_dialog->get_ok_button()->set_disabled(!convex_available || generating);
+	convex_dialog->set_ok_button_text(generating ? TTR("Generating...") : TTR("Generate"));
+	convex_dialog->get_cancel_button()->set_tooltip_text(generating ? TTR("Close this window. Generation continues in the background.") : String());
+	for (SpinBox *field : { hull_count, hull_vertices, precision }) {
+		field->set_editable(!generating);
+	}
+}
+
+void WGodotMeshCollisionEditorPlugin::_collision_option(int p_option) {
+	if (p_option == AUTO_CONVEX) {
+		_show_convex_dialog();
+	} else if (p_option == DELETE_CUSTOM_COLLISIONS) {
+		_confirm_delete_collisions();
+	} else {
+		_add_shape(p_option);
+	}
+}
+
+void WGodotMeshCollisionEditorPlugin::_confirm_delete_collisions() {
+	Node *root = Object::cast_to<Node>(ObjectDB::get_instance(edited_root));
+	if (!root || decomposition_thread.is_started()) {
+		return;
+	}
+	deletion_source = ResourceUID::ensure_path(root->get_meta(WGodotMeshCollision::SOURCE_META));
+	deletion_path = WGodotMeshCollision::sidecar_path(deletion_source);
+	if (root->get_scene_file_path() != deletion_path) {
+		EditorNode::get_singleton()->show_warning(TTR("Open the model's collision sidecar before deleting its custom collisions."));
+		return;
+	}
+	deletion_root = edited_root;
+	delete_dialog->set_text(vformat(TTR("This action will delete %s file. Continue?"), deletion_path));
+	delete_dialog->popup_centered();
+}
+
+void WGodotMeshCollisionEditorPlugin::_delete_collisions() {
+	Node *root = Object::cast_to<Node>(ObjectDB::get_instance(deletion_root));
+	if (!root || deletion_root != edited_root || root != EditorNode::get_singleton()->get_edited_scene()) {
+		return;
+	}
+	const String path = deletion_path;
+	const String source = deletion_source;
+	const Error error = OS::get_singleton()->move_to_trash(ProjectSettings::get_singleton()->globalize_path(path));
+	if (error != OK) {
+		EditorNode::get_singleton()->show_warning(vformat(TTR("Cannot delete collision sidecar: %s (%s)"), path, error_names[error]));
+		return;
+	}
+	if (ResourceCache::has(path)) {
+		ResourceCache::get_ref(path)->set_path(String());
+	}
+	// The confirmation also discards this sidecar's unsaved shape edits. Close it
+	// so a later Save All cannot recreate the file that was just removed.
+	EditorNode::get_singleton()->close_scene();
+	EditorFileSystem::get_singleton()->update_file(path);
+	callable_mp(this, &WGodotMeshCollisionEditorPlugin::_reimport_asset).call_deferred(source);
+}
+
+void WGodotMeshCollisionEditorPlugin::_show_option(int p_option) {
+	if (p_option != SHOW_MESH) {
+		return;
+	}
+	Node3D *preview = Object::cast_to<Node3D>(ObjectDB::get_instance(preview_root));
+	if (preview) {
+		const bool visible = !preview->is_visible();
+		preview->set_visible(visible);
+		show_menu->get_popup()->set_item_checked(show_menu->get_popup()->get_item_index(SHOW_MESH), visible);
 	}
 }
 
@@ -245,6 +382,7 @@ void WGodotMeshCollisionEditorPlugin::_add_shape(int p_kind) {
 }
 
 void WGodotMeshCollisionEditorPlugin::_show_convex_dialog() {
+	_update_controls();
 	convex_dialog->popup_centered(Size2(420, 0) * EDSCALE);
 }
 
@@ -267,12 +405,12 @@ void WGodotMeshCollisionEditorPlugin::_begin_decomposition() {
 	decomposition_settings->set_resolution(uint32_t(precision->get_value()));
 	decomposition_settings->set_max_concavity(0.001);
 	decomposition_done.clear();
-	auto_convex->set_disabled(true);
 	status->set_text(TTR("Generating convex shapes..."));
+	status->show();
 	decomposition_thread.start(&_decompose, this);
+	_update_controls();
 	if (!decomposition_thread.is_started()) {
 		status->set_text(TTR("Could not start convex decomposition."));
-		auto_convex->set_disabled(false);
 		return;
 	}
 	set_process(true);
@@ -321,7 +459,7 @@ void WGodotMeshCollisionEditorPlugin::_notification(int p_what) {
 	decomposition_indices.clear();
 	decomposition_settings.unref();
 	decomposition_done.clear();
-	auto_convex->set_disabled(mesh_faces.is_empty() || !Mesh::convex_decomposition_function);
+	_update_controls();
 }
 
 void WGodotMeshCollisionEditorPlugin::_scene_saved(const String &p_path) {
@@ -353,41 +491,69 @@ WGodotMeshCollisionEditorPlugin::WGodotMeshCollisionEditorPlugin() {
 	toolbar = memnew(HBoxContainer);
 	add_control_to_container(CONTAINER_SPATIAL_EDITOR_MENU, toolbar);
 	toolbar->hide();
-	add_shape = memnew(MenuButton);
-	add_shape->set_text(TTR("Add Collision"));
-	toolbar->add_child(add_shape);
-	add_shape->get_popup()->add_item(TTR("Box"), BOX);
-	add_shape->get_popup()->add_item(TTR("Sphere"), SPHERE);
-	add_shape->get_popup()->add_item(TTR("Capsule"), CAPSULE);
-	add_shape->get_popup()->add_item(TTR("Cylinder"), CYLINDER);
-	add_shape->get_popup()->add_item(TTR("Single Convex Hull"), CONVEX);
-	add_shape->get_popup()->connect("id_pressed", callable_mp(this, &WGodotMeshCollisionEditorPlugin::_add_shape));
-	auto_convex = memnew(Button);
-	auto_convex->set_text(TTR("Auto Convex..."));
-	toolbar->add_child(auto_convex);
-	auto_convex->connect("pressed", callable_mp(this, &WGodotMeshCollisionEditorPlugin::_show_convex_dialog));
-	show_mesh = memnew(Button);
-	show_mesh->set_text(TTR("Show Mesh"));
-	show_mesh->set_toggle_mode(true);
-	toolbar->add_child(show_mesh);
-	show_mesh->connect("toggled", callable_mp(this, &WGodotMeshCollisionEditorPlugin::_show_mesh));
-	status = memnew(Label);
-	toolbar->add_child(status);
+	// Group authoring commands by task; viewport visibility has its own menu.
+	collision_menu = memnew(MenuButton);
+	collision_menu->set_text(TTR("Collision"));
+	collision_menu->set_tooltip_text(TTR("Create collision shapes. Select a shape to edit its transform and dimensions in the Inspector or with the 3D gizmos. Ctrl+S saves."));
+	show_menu = memnew(MenuButton);
+	show_menu->set_text(TTR("Show"));
+	show_menu->set_tooltip_text(TTR("Collision editing preview visibility."));
+	for (MenuButton *menu : { collision_menu, show_menu }) {
+		menu->set_flat(false);
+		menu->set_theme_type_variation("FlatMenuButton");
+		menu->set_switch_on_hover(true);
+		toolbar->add_child(menu);
+	}
+	PopupMenu *collision_popup = collision_menu->get_popup();
+	collision_popup->add_separator(TTR("Add Primitive"));
+	collision_popup->add_item(TTR("Box"), BOX);
+	collision_popup->add_item(TTR("Sphere"), SPHERE);
+	collision_popup->add_item(TTR("Capsule"), CAPSULE);
+	collision_popup->add_item(TTR("Cylinder"), CYLINDER);
+	collision_popup->add_separator(TTR("Generate from Mesh"));
+	collision_popup->add_item(TTR("Single Convex Hull"), CONVEX);
+	collision_popup->add_item(TTR("Auto Convex..."), AUTO_CONVEX);
+	collision_popup->add_separator();
+	collision_popup->add_item(TTR("Delete Custom Collisions..."), DELETE_CUSTOM_COLLISIONS);
+	collision_popup->set_item_tooltip(collision_popup->get_item_index(CONVEX), TTR("Create one convex shape enclosing the reference mesh."));
+	collision_popup->set_item_tooltip(collision_popup->get_item_index(AUTO_CONVEX), TTR("Configure the hull count, vertices and precision before generating editable convex shapes."));
+	collision_popup->connect("id_pressed", callable_mp(this, &WGodotMeshCollisionEditorPlugin::_collision_option));
+	PopupMenu *show_popup = show_menu->get_popup();
+	show_popup->add_check_item(TTR("Reference Mesh"), SHOW_MESH);
+	show_popup->set_item_tooltip(show_popup->get_item_index(SHOW_MESH), TTR("Show the original model while editing its collision shapes."));
+	show_popup->set_hide_on_checkable_item_selection(false);
+	show_popup->connect("id_pressed", callable_mp(this, &WGodotMeshCollisionEditorPlugin::_show_option));
+
+	delete_dialog = memnew(ConfirmationDialog);
+	delete_dialog->set_title(TTR("Delete Custom Collisions"));
+	delete_dialog->set_ok_button_text(TTR("Yes"));
+	delete_dialog->set_cancel_button_text(TTR("No"));
+	delete_dialog->connect("confirmed", callable_mp(this, &WGodotMeshCollisionEditorPlugin::_delete_collisions));
+	add_child(delete_dialog);
+
 	convex_dialog = memnew(ConfirmationDialog);
 	convex_dialog->set_title(TTR("Auto Convex Collision"));
+	convex_dialog->set_ok_button_text(TTR("Generate"));
+	convex_dialog->set_cancel_button_text(TTR("Close"));
+	convex_dialog->set_hide_on_ok(false);
 	add_child(convex_dialog);
 	VBoxContainer *fields = memnew(VBoxContainer);
 	convex_dialog->add_child(fields);
-	auto field = [fields](const String &p_label, double p_min, double p_max, double p_value) {
+	GridContainer *parameters = memnew(GridContainer);
+	parameters->set_columns(2);
+	fields->add_child(parameters);
+	auto field = [parameters](const String &p_label, double p_min, double p_max, double p_value) {
 		Label *label = memnew(Label);
 		label->set_text(p_label);
-		fields->add_child(label);
+		parameters->add_child(label);
 		SpinBox *spin = memnew(SpinBox);
+		spin->set_accessibility_name(p_label);
+		spin->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 		spin->set_min(p_min);
 		spin->set_max(p_max);
 		spin->set_step(1);
 		spin->set_value(p_value);
-		fields->add_child(spin);
+		parameters->add_child(spin);
 		return spin;
 	};
 	hull_count = field(TTR("Maximum Hulls"), 1, 128, 8);
@@ -396,6 +562,9 @@ WGodotMeshCollisionEditorPlugin::WGodotMeshCollisionEditorPlugin() {
 	Label *hint = memnew(Label);
 	hint->set_text(TTR("Adds editable convex shapes. Existing shapes are preserved.\nFewer hulls and vertices reduce collision cost."));
 	fields->add_child(hint);
+	status = memnew(Label);
+	status->hide();
+	fields->add_child(status);
 	convex_dialog->connect("confirmed", callable_mp(this, &WGodotMeshCollisionEditorPlugin::_begin_decomposition));
 	set_process(false);
 }

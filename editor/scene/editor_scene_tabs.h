@@ -59,6 +59,14 @@ public:
 	};
 
 private:
+	// wgodot-changes::begin
+	enum CopyPathOption {
+		COPY_ABSOLUTE_PATH,
+		COPY_RES_PATH,
+	};
+	void _copy_scene_path(int p_option);
+	// wgodot-changes::end
+
 	PanelContainer *tabbar_panel = nullptr;
 	HBoxContainer *tabbar_container = nullptr;
 

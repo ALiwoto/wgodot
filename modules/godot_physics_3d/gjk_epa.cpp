@@ -30,6 +30,11 @@
 
 #include "gjk_epa.h"
 
+// wgodot-changes::begin
+#include "wgodot_motion_diagnostics.h"
+#include "core/os/os.h"
+// wgodot-changes::end
+
 /* Disabling formatting for thirdparty code snippet */
 /* clang-format off */
 
@@ -214,6 +219,9 @@ struct	GJK
 		}
 		eStatus::_			Evaluate(const tShape& shapearg,const Vector3& guess)
 		{
+			// wgodot-changes::begin
+			const uint64_t diagnostic_start = WGodotMotionDiagnostics::current ? OS::get_singleton()->get_ticks_usec() : 0;
+			// wgodot-changes::end
 			U			iterations=0;
 			real_t	sqdist=0;
 			real_t	alpha=0;
@@ -332,6 +340,11 @@ struct	GJK
 			case	eStatus::Inside:	m_distance=0;break;
 			default: {}
 			}
+			// wgodot-changes::begin
+			if (WGodotMotionDiagnostics::current) {
+				WGodotMotionDiagnostics::record_gjk(diagnostic_start, MIN(iterations + 1, U(GJK_MAX_ITERATIONS)), m_status == eStatus::Failed);
+			}
+			// wgodot-changes::end
 			return(m_status);
 		}
 		bool					EncloseOrigin()

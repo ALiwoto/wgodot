@@ -3235,6 +3235,12 @@ Error ResourceImporterScene::_check_resource_save_paths(ResourceUID::ID p_source
 	return OK;
 }
 
+// wgodot-changes::begin
+bool ResourceImporterScene::are_import_settings_valid(const String &p_path, const Dictionary &p_meta) const {
+	return _scene_import_type != "PackedScene" || String(p_meta.get("mesh_collision", String())) == WGodotMeshCollision::import_signature(p_path);
+}
+// wgodot-changes::end
+
 Error ResourceImporterScene::import(ResourceUID::ID p_source_id, const String &p_source_file, const String &p_save_path, const HashMap<StringName, Variant> &p_options, List<String> *r_platform_variants, List<String> *r_gen_files, Variant *r_metadata) {
 	// wgodot-changes::begin
 	WGodotResourceTrace trace("import.scene", p_source_file);
@@ -3501,6 +3507,11 @@ Error ResourceImporterScene::import(ResourceUID::ID p_source_id, const String &p
 		if (collision_error != OK) {
 			memdelete(scene);
 			return collision_error;
+		}
+		if (r_metadata) {
+			Dictionary metadata;
+			metadata["mesh_collision"] = WGodotMeshCollision::import_signature(p_source_file);
+			*r_metadata = metadata;
 		}
 	}
 	// wgodot-changes::end

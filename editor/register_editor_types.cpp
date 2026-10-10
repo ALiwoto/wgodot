@@ -97,6 +97,7 @@
 #include "editor/scene/3d/lightmap_gi_editor_plugin.h"
 #include "editor/scene/3d/mesh_editor_plugin.h"
 // wgodot-changes::begin
+#include "editor/scene/3d/wgodot_asset_editor_preferences.h"
 #include "editor/scene/3d/wgodot_mesh_audit_editor_plugin.h"
 #include "editor/scene/3d/wgodot_mesh_collision_editor_plugin.h"
 // wgodot-changes::end
@@ -289,6 +290,7 @@ void register_editor_types() {
 	// wgodot-changes::begin
 	EditorPlugins::add_by_type<WGodotMeshCollisionEditorPlugin>();
 	EditorPlugins::add_by_type<WGodotMeshAuditEditorPlugin>();
+	EditorPlugins::add_by_type<WGodotAssetEditorPreferences>();
 	// wgodot-changes::end
 	EditorPlugins::add_by_type<MeshInstance3DEditorPlugin>();
 	EditorPlugins::add_by_type<MeshLibraryEditorPlugin>();

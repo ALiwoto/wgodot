@@ -31,7 +31,7 @@
 #include "scene/resources/3d/convex_polygon_shape_3d.h"
 #include "scene/resources/multimesh.h"
 #include "scene/resources/packed_scene.h"
-#include "servers/display_server.h"
+#include "servers/display/display_server.h"
 
 const WGodotMeshAuditEditorPlugin::AssetDetails &WGodotMeshAuditEditorPlugin::_asset_details(const String &p_source) {
 	if (const AssetDetails *cached = asset_cache.getptr(p_source)) {

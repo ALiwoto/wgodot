@@ -5,9 +5,10 @@
 #include "core/io/config_file.h"
 #include "core/io/file_access.h"
 #include "core/io/resource_uid.h"
+#include "editor/import/3d/wgodot_mesh_collision.h"
 
 bool WGodotExportTarget::valid_owner(const String &p_owner) {
-	return p_owner == "shared" || p_owner == "client" || p_owner == "server";
+	return p_owner == "shared" || p_owner == "client" || p_owner == "server" || p_owner == "editor";
 }
 
 bool WGodotExportTarget::includes_owner(const String &p_owner) const {
@@ -58,7 +59,7 @@ Error WGodotExportTarget::load(const String &p_target, String &r_error) {
 			if (section == "paths") {
 				const String path = key == "res://" ? key : key.trim_suffix("/");
 				if (!key.begins_with("res://") || path.simplify_path() != path || value.get_type() != Variant::STRING || !valid_owner(value)) {
-					r_error = "Invalid target ownership: " + key + ". Use canonical res:// paths (directory rules end in /) and shared, client or server.";
+					r_error = "Invalid target ownership: " + key + ". Use canonical res:// paths (directory rules end in /) and shared, client, server or editor.";
 					return ERR_INVALID_DATA;
 				}
 				owners.push_back({ key.ends_with("/") ? key + "*" : key, value });
@@ -87,7 +88,7 @@ bool WGodotExportTarget::includes(const String &p_path) const {
 	if (const String *source = imported_sources.getptr(path)) {
 		path = *source;
 	}
-	if (path == CONFIG_PATH || excluded_scripts.has(path)) {
+	if (path == CONFIG_PATH || excluded_scripts.has(path) || WGodotMeshCollision::is_superseded(path)) {
 		return false;
 	}
 	const String *owner = nullptr;
@@ -100,6 +101,9 @@ bool WGodotExportTarget::includes(const String &p_path) const {
 }
 
 String WGodotExportTarget::dependency_error(const String &p_path) const {
+	if (WGodotMeshCollision::is_superseded(ResourceUID::ensure_path(p_path).get_slice("::", 0))) {
+		return "Runtime content references replaced collision: " + p_path + ". The custom collision sidecar must own its shapes rather than reference the imported default.";
+	}
 	if (excluded_scripts.has(ResourceUID::ensure_path(p_path))) {
 		return "Runtime content cannot reference @editor_only script: " + p_path;
 	}

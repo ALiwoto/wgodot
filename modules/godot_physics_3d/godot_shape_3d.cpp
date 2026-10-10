@@ -30,6 +30,10 @@
 
 #include "godot_shape_3d.h"
 
+// wgodot-changes::begin
+#include "wgodot_motion_diagnostics.h"
+// wgodot-changes::end
+
 #include "core/io/image.h"
 #include "core/math/convex_hull.h"
 #include "core/math/geometry_3d.h"
@@ -1414,6 +1418,11 @@ Vector3 GodotConcavePolygonShape3D::get_closest_point_to(const Vector3 &p_point)
 }
 
 bool GodotConcavePolygonShape3D::_cull(int p_idx, _CullParams *p_params) const {
+	// wgodot-changes::begin
+	if (WGodotMotionDiagnostics::current) {
+		WGodotMotionDiagnostics::current->bvh_nodes++;
+	}
+	// wgodot-changes::end
 	const BVH *params_bvh = &p_params->bvh[p_idx];
 
 	if (!p_params->aabb.intersects(params_bvh->aabb)) {
@@ -1423,6 +1432,11 @@ bool GodotConcavePolygonShape3D::_cull(int p_idx, _CullParams *p_params) const {
 	if (params_bvh->face_index >= 0) {
 		const Face *f = &p_params->faces[params_bvh->face_index];
 		GodotFaceShape3D *face = p_params->face;
+		// wgodot-changes::begin
+		if (WGodotMotionDiagnostics::current) {
+			WGodotMotionDiagnostics::current->triangle_candidates++;
+		}
+		// wgodot-changes::end
 		face->normal = f->normal;
 		face->vertex[0] = p_params->vertices[f->indices[0]];
 		face->vertex[1] = p_params->vertices[f->indices[1]];

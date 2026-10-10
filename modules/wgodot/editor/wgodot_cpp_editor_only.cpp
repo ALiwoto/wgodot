@@ -58,6 +58,9 @@ Error WGodotCppProject::prepare_editor_only() {
 	{
 		ExportAnalysis parsed(export_project, export_context);
 		for (const String &path : export_project.get_script_paths()) {
+			if (!export_project.is_exported(path)) {
+				continue;
+			}
 			Error error = OK;
 			const Ref<GDScriptParserRef> ref = parsed.get_parser(path, GDScriptParserRef::PARSED, error);
 			if (error != OK) {

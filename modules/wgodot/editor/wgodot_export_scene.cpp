@@ -27,6 +27,7 @@ class SceneFilter {
 	HashMap<String, SceneNode> nodes;
 	HashSet<const SceneState *> visiting;
 	Vector<String> excluded;
+	HashSet<String> excluded_paths;
 
 	bool editor_member(const SceneNode &p_node, const StringName &p_name) const {
 		if (String(p_name).begins_with("metadata/_edit_")) {
@@ -70,7 +71,7 @@ class SceneFilter {
 				const Variant value = p_state->get_node_property_value(i, j);
 				if (name == WGodotExportTarget::NODE_PROPERTY) {
 					if (value.get_type() != Variant::STRING || !WGodotExportTarget::valid_owner(value)) {
-						error(path + ": wgodot_target must be shared, client or server.");
+						error(path + ": wgodot_target must be shared, client, server or editor.");
 					} else if (p_state->get_node_type(i).is_empty() && instance.is_null()) {
 						error(path + ": declare wgodot_target in the scene that creates this node, not an inherited override.");
 					}
@@ -82,10 +83,22 @@ class SceneFilter {
 	}
 
 	bool removed(const String &p_path) const {
-		for (const String &path : excluded) {
-			if (path == "." || p_path == path || p_path.begins_with(path + "/")) {
+		if (excluded_paths.is_empty()) {
+			return false;
+		}
+		if (excluded_paths.has(".")) {
+			return true;
+		}
+		String path = p_path;
+		while (!path.is_empty()) {
+			if (excluded_paths.has(path)) {
 				return true;
 			}
+			const int separator = path.rfind("/");
+			if (separator < 0) {
+				break;
+			}
+			path = path.substr(0, separator);
 		}
 		return false;
 	}
@@ -190,6 +203,9 @@ public:
 			if (owner && owner->get_type() == Variant::STRING && WGodotExportTarget::valid_owner(*owner) && !target.includes_owner(*owner)) {
 				excluded.push_back(node.key);
 			}
+		}
+		for (const String &path : excluded) {
+			excluded_paths.insert(path);
 		}
 		if (removed(".")) {
 			error("Scene root is excluded. Assign whole-scene ownership in wgodot_targets.cfg.");

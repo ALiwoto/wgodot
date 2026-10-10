@@ -5159,6 +5159,10 @@ void Node3DEditorViewport::update_transform_gizmo_highlight() {
 }
 
 void Node3DEditorViewport::set_state(const Dictionary &p_state) {
+	// wgodot-changes::begin
+	view_3d_controller->set_freelook_speed(p_state.get("freelook_speed", EDITOR_GET("editors/3d/freelook/freelook_base_speed")));
+	view_3d_controller->cursor.fov_scale = p_state.get("fov_scale", 1.0);
+	// wgodot-changes::end
 	if (p_state.has("position")) {
 		Vector3 pos = p_state["position"];
 		view_3d_controller->cursor.pos_x = pos.x;
@@ -5315,10 +5319,20 @@ void Node3DEditorViewport::set_state(const Dictionary &p_state) {
 		}
 	}
 	preview_camera->connect(SceneStringName(toggled), callable_mp(this, &Node3DEditorViewport::_toggle_camera_preview));
+	// wgodot-changes::begin
+	if (!previewing_camera) {
+		// Cut to the restored view instead of interpolating from another asset.
+		view_3d_controller->update_camera();
+	}
+	// wgodot-changes::end
 }
 
 Dictionary Node3DEditorViewport::get_state() const {
 	Dictionary d;
+	// wgodot-changes::begin
+	d["freelook_speed"] = view_3d_controller->get_freelook_speed();
+	d["fov_scale"] = view_3d_controller->cursor.fov_scale;
+	// wgodot-changes::end
 	d["position"] = Vector3(view_3d_controller->cursor.pos_x, view_3d_controller->cursor.pos_y, view_3d_controller->cursor.pos_z);
 	d["x_rotation"] = view_3d_controller->cursor.x_rot;
 	d["y_rotation"] = view_3d_controller->cursor.y_rot;
@@ -5368,6 +5382,9 @@ void Node3DEditorViewport::_bind_methods() {
 }
 
 void Node3DEditorViewport::reset() {
+	// wgodot-changes::begin
+	view_3d_controller->set_freelook_speed(EDITOR_GET("editors/3d/freelook/freelook_base_speed"));
+	// wgodot-changes::end
 	view_3d_controller->set_orthogonal(false);
 	view_3d_controller->set_view_type(View3DController::VIEW_TYPE_USER);
 	message_time = 0;

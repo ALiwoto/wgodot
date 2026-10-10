@@ -53,6 +53,9 @@
 #include "scene/gui/popup_menu.h"
 #include "scene/gui/tab_bar.h"
 #include "scene/gui/texture_rect.h"
+// wgodot-changes::begin
+#include "servers/display/display_server.h"
+// wgodot-changes::end
 
 void EditorSceneTabs::_notification(int p_what) {
 	switch (p_what) {
@@ -207,6 +210,14 @@ void EditorSceneTabs::_update_context_menu(int p_index) {
 		scene_tabs_context_menu->add_separator();
 		scene_tabs_context_menu->add_item(TTR("Show in FileSystem"), SCENE_SHOW_IN_FILESYSTEM);
 		DISABLE_LAST_OPTION_IF(!ResourceLoader::exists(scene_path));
+		// wgodot-changes::begin
+		PopupMenu *copy_menu = memnew(PopupMenu);
+		copy_menu->add_item(TTR("Absolute Path"), COPY_ABSOLUTE_PATH);
+		copy_menu->add_item(TTR("res:// File Path"), COPY_RES_PATH);
+		copy_menu->connect(SceneStringName(id_pressed), callable_mp(this, &EditorSceneTabs::_copy_scene_path));
+		scene_tabs_context_menu->add_submenu_node_item(TTR("Copy"), copy_menu);
+		DISABLE_LAST_OPTION_IF(scene_path.is_empty());
+		// wgodot-changes::end
 		scene_tabs_context_menu->add_item(TTR("Play This Scene"), SCENE_RUN);
 		DISABLE_LAST_OPTION_IF(no_root_node);
 		scene_tabs_context_menu->add_item(TTR("Set as Main Scene"), SCENE_SET_AS_MAIN_SCENE);
@@ -249,6 +260,19 @@ void EditorSceneTabs::_update_context_menu(int p_index) {
 int EditorSceneTabs::get_option_tab() const {
 	return last_hovered_tab >= 0 ? last_hovered_tab : scene_tabs->get_current_tab();
 }
+
+// wgodot-changes::begin
+void EditorSceneTabs::_copy_scene_path(int p_option) {
+	String path = EditorNode::get_editor_data().get_scene_path(get_option_tab());
+	if (path.is_empty()) {
+		return;
+	}
+	if (p_option == COPY_ABSOLUTE_PATH) {
+		path = ProjectSettings::get_singleton()->globalize_path(path);
+	}
+	DisplayServer::get_singleton()->clipboard_set(path);
+}
+// wgodot-changes::end
 
 void EditorSceneTabs::_custom_menu_option(int p_option) {
 	if (p_option >= EditorContextMenuPlugin::BASE_ID) {

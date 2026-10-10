@@ -10,6 +10,7 @@
 #include "core/io/wgodot_resource_paths.h"
 #include "core/object/class_db.h"
 #include "editor/export/editor_export_preset.h"
+#include "editor/import/3d/wgodot_mesh_collision.h"
 
 namespace {
 Dictionary read_manifest(const String &p_path) {
@@ -180,6 +181,10 @@ void WGodotNativeExportPlugin::_export_paths_ready(const HashSet<String> &p_path
 }
 
 void WGodotNativeExportPlugin::_export_file(const String &p_path, const String &p_type, const HashSet<String> &p_features) {
+	if (WGodotMeshCollision::is_superseded(p_path)) {
+		skip();
+		return;
+	}
 	if (!enabled) {
 		return;
 	}

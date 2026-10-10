@@ -65,7 +65,7 @@ Error WGodotCppProject::collect_scripts(const String &p_directory, Vector<String
 			if (error != OK) {
 				return error;
 			}
-		} else if (entry.get_extension() == "gd" && target.includes(path)) {
+		} else if (entry.get_extension() == "gd") {
 			r_scripts.push_back(path);
 		} else if (entry.get_extension() == "import") {
 			String message;
@@ -83,12 +83,19 @@ Error WGodotCppProject::prepare_sources(const Vector<String> &p_scripts) {
 	using namespace WGodotGDScriptExportTransform;
 
 	HashSet<String> paths;
+	HashSet<String> exported;
 	for (const String &path : p_scripts) {
 		paths.insert(path);
+		if (target.includes(path)) {
+			exported.insert(path);
+		}
 	}
 	ExportProject original;
 	String error_text;
-	Error error = original.capture(paths, paths, error_text);
+	// Shared scenes can reference scripts in presentation subtrees that are
+	// removed later. Keep their source available while loading the scene, but
+	// only transform and compile scripts belonging to the selected target.
+	Error error = original.capture(exported, paths, error_text);
 	if (error != OK) {
 		diagnostics.push_back(error_text);
 		return error;

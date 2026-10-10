@@ -29,6 +29,7 @@
 /**************************************************************************/
 
 // wgodot-changes::begin
+#include "editor/scene/3d/wgodot_asset_editor_preferences.h"
 #include "editor/wgodot_script_interfaces.h"
 // wgodot-changes::end
 
@@ -1000,6 +1001,11 @@ NodePath EditorData::get_edited_scene_live_edit_root() {
 
 void EditorData::save_edited_scene_state(EditorSelection *p_selection, EditorSelectionHistory *p_history, const Dictionary &p_custom) {
 	ERR_FAIL_INDEX(current_edited_scene, edited_scene.size());
+	// wgodot-changes::begin
+	if (WGodotAssetEditorPreferences::get_singleton()) {
+		WGodotAssetEditorPreferences::get_singleton()->save_current();
+	}
+	// wgodot-changes::end
 
 	EditedScene &es = edited_scene.write[current_edited_scene];
 	es.selection = p_selection->get_full_selected_node_list();
