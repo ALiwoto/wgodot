@@ -226,6 +226,7 @@ private:
 	void _wait_collaboratively(ThreadData *p_caller_pool_thread, Task *p_task);
 	// wgodot-changes::begin
 	void wgodot_process_pending_group_tasks(Group *p_group);
+	void wgodot_execute_group_task(Task *p_task);
 	// wgodot-changes::end
 
 	void _switch_runlevel(Runlevel p_runlevel);

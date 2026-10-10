@@ -745,7 +745,19 @@ Error ResourceLoaderBinary::load() {
 		if (r) {
 			if (!path.is_empty()) {
 				if (cache_mode != ResourceFormatLoader::CACHE_MODE_IGNORE) {
-					r->set_path(path, cache_mode == ResourceFormatLoader::CACHE_MODE_REPLACE); // If got here because the resource with same path has different type, replace it.
+					// wgodot-changes::begin
+					if (cache_mode == ResourceFormatLoader::CACHE_MODE_REPLACE) {
+						r->set_path(path, true); // Replace an existing resource with a different type.
+					} else {
+						Ref<Resource> cached = ResourceCache::get_or_add(path, res);
+						if (!main && cached != res) {
+							// Another loader registered this subresource while we instantiated it.
+							internal_index_cache[path] = cached;
+							continue;
+						}
+						// A duplicate main resource stays private until ResourceLoader reconciles it.
+					}
+					// wgodot-changes::end
 				} else {
 					r->set_path_cache(path);
 				}

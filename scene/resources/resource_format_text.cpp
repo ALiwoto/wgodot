@@ -592,15 +592,32 @@ Error ResourceLoaderText::load() {
 			*progress = resource_current / float(resources_total);
 		}
 
-		int_resources[id] = res; // Always assign int resources.
 		if (do_assign) {
 			if (cache_mode != ResourceFormatLoader::CACHE_MODE_IGNORE) {
-				res->set_path(path, cache_mode == ResourceFormatLoader::CACHE_MODE_REPLACE);
+				// wgodot-changes::begin
+				if (cache_mode == ResourceFormatLoader::CACHE_MODE_REPLACE) {
+					res->set_path(path, true);
+				} else {
+					Ref<Resource> cached = ResourceCache::get_or_add(path, res);
+					if (cached != res) {
+						res = cached;
+						do_assign = false;
+						missing_resource.unref();
+					}
+				}
+				// wgodot-changes::end
 			} else {
 				res->set_path_cache(path);
 			}
-			res->set_scene_unique_id(id);
+			// wgodot-changes::begin
+			if (do_assign) {
+				res->set_scene_unique_id(id);
+			}
+			// wgodot-changes::end
 		}
+		// wgodot-changes::begin
+		int_resources[id] = res; // Use the resource that won cache registration.
+		// wgodot-changes::end
 
 		Dictionary missing_resource_properties;
 
@@ -767,9 +784,9 @@ Error ResourceLoaderText::load() {
 				// EOF, Done parsing.
 				error = OK;
 				if (cache_mode != ResourceFormatLoader::CACHE_MODE_IGNORE) {
-					if (!ResourceCache::has(res_path)) {
-						resource->set_path(res_path);
-					}
+					// wgodot-changes::begin
+					ResourceCache::get_or_add(res_path, resource);
+					// wgodot-changes::end
 					resource->set_as_translation_remapped(translation_remapped);
 				} else {
 					resource->set_path_cache(res_path);
@@ -874,9 +891,9 @@ Error ResourceLoaderText::load() {
 		//get it here
 		resource = packed_scene;
 		if (cache_mode != ResourceFormatLoader::CACHE_MODE_IGNORE) {
-			if (!ResourceCache::has(res_path)) {
-				packed_scene->set_path(res_path);
-			}
+			// wgodot-changes::begin
+			ResourceCache::get_or_add(res_path, packed_scene);
+			// wgodot-changes::end
 		} else {
 			packed_scene->get_state()->set_path(res_path);
 			packed_scene->set_path_cache(res_path);

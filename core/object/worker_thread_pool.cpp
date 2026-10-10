@@ -91,47 +91,9 @@ void WorkerThreadPool::_process_task(Task *p_task) {
 #endif
 
 	if (p_task->group) {
-		// Handling a group
-		bool do_post = false;
-
-		while (true) {
-			uint32_t work_index = p_task->group->index.postincrement();
-
-			if (work_index >= p_task->group->max) {
-				break;
-			}
-			if (p_task->native_group_func) {
-				p_task->native_group_func(p_task->native_func_userdata, work_index);
-			} else if (p_task->template_userdata) {
-				p_task->template_userdata->callback_indexed(work_index);
-			} else {
-				p_task->callable.call(work_index);
-			}
-
-			// This is the only way to ensure posting is done when all tasks are really complete.
-			uint32_t completed_amount = p_task->group->completed_index.increment();
-
-			if (completed_amount == p_task->group->max) {
-				do_post = true;
-			}
-		}
-
-		if (do_post && p_task->template_userdata) {
-			memdelete(p_task->template_userdata); // This is no longer needed at this point, so get rid of it.
-		}
-
-		if (do_post) {
-			p_task->group->done_semaphore.post();
-			p_task->group->completed.set_to(true);
-		}
-		uint32_t max_users = p_task->group->tasks_used + 1; // Add 1 because the thread waiting for it is also user. Read before to avoid another thread freeing task after increment.
-		uint32_t finished_users = p_task->group->finished.increment();
-
-		if (finished_users == max_users) {
-			// Get rid of the group, because nobody else is using it.
-			MutexLock task_lock(task_mutex);
-			group_allocator.free(p_task->group);
-		}
+		// wgodot-changes::begin
+		wgodot_execute_group_task(p_task);
+		// wgodot-changes::end
 
 		// For groups, tasks get rid of themselves.
 

@@ -219,6 +219,9 @@ class ResourceCache {
 public:
 	static bool has(const String &p_path);
 	static Ref<Resource> get_ref(const String &p_path);
+	// wgodot-changes::begin
+	static Ref<Resource> get_or_add(const String &p_path, const Ref<Resource> &p_resource);
+	// wgodot-changes::end
 	static void get_cached_resources(List<Ref<Resource>> *p_resources);
 	static int get_cached_resource_count();
 };
