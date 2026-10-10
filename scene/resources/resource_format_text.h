@@ -33,6 +33,9 @@
 #include "core/io/file_access.h"
 #include "core/io/resource_loader.h"
 #include "core/io/resource_saver.h"
+// wgodot-changes::begin
+#include "core/io/wgodot_resource_properties.h"
+// wgodot-changes::end
 #include "core/templates/rb_map.h"
 #include "core/variant/variant_parser.h"
 #include "scene/resources/packed_scene.h"
@@ -71,6 +74,8 @@ private:
 	bool ignore_resource_parsing = false;
 	// wgodot-changes::begin
 	bool reused_subresource = false;
+	bool wgodot_cache_incomplete = false;
+	WGodotResourceProperties *wgodot_source_properties = nullptr;
 	// wgodot-changes::end
 
 	HashMap<String, ExtResource> ext_resources;

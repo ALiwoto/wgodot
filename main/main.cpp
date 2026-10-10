@@ -31,6 +31,7 @@
 #include "main.h"
 
 // wgodot-changes::begin
+#include "core/io/wgodot_resource_trace.h"
 #include "core/profiling/wgodot_startup_profile.h"
 // wgodot-changes::end
 
@@ -4828,13 +4829,27 @@ int Main::start() {
 			Crypto::load_default_certificates(GLOBAL_GET("network/tls/certificate_bundle_override"));
 
 			if (!game_path.is_empty()) {
+				// wgodot-changes::begin
+				WGodotResourceTrace trace("game.load_scene", local_game_path);
+				// wgodot-changes::end
 				Node *scene = nullptr;
-				Ref<PackedScene> scenedata = ResourceLoader::load(local_game_path);
+				// wgodot-changes::begin
+				Ref<PackedScene> scenedata;
+				if (ResourceLoader::load_threaded_request(local_game_path, "PackedScene", true) == OK) {
+					scenedata = ResourceLoader::load_threaded_get(local_game_path);
+				}
+				// wgodot-changes::end
 				if (scenedata.is_valid()) {
+					// wgodot-changes::begin
+					trace.phase("instantiate");
+					// wgodot-changes::end
 					scene = scenedata->instantiate();
 				}
 
 				ERR_FAIL_NULL_V_MSG(scene, EXIT_FAILURE, "Failed loading scene: " + local_game_path + ".");
+				// wgodot-changes::begin
+				trace.phase("enter_tree");
+				// wgodot-changes::end
 				sml->add_current_scene(scene);
 
 #ifdef MACOS_ENABLED

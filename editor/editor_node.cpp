@@ -35,6 +35,7 @@
 #include "editor_node.h"
 
 // wgodot-changes::begin
+#include "core/io/wgodot_dependency_errors.h"
 #include "core/io/wgodot_resource_trace.h"
 #include "editor/wgodot_editor_activity.h"
 // wgodot-changes::end
@@ -1783,6 +1784,9 @@ Error EditorNode::load_resource(const String &p_resource, bool p_ignore_broken_d
 		OS::get_singleton()->shell_open(ProjectSettings::get_singleton()->globalize_path(p_resource));
 		return OK;
 	}
+	// wgodot-changes::begin
+	WGodotDependencyErrors::flush();
+	// wgodot-changes::end
 	ERR_FAIL_COND_V(res.is_null(), ERR_CANT_OPEN);
 
 	if (!p_ignore_broken_deps && !dependency_errors.is_empty()) {
@@ -4833,6 +4837,9 @@ void EditorNode::_set_current_scene(int p_idx) {
 }
 
 void EditorNode::_set_current_scene_nocheck(int p_idx, bool p_ignore_state) {
+	// wgodot-changes::begin
+	WGodotResourceTrace trace("editor.activate_scene", editor_data.get_scene_path(p_idx));
+	// wgodot-changes::end
 	// Save the folding in case the scene gets reloaded.
 	const String scene_path = editor_data.get_scene_path(p_idx);
 	if (scene_path.is_empty() && editor_data.get_edited_scene_root(p_idx)) {
@@ -4867,9 +4874,15 @@ void EditorNode::_set_current_scene_nocheck(int p_idx, bool p_ignore_state) {
 	}
 
 	if (new_scene && new_scene->get_parent() != scene_root) {
+		// wgodot-changes::begin
+		trace.phase("enter_tree");
+		// wgodot-changes::end
 		scene_root->add_child(new_scene, true);
 	}
 
+	// wgodot-changes::begin
+	trace.phase("update_scene_state");
+	// wgodot-changes::end
 	if (editor_data.check_and_update_scene(p_idx)) {
 		if (!editor_data.get_scene_path(p_idx).is_empty()) {
 			editor_folding.load_scene_folding(editor_data.get_edited_scene_root(p_idx), scene_path);
@@ -4977,6 +4990,7 @@ int EditorNode::new_scene() {
 Error EditorNode::load_scene(const String &p_scene, bool p_ignore_broken_deps, bool p_set_inherited, bool p_force_open_imported, bool p_update_tabs) {
 	// wgodot-changes::begin
 	WGodotEditorActivity activity("Loading scene", p_scene);
+	WGodotResourceTrace trace("editor.load_scene", p_scene);
 	// wgodot-changes::end
 	const String lpath = ProjectSettings::get_singleton()->localize_path(ResourceUID::ensure_path(p_scene));
 	_update_prev_closed_scenes(lpath, false);
@@ -5005,8 +5019,15 @@ Error EditorNode::load_scene(const String &p_scene, bool p_ignore_broken_deps, b
 
 	dependency_errors.clear();
 
-	Error err;
-	Ref<PackedScene> sdata = ResourceLoader::load(lpath, "", ResourceFormatLoader::CACHE_MODE_REPLACE, &err);
+	// wgodot-changes::begin
+	// Distribute dependency loading; scene instantiation and editor state stay here.
+	Error err = ResourceLoader::load_threaded_request(lpath, "PackedScene", true, ResourceFormatLoader::CACHE_MODE_REPLACE);
+	Ref<PackedScene> sdata;
+	if (err == OK) {
+		sdata = ResourceLoader::load_threaded_get(lpath, &err);
+	}
+	WGodotDependencyErrors::flush();
+	// wgodot-changes::end
 
 	if (!p_ignore_broken_deps && !dependency_errors.is_empty()) {
 		current_menu_option = -1;
@@ -5042,6 +5063,9 @@ Error EditorNode::load_scene(const String &p_scene, bool p_ignore_broken_deps, b
 		sdata->set_path(lpath, true); // Take over path.
 	}
 
+	// wgodot-changes::begin
+	trace.phase("instantiate");
+	// wgodot-changes::end
 	Node *new_scene = sdata->instantiate(p_set_inherited ? PackedScene::GEN_EDIT_STATE_MAIN_INHERITED : PackedScene::GEN_EDIT_STATE_MAIN);
 	if (!new_scene) {
 		sdata.unref();
@@ -5057,6 +5081,9 @@ Error EditorNode::load_scene(const String &p_scene, bool p_ignore_broken_deps, b
 	}
 
 	new_scene->set_scene_instance_state(Ref<SceneState>());
+	// wgodot-changes::begin
+	trace.phase("editor_state");
+	// wgodot-changes::end
 
 	if (!restoring_scenes) {
 		save_editor_layout_delayed();
@@ -6456,6 +6483,9 @@ void EditorNode::save_editor_layout_delayed() {
 }
 
 void EditorNode::_load_editor_layout() {
+	// wgodot-changes::begin
+	WGodotResourceTrace trace("editor.restore_layout");
+	// wgodot-changes::end
 	EditorProgress ep("loading_editor_layout", TTR("Loading editor"), 5);
 	ep.step(TTR("Loading editor layout..."), 0, true);
 	Ref<ConfigFile> config;
@@ -6485,12 +6515,21 @@ void EditorNode::_load_editor_layout() {
 		editor_dock_manager->load_docks_from_config(config, "docks", true);
 
 		ep.step(TTR("Reopening scenes..."), 2, true);
+		// wgodot-changes::begin
+		trace.phase("reopen_scenes");
+		// wgodot-changes::end
 		_load_open_scenes_from_config(config);
 
 		ep.step(TTR("Loading central editor layout..."), 3, true);
+		// wgodot-changes::begin
+		trace.phase("central_layout");
+		// wgodot-changes::end
 		_load_central_editor_layout_from_config(config);
 
 		ep.step(TTR("Loading plugin window layout..."), 4, true);
+		// wgodot-changes::begin
+		trace.phase("plugin_layout");
+		// wgodot-changes::end
 		editor_data.set_plugin_window_layout(config);
 
 		ep.step(TTR("Editor layout ready."), 5, true);
@@ -8072,7 +8111,11 @@ static Node *_resource_get_edited_scene() {
 
 void EditorNode::_print_handler(void *p_this, const String &p_string, bool p_error, bool p_rich) {
 	if (!Thread::is_main_thread()) {
-		callable_mp_static(&EditorNode::_print_handler_impl).call_deferred(p_string, p_error, p_rich);
+		// wgodot-changes::begin
+		// Resource-loading threads have private deferred queues. Editor UI work
+		// must use the main queue, never a loader's locally flushed queue.
+		MessageQueue::get_main_singleton()->push_callable(callable_mp_static(&EditorNode::_print_handler_impl), p_string, p_error, p_rich);
+		// wgodot-changes::end
 	} else {
 		_print_handler_impl(p_string, p_error, p_rich);
 	}

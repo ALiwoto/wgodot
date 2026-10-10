@@ -69,9 +69,11 @@ void WindowsTerminalLogger::logv(const char *p_format, va_list p_list, bool p_er
 	HANDLE h = p_err ? GetStdHandle(STD_ERROR_HANDLE) : GetStdHandle(STD_OUTPUT_HANDLE);
 	WriteFile(h, cstr_buf.ptr(), cstr_buf.length(), &written, nullptr);
 
-#ifdef DEBUG_ENABLED
-	FlushFileBuffers(h);
-#endif
+	// wgodot-changes::begin
+	// WriteFile already delivers the bytes to the OS. FlushFileBuffers forces a
+	// disk commit (or waits for a pipe reader) for every line, stalling verbose
+	// startup and debugger output. There is no userspace buffer to flush here.
+	// wgodot-changes::end
 }
 
 void WindowsTerminalLogger::log_error(const char *p_function, const char *p_file, int p_line, const char *p_code, const char *p_rationale, bool p_editor_notify, ErrorType p_type, const Vector<Ref<ScriptBacktrace>> &p_script_backtraces) {

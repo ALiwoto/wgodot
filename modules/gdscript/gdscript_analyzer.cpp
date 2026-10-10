@@ -5180,7 +5180,26 @@ void GDScriptAnalyzer::reduce_preload(GDScriptParser::PreloadNode *p_preload) {
 				}
 			} else {
 				Error err = OK;
-				p_preload->resource = ResourceLoader::load(p_preload->resolved_path, res_type, ResourceFormatLoader::CACHE_MODE_REUSE, &err);
+				// wgodot-changes::begin
+				bool distribute_dependencies = p_preload->wgodot_async;
+#ifdef TOOLS_ENABLED
+				// Export analysis resolves scripts against a thread-local revision.
+				distribute_dependencies &= !WGodotGDScriptResolution::is_export_analysis();
+#endif
+				if (distribute_dependencies) {
+					// The VM still needs the resource to type-check its constant. Let
+					// the loader distribute dependencies while resolving it, instead
+					// of silently loading an async_preload graph on a single thread.
+					Ref<ResourceLoader::LoadToken> token = ResourceLoader::_load_start(p_preload->resolved_path, res_type, ResourceLoader::LOAD_THREAD_DISTRIBUTE, ResourceFormatLoader::CACHE_MODE_REUSE);
+					if (token.is_valid()) {
+						p_preload->resource = ResourceLoader::_load_complete(*token.ptr(), &err);
+					} else {
+						err = FAILED;
+					}
+				} else {
+					p_preload->resource = ResourceLoader::load(p_preload->resolved_path, res_type, ResourceFormatLoader::CACHE_MODE_REUSE, &err);
+				}
+				// wgodot-changes::end
 				if (err == ERR_BUSY) {
 					p_preload->resource = ResourceLoader::ensure_resource_ref_override_for_outer_load(p_preload->resolved_path, res_type);
 				}

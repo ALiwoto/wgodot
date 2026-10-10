@@ -33,6 +33,9 @@
 #include "core/config/project_settings.h"
 #include "core/error/error_macros.h"
 #include "core/io/file_access.h"
+// wgodot-changes::begin
+#include "core/io/wgodot_resource_trace.h"
+// wgodot-changes::end
 #include "core/math/math_funcs_binary.h"
 #include "core/object/callable_mp.h"
 #include "core/object/worker_thread_pool.h"
@@ -1573,6 +1576,9 @@ bool TextServerAdvanced::_ensure_cache_for_size(FontAdvanced *p_font_data, const
 		return true;
 	}
 
+	// wgodot-changes::begin
+	WGodotResourceTrace font_trace("font.create_size", p_font_data->font_name + " " + itos(p_size.x) + "," + itos(p_size.y));
+	// wgodot-changes::end
 	FontForSizeAdvanced *fd = memnew(FontForSizeAdvanced);
 	fd->size = p_size;
 	if (p_font_data->data_ptr && (p_font_data->data_size > 0)) {
@@ -1661,6 +1667,14 @@ bool TextServerAdvanced::_ensure_cache_for_size(FontAdvanced *p_font_data, const
 		}
 
 		fd->hb_handle = hb_ft_font_create(p_font_data->face, nullptr);
+		// wgodot-changes::begin
+		// Sizes share the same font tables. Reuse HarfBuzz's face cache so large
+		// color-font tables are validated once, while keeping each size's FreeType
+		// callbacks, metrics and variation coordinates on its own hb_font_t.
+		hb_face_t *shared_face = hb_ft_face_create_cached(p_font_data->face);
+		hb_font_set_face(fd->hb_handle, shared_face);
+		hb_face_destroy(shared_face);
+		// wgodot-changes::end
 
 		if (p_font_data->embolden != 0.0) {
 			hb_font_set_synthetic_bold(fd->hb_handle, p_font_data->embolden / 16.0, p_font_data->embolden / 16.0, true);

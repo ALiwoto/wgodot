@@ -34,7 +34,9 @@
 // wgodot-changes::end
 
 // wgodot-changes::begin
+#include "core/io/wgodot_dependency_errors.h"
 #include "core/io/wgodot_resource_loader_lifetime.h"
+#include "core/io/wgodot_resource_trace.h"
 #include "core/profiling/wgodot_startup_profile.h"
 // wgodot-changes::end
 
@@ -266,6 +268,7 @@ ResourceLoader::LoadToken::~LoadToken() {
 Ref<Resource> ResourceLoader::_load(const String &p_path, const String &p_original_path, const String &p_type_hint, CacheMode p_cache_mode, Error *r_error, bool p_use_sub_threads, float *r_progress) {
 // wgodot-changes::begin
 	WGodotStartupProfile::Scope wgodot_profile("ResourceLoader::_load", p_path);
+	WGodotResourceTrace resource_trace("load.format", p_path);
 // wgodot-changes::end
 	const String &original_path = p_original_path.is_empty() ? p_path : p_original_path;
 	load_nesting++;
@@ -1024,7 +1027,9 @@ void ResourceLoader::notify_dependency_error(const String &p_path, const String 
 		if (Thread::get_caller_id() == Thread::get_main_id()) {
 			dep_err_notify(p_path, p_dependency, p_type);
 		} else {
-			MessageQueue::get_main_singleton()->push_callable(callable_mp_static(dep_err_notify).bind(p_path, p_dependency, p_type));
+			// wgodot-changes::begin
+			WGodotDependencyErrors::queue(callable_mp_static(dep_err_notify).bind(p_path, p_dependency, p_type));
+			// wgodot-changes::end
 		}
 	}
 }

@@ -33,6 +33,9 @@
 #include "core/io/file_access.h"
 #include "core/io/resource_loader.h"
 #include "core/io/resource_saver.h"
+// wgodot-changes::begin
+#include "core/io/wgodot_resource_properties.h"
+// wgodot-changes::end
 #include "core/templates/rb_map.h"
 
 class ResourceLoaderBinary {
@@ -147,6 +150,9 @@ class ResourceFormatSaverBinaryInstance {
 
 	HashMap<Ref<Resource>, int> external_resources;
 	List<Ref<Resource>> saved_resources;
+	// wgodot-changes::begin
+	const WGodotResourceProperties *wgodot_source_properties = nullptr;
+	// wgodot-changes::end
 
 	struct Property {
 		int name_idx;
@@ -174,7 +180,9 @@ public:
 		// Amount of reserved 32-bit fields in resource header
 		RESERVED_FIELDS = 11
 	};
-	Error save(const String &p_path, const Ref<Resource> &p_resource, uint32_t p_flags = 0);
+	// wgodot-changes::begin
+	Error save(const String &p_path, const Ref<Resource> &p_resource, uint32_t p_flags = 0, const WGodotResourceProperties *p_source_properties = nullptr);
+	// wgodot-changes::end
 	Error set_uid(const String &p_path, ResourceUID::ID p_uid);
 	static void write_variant(Ref<FileAccess> r_file, const Variant &p_property, HashMap<Ref<Resource>, int> &r_resource_map, HashMap<Ref<Resource>, int> &r_external_resources, HashMap<StringName, int> &r_string_map, const PropertyInfo &p_hint = PropertyInfo());
 };

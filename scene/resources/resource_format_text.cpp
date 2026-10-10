@@ -179,10 +179,16 @@ Error ResourceLoaderText::_parse_ext_resource(VariantParser::Stream *p_stream, R
 		}
 #ifdef TOOLS_ENABLED
 		if (r_res.is_null()) {
+			// wgodot-changes::begin
+			wgodot_cache_incomplete = true;
+			// wgodot-changes::end
 			// Hack to allow checking original path.
 			r_res.instantiate();
 			r_res->set_meta("__load_path__", ext_resources[id].path);
 		}
+		// wgodot-changes::begin
+		wgodot_cache_incomplete |= bool(r_res->get_meta(SNAME("_skip_save_"), false));
+		// wgodot-changes::end
 #endif
 	}
 
@@ -602,12 +608,8 @@ Error ResourceLoaderText::load() {
 				if (cache_mode == ResourceFormatLoader::CACHE_MODE_REPLACE) {
 					res->set_path(path, true);
 				} else {
-					Ref<Resource> cached = ResourceCache::get_or_add(path, res);
-					if (cached != res) {
-						res = cached;
-						do_assign = false;
-						missing_resource.unref();
-					}
+					// Publish only after all authored properties have been assigned.
+					res->set_path_cache(path);
 				}
 				// wgodot-changes::end
 			} else {
@@ -620,7 +622,7 @@ Error ResourceLoaderText::load() {
 			// wgodot-changes::end
 		}
 		// wgodot-changes::begin
-		int_resources[id] = res; // Use the resource that won cache registration.
+		int_resources[id] = res;
 		reused_subresource |= !do_assign;
 		// wgodot-changes::end
 
@@ -676,6 +678,11 @@ Error ResourceLoaderText::load() {
 					}
 
 					if (set_valid) {
+						// wgodot-changes::begin
+						if (wgodot_source_properties) {
+							(*wgodot_source_properties)[res].push_back({ assign, value });
+						}
+						// wgodot-changes::end
 						res->set(assign, value);
 					}
 				}
@@ -710,6 +717,13 @@ Error ResourceLoaderText::load() {
 			res->set_edited(false);
 		}
 #endif
+		if (do_assign && cache_mode == ResourceFormatLoader::CACHE_MODE_REUSE) {
+			Ref<Resource> cached = ResourceCache::get_or_add(path, res);
+			if (cached != res) {
+				int_resources[id] = cached;
+				reused_subresource = true;
+			}
+		}
 		// wgodot-changes::end
 	}
 
@@ -840,6 +854,11 @@ Error ResourceLoaderText::load() {
 				}
 
 				if (set_valid) {
+					// wgodot-changes::begin
+					if (wgodot_source_properties) {
+						(*wgodot_source_properties)[is_scene ? Ref<Resource>(packed_scene) : resource].push_back({ assign, value });
+					}
+					// wgodot-changes::end
 					if (is_scene) {
 						packed_scene->set(assign, value);
 					} else {
@@ -1451,10 +1470,11 @@ Ref<Resource> ResourceFormatLoaderText::load(const String &p_path, const String 
 	loader.open(f);
 	// wgodot-changes::begin
 #ifdef TOOLS_ENABLED
-	// Only self-contained .tres payloads are independent of script defaults,
-	// imports and external resources. Scenes retain their normal authoring path.
-	const bool cache_candidate = loader.error == OK && !loader.is_scene && loader.next_tag.name != "ext_resource";
+	// Keep authored assignments; getters can synthesize defaults from dependencies.
+	// External resources stay references, and scripts still use the text loader.
+	const bool cache_candidate = loader.error == OK;
 	WGodotTextResourceCache binary_cache(cache_candidate ? p_path : String());
+	WGodotResourceProperties source_properties;
 	if (cache_candidate) {
 		Ref<Resource> cached = binary_cache.load(loader.local_path, p_use_sub_threads, r_progress, p_cache_mode);
 		if (cached.is_valid()) {
@@ -1462,6 +1482,9 @@ Ref<Resource> ResourceFormatLoaderText::load(const String &p_path, const String 
 				*r_error = OK;
 			}
 			return cached;
+		}
+		if (binary_cache.is_enabled()) {
+			loader.wgodot_source_properties = &source_properties;
 		}
 	}
 #endif
@@ -1473,7 +1496,7 @@ Ref<Resource> ResourceFormatLoaderText::load(const String &p_path, const String 
 	if (err == OK) {
 		// wgodot-changes::begin
 #ifdef TOOLS_ENABLED
-		if (cache_candidate && !loader.reused_subresource) {
+		if (loader.wgodot_source_properties && !loader.reused_subresource && !loader.wgodot_cache_incomplete) {
 			bool native_data = true;
 			Vector<Ref<Resource>> resources;
 			resources.push_back(loader.get_resource());
@@ -1482,13 +1505,18 @@ Ref<Resource> ResourceFormatLoaderText::load(const String &p_path, const String 
 			}
 			for (const Ref<Resource> &resource : resources) {
 				const Ref<Script> script = resource->get_script();
-				if (script.is_valid() || Object::cast_to<Script>(resource.ptr()) || Object::cast_to<MissingResource>(resource.ptr())) {
+				if (script.is_valid() || Object::cast_to<Script>(resource.ptr()) || Object::cast_to<MissingResource>(resource.ptr()) || resource->get_meta(SNAME("_skip_save_"), false)) {
 					native_data = false;
 					break;
 				}
+				// Keep empty resources too: their defaults must remain defaults.
+				List<WGodotResourceProperty> &properties = source_properties[resource];
+				if (Object::cast_to<PackedScene>(resource.ptr())) {
+					properties.push_back({ "_bundled", resource->get("_bundled") });
+				}
 			}
 			if (native_data) {
-				binary_cache.store(loader.get_resource());
+				binary_cache.store(loader.get_resource(), source_properties);
 			}
 		}
 #endif

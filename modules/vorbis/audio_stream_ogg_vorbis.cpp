@@ -30,6 +30,10 @@
 
 #include "audio_stream_ogg_vorbis.h"
 
+// wgodot-changes::begin
+#include "core/io/wgodot_resource_trace.h"
+// wgodot-changes::end
+
 #include "core/io/file_access.h"
 #include "core/object/class_db.h"
 #include "core/templates/rb_map.h"
@@ -430,6 +434,9 @@ Ref<AudioStreamPlayback> AudioStreamOggVorbis::instantiate_playback() {
 
 void AudioStreamOggVorbis::maybe_update_info() {
 	ERR_FAIL_COND(packet_sequence.is_null());
+	// wgodot-changes::begin
+	WGodotResourceTrace trace("audio.read_headers", get_path() + " -> " + packet_sequence->get_path());
+	// wgodot-changes::end
 
 	vorbis_info info;
 	vorbis_comment comment;

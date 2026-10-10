@@ -34,6 +34,9 @@
 #include "gdscript_parser.h"
 
 #include "core/io/file_access.h"
+// wgodot-changes::begin
+#include "core/io/wgodot_resource_trace.h"
+// wgodot-changes::end
 #include "core/object/class_db.h"
 
 #ifdef TOOLS_ENABLED
@@ -41,6 +44,9 @@
 #endif // TOOLS_ENABLED
 
 Ref<Resource> ResourceFormatLoaderGDScript::load(const String &p_path, const String &p_original_path, Error *r_error, bool p_use_sub_threads, float *r_progress, CacheMode p_cache_mode) {
+	// wgodot-changes::begin
+	WGodotResourceTrace trace("load.script", p_path);
+	// wgodot-changes::end
 	Error err;
 	bool ignoring = p_cache_mode == CACHE_MODE_IGNORE || p_cache_mode == CACHE_MODE_IGNORE_DEEP;
 	Ref<GDScript> scr = GDScriptCache::get_full_script(p_original_path, err, "", ignoring);

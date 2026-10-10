@@ -50,6 +50,11 @@ class WGodotMeshAuditEditorPlugin : public EditorPlugin {
 		NOT_NEEDED_FILE,
 		NOT_NEEDED_MESH,
 	};
+	enum CopyChoice {
+		COPY_NODE_PATH,
+		COPY_ABSOLUTE_FILE_PATH,
+		COPY_RES_FILE_PATH,
+	};
 
 	AcceptDialog *dialog = nullptr;
 	LineEdit *search = nullptr;
@@ -57,6 +62,7 @@ class WGodotMeshAuditEditorPlugin : public EditorPlugin {
 	CheckBox *include_not_needed = nullptr;
 	PopupMenu *context_menu = nullptr;
 	PopupMenu *collision_menu = nullptr;
+	PopupMenu *copy_menu = nullptr;
 	Tree *results = nullptr;
 	Label *summary = nullptr;
 	Label *details = nullptr;
@@ -86,6 +92,7 @@ class WGodotMeshAuditEditorPlugin : public EditorPlugin {
 	void _hidden_changed(bool p_pressed);
 	void _item_mouse_selected(const Vector2 &p_position, MouseButton p_button);
 	void _collision_choice(int p_choice);
+	void _copy_choice(int p_choice);
 	void _sort(int p_column, int p_button);
 	void _update_sort_headers();
 	const Entry *_selected() const;

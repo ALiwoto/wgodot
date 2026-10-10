@@ -1,6 +1,7 @@
 // wgodot-changes::file
 #include "wgodot_mesh_audit_editor_plugin.h"
 
+#include "core/config/project_settings.h"
 #include "core/io/file_access.h"
 #include "core/io/resource_loader.h"
 #include "core/io/resource_uid.h"
@@ -30,6 +31,7 @@
 #include "scene/resources/3d/convex_polygon_shape_3d.h"
 #include "scene/resources/multimesh.h"
 #include "scene/resources/packed_scene.h"
+#include "servers/display_server.h"
 
 const WGodotMeshAuditEditorPlugin::AssetDetails &WGodotMeshAuditEditorPlugin::_asset_details(const String &p_source) {
 	if (const AssetDetails *cached = asset_cache.getptr(p_source)) {
@@ -351,6 +353,8 @@ void WGodotMeshAuditEditorPlugin::_item_mouse_selected(const Vector2 &p_position
 	collision_menu->set_item_disabled(NOT_NEEDED_MESH, !settings.available || entry->mesh_key.is_empty());
 	collision_menu->set_item_tooltip(NOT_NEEDED_FILE, settings.available ? entry->source + "\n" + TTR("Applies to every mesh and instance of this source. Click again to clear.") : TTR("Requires a saved imported asset with an .import file."));
 	collision_menu->set_item_tooltip(NOT_NEEDED_MESH, entry->mesh_key.is_empty() ? TTR("This mesh has no identity in an imported source asset.") : entry->mesh_key + "\n" + TTR("Applies to this mesh in every instance of the source. Click again to clear."));
+	copy_menu->set_item_disabled(COPY_ABSOLUTE_FILE_PATH, entry->source.is_empty());
+	copy_menu->set_item_disabled(COPY_RES_FILE_PATH, entry->source.is_empty());
 	context_menu->set_position(results->get_screen_position() + p_position);
 	context_menu->reset_size();
 	context_menu->popup();
@@ -372,6 +376,30 @@ void WGodotMeshAuditEditorPlugin::_collision_choice(int p_choice) {
 	}
 	asset_cache[source].collision = WGodotMeshCollisionSettings::load(source);
 	_filter();
+}
+
+void WGodotMeshAuditEditorPlugin::_copy_choice(int p_choice) {
+	const Entry *entry = _selected();
+	if (!entry) {
+		return;
+	}
+	String path;
+	switch (p_choice) {
+		case COPY_NODE_PATH:
+			path = entry->path;
+			break;
+		case COPY_ABSOLUTE_FILE_PATH:
+			if (!entry->source.is_empty()) {
+				path = ProjectSettings::get_singleton()->globalize_path(entry->source);
+			}
+			break;
+		case COPY_RES_FILE_PATH:
+			path = entry->source;
+			break;
+	}
+	if (!path.is_empty()) {
+		DisplayServer::get_singleton()->clipboard_set(path);
+	}
 }
 
 void WGodotMeshAuditEditorPlugin::_sort(int p_column, int p_button) {
@@ -542,6 +570,12 @@ WGodotMeshAuditEditorPlugin::WGodotMeshAuditEditorPlugin() {
 	collision_menu->add_check_item(TTR("Not Needed for this mesh"), NOT_NEEDED_MESH);
 	collision_menu->connect("id_pressed", callable_mp(this, &WGodotMeshAuditEditorPlugin::_collision_choice));
 	context_menu->add_submenu_node_item(TTR("Collision Not Needed"), collision_menu);
+	copy_menu = memnew(PopupMenu);
+	copy_menu->add_item(TTR("Node Path"), COPY_NODE_PATH);
+	copy_menu->add_item(TTR("Absolute File Path"), COPY_ABSOLUTE_FILE_PATH);
+	copy_menu->add_item(TTR("res:// File Path"), COPY_RES_FILE_PATH);
+	copy_menu->connect("id_pressed", callable_mp(this, &WGodotMeshAuditEditorPlugin::_copy_choice));
+	context_menu->add_submenu_node_item(TTR("Copy"), copy_menu);
 	summary = memnew(Label);
 	summary->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
 	layout->add_child(summary);

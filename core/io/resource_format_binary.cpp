@@ -749,13 +749,9 @@ Error ResourceLoaderBinary::load() {
 					if (cache_mode == ResourceFormatLoader::CACHE_MODE_REPLACE) {
 						r->set_path(path, true); // Replace an existing resource with a different type.
 					} else {
-						Ref<Resource> cached = ResourceCache::get_or_add(path, res);
-						if (!main && cached != res) {
-							// Another loader registered this subresource while we instantiated it.
-							internal_index_cache[path] = cached;
-							continue;
-						}
-						// A duplicate main resource stays private until ResourceLoader reconciles it.
+						// Keep incomplete data private. Cycle recovery can load the same
+						// file concurrently, and cache readers expect initialized properties.
+						r->set_path_cache(path);
 					}
 					// wgodot-changes::end
 				} else {
@@ -844,6 +840,17 @@ Error ResourceLoaderBinary::load() {
 #ifdef TOOLS_ENABLED
 		res->set_edited(false);
 #endif
+
+		// wgodot-changes::begin
+		if (cache_mode == ResourceFormatLoader::CACHE_MODE_REUSE && !path.is_empty()) {
+			Ref<Resource> cached = ResourceCache::get_or_add(path, res);
+			if (!main && cached != res) {
+				res = cached;
+				internal_index_cache[path] = res;
+			}
+			// Duplicate main resources are reconciled by ResourceLoader.
+		}
+		// wgodot-changes::end
 
 		if (progress) {
 			*progress = (i + 1) / float(internal_resources.size());
@@ -2076,7 +2083,11 @@ void ResourceFormatSaverBinaryInstance::_find_resources(const Variant &p_variant
 				return;
 			}
 
-			if (!p_main && (!bundle_resources) && !res->is_built_in()) {
+			// wgodot-changes::begin
+			// A cache must also retain references to subresources of other files.
+			const bool external_to_source = wgodot_source_properties && !wgodot_source_properties->has(res);
+			if (!p_main && ((!bundle_resources && !res->is_built_in()) || external_to_source)) {
+				// wgodot-changes::end
 				if (res->get_path() == path) {
 					ERR_PRINT(vformat("Circular reference to resource being saved found: '%s' will be null next time it's loaded.", local_path));
 					return;
@@ -2091,6 +2102,17 @@ void ResourceFormatSaverBinaryInstance::_find_resources(const Variant &p_variant
 			}
 
 			resource_set.insert(res);
+			// wgodot-changes::begin
+			if (wgodot_source_properties) {
+				const List<WGodotResourceProperty> *properties = wgodot_source_properties->getptr(res);
+				ERR_FAIL_NULL(properties);
+				for (const WGodotResourceProperty &property : *properties) {
+					_find_resources(property.value);
+				}
+				saved_resources.push_back(res);
+				break;
+			}
+			// wgodot-changes::end
 
 			List<PropertyInfo> property_list;
 
@@ -2192,7 +2214,10 @@ static String _resource_get_class(Ref<Resource> p_resource) {
 	}
 }
 
-Error ResourceFormatSaverBinaryInstance::save(const String &p_path, const Ref<Resource> &p_resource, uint32_t p_flags) {
+// wgodot-changes::begin
+Error ResourceFormatSaverBinaryInstance::save(const String &p_path, const Ref<Resource> &p_resource, uint32_t p_flags, const WGodotResourceProperties *p_source_properties) {
+	wgodot_source_properties = p_source_properties;
+	// wgodot-changes::end
 	Resource::seed_scene_unique_id(p_path.hash());
 
 	Error err;
@@ -2285,6 +2310,20 @@ Error ResourceFormatSaverBinaryInstance::save(const String &p_path, const Ref<Re
 
 			ResourceData &rd = resources.push_back(ResourceData())->get();
 			rd.type = _resource_get_class(E);
+
+			// wgodot-changes::begin
+			if (wgodot_source_properties) {
+				const List<WGodotResourceProperty> *properties = wgodot_source_properties->getptr(E);
+				ERR_FAIL_NULL_V(properties, ERR_INVALID_DATA);
+				for (const WGodotResourceProperty &property : *properties) {
+					Property p;
+					p.name_idx = get_string_index(property.name);
+					p.value = property.value;
+					rd.properties.push_back(p);
+				}
+				continue;
+			}
+			// wgodot-changes::end
 
 			List<PropertyInfo> property_list;
 			E->get_property_list(&property_list);
