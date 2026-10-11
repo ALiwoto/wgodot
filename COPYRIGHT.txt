@@ -63,6 +63,13 @@ Comment: Godot Engine logo
 Copyright: 2017, Andrea Calabró
 License: CC-BY-4.0
 
+Files: modules/kawaii_physics/*
+Comment: wgodot-changes::begin
+ KawaiiPhysics simulation adapted to native Godot skeleton modifiers.
+ wgodot-changes::end
+Copyright: 2019-2020, pafuhana1213
+License: Expat
+
 Files: modules/betsy/alpha_stitch.glsl
  modules/betsy/bc1.glsl
  modules/betsy/bc4.glsl

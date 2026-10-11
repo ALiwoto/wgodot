@@ -1,0 +1,7 @@
+# wgodot-changes::file
+
+Import("env")
+Import("env_modules")
+
+env_kawaii = env_modules.Clone()
+env_kawaii.add_source_files(env.modules_sources, "*.cpp")
