@@ -181,7 +181,7 @@ public:
 		RESERVED_FIELDS = 11
 	};
 	// wgodot-changes::begin
-	Error save(const String &p_path, const Ref<Resource> &p_resource, uint32_t p_flags = 0, const WGodotResourceProperties *p_source_properties = nullptr);
+	Error save(const String &p_path, const Ref<Resource> &p_resource, uint32_t p_flags = 0, const WGodotResourceProperties *p_source_properties = nullptr, const WGodotResourceUIDs *p_source_uids = nullptr);
 	// wgodot-changes::end
 	Error set_uid(const String &p_path, ResourceUID::ID p_uid);
 	static void write_variant(Ref<FileAccess> r_file, const Variant &p_property, HashMap<Ref<Resource>, int> &r_resource_map, HashMap<Ref<Resource>, int> &r_external_resources, HashMap<StringName, int> &r_string_map, const PropertyInfo &p_hint = PropertyInfo());

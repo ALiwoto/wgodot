@@ -188,6 +188,14 @@ Error ResourceLoaderText::_parse_ext_resource(VariantParser::Stream *p_stream, R
 		}
 		// wgodot-changes::begin
 		wgodot_cache_incomplete |= bool(r_res->get_meta(SNAME("_skip_save_"), false));
+		if (wgodot_source_uids) {
+			const ResourceUID::ID source_uid = ext_resources[id].wgodot_source_uid;
+			const ResourceUID::ID *previous = wgodot_source_uids->getptr(r_res);
+			// The binary table merges references to the same resource. Keep the
+			// text loader when those references have different authored identities.
+			wgodot_cache_incomplete |= previous && *previous != source_uid;
+			(*wgodot_source_uids)[r_res] = source_uid;
+		}
 		// wgodot-changes::end
 #endif
 	}
@@ -474,6 +482,9 @@ Error ResourceLoaderText::load() {
 		if (next_tag.fields.has("uid")) {
 			String uidt = next_tag.fields["uid"];
 			ResourceUID::ID uid = ResourceUID::get_singleton()->text_to_id(uidt);
+			// wgodot-changes::begin
+			ext_resources[id].wgodot_source_uid = uid;
+			// wgodot-changes::end
 			if (uid != ResourceUID::INVALID_ID && ResourceUID::get_singleton()->has_id(uid)) {
 				// If a UID is found and the path is valid, it will be used, otherwise, it falls back to the path.
 				path = ResourceUID::get_singleton()->get_id_path(uid);
@@ -1475,6 +1486,7 @@ Ref<Resource> ResourceFormatLoaderText::load(const String &p_path, const String 
 	const bool cache_candidate = loader.error == OK;
 	WGodotTextResourceCache binary_cache(cache_candidate ? p_path : String());
 	WGodotResourceProperties source_properties;
+	WGodotResourceUIDs source_uids;
 	if (cache_candidate) {
 		Ref<Resource> cached = binary_cache.load(loader.local_path, p_use_sub_threads, r_progress, p_cache_mode);
 		if (cached.is_valid()) {
@@ -1485,6 +1497,7 @@ Ref<Resource> ResourceFormatLoaderText::load(const String &p_path, const String 
 		}
 		if (binary_cache.is_enabled()) {
 			loader.wgodot_source_properties = &source_properties;
+			loader.wgodot_source_uids = &source_uids;
 		}
 	}
 #endif
@@ -1516,7 +1529,7 @@ Ref<Resource> ResourceFormatLoaderText::load(const String &p_path, const String 
 				}
 			}
 			if (native_data) {
-				binary_cache.store(loader.get_resource(), source_properties);
+				binary_cache.store(loader.get_resource(), source_properties, source_uids);
 			}
 		}
 #endif

@@ -65,6 +65,9 @@ private:
 		Ref<ResourceLoader::LoadToken> load_token;
 		String path;
 		String type;
+		// wgodot-changes::begin
+		ResourceUID::ID wgodot_source_uid = ResourceUID::INVALID_ID;
+		// wgodot-changes::end
 	};
 
 	bool is_scene = false;
@@ -76,6 +79,7 @@ private:
 	bool reused_subresource = false;
 	bool wgodot_cache_incomplete = false;
 	WGodotResourceProperties *wgodot_source_properties = nullptr;
+	WGodotResourceUIDs *wgodot_source_uids = nullptr;
 	// wgodot-changes::end
 
 	HashMap<String, ExtResource> ext_resources;

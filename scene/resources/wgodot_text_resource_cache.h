@@ -15,5 +15,5 @@ public:
 	explicit WGodotTextResourceCache(const String &p_source_path);
 	bool is_enabled() const { return !cache_path.is_empty(); }
 	Ref<Resource> load(const String &p_original_path, bool p_use_sub_threads, float *r_progress, ResourceFormatLoader::CacheMode p_cache_mode) const;
-	void store(const Ref<Resource> &p_resource, const WGodotResourceProperties &p_source_properties) const;
+	void store(const Ref<Resource> &p_resource, const WGodotResourceProperties &p_source_properties, const WGodotResourceUIDs &p_source_uids) const;
 };

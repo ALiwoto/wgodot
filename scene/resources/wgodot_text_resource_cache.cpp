@@ -31,7 +31,7 @@ WGodotTextResourceCache::WGodotTextResourceCache(const String &p_source_path) {
 	// Store authored assignments, not resolved defaults. Ordinary editor rebuilds
 	// and edits to external dependencies must retain the cache. Bump this revision
 	// only when the cached representation or its interpretation changes.
-	static const String version = String(GODOT_VERSION_FULL_CONFIG) + "-authored-text-v3-real" + itos(sizeof(real_t) * 8);
+	static const String version = String(GODOT_VERSION_FULL_CONFIG) + "-authored-text-v4-real" + itos(sizeof(real_t) * 8);
 	cache_path = data_path.path_join("resource_cache").path_join(version).path_join(source_path.get_file() + "-" + source_path.md5_text() + "-" + source_hash + ".res");
 #endif
 }
@@ -47,7 +47,7 @@ Ref<Resource> WGodotTextResourceCache::load(const String &p_original_path, bool 
 	return loader.load(cache_path, p_original_path, &error, p_use_sub_threads, r_progress, p_cache_mode);
 }
 
-void WGodotTextResourceCache::store(const Ref<Resource> &p_resource, const WGodotResourceProperties &p_source_properties) const {
+void WGodotTextResourceCache::store(const Ref<Resource> &p_resource, const WGodotResourceProperties &p_source_properties, const WGodotResourceUIDs &p_source_uids) const {
 	WGodotResourceTrace trace("cache.store", source_path);
 	if (cache_path.is_empty() || FileAccess::get_md5(source_path) != source_hash) {
 		return;
@@ -57,7 +57,7 @@ void WGodotTextResourceCache::store(const Ref<Resource> &p_resource, const WGodo
 	}
 	const String temporary = cache_path + "." + itos(OS::get_singleton()->get_process_id()) + "." + uitos(Thread::get_caller_id()) + ".tmp";
 	ResourceFormatSaverBinaryInstance saver;
-	if (saver.save(temporary, p_resource, ResourceSaver::FLAG_COMPRESS, &p_source_properties) != OK) {
+	if (saver.save(temporary, p_resource, ResourceSaver::FLAG_COMPRESS, &p_source_properties, &p_source_uids) != OK) {
 		return;
 	}
 	// Publish only complete payloads. Concurrent editor/game readers never see a

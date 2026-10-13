@@ -2215,7 +2215,7 @@ static String _resource_get_class(Ref<Resource> p_resource) {
 }
 
 // wgodot-changes::begin
-Error ResourceFormatSaverBinaryInstance::save(const String &p_path, const Ref<Resource> &p_resource, uint32_t p_flags, const WGodotResourceProperties *p_source_properties) {
+Error ResourceFormatSaverBinaryInstance::save(const String &p_path, const Ref<Resource> &p_resource, uint32_t p_flags, const WGodotResourceProperties *p_source_properties, const WGodotResourceUIDs *p_source_uids) {
 	wgodot_source_properties = p_source_properties;
 	// wgodot-changes::end
 	Resource::seed_scene_unique_id(p_path.hash());
@@ -2393,7 +2393,15 @@ Error ResourceFormatSaverBinaryInstance::save(const String &p_path, const Ref<Re
 		String res_path = save_order[i]->get_path();
 		res_path = relative_paths ? local_path.path_to_file(res_path) : res_path;
 		save_unicode_string(f, res_path);
-		ResourceUID::ID ruid = ResourceSaver::get_resource_id_for_path(save_order[i]->get_path(), false);
+		// wgodot-changes::begin
+		ResourceUID::ID ruid;
+		if (p_source_uids) {
+			const ResourceUID::ID *source_uid = p_source_uids->getptr(save_order[i]);
+			ruid = source_uid ? *source_uid : ResourceUID::INVALID_ID;
+		} else {
+			ruid = ResourceSaver::get_resource_id_for_path(save_order[i]->get_path(), false);
+		}
+		// wgodot-changes::end
 		f->store_64(uint64_t(ruid));
 	}
 	// save internal resource table
