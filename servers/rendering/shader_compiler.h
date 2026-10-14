@@ -72,6 +72,10 @@ public:
 			ShaderLanguage::TextureRepeat repeat = ShaderLanguage::TextureRepeat::REPEAT_DEFAULT;
 			bool global = false;
 			int array_size = 0;
+			// wgodot-changes::begin
+			WGodotSamplerState sampler_state;
+			int sampler_binding = -1;
+			// wgodot-changes::end
 		};
 
 		Vector<Texture> texture_uniforms;
@@ -113,7 +117,9 @@ public:
 private:
 	ShaderLanguage parser;
 
-	String _get_sampler_name(ShaderLanguage::TextureFilter p_filter, ShaderLanguage::TextureRepeat p_repeat);
+	// wgodot-changes::begin
+	String _get_sampler_name(ShaderLanguage::TextureFilter p_filter, ShaderLanguage::TextureRepeat p_repeat, const WGodotSamplerState &p_state = WGodotSamplerState());
+	// wgodot-changes::end
 
 	void _dump_function_deps(const ShaderLanguage::ShaderNode *p_node, const StringName &p_for_func, const HashMap<StringName, String> &p_func_code, String &r_to_add, HashSet<StringName> &added);
 	String _dump_node_code(const ShaderLanguage::Node *p_node, int p_level, GeneratedCode &r_gen_code, IdentifierActions &p_actions, const DefaultIdentifierActions &p_default_actions, bool p_assigning, bool p_scope = true);

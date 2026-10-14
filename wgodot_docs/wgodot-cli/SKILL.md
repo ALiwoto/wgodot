@@ -458,6 +458,17 @@ godot --wg action move_right --up
 
 These commands queue native Godot input but do not wait for a later rendered frame. Use `wait` when frame synchronization matters, then inspect the result with `observe`, `tree`, `get`, or `ss`. Add `--json` when structured acknowledgement or errors are useful.
 
+## Move project resources
+
+Move files or folders through the editor, preserving resource UIDs and updating dependencies, deferred resource paths, import settings and editor references:
+
+```powershell
+godot --wg move res://assets/fire.tres res://assets/fire/animation.tres --dry-run
+godot --wg move res://assets/fire.tres res://assets/fire/animation.tres --json
+```
+
+Supply additional source/destination pairs to move related resources together. Destinations must not exist; parent folders are created. Save open scripts and scenes first, and stop the game before reorganizing its assets. The command waits for imports after the move. `--dry-run` validates and reports the affected resources without changing files. External tools and unrecognized metadata formats still need their paths updated separately. If a filesystem write fails partway through, inspect the reported paths before retrying.
+
 ## Source declarations and semantic rename
 
 Resolve a registered class or qualified member to its declaration. Native Godot classes and built-in Variant types return their editor-help documentation instead of a source path:

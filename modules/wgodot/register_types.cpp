@@ -19,6 +19,8 @@
 #endif
 
 #ifdef TOOLS_ENABLED
+#include "core/object/class_db.h"
+#include "wgodot_particle_snapshot.h"
 #include "editor/editor_node.h"
 #include "editor/export/editor_export.h"
 #include "editor/plugins/editor_plugin.h"
@@ -34,6 +36,9 @@ static void _native_export_editor_init() {
 
 void initialize_wgodot_module(ModuleInitializationLevel p_level) {
 	if (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {
+#ifdef TOOLS_ENABLED
+		GDREGISTER_CLASS(WGPUParticleSnapshot);
+#endif
 		WGodotPreloads::initialize();
 #ifdef MODULE_GDSCRIPT_ENABLED
 		WGDREGISTER_INTERFACE(BinarySerializable, "Object", "modules/wgodot/native/binary_serializable.h");

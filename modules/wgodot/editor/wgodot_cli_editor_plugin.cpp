@@ -13,6 +13,7 @@
 #include "wgodot_debug_service.h"
 #include "wgodot_log_service.h"
 #include "wgodot_project_info.h"
+#include "wgodot_resource_move.h"
 #include "wgodot_source_info.h"
 
 #include "core/crypto/crypto_core.h"
@@ -376,7 +377,7 @@ void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
 		finish_connection(p_connection, WGodotFormatCLI::execute(options));
 		return;
 	}
-	if (command == "import" || command == "export-cpp") {
+	if (command == "import" || command == "export-cpp" || command == "move") {
 		const Dictionary response = p_connection.project_refresh.start();
 		if (!response.is_empty()) {
 			finish_connection(p_connection, response);
@@ -531,6 +532,24 @@ void WGodotCLIEditorPlugin::poll_waiting_connection(PendingConnection &p_connect
 	if (p_connection.wait_kind == PendingConnection::WAIT_PROJECT_REFRESH) {
 		Dictionary response = p_connection.project_refresh.poll();
 		if (!response.is_empty()) {
+			if (p_connection.editor_command == "move") {
+				if (p_connection.editor_result.is_empty() && (bool)response.get("ok", false)) {
+					response = WGodotResourceMove::execute(p_connection.editor_options);
+					if ((bool)response.get("ok", false) && !(bool)response.get("dry_run", false)) {
+						response["files_moved"] = true;
+						p_connection.editor_result = response;
+						response = p_connection.project_refresh.start(600000);
+						if (response.is_empty()) {
+							return;
+						}
+					}
+				} else if (!p_connection.editor_result.is_empty()) {
+					response.merge(p_connection.editor_result);
+					if (!(bool)response.get("ok", false)) {
+						response["message"] = String(response.get("message", String())) + " Files were moved; do not repeat the move. Resolve the refresh error and run 'wg import'.";
+					}
+				}
+			}
 			if ((bool)response.get("ok", false) && p_connection.editor_command == "export-cpp") {
 				response = WGodotCppExporter::execute(p_connection.editor_options);
 			}

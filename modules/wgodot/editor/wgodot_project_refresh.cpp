@@ -179,12 +179,12 @@ Dictionary WGodotProjectRefresh::reload_scenes() {
 	return result;
 }
 
-Dictionary WGodotProjectRefresh::start() {
+Dictionary WGodotProjectRefresh::start(uint64_t p_timeout_msec) {
 	EditorFileSystem *filesystem = EditorFileSystem::get_singleton();
 	if (!filesystem) {
 		return failure("filesystem_unavailable", "The editor filesystem is unavailable.");
 	}
-	deadline_msec = OS::get_singleton()->get_ticks_msec() + 60000;
+	deadline_msec = OS::get_singleton()->get_ticks_msec() + p_timeout_msec;
 	remember_scene_changes(); // Keep changes before the filesystem refresh replaces cached scenes.
 	filesystem->scan_changes();
 	return Dictionary();

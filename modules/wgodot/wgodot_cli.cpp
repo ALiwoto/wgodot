@@ -188,7 +188,8 @@ bool send_request(const EditorConnection &p_connection, const Dictionary &p_requ
 	r_sent = true;
 
 	const String command = p_request.get("command", String());
-	const uint64_t response_deadline = command == "status" ? p_discovery_deadline : OS::get_singleton()->get_ticks_msec() + (command == "export-cpp" ? EXPORT_TIMEOUT_MSEC : RESPONSE_TIMEOUT_MSEC);
+	const bool long_editor_operation = command == "export-cpp" || command == "move";
+	const uint64_t response_deadline = command == "status" ? p_discovery_deadline : OS::get_singleton()->get_ticks_msec() + (long_editor_operation ? EXPORT_TIMEOUT_MSEC : RESPONSE_TIMEOUT_MSEC);
 	return receive_response(p_connection.tcp, packet, r_response, response_deadline);
 }
 
@@ -198,6 +199,7 @@ void print_cli_help() {
 	print_line("Commands:");
 	print_line("  export-cpp <directory> [--target client|server] [--analyze-only] [--standalone] [--trace on|off|true|false] Generate native game C++; --standalone uses saved files without blocking the editor.");
 	print_line("  import                            Refresh/import assets and reload changed scenes in the running editor.");
+	print_line("  move <source> <destination> [...] [--dry-run] [--json]  Move project files/folders and update resource references.");
 	print_line("  status [--json] [--session <id>]  Show the matching editor and running game sessions.");
 	print_line("  run [--current|<scene>] [--json]  Run the main, current, or specified scene.");
 	print_line("  stop [--json]                     Stop the running game.");
@@ -601,6 +603,12 @@ int print_command_response(const Dictionary &p_response, bool p_json_output) {
 	} else if (command == "import") {
 		const PackedStringArray scenes = p_response.get("reloaded_scenes", PackedStringArray());
 		print_line(vformat("Project files refreshed and assets imported; %d changed scene(s) reloaded.", scenes.size()));
+	} else if (command == "move") {
+		const Array moves = p_response.get("moves", Array());
+		for (const Dictionary &move : moves) {
+			print_line(String(move["source"]) + " -> " + String(move["destination"]));
+		}
+		print_line(vformat("%s %d resource(s); %d file(s) reference them.", (bool)p_response.get("dry_run", false) ? "Would move" : "Moved", (int)p_response.get("resource_count", 0), (int)p_response.get("updated_files", 0)));
 	} else if (command == "tree") {
 		print_tree(p_response.get("tree", Array()));
 	} else if (command == "ss") {
@@ -1344,6 +1352,34 @@ bool execute_if_requested(int &r_exit_code) {
 			r_exit_code = 3;
 		} else {
 			r_exit_code = run_check_command();
+		}
+		return true;
+	}
+	if (command == "move") {
+		PackedStringArray paths;
+		bool dry_run = false;
+		bool json = false;
+		for (const String &argument : arguments) {
+			if (argument == "--dry-run") {
+				dry_run = true;
+			} else if (argument == "--json") {
+				json = true;
+			} else {
+				paths.push_back(argument);
+			}
+		}
+		if (paths.is_empty() || paths.size() % 2 != 0) {
+			print_line("wgodot: move expects source/destination pairs, with optional --dry-run and --json.");
+			r_exit_code = 2;
+		} else {
+			Dictionary options;
+			options["paths"] = paths;
+			options["dry_run"] = dry_run;
+			Dictionary request;
+			request["protocol"] = PROTOCOL_VERSION;
+			request["command"] = "move";
+			request["options"] = options;
+			r_exit_code = run_editor_command(request, json);
 		}
 		return true;
 	}

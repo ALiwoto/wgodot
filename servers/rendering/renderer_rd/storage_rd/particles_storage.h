@@ -42,11 +42,22 @@
 #include "servers/rendering/storage/particles_storage.h"
 #include "servers/rendering/storage/utilities.h"
 
+// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+class WGPUParticleSnapshot;
+#endif
+// wgodot-changes::end
+
 namespace RendererRD {
 
 class SortEffects;
 
 class ParticlesStorage : public RendererParticlesStorage {
+// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+	friend class ::WGPUParticleSnapshot;
+#endif
+// wgodot-changes::end
 private:
 	static ParticlesStorage *singleton;
 

@@ -234,6 +234,9 @@ const char *ShaderLanguage::token_names[TK_MAX] = {
 	"FILTER_LINEAR_MIPMAP_ANISOTROPIC",
 	"REPEAT_ENABLE",
 	"REPEAT_DISABLE",
+	// wgodot-changes::begin
+	"SAMPLER_STATE",
+	// wgodot-changes::end
 	"NO_STORAGE",
 	"NO_EDITOR",
 	"SHADER_TYPE",
@@ -412,6 +415,9 @@ const ShaderLanguage::KeyWord ShaderLanguage::keyword_list[] = {
 	{ TK_FILTER_NEAREST_MIPMAP_ANISOTROPIC, "filter_nearest_mipmap_anisotropic", CF_UNSPECIFIED, {}, {} },
 	{ TK_FILTER_LINEAR_MIPMAP_ANISOTROPIC, "filter_linear_mipmap_anisotropic", CF_UNSPECIFIED, {}, {} },
 	{ TK_REPEAT_ENABLE, "repeat_enable", CF_UNSPECIFIED, {}, {} },
+	// wgodot-changes::begin
+	{ TK_SAMPLER_STATE, "sampler_state", CF_UNSPECIFIED, {}, {} },
+	// wgodot-changes::end
 	{ TK_REPEAT_DISABLE, "repeat_disable", CF_UNSPECIFIED, {}, {} },
 
 	// usage flags
@@ -5796,7 +5802,9 @@ ShaderLanguage::ShaderNode::Uniform::Hint ShaderLanguage::_sanitize_hint(ShaderN
 	return ShaderNode::Uniform::HINT_NONE;
 }
 
-bool ShaderLanguage::_propagate_function_call_sampler_uniform_settings(const StringName &p_name, int p_argument, TextureFilter p_filter, TextureRepeat p_repeat, ShaderNode::Uniform::Hint p_hint) {
+// wgodot-changes::begin
+bool ShaderLanguage::_propagate_function_call_sampler_uniform_settings(const StringName &p_name, int p_argument, TextureFilter p_filter, TextureRepeat p_repeat, ShaderNode::Uniform::Hint p_hint, const WGodotSamplerState &p_sampler_state) {
+// wgodot-changes::end
 	for (int i = 0; i < shader->vfunctions.size(); i++) {
 		if (shader->vfunctions[i].name == p_name) {
 			ERR_FAIL_INDEX_V(p_argument, shader->vfunctions[i].function->arguments.size(), false);
@@ -5806,7 +5814,9 @@ bool ShaderLanguage::_propagate_function_call_sampler_uniform_settings(const Str
 				return false;
 			} else if (arg->tex_argument_check) {
 				// Was checked, verify that filter, repeat, and hint are the same.
-				if (arg->tex_argument_filter == p_filter && arg->tex_argument_repeat == p_repeat && arg->tex_hint == _sanitize_hint(p_hint)) {
+				// wgodot-changes::begin
+				if (arg->tex_argument_filter == p_filter && arg->tex_argument_repeat == p_repeat && arg->tex_hint == _sanitize_hint(p_hint) && arg->tex_sampler_state == p_sampler_state) {
+				// wgodot-changes::end
 					return true;
 				} else {
 					_set_error(vformat(RTR("Sampler argument %d of function '%s' called more than once using textures that differ in either filter, repeat, or texture hint setting."), p_argument, String(p_name)));
@@ -5817,9 +5827,14 @@ bool ShaderLanguage::_propagate_function_call_sampler_uniform_settings(const Str
 				arg->tex_argument_filter = p_filter;
 				arg->tex_argument_repeat = p_repeat;
 				arg->tex_hint = _sanitize_hint(p_hint);
+				// wgodot-changes::begin
+				arg->tex_sampler_state = p_sampler_state;
+				// wgodot-changes::end
 				for (KeyValue<StringName, HashSet<int>> &E : arg->tex_argument_connect) {
 					for (const int &F : E.value) {
-						if (!_propagate_function_call_sampler_uniform_settings(E.key, F, p_filter, p_repeat, p_hint)) {
+						// wgodot-changes::begin
+						if (!_propagate_function_call_sampler_uniform_settings(E.key, F, p_filter, p_repeat, p_hint, p_sampler_state)) {
+						// wgodot-changes::end
 							return false;
 						}
 					}
@@ -6665,7 +6680,9 @@ ShaderLanguage::Node *ShaderLanguage::_parse_expression(BlockNode *p_block, cons
 											}
 
 											//propagate
-											if (!_propagate_function_call_sampler_uniform_settings(name, i, u->filter, u->repeat, u->hint)) {
+											// wgodot-changes::begin
+											if (!_propagate_function_call_sampler_uniform_settings(name, i, u->filter, u->repeat, u->hint, u->sampler_state)) {
+											// wgodot-changes::end
 												return nullptr;
 											}
 										} else if (p_function_info.built_ins.has(varname)) {
@@ -9933,7 +9950,9 @@ Error ShaderLanguage::_parse_shader(const HashMap<StringName, FunctionInfo> &p_f
 									TK_FILTER_LINEAR, TK_FILTER_LINEAR_MIPMAP, TK_FILTER_LINEAR_MIPMAP_ANISOTROPIC,
 									TK_FILTER_NEAREST, TK_FILTER_NEAREST_MIPMAP, TK_FILTER_NEAREST_MIPMAP_ANISOTROPIC
 								};
-								if (!supported_hints.has(tk.type)) {
+								// wgodot-changes::begin
+								if (tk.type != TK_SAMPLER_STATE && !supported_hints.has(tk.type)) {
+								// wgodot-changes::end
 									_set_error(RTR("This hint is not supported for uniform arrays."));
 									return ERR_PARSE_ERROR;
 								}
@@ -9945,6 +9964,17 @@ Error ShaderLanguage::_parse_shader(const HashMap<StringName, FunctionInfo> &p_f
 							PropertyUsageFlags unset_property_usage = PROPERTY_USAGE_NONE;
 
 							switch (tk.type) {
+								// wgodot-changes::begin
+								case TK_SAMPLER_STATE: {
+									if (!is_sampler_type(type)) {
+										_set_error("sampler_state requires a sampler uniform.");
+										return ERR_PARSE_ERROR;
+									}
+									if (_parse_sampler_state(uniform.sampler_state) != OK) {
+										return ERR_PARSE_ERROR;
+									}
+								} break;
+								// wgodot-changes::end
 								case TK_HINT_SOURCE_COLOR: {
 									if (type != TYPE_VEC3 && type != TYPE_VEC4 && !is_sampler_type(type)) {
 										_set_error(vformat(RTR("Source color hint is for '%s', '%s' or sampler types only."), "vec3", "vec4"));
@@ -10295,6 +10325,18 @@ Error ShaderLanguage::_parse_shader(const HashMap<StringName, FunctionInfo> &p_f
 
 						} while (tk.type == TK_COMMA);
 					}
+					// wgodot-changes::begin
+					if (uniform.sampler_state.enabled) {
+						bool builtin_texture = uniform.hint == ShaderNode::Uniform::HINT_SCREEN_TEXTURE ||
+								uniform.hint == ShaderNode::Uniform::HINT_DEPTH_TEXTURE ||
+								uniform.hint == ShaderNode::Uniform::HINT_NORMAL_ROUGHNESS_TEXTURE ||
+								(uniform.hint >= ShaderNode::Uniform::HINT_BLIT_SOURCE0 && uniform.hint <= ShaderNode::Uniform::HINT_BLIT_SOURCE3);
+						if (uniform.filter == FILTER_DEFAULT || uniform.repeat != REPEAT_DEFAULT || builtin_texture) {
+							_set_error("sampler_state requires an explicit filter and cannot combine with repeat or built-in texture hints.");
+							return ERR_PARSE_ERROR;
+						}
+					}
+					// wgodot-changes::end
 
 					if (uniform_scope == ShaderNode::Uniform::SCOPE_INSTANCE) {
 						if (custom_instance_index >= 0) {
@@ -12224,6 +12266,9 @@ Error ShaderLanguage::complete(const String &p_code, const ShaderCompileInfo &p_
 				}
 				if (current_uniform_repeat == REPEAT_DEFAULT) {
 					options.push_back("repeat_enable");
+					// wgodot-changes::begin
+					options.push_back("sampler_state(repeat, repeat, repeat, 1)");
+					// wgodot-changes::end
 					options.push_back("repeat_disable");
 				}
 				if (completion_base_array) {

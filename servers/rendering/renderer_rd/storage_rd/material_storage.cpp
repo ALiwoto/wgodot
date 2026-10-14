@@ -1251,6 +1251,12 @@ bool MaterialStorage::MaterialData::update_parameters_uniform_set(const HashMap<
 		const RID *textures = texture_cache.ptrw();
 		for (int i = 0, k = 0; i < p_texture_uniforms.size(); i++) {
 			const int array_size = p_texture_uniforms[i].array_size;
+			// wgodot-changes::begin
+			if (p_texture_uniforms[i].sampler_binding >= 0) {
+				RID sampler = MaterialStorage::get_singleton()->sampler_rd_get_authored(p_texture_uniforms[i].filter, p_texture_uniforms[i].sampler_state);
+				uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_SAMPLER, p_texture_uniforms[i].sampler_binding, sampler));
+			}
+			// wgodot-changes::end
 
 			RD::Uniform u;
 			u.uniform_type = RD::UNIFORM_TYPE_TEXTURE;
@@ -1554,6 +1560,11 @@ MaterialStorage::~MaterialStorage() {
 
 	//def samplers
 	samplers_rd_free(default_samplers);
+	// wgodot-changes::begin
+	for (const KeyValue<uint32_t, RID> &sampler : authored_samplers) {
+		RD::get_singleton()->free_rid(sampler.value);
+	}
+	// wgodot-changes::end
 
 	singleton = nullptr;
 }

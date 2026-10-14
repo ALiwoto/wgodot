@@ -87,6 +87,9 @@ public:
 };
 
 class FileSystemDock : public EditorDock {
+	// wgodot-changes::begin
+	friend class WGodotResourceMove;
+	// wgodot-changes::end
 	GDCLASS(FileSystemDock, EditorDock);
 
 public:

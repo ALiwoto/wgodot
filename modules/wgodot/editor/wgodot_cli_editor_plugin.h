@@ -53,6 +53,7 @@ class WGodotCLIEditorPlugin : public EditorPlugin {
 		WGodotProfiler profiler;
 		String editor_command;
 		Dictionary editor_options;
+		Dictionary editor_result;
 		WaitKind wait_kind = WAIT_NONE;
 		bool return_on_debug_break = false;
 		bool game_debug_break_observed = false;

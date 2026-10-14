@@ -15,6 +15,6 @@ class WGodotProjectRefresh {
 public:
 	static void resources_changed(const Vector<String> &p_paths);
 	// Empty results mean the refresh started successfully, or is still pending.
-	Dictionary start();
+	Dictionary start(uint64_t p_timeout_msec = 60000);
 	Dictionary poll();
 };

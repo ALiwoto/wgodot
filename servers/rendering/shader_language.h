@@ -39,6 +39,9 @@
 #include "core/templates/safe_refcount.h"
 #include "core/typedefs.h"
 #include "core/variant/variant.h"
+// wgodot-changes::begin
+#include "wgodot_sampler_state.h"
+// wgodot-changes::end
 
 #ifdef TOOLS_ENABLED
 #include "core/object/editor_language.h"
@@ -200,6 +203,9 @@ public:
 		TK_FILTER_LINEAR_MIPMAP_ANISOTROPIC,
 		TK_REPEAT_ENABLE,
 		TK_REPEAT_DISABLE,
+		// wgodot-changes::begin
+		TK_SAMPLER_STATE,
+		// wgodot-changes::end
 		TK_HINT_NO_STORAGE,
 		TK_HINT_NO_EDITOR,
 		TK_SHADER_TYPE,
@@ -714,6 +720,9 @@ public:
 			bool use_color = false;
 			TextureFilter filter = FILTER_DEFAULT;
 			TextureRepeat repeat = REPEAT_DEFAULT;
+			// wgodot-changes::begin
+			WGodotSamplerState sampler_state;
+			// wgodot-changes::end
 			float hint_range[3];
 			PackedStringArray hint_enum_names;
 			uint32_t property_usage = PROPERTY_USAGE_DEFAULT;
@@ -760,6 +769,9 @@ public:
 			bool tex_argument_check = false;
 			TextureFilter tex_argument_filter;
 			TextureRepeat tex_argument_repeat;
+			// wgodot-changes::begin
+			WGodotSamplerState tex_sampler_state;
+			// wgodot-changes::end
 			bool tex_builtin_check = false;
 			StringName tex_builtin;
 			ShaderNode::Uniform::Hint tex_hint = ShaderNode::Uniform::HINT_NONE;
@@ -1226,7 +1238,10 @@ private:
 	bool _validate_function_call(BlockNode *p_block, const FunctionInfo &p_function_info, OperatorNode *p_func, DataType *r_ret_type, StringName *r_ret_type_str, bool *r_is_custom_function = nullptr);
 	bool _parse_function_arguments(BlockNode *p_block, const FunctionInfo &p_function_info, OperatorNode *p_func, int *r_complete_arg = nullptr);
 	ShaderNode::Uniform::Hint _sanitize_hint(ShaderNode::Uniform::Hint p_hint);
-	bool _propagate_function_call_sampler_uniform_settings(const StringName &p_name, int p_argument, TextureFilter p_filter, TextureRepeat p_repeat, ShaderNode::Uniform::Hint p_hint);
+	// wgodot-changes::begin
+	Error _parse_sampler_state(WGodotSamplerState &r_state);
+	bool _propagate_function_call_sampler_uniform_settings(const StringName &p_name, int p_argument, TextureFilter p_filter, TextureRepeat p_repeat, ShaderNode::Uniform::Hint p_hint, const WGodotSamplerState &p_sampler_state);
+	// wgodot-changes::end
 	bool _propagate_function_call_sampler_builtin_reference(const StringName &p_name, int p_argument, const StringName &p_builtin);
 	bool _validate_varying_assign(ShaderNode::Varying &p_varying, String *r_message);
 	bool _check_node_constness(const Node *p_node) const;

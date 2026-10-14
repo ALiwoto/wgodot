@@ -275,7 +275,12 @@ static String get_constant_text(SL::DataType p_type, const Vector<SL::Scalar> &p
 	}
 }
 
-String ShaderCompiler::_get_sampler_name(ShaderLanguage::TextureFilter p_filter, ShaderLanguage::TextureRepeat p_repeat) {
+// wgodot-changes::begin
+String ShaderCompiler::_get_sampler_name(ShaderLanguage::TextureFilter p_filter, ShaderLanguage::TextureRepeat p_repeat, const WGodotSamplerState &p_state) {
+	if (p_state.enabled) {
+		return p_state.name(p_filter);
+	}
+// wgodot-changes::end
 	if (p_filter == ShaderLanguage::FILTER_DEFAULT) {
 		ERR_FAIL_COND_V(actions.default_filter == ShaderLanguage::FILTER_DEFAULT, String());
 		p_filter = actions.default_filter;
@@ -528,6 +533,10 @@ String ShaderCompiler::_dump_node_code(const SL::Node *p_node, int p_level, Gene
 
 			int max_texture_uniforms = 0;
 			int max_uniforms = 0;
+			// wgodot-changes::begin
+			int sampler_binding_base = 0;
+			HashMap<uint32_t, int> authored_sampler_bindings;
+			// wgodot-changes::end
 
 			for (const KeyValue<StringName, SL::ShaderNode::Uniform> &E : pnode->uniforms) {
 				if (SL::is_sampler_type(E.value.type)) {
@@ -541,6 +550,9 @@ String ShaderCompiler::_dump_node_code(const SL::Node *p_node, int p_level, Gene
 						continue; // Don't create uniforms in the generated code for these.
 					}
 					max_texture_uniforms++;
+					// wgodot-changes::begin
+					sampler_binding_base = MAX(sampler_binding_base, E.value.texture_binding + MAX(E.value.array_size, 1));
+					// wgodot-changes::end
 				} else {
 					if (E.value.scope == SL::ShaderNode::Uniform::SCOPE_INSTANCE) {
 						continue; // Instances are indexed directly, don't need index uniforms.
@@ -629,6 +641,21 @@ String ShaderCompiler::_dump_node_code(const SL::Node *p_node, int p_level, Gene
 					texture.repeat = uniform.repeat;
 					texture.global = uniform.scope == ShaderLanguage::ShaderNode::Uniform::SCOPE_GLOBAL;
 					texture.array_size = uniform.array_size;
+					// wgodot-changes::begin
+					texture.sampler_state = uniform.sampler_state;
+					if (uniform.sampler_state.enabled) {
+						uint32_t key = uniform.sampler_state.key(uniform.filter);
+						if (!authored_sampler_bindings.has(key)) {
+							int binding = actions.base_texture_binding_index + sampler_binding_base + authored_sampler_bindings.size();
+							authored_sampler_bindings.insert(key, binding);
+							texture.sampler_binding = binding;
+							String declaration = "layout(set = " + itos(actions.texture_layout_set) + ", binding = " + itos(binding) + ") uniform sampler " + uniform.sampler_state.name(uniform.filter) + ";\n";
+							for (int stage = 0; stage < STAGE_MAX; stage++) {
+								r_gen_code.stage_globals[stage] += declaration;
+							}
+						}
+					}
+					// wgodot-changes::end
 					if (texture.global) {
 						r_gen_code.uses_global_textures = true;
 					}
@@ -1324,7 +1351,9 @@ String ShaderCompiler::_dump_node_code(const SL::Node *p_node, int p_level, Gene
 										} else if (u.hint == ShaderLanguage::ShaderNode::Uniform::HINT_NORMAL_ROUGHNESS_TEXTURE) {
 											is_normal_roughness_texture = true;
 										}
-										sampler_name = _get_sampler_name(u.filter, u.repeat);
+										// wgodot-changes::begin
+										sampler_name = _get_sampler_name(u.filter, u.repeat, u.sampler_state);
+										// wgodot-changes::end
 									} else {
 										bool found = false;
 
@@ -1344,7 +1373,9 @@ String ShaderCompiler::_dump_node_code(const SL::Node *p_node, int p_level, Gene
 													} else if (function->arguments[j].tex_hint == ShaderLanguage::ShaderNode::Uniform::HINT_NORMAL_ROUGHNESS_TEXTURE) {
 														is_normal_roughness_texture = true;
 													}
-													sampler_name = _get_sampler_name(function->arguments[j].tex_argument_filter, function->arguments[j].tex_argument_repeat);
+													// wgodot-changes::begin
+													sampler_name = _get_sampler_name(function->arguments[j].tex_argument_filter, function->arguments[j].tex_argument_repeat, function->arguments[j].tex_sampler_state);
+													// wgodot-changes::end
 													found = true;
 													break;
 												}
@@ -1666,6 +1697,13 @@ Error ShaderCompiler::compile(RSE::ShaderMode p_mode, const String &p_code, Iden
 	fragment_varyings.clear();
 
 	shader = parser.get_shader();
+	// wgodot-changes::begin
+	if (RS::get_singleton()->is_low_end()) {
+		for (const KeyValue<StringName, SL::ShaderNode::Uniform> &uniform : shader->uniforms) {
+			ERR_FAIL_COND_V_MSG(uniform.value.sampler_state.enabled, ERR_UNAVAILABLE, "sampler_state requires a RenderingDevice renderer.");
+		}
+	}
+	// wgodot-changes::end
 	function = nullptr;
 	// Return value only relevant within nested calls.
 	_ALLOW_DISCARD_ _dump_node_code(shader, 1, r_gen_code, *p_actions, actions, false);

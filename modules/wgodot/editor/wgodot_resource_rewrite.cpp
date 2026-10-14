@@ -1,5 +1,6 @@
 // wgodot-changes::file
 #include "wgodot_resource_rewrite.h"
+
 #include "core/string/string_builder.h"
 
 namespace {
@@ -85,22 +86,39 @@ String WGodotResourceRewrite::text(const String &p_text, const String &p_source,
 	// Rewrite complete string tokens, preserving all other serialized values.
 	// Shader include operands and external resource paths may be relative.
 	StringBuilder result;
+	const bool script = p_source.get_extension() == "gd";
+	const bool moved_source = p_path(p_source) != p_source;
+	const char32_t *characters = p_text.ptr();
+	const int length = p_text.length();
 	int copied = 0;
-	for (int i = 0; i < p_text.length(); i++) {
-		if (p_text[i] != '"') {
+	for (int i = 0; i < length; i++) {
+		if (script && characters[i] == '#') {
+			while (i < length && characters[i] != '\n') {
+				i++;
+			}
 			continue;
 		}
-		const int begin = i++;
-		while (i < p_text.length() && p_text[i] != '"') {
-			if (p_text[i] == '\\') {
+		if (characters[i] != '"' && (!script || characters[i] != '\'')) {
+			continue;
+		}
+		const char32_t quote = characters[i];
+		const int quote_length = script && i + 2 < length && characters[i + 1] == quote && characters[i + 2] == quote ? 3 : 1;
+		const int begin = i;
+		i += quote_length;
+		while (i < length) {
+			if (characters[i] == quote && (quote_length == 1 || (i + 2 < length && characters[i + 1] == quote && characters[i + 2] == quote))) {
+				break;
+			}
+			if (characters[i] == '\\') {
 				i++;
 			}
 			i++;
 		}
-		if (i >= p_text.length()) {
+		if (i >= length) {
 			break;
 		}
-		const String value = p_text.substr(begin + 1, i - begin - 1).c_unescape();
+		const String value = p_text.substr(begin + quote_length, i - begin - quote_length).c_unescape();
+		i += quote_length - 1;
 		String replacement = value;
 		const int line_begin = p_text.rfind("\n", begin) + 1;
 		const String prefix = p_text.substr(line_begin, begin - line_begin).strip_edges();
@@ -108,18 +126,22 @@ String WGodotResourceRewrite::text(const String &p_text, const String &p_source,
 			continue; // UID attributes remain numeric identities; the UID cache is rewritten.
 		} else if (value.begins_with("res://") || value.begins_with("uid://")) {
 			replacement = WGodotResourceRewrite::value(value, PropertyInfo(), p_path);
-		} else if ((prefix.ends_with("path=") && prefix.begins_with("[ext_resource")) || prefix == "#include") {
-			replacement = p_path(p_source.get_base_dir().path_join(value).simplify_path());
+		} else if ((prefix.ends_with("path=") && prefix.begins_with("[ext_resource")) || prefix == "#include" || (script && (prefix.ends_with("preload(") || prefix.ends_with("load(") || prefix == "extends"))) {
+			const String resolved = p_source.get_base_dir().path_join(value).simplify_path();
+			const String mapped = p_path(resolved);
+			if (mapped != resolved || moved_source) {
+				replacement = mapped;
+			}
 		} else if (value.contains("#include")) {
 			replacement = WGodotResourceRewrite::text(value, p_source, p_path);
 		}
 		if (replacement != value) {
 			result += p_text.substr(copied, begin - copied);
-			result += "\"" + replacement.c_escape() + "\"";
+			const String delimiter = String::chr(quote).repeat(quote_length);
+			result += delimiter + replacement.c_escape() + delimiter;
 			copied = i + 1;
 		}
 	}
 	result += p_text.substr(copied);
 	return result.as_string();
 }
-

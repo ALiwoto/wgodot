@@ -194,6 +194,9 @@ private:
 	/* Samplers */
 
 	Samplers default_samplers;
+	// wgodot-changes::begin
+	HashMap<uint32_t, RID> authored_samplers;
+	// wgodot-changes::end
 
 	/* Buffers */
 
@@ -421,6 +424,9 @@ public:
 #endif
 
 	/* Samplers */
+	// wgodot-changes::begin
+	RID sampler_rd_get_authored(ShaderLanguage::TextureFilter p_filter, const WGodotSamplerState &p_state);
+	// wgodot-changes::end
 
 	Samplers samplers_rd_allocate(float p_mipmap_bias = 0.0f, RSE::ViewportAnisotropicFiltering anisotropic_filtering_level = RSE::ViewportAnisotropicFiltering::VIEWPORT_ANISOTROPY_4X) const;
 	void samplers_rd_free(Samplers &p_samplers) const;
