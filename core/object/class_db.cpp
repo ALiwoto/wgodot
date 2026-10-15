@@ -33,6 +33,9 @@
 #include "core/config/engine.h"
 #include "core/io/resource_loader.h"
 #include "core/object/script_language.h"
+// wgodot-changes::begin
+#include "core/os/mutex.h"
+// wgodot-changes::end
 #include "core/templates/sort_array.h"
 #include "core/version.h"
 
@@ -67,6 +70,11 @@ ClassDB::APIType ClassDB::get_current_api() {
 HashMap<StringName, ClassDB::ClassInfo> ClassDB::classes;
 HashMap<StringName, StringName> ClassDB::resource_base_extensions;
 HashMap<StringName, StringName> ClassDB::compat_classes;
+
+// wgodot-changes::begin
+// Resource importers and the authored-resource cache query defaults from workers.
+static Mutex default_values_mutex;
+// wgodot-changes::end
 
 #ifdef TOOLS_ENABLED
 HashMap<StringName, ObjectGDExtension> ClassDB::placeholder_extensions;
@@ -1384,6 +1392,9 @@ void ClassDB::add_property(const StringName &p_class, const PropertyInfo &p_pinf
 }
 
 void ClassDB::set_property_default_value(const StringName &p_class, const StringName &p_name, const Variant &p_default) {
+	// wgodot-changes::begin
+	MutexLock lock(default_values_mutex);
+	// wgodot-changes::end
 	if (!default_values.has(p_class)) {
 		default_values[p_class] = HashMap<StringName, Variant>();
 	}
@@ -1914,10 +1925,16 @@ HashMap<StringName, HashMap<StringName, Variant>> ClassDB::default_values;
 HashSet<StringName> ClassDB::default_values_cached;
 
 Variant ClassDB::class_get_default_property_value(const StringName &p_class, const StringName &p_property, bool *r_valid) {
+	// wgodot-changes::begin
+	MutexLock lock(default_values_mutex);
+	// wgodot-changes::end
 	if (!default_values_cached.has(p_class)) {
-		if (!default_values.has(p_class)) {
-			default_values[p_class] = HashMap<StringName, Variant>();
-		}
+		// wgodot-changes::begin
+		HashMap<StringName, Variant> values(default_values[p_class]);
+		// Constructors/getters can enter other engine systems or query defaults.
+		// Publish the completed cache under the lock, without holding it here.
+		lock.temp_unlock();
+		// wgodot-changes::end
 
 		Object *c = nullptr;
 		bool cleanup_c = false;
@@ -1935,10 +1952,12 @@ Variant ClassDB::class_get_default_property_value(const StringName &p_class, con
 			c->get_property_list(&plist);
 			for (const PropertyInfo &E : plist) {
 				if (E.usage & (PROPERTY_USAGE_STORAGE | PROPERTY_USAGE_EDITOR)) {
-					if (!default_values[p_class].has(E.name)) {
+					// wgodot-changes::begin
+					if (!values.has(E.name)) {
 						Variant v = c->get(E.name);
-						default_values[p_class][E.name] = v;
+						values[E.name] = v;
 					}
+					// wgodot-changes::end
 				}
 			}
 
@@ -1947,7 +1966,19 @@ Variant ClassDB::class_get_default_property_value(const StringName &p_class, con
 			}
 		}
 
-		default_values_cached.insert(p_class);
+		// wgodot-changes::begin
+		lock.temp_relock();
+		if (!default_values_cached.has(p_class)) {
+			HashMap<StringName, Variant> &defaults = default_values[p_class];
+			for (const KeyValue<StringName, Variant> &E : values) {
+				// Keep explicit defaults registered while the instance was inspected.
+				if (!defaults.has(E.key)) {
+					defaults[E.key] = E.value;
+				}
+			}
+			default_values_cached.insert(p_class);
+		}
+		// wgodot-changes::end
 	}
 
 	if (!default_values.has(p_class)) {
@@ -2045,8 +2076,13 @@ void ClassDB::unregister_extension_class(const StringName &p_class) {
 	// Leak the GDType until exit so potential consumers don't have dangling pointers.
 	gdtype_leaked_autorelease_pool.push_back(c->gdtype);
 	classes.erase(p_class);
-	default_values_cached.erase(p_class);
-	default_values.erase(p_class);
+	// wgodot-changes::begin
+	{
+		MutexLock lock(default_values_mutex);
+		default_values_cached.erase(p_class);
+		default_values.erase(p_class);
+	}
+	// wgodot-changes::end
 #ifdef TOOLS_ENABLED
 	placeholder_extensions.erase(p_class);
 #endif
@@ -2081,6 +2117,9 @@ Object *ClassDB::_instantiate_allow_unexposed(const StringName &p_class) {
 }
 
 void ClassDB::cleanup_defaults() {
+	// wgodot-changes::begin
+	MutexLock lock(default_values_mutex);
+	// wgodot-changes::end
 	default_values.clear();
 	default_values_cached.clear();
 }
