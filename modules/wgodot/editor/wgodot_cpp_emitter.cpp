@@ -766,6 +766,7 @@ Error WGodotCppEmitter::write(const String &p_directory) const {
 		resource_paths[entry.key] = entry.value;
 	}
 	manifest["resource_paths"] = resource_paths;
+	manifest["resource_selection_fingerprint"] = resource_selection_fingerprint;
 	Ref<FileAccess> manifest_file = FileAccess::open(manifest_path, FileAccess::WRITE, &error);
 	ERR_FAIL_COND_V(error != OK, error);
 	manifest_file->store_string(JSON::stringify(manifest, "\t", true) + "\n");

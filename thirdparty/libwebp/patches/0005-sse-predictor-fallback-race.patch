@@ -1,0 +1,101 @@
+diff --git a/thirdparty/libwebp/src/dsp/lossless_enc_sse2.c b/thirdparty/libwebp/src/dsp/lossless_enc_sse2.c
+index 88276f4f..9ed6fc69 100644
+--- a/thirdparty/libwebp/src/dsp/lossless_enc_sse2.c
++++ b/thirdparty/libwebp/src/dsp/lossless_enc_sse2.c
+@@ -712,22 +712,20 @@ WEBP_TSAN_IGNORE_FUNCTION void VP8LEncDspInitSSE2(void) {
+   VP8LVectorMismatch = VectorMismatch_SSE2;
+   VP8LBundleColorMap = BundleColorMap_SSE2;
+ 
+-  VP8LPredictorsSub[0] = PredictorSub0_SSE2;
+-  VP8LPredictorsSub[1] = PredictorSub1_SSE2;
+-  VP8LPredictorsSub[2] = PredictorSub2_SSE2;
+-  VP8LPredictorsSub[3] = PredictorSub3_SSE2;
+-  VP8LPredictorsSub[4] = PredictorSub4_SSE2;
+-  VP8LPredictorsSub[5] = PredictorSub5_SSE2;
+-  VP8LPredictorsSub[6] = PredictorSub6_SSE2;
+-  VP8LPredictorsSub[7] = PredictorSub7_SSE2;
+-  VP8LPredictorsSub[8] = PredictorSub8_SSE2;
+-  VP8LPredictorsSub[9] = PredictorSub9_SSE2;
+-  VP8LPredictorsSub[10] = PredictorSub10_SSE2;
+-  VP8LPredictorsSub[11] = PredictorSub11_SSE2;
+-  VP8LPredictorsSub[12] = PredictorSub12_SSE2;
+-  VP8LPredictorsSub[13] = PredictorSub13_SSE2;
+-  VP8LPredictorsSub[14] = PredictorSub0_SSE2;  // <- padding security sentinels
+-  VP8LPredictorsSub[15] = PredictorSub0_SSE2;
++  // wgodot-changes::begin
++  // Concurrent initialization can replace the dispatch table with AVX2 before
++  // it is copied into the SSE fallback table, causing recursive fallback calls.
++  // Publish both tables from immutable SSE2 entries instead.
++  static const VP8LPredictorAddSubFunc predictors[16] = {
++      PredictorSub0_SSE2,  PredictorSub1_SSE2,  PredictorSub2_SSE2,
++      PredictorSub3_SSE2,  PredictorSub4_SSE2,  PredictorSub5_SSE2,
++      PredictorSub6_SSE2,  PredictorSub7_SSE2,  PredictorSub8_SSE2,
++      PredictorSub9_SSE2,  PredictorSub10_SSE2, PredictorSub11_SSE2,
++      PredictorSub12_SSE2, PredictorSub13_SSE2,
++      PredictorSub0_SSE2, PredictorSub0_SSE2  // padding security sentinels
++  };
++  memcpy(VP8LPredictorsSub, predictors, sizeof(predictors));
++  // wgodot-changes::end
+ 
+   // SSE exports for AVX and above.
+   VP8LSubtractGreenFromBlueAndRed_SSE = SubtractGreenFromBlueAndRed_SSE2;
+@@ -736,7 +734,9 @@ WEBP_TSAN_IGNORE_FUNCTION void VP8LEncDspInitSSE2(void) {
+   VP8LCollectColorRedTransforms_SSE = CollectColorRedTransforms_SSE2;
+   VP8LBundleColorMap_SSE = BundleColorMap_SSE2;
+ 
+-  memcpy(VP8LPredictorsSub_SSE, VP8LPredictorsSub, sizeof(VP8LPredictorsSub));
++  // wgodot-changes::begin
++  memcpy(VP8LPredictorsSub_SSE, predictors, sizeof(predictors));
++  // wgodot-changes::end
+ }
+ 
+ #else  // !WEBP_USE_SSE2
+diff --git a/thirdparty/libwebp/src/dsp/lossless_sse2.c b/thirdparty/libwebp/src/dsp/lossless_sse2.c
+index 3c6608be..6f36b3cb 100644
+--- a/thirdparty/libwebp/src/dsp/lossless_sse2.c
++++ b/thirdparty/libwebp/src/dsp/lossless_sse2.c
+@@ -689,20 +689,17 @@ WEBP_TSAN_IGNORE_FUNCTION void VP8LDspInitSSE2(void) {
+   VP8LPredictors[12] = Predictor12_SSE2;
+   VP8LPredictors[13] = Predictor13_SSE2;
+ 
+-  VP8LPredictorsAdd[0] = PredictorAdd0_SSE2;
+-  VP8LPredictorsAdd[1] = PredictorAdd1_SSE2;
+-  VP8LPredictorsAdd[2] = PredictorAdd2_SSE2;
+-  VP8LPredictorsAdd[3] = PredictorAdd3_SSE2;
+-  VP8LPredictorsAdd[4] = PredictorAdd4_SSE2;
+-  VP8LPredictorsAdd[5] = PredictorAdd5_SSE2;
+-  VP8LPredictorsAdd[6] = PredictorAdd6_SSE2;
+-  VP8LPredictorsAdd[7] = PredictorAdd7_SSE2;
+-  VP8LPredictorsAdd[8] = PredictorAdd8_SSE2;
+-  VP8LPredictorsAdd[9] = PredictorAdd9_SSE2;
+-  VP8LPredictorsAdd[10] = PredictorAdd10_SSE2;
+-  VP8LPredictorsAdd[11] = PredictorAdd11_SSE2;
+-  VP8LPredictorsAdd[12] = PredictorAdd12_SSE2;
+-  VP8LPredictorsAdd[13] = PredictorAdd13_SSE2;
++  // wgodot-changes::begin
++  // Keep fallback entries independent of dispatch changes in another thread.
++  static const VP8LPredictorAddSubFunc predictors[14] = {
++      PredictorAdd0_SSE2,  PredictorAdd1_SSE2,  PredictorAdd2_SSE2,
++      PredictorAdd3_SSE2,  PredictorAdd4_SSE2,  PredictorAdd5_SSE2,
++      PredictorAdd6_SSE2,  PredictorAdd7_SSE2,  PredictorAdd8_SSE2,
++      PredictorAdd9_SSE2,  PredictorAdd10_SSE2, PredictorAdd11_SSE2,
++      PredictorAdd12_SSE2, PredictorAdd13_SSE2
++  };
++  memcpy(VP8LPredictorsAdd, predictors, sizeof(predictors));
++  // wgodot-changes::end
+ 
+   VP8LAddGreenToBlueAndRed = AddGreenToBlueAndRed_SSE2;
+   VP8LTransformColorInverse = TransformColorInverse_SSE2;
+@@ -714,7 +711,11 @@ WEBP_TSAN_IGNORE_FUNCTION void VP8LDspInitSSE2(void) {
+   VP8LConvertBGRAToBGR = ConvertBGRAToBGR_SSE2;
+ 
+   // SSE exports for AVX and above.
+-  memcpy(VP8LPredictorsAdd_SSE, VP8LPredictorsAdd, sizeof(VP8LPredictorsAdd));
++  // wgodot-changes::begin
++  memcpy(VP8LPredictorsAdd_SSE, predictors, sizeof(predictors));
++  VP8LPredictorsAdd_SSE[14] = VP8LPredictorsAdd_C[14];
++  VP8LPredictorsAdd_SSE[15] = VP8LPredictorsAdd_C[15];
++  // wgodot-changes::end
+ 
+   VP8LAddGreenToBlueAndRed_SSE = AddGreenToBlueAndRed_SSE2;
+   VP8LTransformColorInverse_SSE = TransformColorInverse_SSE2;

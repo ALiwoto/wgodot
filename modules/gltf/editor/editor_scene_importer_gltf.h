@@ -31,6 +31,9 @@
 #pragma once
 
 #include "editor/import/3d/resource_importer_scene.h"
+// wgodot-changes::begin
+#include "core/object/worker_thread_pool.h"
+// wgodot-changes::end
 
 class Animation;
 class Node;
@@ -38,7 +41,27 @@ class Node;
 class EditorSceneFormatImporterGLTF : public EditorSceneFormatImporter {
 	GDCLASS(EditorSceneFormatImporterGLTF, EditorSceneFormatImporter);
 
+	// wgodot-changes::begin
+	struct PreparedScene {
+		String path;
+		uint32_t flags = 0;
+		HashMap<StringName, Variant> options;
+		List<String> missing_dependencies;
+		Error error = OK;
+		Node *scene = nullptr;
+		WorkerThreadPool::TaskID task = WorkerThreadPool::INVALID_TASK_ID;
+		EditorSceneFormatImporterGLTF *importer = nullptr;
+	};
+	HashMap<String, PreparedScene *> prepared_scenes;
+	static void _prepare_scene(void *p_data);
+	Node *_import_scene(const String &p_path, uint32_t p_flags, const HashMap<StringName, Variant> &p_options, List<String> *r_missing_deps, Error *r_err);
+	// wgodot-changes::end
+
 public:
+	// wgodot-changes::begin
+	void prepare_import_scene(const String &p_path, uint32_t p_flags, const HashMap<StringName, Variant> &p_options) override;
+	void finish_prepared_scenes() override;
+	// wgodot-changes::end
 	virtual void get_extensions(List<String> *r_extensions) const override;
 	virtual Node *import_scene(const String &p_path, uint32_t p_flags,
 			const HashMap<StringName, Variant> &p_options,

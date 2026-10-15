@@ -1112,7 +1112,9 @@ void EditorNode::_notification(int p_what) {
 			if (_is_project_data_missing()) {
 				project_data_missing->popup_centered();
 			} else {
-				EditorFileSystem::get_singleton()->scan_changes();
+				// wgodot-changes::begin
+				EditorFileSystem::get_singleton()->scan_changes(true);
+				// wgodot-changes::end
 			}
 			_scan_external_changes();
 
@@ -9079,7 +9081,9 @@ EditorNode::EditorNode() {
 	scan_changes_timer = memnew(Timer);
 	scan_changes_timer->set_wait_time(0.5);
 	scan_changes_timer->set_autostart(EDITOR_GET("interface/editor/behavior/import_resources_when_unfocused"));
-	scan_changes_timer->connect("timeout", callable_mp(EditorFileSystem::get_singleton(), &EditorFileSystem::scan_changes));
+	// wgodot-changes::begin
+	scan_changes_timer->connect("timeout", callable_mp(EditorFileSystem::get_singleton(), &EditorFileSystem::scan_changes).bind(true));
+	// wgodot-changes::end
 	add_child(scan_changes_timer);
 
 	top_split = memnew(VSplitContainer);

@@ -50,9 +50,18 @@ void WGodotNativeExportPlugin::_export_begin(const HashSet<String> &p_features, 
 		set_export_error(target_result, target_error);
 		return;
 	}
+	const Error selection_result = selection.load(target.get_name(), target_error);
+	if (selection_result != OK) {
+		set_export_error(selection_result, target_error);
+		return;
+	}
 	manifest = read_manifest(directory.path_join("main_game.json"));
 	if (int(manifest.get("format", 0)) != 1 || !manifest.has("native_classes") || !manifest.has("sources") || !manifest.has("resource_paths") || !manifest.has("compiled_resources") || !manifest.has("compiled_resource_aliases") || !manifest.has("resource_sources")) {
 		set_export_error(ERR_UNCONFIGURED, "Generate the native module first with wg export-cpp. Invalid manifest in: " + directory);
+		return;
+	}
+	if (String(manifest.get("resource_selection_fingerprint", "")) != selection.get_fingerprint()) {
+		set_export_error(ERR_INVALID_DATA, "Native resource selection changed. Regenerate the native module and rebuild before exporting.");
 		return;
 	}
 	if (manifest.get("target", "") != target.get_name() || manifest.get("target_fingerprint", "") != target.get_fingerprint()) {
@@ -111,6 +120,29 @@ void WGodotNativeExportPlugin::_export_begin(const HashSet<String> &p_features, 
 		resources.add_native_resource(alias.key, compiled[alias.value], alias.value);
 	}
 	validated = true;
+}
+
+void WGodotNativeExportPlugin::_export_customize_paths(HashSet<String> &r_paths) {
+	if (!validated || selection.exports_all()) {
+		return;
+	}
+	const Dictionary paths = manifest["resource_paths"];
+	const Dictionary compiled = manifest["compiled_resources"];
+	r_paths.clear();
+	for (const KeyValue<Variant, Variant> &entry : paths) {
+		const String path = entry.key;
+		if (path.get_extension() == "gd") {
+			continue;
+		}
+		if (!FileAccess::exists(path)) {
+			if (path.begins_with("res://.wgodot/native/") && compiled.has(path)) {
+				continue;
+			}
+			set_export_error(ERR_FILE_NOT_FOUND, "Native resource selection requires a missing file: " + path);
+			return;
+		}
+		r_paths.insert(path);
+	}
 }
 
 void WGodotNativeExportPlugin::_export_paths_ready(const HashSet<String> &p_paths) {

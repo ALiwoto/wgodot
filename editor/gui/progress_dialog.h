@@ -84,7 +84,21 @@ class ProgressDialog : public CenterContainer {
 	Size2 main_border_size;
 
 	static ProgressDialog *singleton;
-	void _popup();
+	// wgodot-changes::begin
+	VBoxContainer *asset_progress = nullptr;
+	Label *asset_title = nullptr;
+	Label *asset_state = nullptr;
+	ProgressBar *asset_bar = nullptr;
+	bool asset_progress_active = false;
+	bool input_blocked = false;
+	uint64_t asset_started_msec = 0;
+	uint64_t asset_last_busy_msec = 0;
+	uint64_t last_worker_refresh_msec = 0;
+	void _initialize_asset_progress();
+	bool _update_asset_progress();
+	void _set_input_blocked(bool p_blocked);
+	void _popup(bool p_block_input = true);
+	// wgodot-changes::end
 
 	void _cancel_pressed();
 
@@ -100,6 +114,9 @@ public:
 	void add_task(const String &p_task, const String &p_label, int p_steps, bool p_can_cancel = false);
 	bool task_step(const String &p_task, const String &p_state, int p_step = -1, bool p_force_redraw = true);
 	void end_task(const String &p_task);
+	// wgodot-changes::begin
+	void refresh_worker_progress();
+	// wgodot-changes::end
 
 	void add_host_window(ObjectID p_window);
 	void remove_host_window(ObjectID p_window);

@@ -30,6 +30,10 @@
 
 #pragma once
 
+// wgodot-changes::begin
+#include "wgodot_filesystem_watcher.h"
+// wgodot-changes::end
+
 #include "core/io/dir_access.h"
 #include "core/io/resource_loader_constants.h"
 #include "core/os/semaphore.h"
@@ -159,6 +163,9 @@ class EditorFileSystem : public Node {
 		};
 
 		Action action = ACTION_NONE;
+		// wgodot-changes::begin
+		bool force_reimport = false;
+		// wgodot-changes::end
 		EditorFileSystemDirectory *dir = nullptr;
 		String file;
 		EditorFileSystemDirectory *new_dir = nullptr;
@@ -187,6 +194,15 @@ class EditorFileSystem : public Node {
 	bool importing = false;
 	bool first_scan = true;
 	bool scan_changes_pending = false;
+	// wgodot-changes::begin
+	WGodotFileSystemWatcher file_watcher;
+	bool scan_changes_pending_full = false;
+	bool filtered_change_scan = false;
+	HashSet<String> changed_directories;
+	HashSet<String> changed_directory_ancestors;
+	HashSet<String> changed_files;
+	bool _prepare_changed_directories(bool p_use_notifications);
+	// wgodot-changes::end
 	float scan_total;
 	String filesystem_settings_version_for_import;
 	bool revalidate_import_files = false;
@@ -273,7 +289,9 @@ class EditorFileSystem : public Node {
 
 	void _update_extensions();
 
-	Error _reimport_file(const String &p_file, const HashMap<StringName, Variant> &p_custom_options = HashMap<StringName, Variant>(), const String &p_custom_importer = String(), Variant *generator_parameters = nullptr, bool p_update_file_system = true);
+	// wgodot-changes::begin
+	Error _reimport_file(const String &p_file, const HashMap<StringName, Variant> &p_custom_options = HashMap<StringName, Variant>(), const String &p_custom_importer = String(), Variant *generator_parameters = nullptr, bool p_update_file_system = true, bool p_prepare_only = false);
+	// wgodot-changes::end
 	Error _reimport_group(const String &p_group_file, const Vector<String> &p_files);
 
 	bool _test_for_reimport(const String &p_path, const String &p_expected_import_md5);
@@ -386,10 +404,15 @@ public:
 	EditorFileSystemDirectory *get_filesystem();
 	bool is_scanning() const;
 	bool is_importing() const { return importing; }
+	// wgodot-changes::begin
+	bool is_processing_assets() const { return is_scanning() || importing || thread.is_started() || scan_changes_pending || refresh_queued || filesystem_changed_queued.is_set(); }
+	// wgodot-changes::end
 	bool doing_first_scan() const { return first_scan; }
 	float get_scanning_progress() const;
 	void scan();
-	void scan_changes();
+	// wgodot-changes::begin
+	void scan_changes(bool p_use_notifications = false);
+	// wgodot-changes::end
 	void update_file(const String &p_file);
 	void update_files(const Vector<String> &p_script_paths);
 	// wgodot-changes::begin

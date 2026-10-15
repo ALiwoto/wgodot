@@ -80,6 +80,10 @@ public:
 	virtual void get_import_options(const String &p_path, List<ResourceImporter::ImportOption> *r_options);
 	virtual Variant get_option_visibility(const String &p_path, const String &p_scene_import_type, const String &p_option, const HashMap<StringName, Variant> &p_options);
 	virtual void handle_compatibility_options(HashMap<StringName, Variant> &p_import_params) const {}
+	// wgodot-changes::begin
+	virtual void prepare_import_scene(const String &p_path, uint32_t p_flags, const HashMap<StringName, Variant> &p_options) {}
+	virtual void finish_prepared_scenes() {}
+	// wgodot-changes::end
 };
 
 VARIANT_BITFIELD_CAST(EditorSceneFormatImporter::ImportFlags)
@@ -232,8 +236,17 @@ class ResourceImporterScene : public ResourceImporter {
 	void _optimize_track_usage(AnimationPlayer *p_player, AnimationImportTracks *p_track_actions);
 
 	String _scene_import_type = "PackedScene";
+	// wgodot-changes::begin
+	static Ref<EditorSceneFormatImporter> _get_format_importer(const String &p_path);
+	int _get_import_flags(const HashMap<StringName, Variant> &p_options) const;
+	// wgodot-changes::end
 
 public:
+	// wgodot-changes::begin
+	bool can_prepare_import() const override { return true; }
+	void prepare_import(const String &p_source_file, const HashMap<StringName, Variant> &p_options) override;
+	void finish_prepared_imports() override;
+	// wgodot-changes::end
 	static const String material_extension[3];
 
 	static void add_post_importer_plugin(const Ref<EditorScenePostImportPlugin> &p_plugin, bool p_first_priority = false);

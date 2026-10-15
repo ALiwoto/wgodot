@@ -105,6 +105,7 @@ class WGodotCppEmitter {
 	Dictionary compiled_resources;
 	Dictionary compiled_resource_aliases;
 	Dictionary resource_sources;
+	String resource_selection_fingerprint;
 	void emit_resources();
 	int64_t resource_id(const String &p_path);
 	Value resource_path_constant(const Variant &p_value);

@@ -658,6 +658,7 @@ Patches:
 - `0002-msvc-arm64-fpstrict.patch` ([GH-94655](https://github.com/godotengine/godot/pull/94655))
 - `0003-clang-cl-sse2-sse41-avx2.patch` ([GH-92316](https://github.com/godotengine/godot/pull/92316))
 - `0004-emscripten-cppdefine.patch` ([GH-122412](https://github.com/godotengine/godot/pull/122412))
+- `0005-sse-predictor-fallback-race.patch`: preserve SSE fallbacks during concurrent DSP initialization.
 
 
 ## linuxbsd_headers

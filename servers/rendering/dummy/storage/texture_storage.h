@@ -41,6 +41,9 @@ private:
 
 	struct DummyTexture {
 		Ref<Image> image;
+		// wgodot-changes::begin
+		Vector<Ref<Image>> volume;
+		// wgodot-changes::end
 	};
 	mutable RID_PtrOwner<DummyTexture, true> texture_owner;
 
@@ -86,7 +89,11 @@ public:
 		t->image = p_image->duplicate();
 	}
 	virtual void texture_2d_layered_initialize(RID p_texture, const Vector<Ref<Image>> &p_layers, RSE::TextureLayeredType p_layered_type) override {}
-	virtual void texture_3d_initialize(RID p_texture, Image::Format, int p_width, int p_height, int p_depth, bool p_mipmaps, const Vector<Ref<Image>> &p_data) override {}
+	// wgodot-changes::begin
+	virtual void texture_3d_initialize(RID p_texture, Image::Format, int p_width, int p_height, int p_depth, bool p_mipmaps, const Vector<Ref<Image>> &p_data) override {
+		texture_3d_update(p_texture, p_data);
+	}
+	// wgodot-changes::end
 	virtual void texture_external_initialize(RID p_texture, int p_width, int p_height, uint64_t p_external_buffer) override {}
 	virtual void texture_proxy_initialize(RID p_texture, RID p_base) override {} //all slices, then all the mipmaps, must be coherent
 	virtual void texture_drawable_initialize(RID p_texture, int p_width, int p_height, RSE::TextureDrawableFormat p_format, const Color &p_color, bool p_with_mipmaps) override {}
@@ -94,7 +101,17 @@ public:
 	virtual RID texture_create_from_native_handle(RSE::TextureType p_type, Image::Format p_format, uint64_t p_native_handle, int p_width, int p_height, int p_depth, int p_layers = 1, RSE::TextureLayeredType p_layered_type = RSE::TEXTURE_LAYERED_2D_ARRAY) override { return RID(); }
 
 	virtual void texture_2d_update(RID p_texture, const Ref<Image> &p_image, int p_layer = 0) override {}
-	virtual void texture_3d_update(RID p_texture, const Vector<Ref<Image>> &p_data) override {}
+	// wgodot-changes::begin
+	virtual void texture_3d_update(RID p_texture, const Vector<Ref<Image>> &p_data) override {
+		DummyTexture *texture = texture_owner.get_or_null(p_texture);
+		ERR_FAIL_NULL(texture);
+		// Native export must retain volume slices without a rendering device.
+		texture->volume.resize(p_data.size());
+		for (int i = 0; i < p_data.size(); i++) {
+			texture->volume.write[i] = p_data[i]->duplicate();
+		}
+	}
+	// wgodot-changes::end
 	virtual void texture_external_update(RID p_texture, int p_width, int p_height, uint64_t p_external_buffer) override {}
 	virtual void texture_proxy_update(RID p_proxy, RID p_base) override {}
 
@@ -111,13 +128,30 @@ public:
 		return t->image;
 	}
 	virtual Ref<Image> texture_2d_layer_get(RID p_texture, int p_layer) const override { return Ref<Image>(); }
-	virtual Vector<Ref<Image>> texture_3d_get(RID p_texture) const override { return Vector<Ref<Image>>(); }
+	// wgodot-changes::begin
+	virtual Vector<Ref<Image>> texture_3d_get(RID p_texture) const override {
+		const DummyTexture *texture = texture_owner.get_or_null(p_texture);
+		ERR_FAIL_NULL_V(texture, Vector<Ref<Image>>());
+		return texture->volume;
+	}
+	// wgodot-changes::end
 
 	virtual void texture_drawable_generate_mipmaps(RID p_texture) override {}
 	virtual RID texture_drawable_get_default_material() const override { return RID(); }
 
-	virtual void texture_replace(RID p_texture, RID p_by_texture) override { texture_free(p_by_texture); }
-	virtual void texture_replace_compatible(RID p_texture, RID p_by_texture) override { texture_free(p_by_texture); }
+	// wgodot-changes::begin
+	virtual void texture_replace(RID p_texture, RID p_by_texture) override {
+		DummyTexture *texture = texture_owner.get_or_null(p_texture);
+		const DummyTexture *replacement = texture_owner.get_or_null(p_by_texture);
+		ERR_FAIL_NULL(texture);
+		ERR_FAIL_NULL(replacement);
+		*texture = *replacement;
+		texture_free(p_by_texture);
+	}
+	virtual void texture_replace_compatible(RID p_texture, RID p_by_texture) override {
+		texture_replace(p_texture, p_by_texture);
+	}
+	// wgodot-changes::end
 	virtual void texture_set_size_override(RID p_texture, int p_width, int p_height) override {}
 
 	virtual void texture_set_path(RID p_texture, const String &p_path) override {}

@@ -689,20 +689,17 @@ WEBP_TSAN_IGNORE_FUNCTION void VP8LDspInitSSE2(void) {
   VP8LPredictors[12] = Predictor12_SSE2;
   VP8LPredictors[13] = Predictor13_SSE2;
 
-  VP8LPredictorsAdd[0] = PredictorAdd0_SSE2;
-  VP8LPredictorsAdd[1] = PredictorAdd1_SSE2;
-  VP8LPredictorsAdd[2] = PredictorAdd2_SSE2;
-  VP8LPredictorsAdd[3] = PredictorAdd3_SSE2;
-  VP8LPredictorsAdd[4] = PredictorAdd4_SSE2;
-  VP8LPredictorsAdd[5] = PredictorAdd5_SSE2;
-  VP8LPredictorsAdd[6] = PredictorAdd6_SSE2;
-  VP8LPredictorsAdd[7] = PredictorAdd7_SSE2;
-  VP8LPredictorsAdd[8] = PredictorAdd8_SSE2;
-  VP8LPredictorsAdd[9] = PredictorAdd9_SSE2;
-  VP8LPredictorsAdd[10] = PredictorAdd10_SSE2;
-  VP8LPredictorsAdd[11] = PredictorAdd11_SSE2;
-  VP8LPredictorsAdd[12] = PredictorAdd12_SSE2;
-  VP8LPredictorsAdd[13] = PredictorAdd13_SSE2;
+  // wgodot-changes::begin
+  // Keep fallback entries independent of dispatch changes in another thread.
+  static const VP8LPredictorAddSubFunc predictors[14] = {
+      PredictorAdd0_SSE2,  PredictorAdd1_SSE2,  PredictorAdd2_SSE2,
+      PredictorAdd3_SSE2,  PredictorAdd4_SSE2,  PredictorAdd5_SSE2,
+      PredictorAdd6_SSE2,  PredictorAdd7_SSE2,  PredictorAdd8_SSE2,
+      PredictorAdd9_SSE2,  PredictorAdd10_SSE2, PredictorAdd11_SSE2,
+      PredictorAdd12_SSE2, PredictorAdd13_SSE2
+  };
+  memcpy(VP8LPredictorsAdd, predictors, sizeof(predictors));
+  // wgodot-changes::end
 
   VP8LAddGreenToBlueAndRed = AddGreenToBlueAndRed_SSE2;
   VP8LTransformColorInverse = TransformColorInverse_SSE2;
@@ -714,7 +711,11 @@ WEBP_TSAN_IGNORE_FUNCTION void VP8LDspInitSSE2(void) {
   VP8LConvertBGRAToBGR = ConvertBGRAToBGR_SSE2;
 
   // SSE exports for AVX and above.
-  memcpy(VP8LPredictorsAdd_SSE, VP8LPredictorsAdd, sizeof(VP8LPredictorsAdd));
+  // wgodot-changes::begin
+  memcpy(VP8LPredictorsAdd_SSE, predictors, sizeof(predictors));
+  VP8LPredictorsAdd_SSE[14] = VP8LPredictorsAdd_C[14];
+  VP8LPredictorsAdd_SSE[15] = VP8LPredictorsAdd_C[15];
+  // wgodot-changes::end
 
   VP8LAddGreenToBlueAndRed_SSE = AddGreenToBlueAndRed_SSE2;
   VP8LTransformColorInverse_SSE = TransformColorInverse_SSE2;

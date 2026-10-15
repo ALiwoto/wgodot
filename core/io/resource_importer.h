@@ -158,6 +158,12 @@ public:
 	virtual bool can_import_threaded() const { return false; }
 	virtual void import_threaded_begin() {}
 	virtual void import_threaded_end() {}
+	// wgodot-changes::begin
+	// Prepare independent input data ahead of ordered, main-thread imports.
+	virtual bool can_prepare_import() const { return false; }
+	virtual void prepare_import(const String &p_source_file, const HashMap<StringName, Variant> &p_options) {}
+	virtual void finish_prepared_imports() {}
+	// wgodot-changes::end
 
 	virtual Error import_group_file(const String &p_group_file, const HashMap<String, HashMap<StringName, Variant>> &p_source_file_options, const HashMap<String, String> &p_base_paths) { return ERR_UNAVAILABLE; }
 	virtual bool are_import_settings_valid(const String &p_path, const Dictionary &p_meta) const { return true; }

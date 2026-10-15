@@ -36,6 +36,9 @@ class GLTFDocumentExtensionTextureKTX : public GLTFDocumentExtension {
 	GDCLASS(GLTFDocumentExtensionTextureKTX, GLTFDocumentExtension);
 
 public:
+	// wgodot-changes::begin
+	bool supports_threaded_import() const override { return true; }
+	// wgodot-changes::end
 	// Import process.
 	Error import_preflight(Ref<GLTFState> p_state, const Vector<String> &p_extensions) override;
 	Vector<String> get_supported_extensions() override;

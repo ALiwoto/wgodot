@@ -132,6 +132,11 @@ ProgressDialog *ProgressDialog::singleton = nullptr;
 
 void ProgressDialog::_notification(int p_what) {
 	switch (p_what) {
+		// wgodot-changes::begin
+		case NOTIFICATION_INTERNAL_PROCESS: {
+			_update_asset_progress();
+		} break;
+		// wgodot-changes::end
 		case NOTIFICATION_VISIBILITY_CHANGED: {
 			Window *base_window = get_window();
 			if (base_window) {
@@ -164,17 +169,10 @@ void ProgressDialog::_update_ui() {
 	}
 }
 
-void ProgressDialog::_popup() {
-	// Activate processing of all inputs in EditorNode, and the EditorNode::input method
-	// will discard every key input.
-	EditorNode::get_singleton()->set_process_input(true);
-	// Disable all other windows to prevent interaction with them.
-	for (ObjectID wid : host_windows) {
-		Window *w = ObjectDB::get_instance<Window>(wid);
-		if (w) {
-			w->set_process_mode(PROCESS_MODE_DISABLED);
-		}
-	}
+// wgodot-changes::begin
+void ProgressDialog::_popup(bool p_block_input) {
+	_set_input_blocked(p_block_input);
+	// wgodot-changes::end
 
 	Size2 ms = main->get_combined_minimum_size();
 	ms.width = MAX(500 * EDSCALE, ms.width);
@@ -192,12 +190,20 @@ void ProgressDialog::_popup() {
 void ProgressDialog::_reparent_and_show() {
 	Window *current_window = SceneTree::get_singleton()->get_root()->get_last_exclusive_window();
 	ERR_FAIL_NULL(current_window);
-	reparent(current_window);
+	// wgodot-changes::begin
+	if (get_parent() != current_window) {
+		reparent(current_window);
+	}
+	// wgodot-changes::end
 
 	// Ensures that events are properly released before the dialog blocks input.
-	bool window_is_input_disabled = current_window->is_input_disabled();
-	current_window->set_disable_input(!window_is_input_disabled);
-	current_window->set_disable_input(window_is_input_disabled);
+	// wgodot-changes::begin
+	if (input_blocked) {
+		bool window_is_input_disabled = current_window->is_input_disabled();
+		current_window->set_disable_input(!window_is_input_disabled);
+		current_window->set_disable_input(window_is_input_disabled);
+	}
+	// wgodot-changes::end
 
 	show();
 }
@@ -216,7 +222,9 @@ void ProgressDialog::add_task(const String &p_task, const String &p_label, int p
 	t.progress = memnew(ProgressBar);
 	t.progress->set_theme_type_variation("PopupProgressBar");
 	t.progress->set_max(p_steps);
-	t.progress->set_value(p_steps);
+	// wgodot-changes::begin
+	t.progress->set_value(0);
+	// wgodot-changes::end
 	vb2->add_child(t.progress);
 	t.state = memnew(Label);
 	t.state->set_clip_text(true);
@@ -274,14 +282,13 @@ void ProgressDialog::end_task(const String &p_task) {
 	tasks.erase(p_task);
 
 	if (tasks.is_empty()) {
-		hide();
-		EditorNode::get_singleton()->set_process_input(false);
-		for (ObjectID wid : host_windows) {
-			Window *w = ObjectDB::get_instance<Window>(wid);
-			if (w) {
-				w->set_process_mode(PROCESS_MODE_INHERIT);
-			}
+		// wgodot-changes::begin
+		_set_input_blocked(false);
+		if (_update_asset_progress()) {
+			return;
 		}
+		// wgodot-changes::end
+		hide();
 	} else {
 		_popup();
 	}
@@ -314,6 +321,9 @@ ProgressDialog::ProgressDialog() {
 
 	main = memnew(VBoxContainer);
 	center_panel->add_child(main);
+	// wgodot-changes::begin
+	_initialize_asset_progress();
+	// wgodot-changes::end
 
 	cancel_hb = memnew(HBoxContainer);
 	main->add_child(cancel_hb);

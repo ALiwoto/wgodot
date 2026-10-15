@@ -862,7 +862,6 @@ EditorExportPlatform::ExportNotifier::ExportNotifier(EditorExportPlatform &p_pla
 	}
 }
 
-
 EditorExportPlatform::ExportNotifier::~ExportNotifier() {
 	if (!enabled) {
 		return;
@@ -1391,16 +1390,6 @@ Error EditorExportPlatform::export_project_files(const Ref<EditorExportPreset> &
 		}
 	}
 
-	//add native icons to non-resource include list
-	_edit_filter_list(paths, String("*.icns"), false);
-	_edit_filter_list(paths, String("*.ico"), false);
-
-	_edit_filter_list(paths, p_preset->get_include_filter(), false);
-	_edit_filter_list(paths, p_preset->get_exclude_filter(), true);
-
-	// Ignore import files, since these are automatically added to the jar later with the resources
-	_edit_filter_list(paths, String("*.import"), true);
-
 	EditorExportSaveProxy save_proxy(p_save_func, p_remove_func != nullptr);
 
 	Error err = OK;
@@ -1442,6 +1431,25 @@ Error EditorExportPlatform::export_project_files(const Ref<EditorExportPreset> &
 
 	// Always sort by name, to so if for some reason they are re-arranged, it still works.
 	export_plugins.sort_custom<SortByName>();
+
+	// wgodot-changes::begin
+	for (int i = 0; i < export_plugins.size(); i++) {
+		export_plugins.write[i]->_export_customize_paths(paths);
+		if (export_plugins[i]->export_error != OK) {
+			return export_plugins[i]->export_error;
+		}
+	}
+	// wgodot-changes::end
+
+	//add native icons to non-resource include list
+	_edit_filter_list(paths, String("*.icns"), false);
+	_edit_filter_list(paths, String("*.ico"), false);
+
+	_edit_filter_list(paths, p_preset->get_include_filter(), false);
+	_edit_filter_list(paths, p_preset->get_exclude_filter(), true);
+
+	// Ignore import files, since these are automatically added to the jar later with the resources
+	_edit_filter_list(paths, String("*.import"), true);
 
 	// wgodot-changes::begin
 	// Let wgodot export transforms pre-index exactly the files Godot is about
@@ -1919,7 +1927,7 @@ Error EditorExportPlatform::export_project_files(const Ref<EditorExportPreset> &
 // and UIDs based on excluded resources configured in the export preset.
 // wgodot-changes::begin
 EditorExportPlatform::FilteredCache EditorExportPlatform::_get_filtered_cache(const HashSet<String> &p_paths, const Vector<Ref<EditorExportPlugin>> &p_export_plugins) {
-// wgodot-changes::end
+	// wgodot-changes::end
 	FilteredCache result;
 
 	HashSet<String> extension_list_lines;

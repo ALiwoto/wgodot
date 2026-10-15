@@ -892,6 +892,28 @@ void Animation::_get_property_list(List<PropertyInfo> *p_list) const {
 // wgodot-changes::begin
 #ifdef TOOLS_ENABLED
 void Animation::get_reference_property_list(List<PropertyInfo> *p_list) const {
+	if (!get_script_instance() && get_class_name() == get_class_static()) {
+		// Reference discovery does not need the serialized numeric track layout.
+		// Building that complete list allocates seven or more properties per bone
+		// track, even though only its NodePath can reference another object.
+		ClassDB::get_property_list(get_class_static(), p_list, false, this);
+		p_list->push_back(PropertyInfo(Variant::OBJECT, "script", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE));
+		List<StringName> metadata_names;
+		get_meta_list(&metadata_names);
+		for (const StringName &metadata_name : metadata_names) {
+			p_list->push_back(PropertyInfo(Variant::NIL, "metadata/" + String(metadata_name), PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE | PROPERTY_USAGE_NIL_IS_VARIANT));
+		}
+		for (uint32_t i = 0; i < tracks.size(); i++) {
+			const String prefix = "tracks/" + itos(i);
+			p_list->push_back(PropertyInfo(Variant::NODE_PATH, prefix + "/path", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE));
+			const TrackType type = tracks[i]->type;
+			if (type == TYPE_VALUE || type == TYPE_METHOD || type == TYPE_AUDIO) {
+				p_list->push_back(PropertyInfo(Variant::ARRAY, prefix + "/keys", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE));
+			}
+		}
+		return;
+	}
+	// Script and extension subclasses can add their own reference properties.
 	get_property_list(p_list);
 	for (List<PropertyInfo>::Element *element = p_list->front(); element;) {
 		List<PropertyInfo>::Element *next = element->next();

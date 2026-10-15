@@ -40,9 +40,11 @@ void EditorSceneFormatImporterGLTF::get_extensions(List<String> *r_extensions) c
 	r_extensions->push_back("glb");
 }
 
-Node *EditorSceneFormatImporterGLTF::import_scene(const String &p_path, uint32_t p_flags,
+// wgodot-changes::begin
+Node *EditorSceneFormatImporterGLTF::_import_scene(const String &p_path, uint32_t p_flags,
 		const HashMap<StringName, Variant> &p_options,
 		List<String> *r_missing_deps, Error *r_err) {
+// wgodot-changes::end
 	Ref<GLTFDocument> gltf_doc;
 	gltf_doc.instantiate();
 	Ref<GLTFState> gltf_state;

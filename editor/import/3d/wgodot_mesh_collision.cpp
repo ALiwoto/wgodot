@@ -2,6 +2,7 @@
 #include "wgodot_mesh_collision.h"
 
 #include "core/io/file_access.h"
+#include "core/io/resource_importer.h"
 #include "core/io/resource_loader.h"
 #include "scene/3d/physics/static_body_3d.h"
 #include "scene/resources/packed_scene.h"
@@ -32,21 +33,12 @@ String WGodotMeshCollision::import_signature(const String &p_source) {
 	return path + ":" + itos(FileAccess::get_modified_time(path)) + ":" + (file.is_valid() ? itos(file->get_length()) : String("unreadable"));
 }
 
-bool WGodotMeshCollision::import_dependency_changed(const String &p_source, uint64_t p_import_time, const Vector<String> &p_dependencies) {
-	const String custom = sidecar_path(p_source);
-	const String imported = imported_path(p_source);
-	const String selected = FileAccess::exists(custom) ? custom : FileAccess::exists(imported) ? imported : String();
-	bool had_collision = false;
-	bool selected_before = false;
-	for (const String &dependency : p_dependencies) {
-		// Dependency entries can include a UID and type before the fallback path.
-		had_collision |= dependency.ends_with(custom) || dependency.ends_with(imported);
-		selected_before |= !selected.is_empty() && dependency.ends_with(selected);
-	}
-	if (selected.is_empty()) {
-		return had_collision;
-	}
-	return !selected_before || FileAccess::get_modified_time(selected) >= p_import_time;
+bool WGodotMeshCollision::import_dependency_changed(const String &p_source) {
+	// Imported scenes embed their collision nodes, so the sidecar need not appear
+	// in their external dependencies. Compare the metadata written by the importer.
+	const Variant metadata = ResourceFormatImporter::get_singleton()->get_resource_metadata(p_source);
+	const Dictionary values = metadata.get_type() == Variant::DICTIONARY ? Dictionary(metadata) : Dictionary();
+	return String(values.get("mesh_collision", String())) != import_signature(p_source);
 }
 
 Error WGodotMeshCollision::append_to_scene(Node *p_scene, const String &p_source) {

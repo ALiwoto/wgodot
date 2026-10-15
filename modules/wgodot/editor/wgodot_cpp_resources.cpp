@@ -3,14 +3,17 @@
 #include "wgodot_cpp_names.h"
 #include "wgodot_export_scene.h"
 #include "wgodot_native_resource_policy.h"
+#include "wgodot_native_resource_selection.h"
 #include "wgodot_resource_rewrite.h"
 
 #include "core/config/project_settings.h"
 #include "core/io/dir_access.h"
 #include "core/io/file_access.h"
 #include "core/io/resource_loader.h"
+#include "core/io/resource_uid.h"
 #include "core/object/class_db.h"
 #include "core/object/script_language.h"
+#include "core/string/string_builder.h"
 #include "scene/resources/packed_scene.h"
 
 using Parser = GDScriptParser;
@@ -27,8 +30,8 @@ class WGodotCppResources {
 	HashMap<int, Vector<int>> resource_dependencies;
 	int collecting_resource = -1;
 	HashMap<String, String> dependencies;
-	String declarations;
-	String body;
+	StringBuilder declarations;
+	StringBuilder body;
 	String source_path;
 	int temporary = 0;
 
@@ -431,7 +434,7 @@ class WGodotCppResources {
 			used_variants.insert(int(bundled["base_scene"]));
 		}
 		const String state_name = "state_" + itos(temporary++);
-		String attachments;
+		StringBuilder attachments;
 		int offset = 0;
 		for (int i = 0; i < state->get_node_count(); i++) {
 			const int start = offset;
@@ -505,8 +508,8 @@ class WGodotCppResources {
 				output.push_back(group);
 			}
 		}
-		const String previous_body = body;
-		body = String();
+		StringBuilder previous_body = std::move(body);
+		body = StringBuilder();
 		PackedInt32Array connections = bundled["conns"];
 		offset = 0;
 		for (int i = 0; i < state->get_connection_count(); i++) {
@@ -523,8 +526,8 @@ class WGodotCppResources {
 			}
 			offset += 7 + binds;
 		}
-		attachments += body;
-		body = previous_body;
+		attachments += body.as_string();
+		body = std::move(previous_body);
 		for (int i = 0; i < names.size(); i++) {
 			if (!used_names.has(i)) {
 				names.set(i, String());
@@ -540,7 +543,8 @@ class WGodotCppResources {
 		}
 		bundled["variants"] = variants;
 		const String definition = value(bundled);
-		body += "\tRef<SceneState> " + state_name + " = " + p_target + "->get_state();\n\t" + state_name + "->set_bundled_scene(" + definition + ");\n" + attachments;
+		body += "\tRef<SceneState> " + state_name + " = " + p_target + "->get_state();\n\t" + state_name + "->set_bundled_scene(" + definition + ");\n";
+		body += attachments.as_string();
 	}
 
 	void factory(const String &p_path) {
@@ -549,8 +553,8 @@ class WGodotCppResources {
 		graph.clear();
 		resource_dependencies.clear();
 		dependencies.clear();
-		declarations = String();
-		body = String();
+		declarations = StringBuilder();
+		body = StringBuilder();
 		temporary = 0;
 		emitter.class_call_headers.clear();
 		emitter.class_native_headers.clear();
@@ -648,7 +652,7 @@ class WGodotCppResources {
 			source += "#include " + quoted(include) + "\n";
 		}
 		const int64_t id = emitter.resource_id(p_path);
-		source += "\nnamespace WGodotGame {\n" + declarations + "Ref<Resource> create_resource_" + itos(id) + "(ResourceFormatLoader::CacheMode p_cache_mode) {\n\tconst auto dependency_cache = p_cache_mode == ResourceFormatLoader::CACHE_MODE_IGNORE_DEEP || p_cache_mode == ResourceFormatLoader::CACHE_MODE_REPLACE_DEEP ? p_cache_mode : ResourceFormatLoader::CACHE_MODE_REUSE;\n" + body + "}\n}\n";
+		source += "\nnamespace WGodotGame {\n" + declarations.as_string() + "Ref<Resource> create_resource_" + itos(id) + "(ResourceFormatLoader::CacheMode p_cache_mode) {\n\tconst auto dependency_cache = p_cache_mode == ResourceFormatLoader::CACHE_MODE_IGNORE_DEEP || p_cache_mode == ResourceFormatLoader::CACHE_MODE_REPLACE_DEEP ? p_cache_mode : ResourceFormatLoader::CACHE_MODE_REUSE;\n" + body.as_string() + "}\n}\n";
 		emitter.files.insert("resource_" + itos(id) + ".cpp", source);
 		const auto *game = resource_class(resource);
 		emitter.compiled_resources[p_path] = game ? game->cpp_name : String(resource->get_class());
@@ -689,12 +693,185 @@ class WGodotCppResources {
 		}
 	}
 
+	void seed_settings() {
+		ProjectSettings *settings = ProjectSettings::get_singleton();
+		const auto &overrides = emitter.project.get_target().get_settings();
+		List<PropertyInfo> properties;
+		settings->get_property_list(&properties);
+		for (const PropertyInfo &property : properties) {
+			if (property.name.begins_with("autoload/")) {
+				continue; // Autoload ownership and native wrappers are handled below.
+			}
+			const Variant original = overrides.has(property.name) ? overrides[property.name] : settings->get(property.name);
+			if (!overrides.has(property.name) && original.get_type() == Variant::STRING && original == settings->property_get_revert(property.name)) {
+				const String path = original;
+				if ((path.begins_with("res://") || path.begins_with("uid://")) && !ResourceLoader::exists(path)) {
+					continue; // Optional default resources need not exist in the project.
+				}
+			}
+			WGodotResourceRewrite::value(original, property, [&](const String &p_path) {
+				emitter.resource_id(p_path);
+				return p_path;
+			});
+		}
+	}
+
+	void scene_dependencies(const Variant &p_value, const String &p_source, HashSet<const Resource *> &r_seen) {
+		if (p_value.get_type() == Variant::OBJECT) {
+			const Ref<Resource> resource = p_value;
+			if (resource.is_null() || Object::cast_to<Script>(resource.ptr())) {
+				return;
+			}
+			const String path = resource->get_path().get_slice("::", 0);
+			if (!path.is_empty() && path != p_source) {
+				emitter.resource_id(path);
+				return;
+			}
+			if (r_seen.has(resource.ptr())) {
+				return;
+			}
+			r_seen.insert(resource.ptr());
+			const Ref<PackedScene> scene = resource;
+			if (scene.is_valid()) {
+				scene_dependencies(scenes.filter(scene)->get_bundled_scene(), p_source, r_seen);
+				return;
+			}
+			List<PropertyInfo> properties;
+			WGodotNativeResourcePolicy::get_reference_properties(resource, properties);
+			for (const PropertyInfo &property : properties) {
+				scene_dependencies(resource->get(property.name), p_source, r_seen);
+			}
+		} else if (p_value.get_type() == Variant::ARRAY) {
+			const Array values = p_value;
+			for (const Variant &value : values) {
+				scene_dependencies(value, p_source, r_seen);
+			}
+		} else if (p_value.get_type() == Variant::DICTIONARY) {
+			const Dictionary values = p_value;
+			for (const KeyValue<Variant, Variant> &entry : values) {
+				scene_dependencies(entry.key, p_source, r_seen);
+				scene_dependencies(entry.value, p_source, r_seen);
+			}
+		} else if (p_value.get_type() == Variant::STRING || p_value.get_type() == Variant::STRING_NAME || p_value.get_type() == Variant::PACKED_STRING_ARRAY) {
+			// Scene placeholders and stored resource paths are serialized as strings.
+			WGodotResourceRewrite::value(p_value, PropertyInfo(), [&](const String &p_path) {
+				emitter.resource_id(p_path);
+				return p_path;
+			});
+		}
+	}
+
+	void file_dependencies(const String &p_path) {
+		List<String> external_paths;
+		ResourceLoader::get_dependencies(p_path, &external_paths);
+		for (const String &dependency : external_paths) {
+			String path = dependency.get_slice("::", 0);
+			if (path.begins_with("uid://")) {
+				const ResourceUID::ID uid = ResourceUID::get_singleton()->text_to_id(path);
+				path = ResourceUID::get_singleton()->has_id(uid) ? ResourceUID::get_singleton()->get_id_path(uid) : dependency.get_slice("::", 2);
+			}
+			if (path.is_empty()) {
+				emitter.diagnostics.push_back("Cannot resolve dependency of " + p_path + ": " + dependency);
+				continue;
+			}
+			if (path.is_relative_path()) {
+				path = p_path.get_base_dir().path_join(path);
+			}
+			emitter.resource_id(path);
+		}
+	}
+
+	void generate_reachable() {
+		HashSet<String> visited;
+		int preload_index = 0;
+		while (emitter.diagnostics.is_empty()) {
+			for (; preload_index < emitter.preloads.size(); preload_index++) {
+				emitter.resource_id(emitter.preloads[preload_index].path);
+			}
+			Vector<String> pending;
+			for (const KeyValue<String, int64_t> &entry : emitter.resource_ids) {
+				if (!visited.has(entry.key)) {
+					pending.push_back(entry.key);
+				}
+			}
+			if (pending.is_empty()) {
+				break;
+			}
+			pending.sort();
+			for (const String &path : pending) {
+				visited.insert(path);
+				if (path.get_extension() == "gd") {
+					continue; // Native code generation already registered its resource uses.
+				}
+				if (definitions.has(path)) {
+					factory(path); // Synthetic native autoload scene.
+					continue;
+				}
+				if (!FileAccess::exists(path) && !ResourceLoader::exists(path)) {
+					emitter.diagnostics.push_back("Required export resource does not exist: " + path);
+					continue;
+				}
+				const bool authored = WGodotNativeResourcePolicy::is_authored(path);
+				if (authored || ResourceLoader::get_resource_type(path) == "PackedScene") {
+					const Ref<Resource> resource = ResourceLoader::load(path);
+					if (resource.is_null()) {
+						emitter.diagnostics.push_back("Cannot load required export resource: " + path);
+						continue;
+					}
+					if (authored && WGodotNativeResourcePolicy::needs_factory(resource)) {
+						definitions.insert(path, resource);
+						paths.push_back(path);
+						emitter.resource_sources[path] = FileAccess::get_sha256(path);
+						// Serializing the filtered factory discovers external resources,
+						// including stored WResPath values, for the next traversal pass.
+						factory(path);
+						continue;
+					}
+					const Ref<PackedScene> scene = resource;
+					if (scene.is_valid()) {
+						HashSet<const Resource *> seen;
+						scene_dependencies(scene, path, seen);
+						continue;
+					}
+				}
+				// Plain binary resources retain their payloads. Godot supplies their
+				// external dependencies; do not serialize mesh/texture data as code.
+				file_dependencies(path);
+			}
+		}
+	}
+
 public:
 	explicit WGodotCppResources(WGodotCppEmitter &p_emitter) : emitter(p_emitter), scenes(p_emitter.project, p_emitter.diagnostics) {}
 	void generate() {
-		scan("res://");
+		WGodotNativeResourceSelection selection;
+		String selection_error;
+		if (selection.load(emitter.project.get_target().get_name(), selection_error) != OK) {
+			emitter.diagnostics.push_back(selection_error);
+			return;
+		}
+		emitter.resource_selection_fingerprint = selection.get_fingerprint();
+		if (selection.exports_all()) {
+			scan("res://");
+		} else {
+			seed_settings();
+			Vector<String> roots;
+			for (const String &path : selection.get_roots()) {
+				roots.push_back(path);
+			}
+			roots.sort();
+			for (const String &path : roots) {
+				emitter.resource_id(path);
+			}
+		}
 		for (const KeyValue<StringName, ProjectSettings::AutoloadInfo> &entry : ProjectSettings::get_singleton()->get_autoload_list()) {
-			if (entry.value.path.get_extension() != "gd" || !emitter.project.get_target().includes(entry.value.path)) {
+			if (!emitter.project.get_target().includes(entry.value.path)) {
+				continue;
+			}
+			if (entry.value.path.get_extension() != "gd") {
+				if (!selection.exports_all()) {
+					emitter.resource_id(entry.value.path);
+				}
 				continue;
 			}
 			const Ref<Script> script = ResourceLoader::load(entry.value.path);
@@ -715,8 +892,13 @@ public:
 		for (const String &path : paths) {
 			emitter.resource_id(path);
 		}
-		for (const String &path : paths) {
-			factory(path);
+		if (selection.exports_all()) {
+			for (const String &path : paths) {
+				factory(path);
+			}
+		} else {
+			generate_reachable();
+			paths.sort();
 		}
 		String registration = "// wgodot-changes::file\n#include \"core/io/wgodot_native_resources.h\"\n\nnamespace WGodotGame {\n";
 		for (const String &path : paths) {

@@ -712,22 +712,20 @@ WEBP_TSAN_IGNORE_FUNCTION void VP8LEncDspInitSSE2(void) {
   VP8LVectorMismatch = VectorMismatch_SSE2;
   VP8LBundleColorMap = BundleColorMap_SSE2;
 
-  VP8LPredictorsSub[0] = PredictorSub0_SSE2;
-  VP8LPredictorsSub[1] = PredictorSub1_SSE2;
-  VP8LPredictorsSub[2] = PredictorSub2_SSE2;
-  VP8LPredictorsSub[3] = PredictorSub3_SSE2;
-  VP8LPredictorsSub[4] = PredictorSub4_SSE2;
-  VP8LPredictorsSub[5] = PredictorSub5_SSE2;
-  VP8LPredictorsSub[6] = PredictorSub6_SSE2;
-  VP8LPredictorsSub[7] = PredictorSub7_SSE2;
-  VP8LPredictorsSub[8] = PredictorSub8_SSE2;
-  VP8LPredictorsSub[9] = PredictorSub9_SSE2;
-  VP8LPredictorsSub[10] = PredictorSub10_SSE2;
-  VP8LPredictorsSub[11] = PredictorSub11_SSE2;
-  VP8LPredictorsSub[12] = PredictorSub12_SSE2;
-  VP8LPredictorsSub[13] = PredictorSub13_SSE2;
-  VP8LPredictorsSub[14] = PredictorSub0_SSE2;  // <- padding security sentinels
-  VP8LPredictorsSub[15] = PredictorSub0_SSE2;
+  // wgodot-changes::begin
+  // Concurrent initialization can replace the dispatch table with AVX2 before
+  // it is copied into the SSE fallback table, causing recursive fallback calls.
+  // Publish both tables from immutable SSE2 entries instead.
+  static const VP8LPredictorAddSubFunc predictors[16] = {
+      PredictorSub0_SSE2,  PredictorSub1_SSE2,  PredictorSub2_SSE2,
+      PredictorSub3_SSE2,  PredictorSub4_SSE2,  PredictorSub5_SSE2,
+      PredictorSub6_SSE2,  PredictorSub7_SSE2,  PredictorSub8_SSE2,
+      PredictorSub9_SSE2,  PredictorSub10_SSE2, PredictorSub11_SSE2,
+      PredictorSub12_SSE2, PredictorSub13_SSE2,
+      PredictorSub0_SSE2, PredictorSub0_SSE2  // padding security sentinels
+  };
+  memcpy(VP8LPredictorsSub, predictors, sizeof(predictors));
+  // wgodot-changes::end
 
   // SSE exports for AVX and above.
   VP8LSubtractGreenFromBlueAndRed_SSE = SubtractGreenFromBlueAndRed_SSE2;
@@ -736,7 +734,9 @@ WEBP_TSAN_IGNORE_FUNCTION void VP8LEncDspInitSSE2(void) {
   VP8LCollectColorRedTransforms_SSE = CollectColorRedTransforms_SSE2;
   VP8LBundleColorMap_SSE = BundleColorMap_SSE2;
 
-  memcpy(VP8LPredictorsSub_SSE, VP8LPredictorsSub, sizeof(VP8LPredictorsSub));
+  // wgodot-changes::begin
+  memcpy(VP8LPredictorsSub_SSE, predictors, sizeof(predictors));
+  // wgodot-changes::end
 }
 
 #else  // !WEBP_USE_SSE2

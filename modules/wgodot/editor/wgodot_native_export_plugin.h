@@ -2,6 +2,7 @@
 #pragma once
 
 #include "wgodot_export_target.h"
+#include "wgodot_native_resource_selection.h"
 #include "wgodot_resource_export.h"
 
 #include "editor/export/editor_export_plugin.h"
@@ -14,10 +15,12 @@ class WGodotNativeExportPlugin : public EditorExportPlugin {
 	Dictionary autoloads;
 	WGodotResourceExport resources;
 	WGodotExportTarget target;
+	WGodotNativeResourceSelection selection;
 
 protected:
 	void _get_export_options(const Ref<EditorExportPlatform> &p_platform, List<EditorExportPlatform::ExportOption> *r_options) const override;
 	void _export_begin(const HashSet<String> &p_features, bool p_debug, const String &p_path, int p_flags) override;
+	void _export_customize_paths(HashSet<String> &r_paths) override;
 	void _export_paths_ready(const HashSet<String> &p_paths) override;
 	void _export_file(const String &p_path, const String &p_type, const HashSet<String> &p_features) override;
 	void _export_global_class_list(Array &r_classes) override;

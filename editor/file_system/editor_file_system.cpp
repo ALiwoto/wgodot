@@ -1000,7 +1000,9 @@ bool EditorFileSystem::_update_scan_actions() {
 				ERR_CONTINUE(idx == -1);
 				String full_path = ia.dir->get_file_path(idx);
 
-				bool need_reimport = _test_for_reimport(full_path, ia.dir->files[idx]->import_md5);
+				// wgodot-changes::begin
+				bool need_reimport = ia.force_reimport || _test_for_reimport(full_path, ia.dir->files[idx]->import_md5);
+				// wgodot-changes::end
 				if (need_reimport) {
 					// Must reimport.
 					reimports.push_back(full_path);
@@ -1294,7 +1296,7 @@ void EditorFileSystem::_process_file_system(const ScannedDirectory *p_scan_dir, 
 				// If something is different, we will queue a test for reimportation that will check
 				// the md5 of all files and import settings and, if necessary, execute a reimportation.
 				// wgodot-changes::begin
-				const bool collision_changed = fi->type == "PackedScene" && WGodotMeshCollision::import_dependency_changed(path, import_mt, fc->deps);
+				const bool collision_changed = fi->type == "PackedScene" && WGodotMeshCollision::import_dependency_changed(path);
 				// wgodot-changes::end
 				if (collision_changed || _is_test_for_reimport_needed(path, fc->modification_time, mt, fc->import_modification_time, import_mt, fi->import_dest_paths) ||
 						(revalidate_import_files && !ResourceFormatImporter::get_singleton()->are_import_settings_valid(path))) {
@@ -1441,13 +1443,26 @@ void EditorFileSystem::_process_removed_files(const HashSet<String> &p_processed
 }
 
 void EditorFileSystem::_scan_fs_changes(EditorFileSystemDirectory *p_dir, ScanProgress &p_progress, bool p_recursive) {
+	// wgodot-changes::begin
+	if (filtered_change_scan && !changed_directories.has(p_dir->get_path())) {
+		if (p_recursive && changed_directory_ancestors.has(p_dir->get_path())) {
+			for (EditorFileSystemDirectory *subdir : p_dir->subdirs) {
+				_scan_fs_changes(subdir, p_progress);
+			}
+		}
+		return;
+	}
+	// wgodot-changes::end
 	uint64_t current_mtime = FileAccess::get_modified_time(p_dir->get_path());
 
 	bool updated_dir = false;
 	String cd = p_dir->get_path();
 	int diff_nb_files = 0;
 
-	if (current_mtime != p_dir->modified_time || using_fat32_or_exfat) {
+	// wgodot-changes::begin
+	// Notifications catch multiple edits within the timestamp's one-second resolution.
+	if (filtered_change_scan || current_mtime != p_dir->modified_time || using_fat32_or_exfat) {
+		// wgodot-changes::end
 		updated_dir = true;
 		p_dir->modified_time = current_mtime;
 		//ooooops, dir changed, see what's going on
@@ -1598,11 +1613,18 @@ void EditorFileSystem::_scan_fs_changes(EditorFileSystemDirectory *p_dir, ScanPr
 			uint64_t mt = FileAccess::get_modified_time(path);
 			uint64_t import_mt = FileAccess::get_modified_time(path + ".import");
 			// wgodot-changes::begin
-			const bool collision_changed = p_dir->files[i]->type == "PackedScene" && WGodotMeshCollision::import_dependency_changed(path, import_mt, p_dir->files[i]->deps);
+			const bool notified = changed_files.has(path);
+			const bool collision_notified = p_dir->files[i]->type == "PackedScene" && changed_files.has(WGodotMeshCollision::effective_path(path));
+			const bool collision_changed = p_dir->files[i]->type == "PackedScene" && WGodotMeshCollision::import_dependency_changed(path);
 			// wgodot-changes::end
-			if (collision_changed || _is_test_for_reimport_needed(path, p_dir->files[i]->modified_time, mt, p_dir->files[i]->import_modified_time, import_mt, p_dir->files[i]->import_dest_paths)) {
+			// wgodot-changes::begin
+			if (notified || collision_notified || collision_changed || _is_test_for_reimport_needed(path, p_dir->files[i]->modified_time, mt, p_dir->files[i]->import_modified_time, import_mt, p_dir->files[i]->import_dest_paths)) {
+				// wgodot-changes::end
 				ItemAction ia;
 				ia.action = ItemAction::ACTION_FILE_TEST_REIMPORT;
+				// wgodot-changes::begin
+				ia.force_reimport = collision_notified;
+				// wgodot-changes::end
 				ia.dir = p_dir;
 				ia.file = p_dir->files[i]->file;
 				scan_actions.push_back(ia);
@@ -1610,7 +1632,9 @@ void EditorFileSystem::_scan_fs_changes(EditorFileSystemDirectory *p_dir, ScanPr
 		} else {
 			uint64_t mt = FileAccess::get_modified_time(path);
 
-			if (mt != p_dir->files[i]->modified_time) {
+			// wgodot-changes::begin
+			if (mt != p_dir->files[i]->modified_time || changed_files.has(path)) {
+				// wgodot-changes::end
 				p_dir->files[i]->modified_time = mt; //save new time, but test for reload
 
 				ItemAction ia;
@@ -1725,15 +1749,27 @@ String EditorFileSystem::_get_file_by_class_name(EditorFileSystemDirectory *p_di
 	return "";
 }
 
-void EditorFileSystem::scan_changes() {
+// wgodot-changes::begin
+void EditorFileSystem::scan_changes(bool p_use_notifications) {
+	// wgodot-changes::end
 	if (first_scan || // Prevent a premature changes scan from inhibiting the first full scan
-			scanning || scanning_changes || thread.is_started()) {
+					  // wgodot-changes::begin
+			importing || scanning || scanning_changes || thread.is_started()) {
+		// wgodot-changes::end
 		scan_changes_pending = true;
+		// wgodot-changes::begin
+		scan_changes_pending_full |= !p_use_notifications;
+		// wgodot-changes::end
 		set_process(true);
 		return;
 	}
 
 	_update_extensions();
+	// wgodot-changes::begin
+	if (!_prepare_changed_directories(p_use_notifications)) {
+		return;
+	}
+	// wgodot-changes::end
 	sources_changed.clear();
 	scanning_changes = true;
 	scanning_changes_done.clear();
@@ -1783,22 +1819,15 @@ void EditorFileSystem::_notification(int p_what) {
 		} break;
 
 		case NOTIFICATION_PROCESS: {
+			// wgodot-changes::begin
+			// Progress redraws run the main loop recursively during import.
+			static bool prevent_recursive_process_hack = false;
+			if (prevent_recursive_process_hack) {
+				break;
+			}
+			prevent_recursive_process_hack = true;
+			// wgodot-changes::end
 			if (use_threads) {
-				/** This hack exists because of the EditorProgress nature
-				 *  of processing events recursively. This needs to be rewritten
-				 *  at some point entirely, but in the meantime the following
-				 *  hack prevents deadlock on import.
-				 */
-
-				static bool prevent_recursive_process_hack = false;
-				if (prevent_recursive_process_hack) {
-					break;
-				}
-
-				prevent_recursive_process_hack = true;
-
-				bool done_importing = false;
-
 				if (scanning_changes) {
 					if (scanning_changes_done.is_set()) {
 						set_process(false);
@@ -1811,7 +1840,6 @@ void EditorFileSystem::_notification(int p_what) {
 						// in editor_node to start the export if needed.
 						first_scan = false;
 						scanning_changes = false;
-						done_importing = true;
 						ResourceImporter::load_on_startup = nullptr;
 						if (changed) {
 							emit_signal(SNAME("filesystem_changed"));
@@ -1836,14 +1864,17 @@ void EditorFileSystem::_notification(int p_what) {
 					emit_signal(SNAME("filesystem_changed"));
 					emit_signal(SNAME("sources_changed"), sources_changed.size() > 0);
 				}
-
-				if (done_importing && scan_changes_pending) {
-					scan_changes_pending = false;
-					scan_changes();
-				}
-
-				prevent_recursive_process_hack = false;
 			}
+			// wgodot-changes::begin
+			if (scan_changes_pending && !is_scanning() && !importing && !thread.is_started() && !thread_sources.is_started()) {
+				const bool use_notifications = !scan_changes_pending_full;
+				scan_changes_pending = false;
+				scan_changes_pending_full = false;
+				set_process(false);
+				scan_changes(use_notifications);
+			}
+			prevent_recursive_process_hack = false;
+			// wgodot-changes::end
 		} break;
 	}
 }
@@ -2594,6 +2625,14 @@ void EditorFileSystem::update_files(const Vector<String> &p_script_paths) {
 }
 
 void EditorFileSystem::_notify_filesystem_changed() {
+	// wgodot-changes::begin
+	// Progress redraws flush deferred calls during import. Rebuilding the whole
+	// filesystem dock for each generated texture/mesh makes large batches quadratic.
+	// reimport_files() (or its enclosing scan) emits the final notification.
+	if (importing) {
+		return;
+	}
+	// wgodot-changes::end
 	emit_signal(SNAME("filesystem_changed"));
 	filesystem_changed_queued.clear();
 }
@@ -2853,7 +2892,9 @@ Error EditorFileSystem::_reimport_group(const String &p_group_file, const Vector
 	return err;
 }
 
-Error EditorFileSystem::_reimport_file(const String &p_file, const HashMap<StringName, Variant> &p_custom_options, const String &p_custom_importer, Variant *p_generator_parameters, bool p_update_file_system) {
+// wgodot-changes::begin
+Error EditorFileSystem::_reimport_file(const String &p_file, const HashMap<StringName, Variant> &p_custom_options, const String &p_custom_importer, Variant *p_generator_parameters, bool p_update_file_system, bool p_prepare_only) {
+	// wgodot-changes::end
 	// wgodot-changes::begin
 	WGodotResourceTrace trace("import.file", p_file);
 	WGodotEditorActivity activity("Importing asset", p_file);
@@ -2930,6 +2971,11 @@ Error EditorFileSystem::_reimport_file(const String &p_file, const HashMap<Strin
 
 	if (importer_name == "keep" || importer_name == "skip") {
 		//keep files, do nothing.
+		// wgodot-changes::begin
+		if (p_prepare_only) {
+			return OK;
+		}
+		// wgodot-changes::end
 		if (p_update_file_system) {
 			fs->files[cpos]->modified_time = FileAccess::get_modified_time(p_file);
 			fs->files[cpos]->import_modified_time = FileAccess::get_modified_time(p_file + ".import");
@@ -2981,6 +3027,13 @@ Error EditorFileSystem::_reimport_file(const String &p_file, const HashMap<Strin
 			params[kv.key] = kv.value;
 		}
 	}
+
+	// wgodot-changes::begin
+	if (p_prepare_only) {
+		importer->prepare_import(p_file, params);
+		return OK;
+	}
+	// wgodot-changes::end
 
 	if (uid == ResourceUID::INVALID_ID) {
 		uid = ResourceUID::get_singleton()->create_id_for_path(p_file);
@@ -3394,7 +3447,18 @@ void EditorFileSystem::reimport_files(const Vector<String> &p_files) {
 
 	int from = 0;
 	Semaphore imported_sem;
+	// wgodot-changes::begin
+	int prepared_until = 0;
+	Ref<ResourceImporter> preparing_importer;
+	const int preparation_window = MAX(1, WorkerThreadPool::get_singleton()->get_thread_count());
+	// wgodot-changes::end
 	for (int i = 0; i < reimport_files.size(); i++) {
+		// wgodot-changes::begin
+		if (preparing_importer.is_valid() && preparing_importer->get_importer_name() != reimport_files[i].importer) {
+			preparing_importer->finish_prepared_imports();
+			preparing_importer.unref();
+		}
+		// wgodot-changes::end
 		if (groups_to_reimport.has(reimport_files[i].path)) {
 			from = i + 1;
 			continue;
@@ -3454,14 +3518,43 @@ void EditorFileSystem::reimport_files(const Vector<String> &p_files) {
 			}
 
 		} else {
+			// wgodot-changes::begin
+			if (use_multiple_threads) {
+				Ref<ResourceImporter> importer = ResourceFormatImporter::get_singleton()->get_importer_by_name(reimport_files[i].importer);
+				if (importer.is_valid() && importer->can_prepare_import()) {
+					preparing_importer = importer;
+					prepared_until = MAX(prepared_until, i);
+					while (prepared_until < reimport_files.size() && prepared_until < i + preparation_window && reimport_files[prepared_until].importer == reimport_files[i].importer) {
+						const String &path = reimport_files[prepared_until].path;
+						if (!groups_to_reimport.has(path)) {
+							_reimport_file(path, HashMap<StringName, Variant>(), String(), nullptr, true, true);
+						}
+						prepared_until++;
+					}
+				}
+			}
+			// wgodot-changes::end
 			ep->step(reimport_files[i].path.get_file(), i, false);
-			_reimport_file(reimport_files[i].path);
+			// wgodot-changes::begin
+			const Error import_error = _reimport_file(reimport_files[i].path);
+			if (import_error != OK && preparing_importer.is_valid()) {
+				// A failed import may not have consumed its prepared scene.
+				preparing_importer->finish_prepared_imports();
+				prepared_until = i + 1;
+			}
+			// wgodot-changes::end
 
 			// We need to increment the counter, maybe the next file is multithreaded
 			// and doesn't have the same importer.
 			from = i + 1;
 		}
 	}
+
+	// wgodot-changes::begin
+	if (preparing_importer.is_valid()) {
+		preparing_importer->finish_prepared_imports();
+	}
+	// wgodot-changes::end
 
 	// Reimport groups.
 
@@ -3485,8 +3578,9 @@ void EditorFileSystem::reimport_files(const Vector<String> &p_files) {
 	ResourceUID::get_singleton()->update_cache(); // After reimporting, update the cache.
 	_save_filesystem_cache();
 
-	memdelete(ep);
-
+	// wgodot-changes::begin
+	// Keep the batch progress alive through metadata and scene refreshes.
+	// wgodot-changes::end
 	_process_update_pending();
 
 	// Revert to previous values to restore editor settings for VSync and Update Continuously.
@@ -3494,9 +3588,13 @@ void EditorFileSystem::reimport_files(const Vector<String> &p_files) {
 	DisplayServer::get_singleton()->window_set_vsync_mode(old_vsync_mode);
 
 	importing = false;
+	// wgodot-changes::begin
+	filesystem_changed_queued.clear();
+	// wgodot-changes::end
 
-	ep = memnew(EditorProgress("reimport", TTR("(Re)Importing Assets"), p_files.size()));
-	ep->step(TTR("Executing post-reimport operations..."), 0, true);
+	// wgodot-changes::begin
+	ep->step(TTR("Refreshing imported resources..."), p_files.size(), true);
+	// wgodot-changes::end
 	if (!is_scanning()) {
 		emit_signal(SNAME("filesystem_changed"));
 	}
@@ -3786,7 +3884,9 @@ void EditorFileSystem::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("is_importing"), &EditorFileSystem::is_importing);
 	ClassDB::bind_method(D_METHOD("get_scanning_progress"), &EditorFileSystem::get_scanning_progress);
 	ClassDB::bind_method(D_METHOD("scan"), &EditorFileSystem::scan);
-	ClassDB::bind_method(D_METHOD("scan_sources"), &EditorFileSystem::scan_changes);
+	// wgodot-changes::begin
+	ClassDB::bind_method(D_METHOD("scan_sources", "use_notifications"), &EditorFileSystem::scan_changes, DEFVAL(false));
+	// wgodot-changes::end
 	ClassDB::bind_method(D_METHOD("update_file", "path"), &EditorFileSystem::update_file);
 	ClassDB::bind_method(D_METHOD("get_filesystem_path", "path"), &EditorFileSystem::get_filesystem_path);
 	ClassDB::bind_method(D_METHOD("get_file_type", "path"), &EditorFileSystem::get_file_type);
@@ -3882,6 +3982,9 @@ EditorFileSystem::EditorFileSystem() {
 
 	Ref<DirAccess> dir = DirAccess::create(DirAccess::ACCESS_FILESYSTEM);
 	is_case_sensitive = dir->is_case_sensitive("res://");
+	// wgodot-changes::begin
+	file_watcher.start(ProjectSettings::get_singleton()->get_resource_path());
+	// wgodot-changes::end
 }
 
 EditorFileSystem::~EditorFileSystem() {

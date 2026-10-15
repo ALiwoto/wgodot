@@ -3247,53 +3247,19 @@ Error ResourceImporterScene::import(ResourceUID::ID p_source_id, const String &p
 	// wgodot-changes::end
 	const String &src_path = p_source_file;
 
-	Ref<EditorSceneFormatImporter> importer;
-	String ext = src_path.get_extension().to_lower();
+	// wgodot-changes::begin
+	Ref<EditorSceneFormatImporter> importer = _get_format_importer(src_path);
+	// wgodot-changes::end
 
 	EditorProgress progress("import", TTR("Import Scene"), 104);
 	progress.step(TTR("Importing Scene..."), 0);
 
-	for (Ref<EditorSceneFormatImporter> importer_elem : scene_importers) {
-		List<String> extensions;
-		importer_elem->get_extensions(&extensions);
-
-		for (const String &F : extensions) {
-			if (F.to_lower() == ext) {
-				importer = importer_elem;
-				break;
-			}
-		}
-
-		if (importer.is_valid()) {
-			break;
-		}
-	}
-
 	ERR_FAIL_COND_V(importer.is_null(), ERR_FILE_UNRECOGNIZED);
 	ERR_FAIL_COND_V(p_options.is_empty(), ERR_BUG);
 
-	int import_flags = 0;
-
-	if (_scene_import_type == "AnimationLibrary") {
-		import_flags |= EditorSceneFormatImporter::IMPORT_ANIMATION;
-		import_flags |= EditorSceneFormatImporter::IMPORT_DISCARD_MESHES_AND_MATERIALS;
-	} else if (bool(p_options["animation/import"])) {
-		import_flags |= EditorSceneFormatImporter::IMPORT_ANIMATION;
-	}
-
-	if (bool(p_options["skins/use_named_skins"])) {
-		import_flags |= EditorSceneFormatImporter::IMPORT_USE_NAMED_SKIN_BINDS;
-	}
-
-	bool ensure_tangents = p_options["meshes/ensure_tangents"];
-	if (ensure_tangents) {
-		import_flags |= EditorSceneFormatImporter::IMPORT_GENERATE_TANGENT_ARRAYS;
-	}
-
-	bool force_disable_compression = p_options["meshes/force_disable_compression"];
-	if (force_disable_compression) {
-		import_flags |= EditorSceneFormatImporter::IMPORT_FORCE_DISABLE_MESH_COMPRESSION;
-	}
+	// wgodot-changes::begin
+	const int import_flags = _get_import_flags(p_options);
+	// wgodot-changes::end
 
 	Dictionary subresources = p_options["_subresources"];
 

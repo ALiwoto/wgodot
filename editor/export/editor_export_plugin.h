@@ -143,6 +143,7 @@ protected:
 	virtual void _export_begin(const HashSet<String> &p_features, bool p_debug, const String &p_path, int p_flags);
 	// wgodot-changes::begin
 	void set_export_error(Error p_error, const String &p_message);
+	virtual void _export_customize_paths(HashSet<String> &r_paths) {}
 	virtual void _export_paths_ready(const HashSet<String> &p_paths);
 	virtual void _export_global_class_list(Array &r_global_class_list);
 	virtual void _export_project_settings(HashMap<String, Variant> &r_settings) {}

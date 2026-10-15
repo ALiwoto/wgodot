@@ -41,6 +41,9 @@ protected:
 	static void _bind_methods();
 
 public:
+	// wgodot-changes::begin
+	virtual bool supports_threaded_import() const { return false; }
+	// wgodot-changes::end
 	// Import process.
 	virtual Error import_preflight(Ref<GLTFState> p_state, const Vector<String> &p_extensions);
 	virtual Vector<String> get_supported_extensions();
