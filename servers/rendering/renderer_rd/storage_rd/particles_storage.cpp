@@ -605,6 +605,11 @@ void ParticlesStorage::particles_emit(RID p_particles, const Transform3D &p_tran
 	Particles *particles = particles_owner.get_or_null(p_particles);
 	ERR_FAIL_NULL(particles);
 	ERR_FAIL_COND(particles->amount == 0);
+	// wgodot-changes::begin
+	// Allocate the shader's userdata before queuing births. A layout change
+	// frees particle data, including the pending manual emission buffer.
+	_particles_update_buffers(particles);
+	// wgodot-changes::end
 
 	if (particles->emitting) {
 		particles->clear = true;

@@ -45,6 +45,9 @@ public:
 	enum TangentMode {
 		TANGENT_FREE = 0,
 		TANGENT_LINEAR,
+		// wgodot-changes::begin
+		TANGENT_CONSTANT,
+		// wgodot-changes::end
 		TANGENT_MODE_COUNT
 	};
 

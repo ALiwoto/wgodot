@@ -414,6 +414,12 @@ real_t Curve::sample(real_t p_offset) const {
 real_t Curve::sample_local_nocheck(int p_index, real_t p_local_offset) const {
 	const Point a = _points[p_index];
 	const Point b = _points[p_index + 1];
+	// wgodot-changes::begin
+	if (a.right_mode == TANGENT_CONSTANT || b.left_mode == TANGENT_CONSTANT) {
+		// get_index can select the preceding interval at an exact knot.
+		return p_local_offset < b.position.x - a.position.x ? a.position.y : b.position.y;
+	}
+	// wgodot-changes::end
 
 	/* Cubic bézier
 	 *
@@ -651,10 +657,15 @@ void Curve::_bind_methods() {
 
 	BIND_ENUM_CONSTANT(TANGENT_FREE);
 	BIND_ENUM_CONSTANT(TANGENT_LINEAR);
+	// wgodot-changes::begin
+	BIND_ENUM_CONSTANT(TANGENT_CONSTANT);
+	// wgodot-changes::end
 	BIND_ENUM_CONSTANT(TANGENT_MODE_COUNT);
 
 	Point defaults;
-	const String mode_hint = "Free,Linear";
+	// wgodot-changes::begin
+	const String mode_hint = "Free,Linear,Constant";
+	// wgodot-changes::end
 
 	base_property_helper.set_prefix("point_");
 	base_property_helper.set_array_length_getter(&Curve::get_point_count);

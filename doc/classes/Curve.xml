@@ -215,7 +215,12 @@
 		<constant name="TANGENT_LINEAR" value="1" enum="TangentMode">
 			The curve calculates the tangent on this side of the point as the slope halfway towards the adjacent point.
 		</constant>
-		<constant name="TANGENT_MODE_COUNT" value="2" enum="TangentMode">
+		<!-- wgodot-changes::begin -->
+		<constant name="TANGENT_CONSTANT" value="2" enum="TangentMode">
+			Holds the preceding point's value throughout the adjacent interval, jumping to the next value at its offset. Use [method sample] for exact discontinuities; [method sample_baked] interpolates the sampled cache.
+		</constant>
+		<!-- wgodot-changes::end -->
+		<constant name="TANGENT_MODE_COUNT" value="3" enum="TangentMode">
 			The total number of available tangent modes.
 		</constant>
 	</constants>

@@ -748,6 +748,14 @@ void CurveEdit::plot_curve_accurate(float p_step, const Color &p_line_color, con
 	for (int i = 1; i < curve->get_point_count(); ++i) {
 		Vector2 a = curve->get_point_position(i - 1);
 		Vector2 b = curve->get_point_position(i);
+		// wgodot-changes::begin
+		if (curve->get_point_right_mode(i - 1) == Curve::TANGENT_CONSTANT || curve->get_point_left_mode(i) == Curve::TANGENT_CONSTANT) {
+			Vector2 corner(b.x, a.y);
+			draw_line(get_view_pos(a), get_view_pos(corner), p_line_color, LINE_WIDTH, true);
+			draw_line(get_view_pos(corner), get_view_pos(b), p_line_color, LINE_WIDTH, true);
+			continue;
+		}
+		// wgodot-changes::end
 
 		Vector2 pos = a;
 		Vector2 prev_pos = a;
