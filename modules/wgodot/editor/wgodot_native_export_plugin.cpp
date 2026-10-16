@@ -123,7 +123,22 @@ void WGodotNativeExportPlugin::_export_begin(const HashSet<String> &p_features, 
 }
 
 void WGodotNativeExportPlugin::_export_customize_paths(HashSet<String> &r_paths) {
-	if (!validated || selection.exports_all()) {
+	if (!validated) {
+		return;
+	}
+	if (selection.exports_all()) {
+		// EditorFileSystem supplies source paths here, before import payloads
+		// are expanded. Reject foreign ownership before the exporter opens
+		// thousands of irrelevant import files or loads their resources.
+		Vector<String> excluded;
+		for (const String &path : r_paths) {
+			if (!target.includes(path)) {
+				excluded.push_back(path);
+			}
+		}
+		for (const String &path : excluded) {
+			r_paths.erase(path);
+		}
 		return;
 	}
 	const Dictionary paths = manifest["resource_paths"];
@@ -155,7 +170,7 @@ void WGodotNativeExportPlugin::_export_paths_ready(const HashSet<String> &p_path
 	// Imported payloads live under .godot rather than beside their source. Keep
 	// ownership tied to that source, including alternate platform payloads.
 	for (const String &path : p_paths) {
-		if (!FileAccess::exists(path + ".import")) {
+		if (!target.includes(path) || !FileAccess::exists(path + ".import")) {
 			continue;
 		}
 		String message;

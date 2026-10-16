@@ -876,6 +876,10 @@ void EditorSettings::_load_defaults(Ref<ConfigFile> p_extra_config) {
 
 	// Behavior: Documentation
 	_initial_set("text_editor/behavior/documentation/enable_tooltips", true, true);
+	// wgodot-changes::begin
+	_initial_set("text_editor/behavior/documentation/auto_load_scripts", true);
+	set_restart_if_changed("text_editor/behavior/documentation/auto_load_scripts", true);
+	// wgodot-changes::end
 
 	// Script list
 	_initial_set("text_editor/script_list/show_members_overview", true, true);

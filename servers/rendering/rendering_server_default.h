@@ -211,9 +211,11 @@ public:
 	}
 
 	//these go pass-through, as they can be called from any thread
-	FUNCRIDTEX1(texture_2d, const Ref<Image> &)
-	FUNCRIDTEX2(texture_2d_layered, const Vector<Ref<Image>> &, RSE::TextureLayeredType)
-	FUNCRIDTEX6(texture_3d, Image::Format, int, int, int, bool, const Vector<Ref<Image>> &)
+	// wgodot-changes::begin
+	RID texture_2d_create(const Ref<Image> &p_image) override;
+	RID texture_2d_layered_create(const Vector<Ref<Image>> &p_layers, RSE::TextureLayeredType p_type) override;
+	RID texture_3d_create(Image::Format p_format, int p_width, int p_height, int p_depth, bool p_mipmaps, const Vector<Ref<Image>> &p_data) override;
+	// wgodot-changes::end
 	FUNCRIDTEX3(texture_external, int, int, uint64_t)
 	FUNCRIDTEX1(texture_proxy, RID)
 	FUNCRIDTEX5(texture_drawable, int, int, RSE::TextureDrawableFormat, const Color &, bool)
@@ -224,8 +226,10 @@ public:
 	}
 
 	//these go through command queue if they are in another thread
-	FUNC3(texture_2d_update, RID, const Ref<Image> &, int)
-	FUNC2(texture_3d_update, RID, const Vector<Ref<Image>> &)
+	// wgodot-changes::begin
+	void texture_2d_update(RID p_texture, const Ref<Image> &p_image, int p_layer) override;
+	void texture_3d_update(RID p_texture, const Vector<Ref<Image>> &p_data) override;
+	// wgodot-changes::end
 	FUNC4(texture_external_update, RID, int, int, uint64_t)
 	FUNC2(texture_proxy_update, RID, RID)
 

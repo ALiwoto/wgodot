@@ -1781,7 +1781,9 @@ void ParticlesStorage::ParticlesShaderData::set_code(const String &p_code) {
 
 	actions.uniforms = &uniforms;
 
-	Error err = particles_storage->particles_shader.compiler.compile(RSE::SHADER_PARTICLES, code, &actions, path, gen_code);
+	// wgodot-changes::begin
+	Error err = particles_storage->particles_shader.compiler.compile_concurrent(RSE::SHADER_PARTICLES, code, &actions, path, gen_code);
+	// wgodot-changes::end
 	ERR_FAIL_COND_MSG(err != OK, "Shader compilation failed.");
 
 	if (version.is_null()) {

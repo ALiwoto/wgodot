@@ -28,6 +28,13 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
+// wgodot-changes::begin
+#include "modules/modules_enabled.gen.h"
+#if defined(MODULE_WGODOT_ENABLED) && defined(TOOLS_ENABLED) && defined(DEBUG_ENABLED)
+#include "modules/wgodot/wgodot_performance.h"
+#endif
+// wgodot-changes::end
+
 #include "resource_loader.h"
 // wgodot-changes::begin
 #include "wgodot_resource_paths.h"
@@ -720,6 +727,11 @@ void ResourceLoader::_load_threaded_request_setup_user_token(LoadToken *p_token,
 }
 
 Ref<Resource> ResourceLoader::load(const String &p_path, const String &p_type_hint, CacheMode p_cache_mode, Error *r_error) {
+	// wgodot-changes::begin
+#if defined(MODULE_WGODOT_ENABLED) && defined(TOOLS_ENABLED) && defined(DEBUG_ENABLED)
+	WGodotPerformance::RegionScope wgodot_region(WGodotPerformance::RESOURCE_LOAD);
+#endif
+	// wgodot-changes::end
 	if (r_error) {
 		*r_error = OK;
 	}

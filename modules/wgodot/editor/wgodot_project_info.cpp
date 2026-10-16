@@ -7,7 +7,7 @@
 
 #include "core/config/project_settings.h"
 #include "core/core_string_names.h"
-#include "core/io/resource_loader.h"
+#include "core/io/resource.h"
 #include "core/io/resource_uid.h"
 #include "core/object/script_language.h"
 #include "scene/resources/packed_scene.h"
@@ -44,12 +44,18 @@ void add_status_fields(Dictionary &r_response) {
 	const String configured_scene = GLOBAL_GET("application/run/main_scene");
 	const String main_scene = configured_scene.is_empty() ? String() : ResourceUID::ensure_path(configured_scene);
 	String attached_script;
+	bool script_known = main_scene.is_empty();
 	if (!main_scene.is_empty()) {
-		const Ref<PackedScene> scene = ResourceLoader::load(main_scene, "PackedScene");
-		find_root_script_path(scene, 0, attached_script);
+		// A status query must not load the project and its script dependencies.
+		const Ref<PackedScene> scene = ResourceCache::get_ref(main_scene);
+		if (scene.is_valid()) {
+			find_root_script_path(scene, 0, attached_script);
+			script_known = true;
+		}
 	}
 	r_response["main_scene"] = main_scene;
 	r_response["main_scene_script"] = attached_script;
+	r_response["main_scene_script_known"] = script_known;
 }
 
 } // namespace WGodotProjectInfo

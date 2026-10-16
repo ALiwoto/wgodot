@@ -21,6 +21,7 @@ class ExportAnalysis {
 	HashMap<String, HashSet<StringName>> excluded_members;
 	HashMap<uint64_t, String> decoded_string_resources;
 	bool strings_decoded = false;
+	bool for_export = true;
 	static thread_local ExportAnalysis *active;
 
 public:
@@ -36,11 +37,13 @@ public:
 		Scope &operator=(const Scope &) = delete;
 	};
 
-	ExportAnalysis(const ExportProject &p_project, const ExportContext &p_artifacts);
+	ExportAnalysis(const ExportProject &p_project, const ExportContext &p_artifacts, bool p_for_export = true);
 	~ExportAnalysis();
 	ExportAnalysis(const ExportAnalysis &) = delete;
 	ExportAnalysis &operator=(const ExportAnalysis &) = delete;
 	static ExportAnalysis *get_active() { return active; }
+	bool is_for_export() const { return for_export; }
+	void parse_scripts_parallel();
 	void set_excluded_members(const HashMap<String, HashSet<StringName>> &p_members) { excluded_members = p_members; }
 	bool is_excluded_member(const String &p_class, const StringName &p_member) const;
 	const HashMap<uint64_t, String> &get_decoded_string_resources();

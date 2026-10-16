@@ -3176,6 +3176,15 @@ void EditorHelp::load_script_doc_cache() {
 		return;
 	}
 
+	// wgodot-changes::begin
+	if (!bool(EDITOR_GET("text_editor/behavior/documentation/auto_load_scripts"))) {
+		_wait_for_thread();
+		_process_postponed_docs();
+		_script_docs_loaded.set();
+		return;
+	}
+	// wgodot-changes::end
+
 	_wait_for_thread();
 
 	if (!ResourceLoader::exists(get_script_doc_cache_full_path())) {
@@ -3241,6 +3250,11 @@ static void _regenerate_script_doc_cache(bool p_changes) {
 }
 
 void EditorHelp::regenerate_script_doc_cache() {
+	// wgodot-changes::begin
+	if (!bool(EDITOR_GET("text_editor/behavior/documentation/auto_load_scripts"))) {
+		return;
+	}
+	// wgodot-changes::end
 	if (EditorFileSystem::get_singleton()->is_scanning()) {
 		// Wait until EditorFileSystem scanning is complete to use updated filesystem structure.
 		EditorFileSystem::get_singleton()->connect(SNAME("sources_changed"), callable_mp_static(_regenerate_script_doc_cache), CONNECT_ONE_SHOT);
@@ -3306,6 +3320,11 @@ void EditorHelp::_delete_script_doc_cache() {
 }
 
 void EditorHelp::save_script_doc_cache() {
+	// wgodot-changes::begin
+	if (!bool(EDITOR_GET("text_editor/behavior/documentation/auto_load_scripts"))) {
+		return;
+	}
+	// wgodot-changes::end
 	if (!_script_docs_loaded.is_set()) {
 		print_verbose("Script docs haven't been properly loaded or regenerated, so don't save them to disk.");
 		return;

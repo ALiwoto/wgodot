@@ -42,7 +42,7 @@ bool GDScriptAnalyzer::wgodot_reduce_native_interface_member(const DataType &p_b
 		type.native_type = String(contract->name) + "." + String(name);
 		type.is_meta_type = type.is_pseudo_type = type.is_constant = true;
 		for (const auto &entry : *values) {
-			type.enum_values[entry.key] = entry.value;
+			type.enum_values.insert(entry.key, entry.value);
 		}
 		p_identifier->source = Parser::IdentifierNode::MEMBER_CONSTANT;
 		return true;

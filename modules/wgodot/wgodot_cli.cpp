@@ -278,7 +278,8 @@ void print_status_human(const Dictionary &p_response) {
 	const String main_scene = p_response.get("main_scene", String());
 	const String main_scene_script = p_response.get("main_scene_script", String());
 	print_line("Main scene: " + (main_scene.is_empty() ? "<not configured>" : main_scene));
-	print_line("Main Scene script: " + (main_scene_script.is_empty() ? "<none>" : main_scene_script));
+	const bool main_scene_script_known = p_response.get("main_scene_script_known", true);
+	print_line("Main Scene script: " + (!main_scene_script_known ? "<not loaded>" : main_scene_script.is_empty() ? "<none>" : main_scene_script));
 
 	const int active_sessions = p_response.get("active_sessions", 0);
 	const int automatic_session = p_response.get("automatic_session", -1);

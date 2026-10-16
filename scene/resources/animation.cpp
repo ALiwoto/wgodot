@@ -28,6 +28,13 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
+// wgodot-changes::begin
+#include "modules/modules_enabled.gen.h"
+#if defined(MODULE_WGODOT_ENABLED) && defined(TOOLS_ENABLED) && defined(DEBUG_ENABLED)
+#include "modules/wgodot/wgodot_performance.h"
+#endif
+// wgodot-changes::end
+
 #include "animation.h"
 #include "animation.compat.inc"
 
@@ -6595,6 +6602,11 @@ Animation::Animation() {
 }
 
 Animation::~Animation() {
+	// wgodot-changes::begin
+#if defined(MODULE_WGODOT_ENABLED) && defined(TOOLS_ENABLED) && defined(DEBUG_ENABLED)
+	WGodotPerformance::RegionScope wgodot_region(WGodotPerformance::ANIMATION_FREE);
+#endif
+	// wgodot-changes::end
 	for (uint32_t i = 0; i < tracks.size(); i++) {
 		memdelete(tracks[i]);
 	}

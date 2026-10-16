@@ -476,7 +476,9 @@ class GDScriptLanguage : public ScriptLanguage {
 	// wgodot-changes::begin
 	uint64_t profiling_generation = 0;
 	bool is_profiling_capture(uint64_t p_generation) const {
-		return profiling && p_generation == profiling_generation;
+		// Frame timings describe the main thread. Background jobs can overlap
+		// multiple frames and must not mutate the native-call maps collated here.
+		return Thread::is_main_thread() && profiling && p_generation == profiling_generation;
 	}
 	// wgodot-changes::end
 	bool profile_native_calls;

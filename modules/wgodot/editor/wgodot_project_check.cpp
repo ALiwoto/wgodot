@@ -7,15 +7,18 @@
 #include "modules/gdscript/wgodot_gd/editor/gdscript_check_cli.h"
 
 Dictionary WGodotProjectCheck::start() {
-	return refresh.start();
+	return refresh.start(60000, false);
 }
 
 Dictionary WGodotProjectCheck::poll() {
+	if (check.is_valid()) {
+		return check->poll();
+	}
 	const Dictionary refreshed = refresh.poll();
 	if (refreshed.is_empty() || !(bool)refreshed.get("ok", false)) {
 		return refreshed;
 	}
-	Dictionary result = WGodotGDScriptCheckCLI::run_project_check_result();
-	result["refreshed"] = true;
-	return result;
+	check.instantiate();
+	check->start();
+	return Dictionary();
 }

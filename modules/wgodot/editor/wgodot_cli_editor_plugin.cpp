@@ -318,7 +318,11 @@ void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
 	// import phase, when there may briefly be no active synchronous scope.
 	EditorFileSystem *filesystem = EditorFileSystem::get_singleton();
 	if (filesystem && (filesystem->is_scanning() || filesystem->is_importing())) {
-		finish_connection(p_connection, make_error_response("editor_busy", "The editor is refreshing assets. Wait for it to finish, then retry the command."));
+		const String stage = filesystem->is_importing() ? "importing assets" : vformat("scanning project files (%d%%)", int(filesystem->get_scanning_progress() * 100.0f));
+		Dictionary response = make_error_response("editor_busy", "The editor is " + stage + ". Wait for it to finish, then retry the command.");
+		response["scan_progress"] = filesystem->get_scanning_progress();
+		response["first_scan"] = filesystem->doing_first_scan();
+		finish_connection(p_connection, response);
 		return;
 	}
 	const Dictionary request = p_connection.request;

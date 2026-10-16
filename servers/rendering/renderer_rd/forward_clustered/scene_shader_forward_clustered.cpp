@@ -171,11 +171,9 @@ void SceneShaderForwardClustered::ShaderData::set_code(const String &p_code) {
 
 	actions.uniforms = &uniforms;
 
-	Error err = OK;
-	{
-		MutexLock lock(SceneShaderForwardClustered::singleton_mutex);
-		err = SceneShaderForwardClustered::singleton->compiler.compile(RSE::SHADER_SPATIAL, code, &actions, path, gen_code);
-	}
+	// wgodot-changes::begin
+	Error err = SceneShaderForwardClustered::singleton->compiler.compile_concurrent(RSE::SHADER_SPATIAL, code, &actions, path, gen_code);
+	// wgodot-changes::end
 
 	if (err != OK) {
 		if (version.is_valid()) {

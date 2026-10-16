@@ -48,6 +48,11 @@ String get_resource_type(const String &p_path) {
 }
 
 bool is_export_analysis() {
+	auto *analysis = ExportAnalysis::get_active();
+	return analysis && analysis->is_for_export();
+}
+
+bool is_snapshot_analysis() {
 	return ExportAnalysis::get_active() != nullptr;
 }
 

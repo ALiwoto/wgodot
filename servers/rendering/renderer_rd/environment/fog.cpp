@@ -378,7 +378,9 @@ void Fog::FogShaderData::set_code(const String &p_code) {
 
 	Fog *fog_singleton = Fog::get_singleton();
 
-	Error err = fog_singleton->volumetric_fog.compiler.compile(RSE::SHADER_FOG, code, &actions, path, gen_code);
+	// wgodot-changes::begin
+	Error err = fog_singleton->volumetric_fog.compiler.compile_concurrent(RSE::SHADER_FOG, code, &actions, path, gen_code);
+	// wgodot-changes::end
 	ERR_FAIL_COND_MSG(err != OK, "Fog shader compilation failed.");
 
 	if (version.is_null()) {

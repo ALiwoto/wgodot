@@ -182,7 +182,9 @@ static GDScriptParser::DataType make_native_enum_type(const StringName &p_enum_n
 		}
 		if (const auto *values = contract->enums.getptr(p_enum_name)) {
 			for (const auto &entry : *values) {
-				type.enum_values[entry.key] = entry.value;
+				// wgodot-changes::begin
+				type.enum_values.insert(entry.key, entry.value);
+				// wgodot-changes::end
 			}
 		}
 		return type;
@@ -208,7 +210,9 @@ static GDScriptParser::DataType make_native_enum_type(const StringName &p_enum_n
 	ClassDB::get_enum_constants(native_base, p_enum_name, &enum_values, true);
 
 	for (const StringName &E : enum_values) {
-		type.enum_values[E] = ClassDB::get_integer_constant(native_base, E);
+		// wgodot-changes::begin
+		type.enum_values.insert(E, ClassDB::get_integer_constant(native_base, E));
+		// wgodot-changes::end
 	}
 
 	return type;
@@ -226,7 +230,9 @@ static GDScriptParser::DataType make_builtin_enum_type(const StringName &p_enum_
 	Variant::get_enumerations_for_enum(p_type, p_enum_name, &enum_values);
 
 	for (const StringName &E : enum_values) {
-		type.enum_values[E] = Variant::get_enum_value(p_type, p_enum_name, E);
+		// wgodot-changes::begin
+		type.enum_values.insert(E, Variant::get_enum_value(p_type, p_enum_name, E));
+		// wgodot-changes::end
 	}
 
 	return type;
@@ -243,7 +249,9 @@ static GDScriptParser::DataType make_global_enum_type(const StringName &p_enum_n
 	HashMap<StringName, int64_t> enum_values;
 	CoreConstants::get_enum_values(type.native_type, &enum_values);
 	for (const KeyValue<StringName, int64_t> &element : enum_values) {
-		type.enum_values[element.key] = element.value;
+		// wgodot-changes::begin
+		type.enum_values.insert(element.key, element.value);
+		// wgodot-changes::end
 	}
 
 	return type;
@@ -1286,7 +1294,9 @@ void GDScriptAnalyzer::resolve_class_member(GDScriptParser::ClassNode *p_class, 
 						element.resolved = true;
 					}
 
-					enum_type.enum_values[element.identifier->name] = element.value;
+					// wgodot-changes::begin
+					enum_type.enum_values.insert(element.identifier->name, element.value);
+					// wgodot-changes::end
 					dictionary[String(element.identifier->name)] = element.value;
 
 #ifdef DEBUG_ENABLED
@@ -5184,7 +5194,7 @@ void GDScriptAnalyzer::reduce_preload(GDScriptParser::PreloadNode *p_preload) {
 				bool distribute_dependencies = p_preload->wgodot_async;
 #ifdef TOOLS_ENABLED
 				// Export analysis resolves scripts against a thread-local revision.
-				distribute_dependencies &= !WGodotGDScriptResolution::is_export_analysis();
+				distribute_dependencies &= !WGodotGDScriptResolution::is_snapshot_analysis();
 #endif
 				if (distribute_dependencies) {
 					// The VM still needs the resource to type-check its constant. Let
@@ -6216,7 +6226,7 @@ GDScriptParser::DataType GDScriptAnalyzer::type_from_script(const Ref<Script> &p
 			// Resource preloads may carry a root script with its original class name.
 			// Its path identifies the root of the current export revision.
 #ifdef TOOLS_ENABLED
-			found = WGodotGDScriptResolution::is_export_analysis() && gds->is_root_script() ? ref->get_parser()->get_tree() : ref->get_parser()->find_class(gds->fully_qualified_name);
+			found = WGodotGDScriptResolution::is_snapshot_analysis() && gds->is_root_script() ? ref->get_parser()->get_tree() : ref->get_parser()->find_class(gds->fully_qualified_name);
 #else
 			found = ref->get_parser()->find_class(gds->fully_qualified_name);
 #endif

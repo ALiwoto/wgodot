@@ -153,6 +153,12 @@
 #include "modules/modules_enabled.gen.h" // For mono.
 
 // wgodot-changes::begin
+#ifdef MODULE_PARTICLE_EFFECTS_ENABLED
+#include "modules/particle_effects/scene_preparation.h"
+#endif
+// wgodot-changes::end
+
+// wgodot-changes::begin
 #ifdef MODULE_WGODOT_ENABLED
 #include "modules/wgodot/wgodot_cli.h"
 #include "modules/wgodot/wgodot_game_bridge.h"
@@ -3563,11 +3569,10 @@ Error Main::setup2(bool p_show_boot_logo) {
 		}
 	}
 
-	if (OS::get_singleton()->_separate_thread_render) {
-		WARN_PRINT("The separate rendering thread feature is experimental. Feel free to try it since it will eventually become a stable feature.\n"
-				   "However, bear in mind that at the moment it can lead to project crashes or instability.\n"
-				   "So, unless you want to test the engine, set the \"rendering/driver/threads/thread_model\" project setting to 'Safe'.");
-	}
+	// wgodot-changes::begin
+	// Separate rendering is an intentional WGodot configuration. Do not emit
+	// the upstream experimental-mode warning on every editor/game/CLI startup.
+	// wgodot-changes::end
 
 	/* Initialize Pen Tablet Driver */
 
@@ -5058,6 +5063,11 @@ bool Main::iteration() {
 #endif // XR_DISABLED
 
 	GodotProfileZoneGrouped(_profile_zone, "physics");
+	// wgodot-changes::begin
+#ifdef MODULE_WGODOT_ENABLED
+	WGodotPerformance::begin_frame();
+#endif
+	// wgodot-changes::end
 	for (int iters = 0; iters < advance.physics_steps; ++iters) {
 		// wgodot-changes::begin
 #ifdef MODULE_WGODOT_ENABLED
@@ -5169,12 +5179,27 @@ bool Main::iteration() {
 
 	uint64_t process_begin = OS::get_singleton()->get_ticks_usec();
 
+	// wgodot-changes::begin
+#ifdef MODULE_WGODOT_ENABLED
+	WGodotPerformance::begin_phase(WGodotPerformance::PROCESS);
+#endif
+	// wgodot-changes::end
 	GodotProfileZoneGrouped(_profile_zone, "process");
 	if (OS::get_singleton()->get_main_loop()->process(process_step * time_scale)) {
 		exit = true;
 	}
+	// wgodot-changes::begin
+#ifdef MODULE_WGODOT_ENABLED
+	WGodotPerformance::begin_phase(WGodotPerformance::DEFERRED_CALLS);
+#endif
+	// wgodot-changes::end
 	message_queue->flush();
 
+	// wgodot-changes::begin
+#ifdef MODULE_WGODOT_ENABLED
+	WGodotPerformance::begin_phase(WGodotPerformance::NAVIGATION);
+#endif
+	// wgodot-changes::end
 #ifndef NAVIGATION_2D_DISABLED
 	GodotProfileZoneGrouped(_profile_zone, "process 2D navigation");
 	NavigationServer2D::get_singleton()->process(process_step * time_scale);
@@ -5185,9 +5210,19 @@ bool Main::iteration() {
 #endif // NAVIGATION_3D_DISABLED
 
 	GodotProfileZoneGrouped(_profile_zone, "RenderingServer::sync");
+	// wgodot-changes::begin
+#ifdef MODULE_WGODOT_ENABLED
+	WGodotPerformance::begin_phase(WGodotPerformance::RENDER_SYNC);
+#endif
+	// wgodot-changes::end
 	RenderingServer::get_singleton()->sync(); //sync if still drawing from previous frames.
 
 	GodotProfileZoneGrouped(_profile_zone, "RenderingServer::draw");
+	// wgodot-changes::begin
+#ifdef MODULE_WGODOT_ENABLED
+	WGodotPerformance::begin_phase(WGodotPerformance::RENDER_DRAW);
+#endif
+	// wgodot-changes::end
 #ifdef RD_ENABLED
 	const bool has_pending_resources_for_processing = RD::get_singleton() && RD::get_singleton()->has_pending_resources_for_processing();
 #else
@@ -5218,6 +5253,7 @@ bool Main::iteration() {
 
 	// wgodot-changes::begin
 #ifdef MODULE_WGODOT_ENABLED
+	WGodotPerformance::begin_phase(WGodotPerformance::DIAGNOSTICS);
 	WGodotGameBridge::set_rendering(false);
 	WGodotGameBridge::end_frame();
 	WGodotWaitController::end_frame();
@@ -5401,6 +5437,11 @@ void Main::cleanup(bool p_force) {
 
 	ResourceLoader::clear_translation_remaps();
 
+	// wgodot-changes::begin
+#ifdef MODULE_PARTICLE_EFFECTS_ENABLED
+	ScenePreparation::finish_disposals();
+#endif
+	// wgodot-changes::end
 	WorkerThreadPool::get_singleton()->exit_languages_threads();
 
 	ScriptServer::finish_languages();

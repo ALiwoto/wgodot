@@ -196,6 +196,7 @@ class EditorFileSystem : public Node {
 	bool scan_changes_pending = false;
 	// wgodot-changes::begin
 	WGodotFileSystemWatcher file_watcher;
+	bool publishing_scan = false;
 	bool scan_changes_pending_full = false;
 	bool filtered_change_scan = false;
 	HashSet<String> changed_directories;

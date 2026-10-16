@@ -28,6 +28,13 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
+// wgodot-changes::begin
+#include "modules/modules_enabled.gen.h"
+#if defined(MODULE_WGODOT_ENABLED) && defined(TOOLS_ENABLED) && defined(DEBUG_ENABLED)
+#include "modules/wgodot/wgodot_performance.h"
+#endif
+// wgodot-changes::end
+
 #include "packed_scene.h"
 
 // wgodot-changes::begin
@@ -236,6 +243,11 @@ static Node *_find_node_by_id(Node *p_owner, Node *p_node, int32_t p_id) {
 }
 
 Node *SceneState::instantiate(GenEditState p_edit_state) const {
+	// wgodot-changes::begin
+#if defined(MODULE_WGODOT_ENABLED) && defined(TOOLS_ENABLED) && defined(DEBUG_ENABLED)
+	WGodotPerformance::RegionScope wgodot_region(WGodotPerformance::SCENE_INSTANTIATE);
+#endif
+	// wgodot-changes::end
 	// Nodes where instantiation failed (because something is missing.)
 	List<Node *> stray_instances;
 

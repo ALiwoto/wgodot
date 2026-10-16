@@ -1578,9 +1578,10 @@ void RendererCanvasRenderRD::CanvasShaderData::set_code(const String &p_code) {
 	actions.uniforms = &uniforms;
 
 	RendererCanvasRenderRD *canvas_singleton = static_cast<RendererCanvasRenderRD *>(RendererCanvasRender::singleton);
+	// wgodot-changes::begin
+	Error err = canvas_singleton->shader.compiler.compile_concurrent(RSE::SHADER_CANVAS_ITEM, code, &actions, path, gen_code);
+	// wgodot-changes::end
 	MutexLock lock(canvas_singleton->shader.mutex);
-
-	Error err = canvas_singleton->shader.compiler.compile(RSE::SHADER_CANVAS_ITEM, code, &actions, path, gen_code);
 	if (err != OK) {
 		if (version.is_valid()) {
 			canvas_singleton->shader.canvas_shader.version_free(version);

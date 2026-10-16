@@ -28,6 +28,13 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
+// wgodot-changes::begin
+#include "modules/modules_enabled.gen.h"
+#if defined(MODULE_WGODOT_ENABLED) && defined(TOOLS_ENABLED) && defined(DEBUG_ENABLED)
+#include "modules/wgodot/wgodot_performance.h"
+#endif
+// wgodot-changes::end
+
 #include "animation_mixer.h"
 #include "animation_mixer.compat.inc"
 
@@ -601,6 +608,9 @@ void AnimationMixer::_clear_caches(bool p_clear_track_cache) {
 	track_cache.clear();
 	animation_track_num_to_track_cache.clear();
 	cache_valid = false;
+	// wgodot-changes::begin
+	caches_prepared_for_tree = false;
+	// wgodot-changes::end
 	emit_signal(SNAME("caches_cleared"));
 }
 
@@ -616,7 +626,13 @@ void AnimationMixer::_clear_audio_streams() {
 	// It is re-acquired lazily on the next play.
 	for (KeyValue<Animation::TrackCacheID, TrackCache *> &K : track_cache) {
 		if (K.value->type == Animation::TYPE_AUDIO) {
-			static_cast<TrackCacheAudio *>(K.value)->audio_stream_playback.unref();
+			// wgodot-changes::begin
+			// Playback IDs belong to the released handle. Keeping track bindings
+			// across stop must not retain streams from that previous playback.
+			TrackCacheAudio *audio = static_cast<TrackCacheAudio *>(K.value);
+			audio->playing_streams.clear();
+			audio->audio_stream_playback.unref();
+			// wgodot-changes::end
 		}
 	}
 }
@@ -664,6 +680,11 @@ void AnimationMixer::_create_track_num_to_track_cache_for_animation(const Ref<An
 }
 
 bool AnimationMixer::_update_caches() {
+	// wgodot-changes::begin
+#if defined(MODULE_WGODOT_ENABLED) && defined(TOOLS_ENABLED) && defined(DEBUG_ENABLED)
+	WGodotPerformance::RegionScope wgodot_region(WGodotPerformance::ANIMATION_CACHES);
+#endif
+	// wgodot-changes::end
 	setup_pass++;
 	if (unlikely(setup_pass == 0)) {
 		setup_pass = 1;
@@ -2421,7 +2442,15 @@ void AnimationMixer::_notification(int p_what) {
 				set_physics_process_internal(false);
 				set_process_internal(false);
 			}
-			_clear_caches();
+			// wgodot-changes::begin
+			// Prepared bindings refer only to this exclusively owned branch.
+			// Preserve them for its first publication; normal invalidation and
+			// tree exit still clear them.
+			if (!caches_prepared_for_tree) {
+				_clear_caches();
+			}
+			caches_prepared_for_tree = false;
+			// wgodot-changes::end
 		} break;
 
 		case NOTIFICATION_INTERNAL_PROCESS: {

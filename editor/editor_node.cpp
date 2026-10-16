@@ -5026,6 +5026,14 @@ Error EditorNode::load_scene(const String &p_scene, bool p_ignore_broken_deps, b
 	Error err = ResourceLoader::load_threaded_request(lpath, "PackedScene", true, ResourceFormatLoader::CACHE_MODE_REPLACE);
 	Ref<PackedScene> sdata;
 	if (err == OK) {
+		// Keep window events and the existing progress UI moving while workers
+		// load dependencies. load_threaded_get() alone waits without OS events.
+		EditorProgress progress("load_scene:" + lpath, TTR("Loading scene..."), 100, false, MessageQueue::get_singleton()->is_flushing());
+		float loaded = 0.0;
+		while (ResourceLoader::load_threaded_get_status(lpath, &loaded) == ResourceLoader::THREAD_LOAD_IN_PROGRESS) {
+			progress.step(lpath.get_file(), int(loaded * 100));
+			OS::get_singleton()->delay_usec(1000);
+		}
 		sdata = ResourceLoader::load_threaded_get(lpath, &err);
 	}
 	WGodotDependencyErrors::flush();

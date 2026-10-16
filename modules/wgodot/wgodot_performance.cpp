@@ -3,9 +3,11 @@
 
 #if defined(TOOLS_ENABLED) && defined(DEBUG_ENABLED)
 
+#include "core/config/engine.h"
 #include "core/debugger/engine_debugger.h"
 #include "core/io/resource.h"
 #include "core/os/os.h"
+#include "core/os/thread.h"
 #include "main/performance.h"
 #include "scene/main/canvas_item.h"
 #include "scene/main/scene_tree.h"
@@ -20,6 +22,16 @@ namespace WGodotPerformance {
 namespace {
 
 constexpr int MAX_SAMPLES = 1800;
+const char *PHASE_NAMES[] = { "physics", "process", "deferred_calls", "navigation", "render_sync", "render_draw", "diagnostics" };
+const char *REGION_NAMES[] = { "scene_instantiate", "node_attach", "delete_queue", "script_instance_free", "animation_free", "animation_caches", "resource_load" };
+
+struct FrameTiming {
+	uint64_t frame = 0;
+	uint64_t started_usec = 0;
+	double milliseconds[PHASE_COUNT] = {};
+	double region_milliseconds[REGION_COUNT] = {};
+	uint64_t region_calls[REGION_COUNT] = {};
+};
 const Performance::Monitor MONITORS[] = {
 	Performance::TIME_FPS,
 	Performance::TIME_PROCESS,
@@ -53,9 +65,14 @@ struct Capture {
 	Vector<double> frame_intervals;
 	HashMap<String, Vector<double>> samples;
 	HashMap<RID, String> nodes;
+	Vector<FrameTiming> frame_timings;
+	FrameTiming current_timing;
+	FramePhase phase = PHYSICS;
+	uint64_t phase_started_usec = 0;
 };
 
 Capture capture;
+int region_depth[REGION_COUNT] = {};
 
 Dictionary error(const String &p_command, const String &p_message) {
 	Dictionary response;
@@ -298,6 +315,28 @@ void complete(bool p_timed_out) {
 		}
 		response["frame_interval_ms"] = statistics(capture.frame_intervals);
 		response["frames"] = capture.frames;
+		Array timings;
+		for (const FrameTiming &timing : capture.frame_timings) {
+			Dictionary row;
+			row["frame"] = int64_t(timing.frame);
+			row["time_usec"] = int64_t(timing.started_usec);
+			double total = 0.0;
+			for (int i = 0; i < PHASE_COUNT; ++i) {
+				row[PHASE_NAMES[i]] = timing.milliseconds[i];
+				total += timing.milliseconds[i];
+			}
+			row["total_ms"] = total;
+			Dictionary regions;
+			for (int i = 0; i < REGION_COUNT; ++i) {
+				Dictionary region;
+				region["milliseconds"] = timing.region_milliseconds[i];
+				region["calls"] = int64_t(timing.region_calls[i]);
+				regions[REGION_NAMES[i]] = region;
+			}
+			row["regions"] = regions;
+			timings.push_back(row);
+		}
+		response["frame_cpu_ms"] = timings;
 	}
 	response["requested_frames"] = capture.requested_frames;
 	response["timed_out"] = p_timed_out;
@@ -310,6 +349,50 @@ void complete(bool p_timed_out) {
 }
 
 } // namespace
+
+RegionScope::RegionScope(FrameRegion p_region) :
+		region(p_region) {
+	// Worker threads never access the main-thread capture state.
+	if (!Thread::is_main_thread() || capture.phase_started_usec == 0) {
+		return;
+	}
+	entered = true;
+	capture.current_timing.region_calls[region]++;
+	if (region_depth[region]++ == 0) {
+		started_usec = OS::get_singleton()->get_ticks_usec();
+	}
+}
+
+RegionScope::~RegionScope() {
+	if (!entered) {
+		return;
+	}
+	region_depth[region]--;
+	if (started_usec != 0 && capture.phase_started_usec != 0) {
+		capture.current_timing.region_milliseconds[region] += (OS::get_singleton()->get_ticks_usec() - started_usec) / 1000.0;
+	}
+}
+
+void begin_frame() {
+	if (capture.request_id == 0 || capture.command != "perf") {
+		return;
+	}
+	capture.current_timing = FrameTiming();
+	capture.current_timing.frame = Engine::get_singleton()->get_process_frames();
+	capture.phase = PHYSICS;
+	capture.phase_started_usec = OS::get_singleton()->get_ticks_usec();
+	capture.current_timing.started_usec = capture.phase_started_usec;
+}
+
+void begin_phase(FramePhase p_phase) {
+	if (capture.phase_started_usec == 0) {
+		return;
+	}
+	const uint64_t now = OS::get_singleton()->get_ticks_usec();
+	capture.current_timing.milliseconds[capture.phase] += (now - capture.phase_started_usec) / 1000.0;
+	capture.phase = p_phase;
+	capture.phase_started_usec = now;
+}
 
 Dictionary execute(uint64_t p_request_id, const String &p_command, const Dictionary &p_options, bool &r_deferred) {
 	r_deferred = false;
@@ -372,6 +455,11 @@ void end_frame() {
 	}
 	const uint64_t now = OS::get_singleton()->get_ticks_usec();
 	if (capture.command == "perf") {
+		if (capture.phase_started_usec != 0) {
+			capture.current_timing.milliseconds[capture.phase] += (now - capture.phase_started_usec) / 1000.0;
+			capture.frame_timings.push_back(capture.current_timing);
+			capture.phase_started_usec = 0;
+		}
 		if (capture.frames > 0) {
 			capture.frame_intervals.push_back((now - capture.previous_usec) / 1000.0);
 		}
@@ -398,6 +486,15 @@ void reset() {
 #else
 
 namespace WGodotPerformance {
+RegionScope::RegionScope(FrameRegion p_region) :
+		region(p_region) {
+}
+RegionScope::~RegionScope() {
+}
+void begin_frame() {
+}
+void begin_phase(FramePhase) {
+}
 Dictionary execute(uint64_t, const String &, const Dictionary &, bool &) {
 	return Dictionary();
 }

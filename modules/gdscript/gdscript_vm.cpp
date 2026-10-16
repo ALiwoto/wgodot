@@ -747,7 +747,7 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 	// wgodot-changes::begin
 	// A debugger poll can start/restart profiling inside an already-running call.
 	// Only calls entered in this capture may contribute timings to it.
-	const uint64_t profiling_generation = GDScriptLanguage::get_singleton()->profiling ? GDScriptLanguage::get_singleton()->profiling_generation : 0;
+	const uint64_t profiling_generation = Thread::is_main_thread() && GDScriptLanguage::get_singleton()->profiling ? GDScriptLanguage::get_singleton()->profiling_generation : 0;
 	// wgodot-changes::end
 
 	// wgodot-changes::begin

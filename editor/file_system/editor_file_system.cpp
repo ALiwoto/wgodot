@@ -1097,9 +1097,14 @@ void EditorFileSystem::scan() {
 		return;
 	}
 
-	if (scanning || scanning_changes || thread.is_started()) {
+	if (scanning || publishing_scan || scanning_changes || thread.is_started()) {
 		return;
 	}
+	// wgodot-changes::begin
+	// Startup progress pumps the main loop. Claim the scan before that can
+	// deliver settings/file notifications and recursively start another scan.
+	scanning = true;
+	// wgodot-changes::end
 
 	// The first scan must be on the main thread because, after the first scan and update
 	// of global class names, we load the plugins and autoloads. These need to
@@ -1133,6 +1138,10 @@ void EditorFileSystem::scan() {
 		scanning = true;
 		scan_total = 0;
 		_scan_filesystem();
+		// wgodot-changes::begin
+		// Keep new scans blocked while allowing imports to look up published files.
+		publishing_scan = true;
+		// wgodot-changes::end
 		ResourceUID::get_singleton()->clear_copy();
 		memdelete(filesystem);
 		//file_type_cache.clear();
@@ -1142,6 +1151,9 @@ void EditorFileSystem::scan() {
 		// Update all icons so they are loaded for the FileSystemDock.
 		_update_files_icon_path();
 		scanning = false;
+		// wgodot-changes::begin
+		publishing_scan = false;
+		// wgodot-changes::end
 		// Set first_scan to false before the signals so the function doing_first_scan can return false
 		// in editor_node to start the export if needed.
 		first_scan = false;
@@ -1754,7 +1766,7 @@ void EditorFileSystem::scan_changes(bool p_use_notifications) {
 	// wgodot-changes::end
 	if (first_scan || // Prevent a premature changes scan from inhibiting the first full scan
 					  // wgodot-changes::begin
-			importing || scanning || scanning_changes || thread.is_started()) {
+			importing || scanning || publishing_scan || scanning_changes || thread.is_started()) {
 		// wgodot-changes::end
 		scan_changes_pending = true;
 		// wgodot-changes::begin
@@ -1848,6 +1860,13 @@ void EditorFileSystem::_notification(int p_what) {
 					}
 				} else if (!scanning && thread.is_started()) {
 					set_process(false);
+					// wgodot-changes::begin
+					// wait_to_finish releases the thread handle. Keep scans blocked
+					// while imports/progress callbacks publish this scan's results.
+					// A nested first scan here otherwise sees the already-consumed
+					// first_scan_root_dir and exits without completing the scan.
+					publishing_scan = true;
+					// wgodot-changes::end
 					ResourceUID::get_singleton()->clear_copy();
 
 					memdelete(filesystem);
@@ -1861,6 +1880,9 @@ void EditorFileSystem::_notification(int p_what) {
 					// in editor_node to start the export if needed.
 					first_scan = false;
 					ResourceImporter::load_on_startup = nullptr;
+					// wgodot-changes::begin
+					publishing_scan = false;
+					// wgodot-changes::end
 					emit_signal(SNAME("filesystem_changed"));
 					emit_signal(SNAME("sources_changed"), sources_changed.size() > 0);
 				}
@@ -1880,7 +1902,9 @@ void EditorFileSystem::_notification(int p_what) {
 }
 
 bool EditorFileSystem::is_scanning() const {
-	return scanning || scanning_changes || first_scan;
+	// wgodot-changes::begin
+	return scanning || publishing_scan || scanning_changes || first_scan;
+	// wgodot-changes::end
 }
 
 float EditorFileSystem::get_scanning_progress() const {
@@ -2166,13 +2190,15 @@ void EditorFileSystem::_update_file_icon_path(EditorFileSystemDirectory::FileInf
 			if (cached) {
 				icon_path = *cached;
 			} else {
-				if (ClassDB::is_parent_class(ResourceLoader::get_resource_type(script_path), SNAME("Script"))) {
-					int script_file;
-					EditorFileSystemDirectory *efsd = find_file(script_path, &script_file);
-					if (efsd) {
-						icon_path = efsd->files[script_file]->class_info.icon_path;
-					}
+				// wgodot-changes::begin
+				// The scan already read each dependency's type. Reopening every
+				// resource header here stalls the editor on large asset collections.
+				int script_file;
+				EditorFileSystemDirectory *efsd = find_file(script_path, &script_file);
+				if (efsd && ClassDB::is_parent_class(efsd->files[script_file]->type, SNAME("Script"))) {
+					icon_path = efsd->files[script_file]->class_info.icon_path;
 				}
+				// wgodot-changes::end
 				file_icon_cache.insert(script_path, icon_path);
 			}
 		}
@@ -2255,6 +2281,26 @@ void EditorFileSystem::_update_script_documentation() {
 	}
 
 	MutexLock update_script_lock(update_script_mutex);
+
+	// wgodot-changes::begin
+	if (!bool(EDITOR_GET("text_editor/behavior/documentation/auto_load_scripts"))) {
+		// Preserve live script reload without loading unused scripts/preload graphs.
+		HashMap<ScriptLanguage *, Array> reloads;
+		for (const String &path : update_script_paths_documentation) {
+			if (_should_reload_script(path)) {
+				Ref<Script> script = ResourceCache::get_ref(path);
+				reloads[script->get_language()].push_back(script);
+			}
+		}
+		// Each language orders the batch by inheritance. Reloading each file
+		// separately repeatedly reloads the same dependent scripts.
+		for (const KeyValue<ScriptLanguage *, Array> &entry : reloads) {
+			entry.key->reload_scripts(entry.value);
+		}
+		update_script_paths_documentation.clear();
+		return;
+	}
+	// wgodot-changes::end
 
 	EditorProgress *ep = nullptr;
 	if (update_script_paths_documentation.size() > 1) {

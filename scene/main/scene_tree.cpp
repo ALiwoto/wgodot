@@ -28,6 +28,13 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
+// wgodot-changes::begin
+#include "modules/modules_enabled.gen.h"
+#if defined(MODULE_WGODOT_ENABLED) && defined(TOOLS_ENABLED) && defined(DEBUG_ENABLED)
+#include "modules/wgodot/wgodot_performance.h"
+#endif
+// wgodot-changes::end
+
 #include "scene_tree.h"
 
 STATIC_ASSERT_INCOMPLETE_TYPE(class, RenderingServer);
@@ -1684,6 +1691,11 @@ Vector<Node *> SceneTree::get_nodes_in_group(const StringName &p_group) {
 }
 
 void SceneTree::_flush_delete_queue() {
+	// wgodot-changes::begin
+#if defined(MODULE_WGODOT_ENABLED) && defined(TOOLS_ENABLED) && defined(DEBUG_ENABLED)
+	WGodotPerformance::RegionScope wgodot_region(WGodotPerformance::DELETE_QUEUE);
+#endif
+	// wgodot-changes::end
 	_THREAD_SAFE_METHOD_
 
 	while (delete_queue.size()) {

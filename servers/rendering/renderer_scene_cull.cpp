@@ -1618,10 +1618,17 @@ uint32_t RendererSceneCull::get_pipeline_compilations(RSE::PipelineSource p_sour
 
 void RendererSceneCull::instance_geometry_get_shader_parameter_list(RID p_instance, List<PropertyInfo> *p_parameters) const {
 	ERR_FAIL_NULL(p_parameters);
-	const Instance *instance = instance_owner.get_or_null(p_instance);
+	// wgodot-changes::begin
+	Instance *instance = instance_owner.get_or_null(p_instance);
 	ERR_FAIL_NULL(instance);
 
-	update_dirty_instances();
+	// Reflection during scene instantiation needs this instance's material
+	// declarations, not a global renderer flush. Flushing every streamed
+	// instance here repeatedly publishes unrelated work on the frame thread.
+	while (instance->update_item.in_list()) {
+		_update_dirty_instance(instance);
+	}
+	// wgodot-changes::end
 
 	instance->instance_uniforms.get_property_list(*p_parameters);
 }

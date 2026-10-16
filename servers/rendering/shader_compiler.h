@@ -143,6 +143,11 @@ private:
 
 public:
 	Error compile(RSE::ShaderMode p_mode, const String &p_code, IdentifierActions *p_actions, const String &p_path, GeneratedCode &r_gen_code);
+	// wgodot-changes::begin
+	// Configuration is immutable after initialize(); each call owns its parser
+	// and code-generation state. Caller-owned actions/output must be distinct.
+	Error compile_concurrent(RSE::ShaderMode p_mode, const String &p_code, IdentifierActions *p_actions, const String &p_path, GeneratedCode &r_gen_code) const;
+	// wgodot-changes::end
 
 	void initialize(DefaultIdentifierActions p_actions);
 	ShaderCompiler();

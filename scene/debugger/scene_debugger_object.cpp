@@ -82,6 +82,13 @@ SceneDebuggerObject::SceneDebuggerObject(Object *p_obj) {
 	List<PropertyInfo> pinfo;
 	p_obj->get_property_list(&pinfo, true);
 	for (PropertyInfo &E : pinfo) {
+		// wgodot-changes::begin
+		// Skip undisplayed properties before invoking their getters. In
+		// particular, detached preparation nodes have no global transform.
+		if (!(E.usage & (PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_GROUP | PROPERTY_USAGE_SUBGROUP | PROPERTY_USAGE_CATEGORY))) {
+			continue;
+		}
+		// wgodot-changes::end
 		const Variant &m = p_obj->get(E.name);
 
 		if (!m.is_null() && E.type == Variant::OBJECT && E.hint == PROPERTY_HINT_NODE_TYPE && E.usage & PROPERTY_USAGE_EDITOR) {

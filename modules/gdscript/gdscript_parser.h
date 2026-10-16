@@ -32,6 +32,9 @@
 
 #include "gdscript_cache.h"
 #include "gdscript_tokenizer.h"
+// wgodot-changes::begin
+#include "wgodot_gd/enum_values.h"
+// wgodot-changes::end
 
 #ifdef DEBUG_ENABLED
 #include "gdscript_warning.h"
@@ -139,7 +142,9 @@ public:
 		ClassNode *class_type = nullptr;
 
 		MethodInfo method_info; // For callable/signals.
-		HashMap<StringName, int64_t> enum_values; // For enums.
+		// wgodot-changes::begin
+		WGodotGDScriptEnumValues enum_values;
+		// wgodot-changes::end
 
 		_FORCE_INLINE_ bool is_set() const { return kind != RESOLVING && kind != UNRESOLVED; }
 		_FORCE_INLINE_ bool is_resolving() const { return kind == RESOLVING; }

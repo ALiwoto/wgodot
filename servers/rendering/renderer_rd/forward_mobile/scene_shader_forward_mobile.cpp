@@ -169,8 +169,10 @@ void SceneShaderForwardMobile::ShaderData::set_code(const String &p_code) {
 
 	actions.uniforms = &uniforms;
 
+	// wgodot-changes::begin
+	Error err = SceneShaderForwardMobile::singleton->compiler.compile_concurrent(RSE::SHADER_SPATIAL, code, &actions, path, gen_code);
+	// wgodot-changes::end
 	MutexLock lock(SceneShaderForwardMobile::singleton_mutex);
-	Error err = SceneShaderForwardMobile::singleton->compiler.compile(RSE::SHADER_SPATIAL, code, &actions, path, gen_code);
 
 	if (err != OK) {
 		if (version.is_valid()) {

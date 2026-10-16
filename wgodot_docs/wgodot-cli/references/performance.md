@@ -66,6 +66,8 @@ godot --wg perf --frames 240 --timeout 15 --output perf.json
 
 The report includes FPS, process/physics/navigation timings, memory, rendering and pipeline-compilation counters, and object/node/resource counts. Some engine monitors update less often than once per frame: repeated values do not mean each frame cost exactly that much. Use `frame_interval_ms` for observed pacing and `profile` for function costs. Video memory includes textures and buffers; do not add those counters together. Static memory is engine-tracked allocation, not total process RSS.
 
+Sampled JSON reports also include `frame_cpu_ms`: per-frame wall time in physics, scene processing, deferred calls, navigation, rendering synchronization, drawing and CLI diagnostics. These phases are disjoint; `total_ms` excludes frame pacing sleeps and work outside those phases. Drawing includes renderer CPU work and any GPU waits, not a GPU execution measurement. Use these rows to locate stalls outside script profiler functions.
+
 ## Texture inventory and rendered use
 
 ```powershell

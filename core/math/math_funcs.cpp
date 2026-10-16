@@ -32,8 +32,16 @@
 
 #include "core/error/error_macros.h"
 #include "core/math/random_pcg.h"
+// wgodot-changes::begin
+#include "core/os/mutex.h"
+// wgodot-changes::end
 
 static RandomPCG default_rand;
+// wgodot-changes::begin
+// Background scene initialization also calls the global random helpers.
+// Keep one seeded stream and serialize its state updates across callers.
+static BinaryMutex default_rand_mutex;
+// wgodot-changes::end
 
 uint32_t Math::rand_from_seed(uint64_t *p_seed) {
 	RandomPCG rng = RandomPCG(*p_seed);
@@ -43,18 +51,30 @@ uint32_t Math::rand_from_seed(uint64_t *p_seed) {
 }
 
 void Math::seed(uint64_t p_value) {
+	// wgodot-changes::begin
+	MutexLock lock(default_rand_mutex);
+	// wgodot-changes::end
 	default_rand.seed(p_value);
 }
 
 void Math::randomize() {
+	// wgodot-changes::begin
+	MutexLock lock(default_rand_mutex);
+	// wgodot-changes::end
 	default_rand.randomize();
 }
 
 uint32_t Math::rand() {
+	// wgodot-changes::begin
+	MutexLock lock(default_rand_mutex);
+	// wgodot-changes::end
 	return default_rand.rand();
 }
 
 double Math::randfn(double p_mean, double p_deviation) {
+	// wgodot-changes::begin
+	MutexLock lock(default_rand_mutex);
+	// wgodot-changes::end
 	return default_rand.randfn(p_mean, p_deviation);
 }
 
@@ -170,13 +190,22 @@ uint32_t Math::larger_prime(uint32_t p_val) {
 }
 
 double Math::random(double p_from, double p_to) {
+	// wgodot-changes::begin
+	MutexLock lock(default_rand_mutex);
+	// wgodot-changes::end
 	return default_rand.random(p_from, p_to);
 }
 
 float Math::random(float p_from, float p_to) {
+	// wgodot-changes::begin
+	MutexLock lock(default_rand_mutex);
+	// wgodot-changes::end
 	return default_rand.random(p_from, p_to);
 }
 
 int Math::random(int p_from, int p_to) {
+	// wgodot-changes::begin
+	MutexLock lock(default_rand_mutex);
+	// wgodot-changes::end
 	return default_rand.random(p_from, p_to);
 }

@@ -751,21 +751,25 @@ ShaderLanguage::Token ShaderLanguage::_get_token() {
 						CASE_MAX,
 					} lut_case = CASE_ALL;
 
-					static bool suffix_lut[CASE_MAX][127];
-
-					if (!is_const_suffix_lut_initialized) {
-						is_const_suffix_lut_initialized = true;
-
-						for (int i = 0; i < 127; i++) {
-							char t = char(i);
-
-							suffix_lut[CASE_ALL][i] = t == '.' || t == 'x' || t == 'e' || t == 'f' || t == 'u' || t == '-' || t == '+';
-							suffix_lut[CASE_HEXA_PERIOD][i] = t == 'e' || t == 'f' || t == 'u';
-							suffix_lut[CASE_EXPONENT][i] = t == 'f' || t == '-' || t == '+';
-							suffix_lut[CASE_SIGN_AFTER_EXPONENT][i] = t == 'f';
-							suffix_lut[CASE_NONE][i] = false;
+					// wgodot-changes::begin
+					// Immutable at compile time: parallel parsers must never observe
+					// a partially initialized shared numeric-suffix table.
+					struct SuffixLookup {
+						bool values[CASE_MAX][127] = {};
+						constexpr SuffixLookup() {
+							for (int i = 0; i < 127; i++) {
+								char t = char(i);
+	
+								values[CASE_ALL][i] = t == '.' || t == 'x' || t == 'e' || t == 'f' || t == 'u' || t == '-' || t == '+';
+								values[CASE_HEXA_PERIOD][i] = t == 'e' || t == 'f' || t == 'u';
+								values[CASE_EXPONENT][i] = t == 'f' || t == '-' || t == '+';
+								values[CASE_SIGN_AFTER_EXPONENT][i] = t == 'f';
+								values[CASE_NONE][i] = false;
+							}
 						}
-					}
+					};
+					static constexpr SuffixLookup suffix_lut;
+					// wgodot-changes::end
 
 					String str;
 					int i = 0;
@@ -783,7 +787,7 @@ ShaderLanguage::Token ShaderLanguage::_get_token() {
 								error = true;
 							}
 						} else {
-							if (symbol < 0x7F && suffix_lut[lut_case][symbol]) {
+							if (symbol < 0x7F && suffix_lut.values[lut_case][symbol]) {
 								if (symbol == 'x') {
 									hexa_found = true;
 									lut_case = CASE_HEXA_PERIOD;
@@ -3647,7 +3651,6 @@ const ShaderLanguage::BuiltinEntry ShaderLanguage::builtin_vectorized_constructo
 	{ nullptr }
 };
 
-bool ShaderLanguage::is_const_suffix_lut_initialized = false;
 
 bool ShaderLanguage::_validate_function_call(BlockNode *p_block, const FunctionInfo &p_function_info, OperatorNode *p_func, DataType *r_ret_type, StringName *r_ret_type_str, bool *r_is_custom_function) {
 	ERR_FAIL_COND_V(p_func->op != OP_CALL && p_func->op != OP_CONSTRUCT, false);

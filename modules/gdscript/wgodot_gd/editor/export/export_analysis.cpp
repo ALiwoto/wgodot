@@ -7,6 +7,7 @@
 
 #include "core/io/resource_loader.h"
 #include "core/io/resource_uid.h"
+#include "core/object/worker_thread_pool.h"
 
 #include "modules/gdscript/gdscript_compiler.h"
 #include "modules/gdscript/gdscript_tokenizer.h"
@@ -25,8 +26,8 @@ ExportAnalysis::Scope::~Scope() {
 	active = previous;
 }
 
-ExportAnalysis::ExportAnalysis(const ExportProject &p_project, const ExportContext &p_artifacts) :
-		project(p_project), artifacts(p_artifacts) {
+ExportAnalysis::ExportAnalysis(const ExportProject &p_project, const ExportContext &p_artifacts, bool p_for_export) :
+		project(p_project), artifacts(p_artifacts), for_export(p_for_export) {
 	global_classes = project.get_external_classes();
 	external_native_bases = project.get_external_native_bases();
 	for (const String &path : project.get_script_paths()) {
@@ -42,6 +43,31 @@ ExportAnalysis::ExportAnalysis(const ExportProject &p_project, const ExportConte
 			}
 		}
 	}
+}
+
+void ExportAnalysis::parse_scripts_parallel() {
+	// Parsing owns only its source tree. Resolve cross-script interfaces/bodies
+	// afterwards on the analysis owner; they can mutate dependency trees.
+	Vector<Ref<GDScriptParserRef>> pending;
+	for (const String &path : project.get_script_paths()) {
+		Ref<GDScriptParserRef> parser;
+		parser.instantiate();
+		parser->initialize_export_source(path, project.get_source(path)->get_text());
+		parsers[path] = parser;
+		pending.push_back(parser);
+	}
+	if (pending.is_empty()) {
+		return;
+	}
+	WorkerThreadPool *pool = WorkerThreadPool::get_singleton();
+	struct ParseWork {
+		void parse(uint32_t p_index, const Ref<GDScriptParserRef> *p_items) {
+			p_items[p_index]->raise_status(GDScriptParserRef::PARSED);
+		}
+	} work;
+	const WorkerThreadPool::GroupID group = pool->add_template_group_task(
+			&work, &ParseWork::parse, pending.ptr(), pending.size(), -1, false, "Parse project scripts");
+	pool->wait_for_group_task_completion(group);
 }
 
 ExportAnalysis::~ExportAnalysis() {

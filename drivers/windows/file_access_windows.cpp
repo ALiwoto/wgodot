@@ -46,6 +46,10 @@
 #include <cerrno>
 #include <cwchar>
 
+// wgodot-changes::begin
+#include "wgodot_file_metadata.h"
+// wgodot-changes::end
+
 #ifdef _MSC_VER
 #define S_ISREG(m) ((m) & _S_IFREG)
 #endif
@@ -418,6 +422,17 @@ uint64_t FileAccessWindows::_get_modified_time(const String &p_file) {
 	if (file.ends_with("\\") && file != "\\") {
 		file = file.substr(0, file.length() - 1);
 	}
+	// wgodot-changes::begin
+	// Scans query every file's timestamp. Opening a handle for each query
+	// needlessly invokes the filesystem and its filter drivers. Attribute
+	// queries provide identical timestamps for ordinary files/directories.
+	// Reparse points retain the handle path so links report their target time.
+	WIN32_FILE_ATTRIBUTE_DATA attributes;
+	if (GetFileAttributesExW((LPCWSTR)file.utf16().get_data(), GetFileExInfoStandard, &attributes) &&
+			!(attributes.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)) {
+		return wgodot_file_time_seconds(attributes.ftLastWriteTime, attributes.ftCreationTime);
+	}
+	// wgodot-changes::end
 
 	HANDLE handle = CreateFileW((LPCWSTR)(file.utf16().get_data()), FILE_READ_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
 
@@ -428,27 +443,11 @@ uint64_t FileAccessWindows::_get_modified_time(const String &p_file) {
 
 		CloseHandle(handle);
 
+		// wgodot-changes::begin
 		if (status) {
-			uint64_t ret = 0;
-
-			// If write time is invalid, fallback to creation time.
-			if (ft_write.dwHighDateTime == 0 && ft_write.dwLowDateTime == 0) {
-				ret = ft_create.dwHighDateTime;
-				ret <<= 32;
-				ret |= ft_create.dwLowDateTime;
-			} else {
-				ret = ft_write.dwHighDateTime;
-				ret <<= 32;
-				ret |= ft_write.dwLowDateTime;
-			}
-
-			const uint64_t WINDOWS_TICKS_PER_SECOND = 10000000;
-			const uint64_t TICKS_TO_UNIX_EPOCH = 116444736000000000LL;
-
-			if (ret >= TICKS_TO_UNIX_EPOCH) {
-				return (ret - TICKS_TO_UNIX_EPOCH) / WINDOWS_TICKS_PER_SECOND;
-			}
+			return wgodot_file_time_seconds(ft_write, ft_create);
 		}
+		// wgodot-changes::end
 	}
 
 	return 0;

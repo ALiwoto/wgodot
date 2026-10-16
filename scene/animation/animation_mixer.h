@@ -139,6 +139,9 @@ protected:
 
 	/* ---- Caches for blending ---- */
 	bool cache_valid = false;
+	// wgodot-changes::begin
+	bool caches_prepared_for_tree = false;
+	// wgodot-changes::end
 	uint64_t setup_pass = 1;
 
 	struct TrackCache {
@@ -400,6 +403,11 @@ protected:
 #endif // DISABLE_DEPRECATED
 
 public:
+	// wgodot-changes::begin
+	// The caller exclusively owns this detached hierarchy. Returns false if
+	// any enabled track needs a target outside that hierarchy.
+	bool prepare_caches(Node *p_scope);
+	// wgodot-changes::end
 	/* ---- Data lists ---- */
 	void get_animation_library_list(LocalVector<StringName> *p_animations) const;
 	Ref<AnimationLibrary> get_animation_library(const StringName &p_name) const;

@@ -59,6 +59,9 @@ void WorkerThreadPool::_process_task(Task *p_task) {
 	int pool_thread_index = thread_ids[Thread::get_caller_id()];
 	ThreadData &curr_thread = threads[pool_thread_index];
 	Task *prev_task = nullptr; // In case this is recursively called.
+	// wgodot-changes::begin
+	const bool previous_pump_task = curr_thread.has_pump_task;
+	// wgodot-changes::end
 
 	bool safe_for_nodes_backup = is_current_thread_safe_for_nodes();
 	CallQueue *call_queue_backup = MessageQueue::get_singleton() != MessageQueue::get_main_singleton() ? MessageQueue::get_singleton() : nullptr;
@@ -78,10 +81,12 @@ void WorkerThreadPool::_process_task(Task *p_task) {
 		p_task->pool_thread_index = pool_thread_index;
 		prev_task = curr_thread.current_task;
 		curr_thread.current_task = p_task;
-		curr_thread.has_pump_task = p_task->is_pump_task;
-		if (p_task->pending_notify_yield_over) {
-			curr_thread.yield_is_over = true;
-		}
+		// wgodot-changes::begin
+		curr_thread.has_pump_task = previous_pump_task || p_task->is_pump_task;
+		// Wake notifications belong to the task, not the worker executing it.
+		// A nested resource load can yield on the same worker as a render pump.
+		// It must not consume the suspended pump's notification.
+		// wgodot-changes::end
 		task_mutex.unlock();
 	}
 #endif
@@ -133,6 +138,9 @@ void WorkerThreadPool::_process_task(Task *p_task) {
 #ifdef THREADS_ENABLED
 	{
 		curr_thread.current_task = prev_task;
+		// wgodot-changes::begin
+		curr_thread.has_pump_task = previous_pump_task;
+		// wgodot-changes::end
 		if (low_priority) {
 			low_priority_threads_used--;
 
@@ -253,7 +261,9 @@ void WorkerThreadPool::_notify_threads(const ThreadData *p_current_thread_data, 
 			i++, notify_index = (notify_index + 1) % thread_count) {
 		ThreadData &th = threads[notify_index];
 
-		if (th.signaled) {
+		// wgodot-changes::begin
+		if (th.signaled || th.is_waiting_pump()) {
+		// wgodot-changes::end
 			continue;
 		}
 		if (th.current_task) {
@@ -283,7 +293,9 @@ void WorkerThreadPool::_notify_threads(const ThreadData *p_current_thread_data, 
 			i++, notify_index = (notify_index + 1) % thread_count) {
 		ThreadData &th = threads[notify_index];
 
-		if (th.signaled) {
+		// wgodot-changes::begin
+		if (th.signaled || th.is_waiting_pump()) {
+		// wgodot-changes::end
 			continue;
 		}
 		if (th.awaited_task) {
@@ -472,10 +484,13 @@ void WorkerThreadPool::_wait_collaboratively(ThreadData *p_caller_pool_thread, T
 
 			bool wait_is_over = false;
 			if (unlikely(p_task == ThreadData::YIELDING)) {
-				if (p_caller_pool_thread->yield_is_over) {
-					p_caller_pool_thread->yield_is_over = false;
+				// wgodot-changes::begin
+				Task *yielding_task = p_caller_pool_thread->current_task;
+				if (yielding_task->pending_notify_yield_over) {
+					yielding_task->pending_notify_yield_over = false;
 					wait_is_over = true;
 				}
+				// wgodot-changes::end
 			} else {
 				if (p_task->completed) {
 					wait_is_over = true;
@@ -504,7 +519,26 @@ void WorkerThreadPool::_wait_collaboratively(ThreadData *p_caller_pool_thread, T
 				}
 			}
 
-			if (p_caller_pool_thread->pool->task_queue.first()) {
+			// wgodot-changes::begin
+			// A server pump must remain available for its own queue. A
+			// stolen loading task may await that server or the main thread,
+			// which can itself be waiting for this pump to complete a command.
+			// Execute only the requested dependency, including nested waits.
+			if (p_caller_pool_thread->has_pump_task) {
+				if (p_task != ThreadData::YIELDING && !p_task->is_pump_task && p_task->task_elem.in_list()) {
+					if (p_task->low_priority) {
+						for (SelfList<Task> *entry = low_priority_task_queue.first(); entry; entry = entry->next()) {
+							if (entry->self() == p_task) {
+								low_priority_threads_used++;
+								break;
+							}
+						}
+					}
+					p_task->task_elem.remove_from_list();
+					task_to_process = p_task;
+				}
+			} else if (p_caller_pool_thread->pool->task_queue.first()) {
+			// wgodot-changes::end
 				task_to_process = task_queue.first()->self();
 				if ((p_task == ThreadData::YIELDING || p_caller_pool_thread->has_pump_task == true) && task_to_process->is_pump_task) {
 					task_to_process = nullptr;
@@ -606,16 +640,19 @@ void WorkerThreadPool::notify_yield_over(TaskID p_task_id) {
 		ERR_FAIL_MSG("Invalid Task ID.");
 	}
 	Task *task = *taskp;
+	// wgodot-changes::begin
+	if (!task->completed) {
+		task->pending_notify_yield_over = true;
+	}
+	// wgodot-changes::end
 	if (task->pool_thread_index == -1) { // Completed or not started yet.
-		if (!task->completed) {
-			// This avoids a race condition where a task is created and yield-over called before it's processed.
-			task->pending_notify_yield_over = true;
-		}
 		return;
 	}
 
 	ThreadData &td = threads[task->pool_thread_index];
-	td.yield_is_over = true;
+	// wgodot-changes::begin
+	// Wake the worker; the addressed task consumes its own pending flag.
+	// wgodot-changes::end
 	td.signaled = true;
 	td.cond_var.notify_one();
 }
