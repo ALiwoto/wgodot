@@ -10,6 +10,7 @@
 #include "core/io/json.h"
 #include "core/io/resource.h"
 #include "core/object/class_db.h"
+#include "core/os/os.h"
 #include "core/string/string_builder.h"
 
 #include "modules/gdscript/wgodot_gd/interface_helpers.h"
@@ -369,7 +370,7 @@ String WGodotCppEmitter::literal(const Variant &p_value, const Parser::Node *p_o
 		case Variant::STRING_NAME:
 			return "StringName(String::utf8(" + quoted(p_value) + "))";
 		case Variant::NODE_PATH:
-			return "NodePath(String::utf8(" + quoted(p_value) + "))";
+			return "NodePath(String::utf8(" + quoted(path_text(p_value)) + "))";
 		case Variant::OBJECT: {
 			Object *object = p_value;
 			if (!object) {
@@ -587,7 +588,11 @@ String WGodotCppEmitter::leaf_expression(const Parser::ExpressionNode *p_express
 	}
 }
 
-Error WGodotCppEmitter::generate() {
+Error WGodotCppEmitter::generate(const String &p_directory, int p_jobs) {
+	jobs = p_jobs;
+	staging_directory = p_directory.path_join(".wgodot-cpp-" + itos(OS::get_singleton()->get_process_id()) + "-" + itos(OS::get_singleton()->get_ticks_usec()));
+	RETURN_IF_ERROR(DirAccess::make_dir_recursive_absolute(staging_directory));
+	owns_staging_directory = true;
 	WGodotGDScriptExportTransform::ExportAnalysis::Scope scope(*project.export_analysis);
 	files.clear();
 	reflection_default_classes.clear();
@@ -621,6 +626,9 @@ Error WGodotCppEmitter::generate() {
 			emit_class(entry);
 		}
 	} while (required_classes.size() != required_count);
+	if (!diagnostics.is_empty() || output_error != OK) {
+		return output_error != OK ? output_error : ERR_UNAVAILABLE;
+	}
 	emit_resources();
 	HashSet<StringName> emitted_interfaces;
 	while (emitted_interfaces.size() < used_native_interfaces.size()) {
@@ -640,14 +648,14 @@ Error WGodotCppEmitter::generate() {
 		return ERR_UNAVAILABLE;
 	}
 	emit_native_access();
-	files.insert("game_types.h", "// wgodot-changes::file\n#pragma once\n#include \"modules/wgodot/native/wgodot_native_support.h\"\n#include \"core/object/ref_counted.h\"\n#include \"core/variant/variant_caster.h\"\n#include \"core/variant/typed_array.h\"\n#include \"core/variant/typed_dictionary.h\"\n");
-	files.insert("SCsub", "# wgodot-changes::file\nImport('env')\nImport('env_modules')\nenv_game = env_modules.Clone()\nenv_game.PrependUnique(CPPPATH=env.get('wgodot_public_includes', []))\nenv_game.add_source_files(env.modules_sources, '*.cpp')\nenv_game.add_source_files(env.modules_sources, [File('#modules/wgodot/native/wgodot_native_task.cpp'), File('#modules/wgodot/native/wgodot_native_connections.cpp'), File('#modules/wgodot/native/wgodot_native_debug.cpp'), File('#modules/wgodot/native/wgodot_native_string_format.cpp'), File('#modules/wgodot/wgodot_preloads.cpp')])\n");
+	store_file("game_types.h", "// wgodot-changes::file\n#pragma once\n#include \"modules/wgodot/native/wgodot_native_support.h\"\n#include \"core/object/ref_counted.h\"\n#include \"core/variant/variant_caster.h\"\n#include \"core/variant/typed_array.h\"\n#include \"core/variant/typed_dictionary.h\"\n");
+	store_file("SCsub", "# wgodot-changes::file\nImport('env')\nImport('env_modules')\nenv_game = env_modules.Clone()\nenv_game.PrependUnique(CPPPATH=env.get('wgodot_public_includes', []))\nenv_game.add_source_files(env.modules_sources, '*.cpp')\nenv_game.add_source_files(env.modules_sources, [File('#modules/wgodot/native/wgodot_native_task.cpp'), File('#modules/wgodot/native/wgodot_native_connections.cpp'), File('#modules/wgodot/native/wgodot_native_debug.cpp'), File('#modules/wgodot/native/wgodot_native_string_format.cpp'), File('#modules/wgodot/wgodot_preloads.cpp')])\n");
 	String config = "# wgodot-changes::file\ndef can_build(env, platform):\n    return not env.editor_build\n\ndef configure(env):\n    env.AppendUnique(CPPDEFINES=['WGODOT_NATIVE_GAME'])\n";
 	if (trace_enabled) {
 		config += "    env.AppendUnique(CPPDEFINES=['WGODOT_NATIVE_TRACE_ENABLED'])\n";
 	}
-	files.insert("config.py", config);
-	files.insert("register_types.h", "// wgodot-changes::file\n#pragma once\n#include \"modules/register_module_types.h\"\nvoid initialize_main_game_module(ModuleInitializationLevel p_level);\nvoid uninitialize_main_game_module(ModuleInitializationLevel p_level);\n");
+	store_file("config.py", config);
+	store_file("register_types.h", "// wgodot-changes::file\n#pragma once\n#include \"modules/register_module_types.h\"\nvoid initialize_main_game_module(ModuleInitializationLevel p_level);\nvoid uninitialize_main_game_module(ModuleInitializationLevel p_level);\n");
 	String registration = "// wgodot-changes::file\n#include \"register_types.h\"\n#include \"modules/wgodot/native/wgodot_native_static.h\"\n#include \"modules/wgodot/native/wgodot_native_task.h\"\n#include \"core/object/wgodot_native_interfaces.h\"\n";
 	emit_preloads();
 	registration += "#include \"modules/wgodot/wgodot_preloads.h\"\n#include \"core/io/wgodot_native_resources.h\"\nvoid register_main_game_preloads();\nvoid register_main_game_resources();\n";
@@ -677,8 +685,8 @@ Error WGodotCppEmitter::generate() {
 	if (registered.is_empty()) {
 		registration = registration.replace("using namespace WGodotGame;\n", "");
 	}
-	files.insert("register_types.cpp", registration);
-	return OK;
+	store_file("register_types.cpp", registration);
+	return output_error;
 }
 
 Error WGodotCppEmitter::write(const String &p_directory) const {
@@ -713,17 +721,14 @@ Error WGodotCppEmitter::write(const String &p_directory) const {
 	StringBuilder fingerprint;
 	fingerprint += project.get_target().get_fingerprint() + "\n";
 	for (const String &name : names) {
-		const String &contents = files[name];
-		fingerprint += name + "\n" + contents.sha256_text() + "\n";
+		const String &digest = files[name];
+		fingerprint += name + "\n" + digest + "\n";
 		const String path = p_directory.path_join(name);
-		if (FileAccess::exists(path) && FileAccess::get_file_as_string(path) == contents) {
+		if (FileAccess::exists(path) && FileAccess::get_sha256(path) == digest) {
 			continue;
 		}
-		Ref<FileAccess> output = FileAccess::open(path, FileAccess::WRITE, &error);
+		error = DirAccess::copy_absolute(staging_directory.path_join(name), path);
 		ERR_FAIL_COND_V(error != OK, error);
-		output->store_string(contents);
-		output->flush();
-		ERR_FAIL_COND_V(output->get_error() != OK, output->get_error());
 	}
 	for (const String &name : previous_files) {
 		if (!files.has(name) && FileAccess::exists(p_directory.path_join(name))) {

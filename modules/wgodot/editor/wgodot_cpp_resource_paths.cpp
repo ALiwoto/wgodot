@@ -21,8 +21,13 @@ int64_t WGodotCppEmitter::resource_id(const String &p_path) {
 		diagnostics.push_back(project.get_target().dependency_error(path));
 		return 0;
 	}
-	if (const int64_t *id = resource_ids.getptr(path)) {
+	const auto &catalog = prepared_resource_ids ? *prepared_resource_ids : resource_ids;
+	if (const int64_t *id = catalog.getptr(path)) {
 		return *id;
+	}
+	if (prepared_resource_ids) {
+		diagnostics.push_back("Resource dependency was not prepared before parallel generation: " + path);
+		return 0;
 	}
 	const int64_t id = resource_ids.size() + 1;
 	resource_ids.insert(path, id);

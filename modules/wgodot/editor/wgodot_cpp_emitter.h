@@ -21,6 +21,15 @@ class WGodotCppEmitter {
 	HashSet<const GDScriptParser::Node *> rendering_signatures;
 	const WGodotCppProject::Class *current_class = nullptr;
 	HashMap<String, String> files;
+	// Files hold digests, not the generated source. Workers spool into distinct files.
+	String staging_directory;
+	bool owns_staging_directory = false;
+	Error output_error = OK;
+	int jobs = 1;
+	const HashMap<String, int64_t> *prepared_resource_ids = nullptr;
+	void store_file(const String &p_name, const String &p_contents);
+	void merge_resource_worker(WGodotCppEmitter &p_worker);
+	WGodotCppEmitter(const WGodotCppEmitter &p_parent);
 	Vector<String> diagnostics;
 	HashMap<StringName, String> native_headers;
 	HashMap<StringName, String> native_cpp_names;
@@ -234,7 +243,8 @@ class WGodotCppEmitter {
 
 public:
 	explicit WGodotCppEmitter(const WGodotCppProject &p_project, bool p_trace_enabled = false);
-	Error generate();
+	~WGodotCppEmitter();
+	Error generate(const String &p_directory, int p_jobs = 1);
 	Error write(const String &p_directory) const;
 	const Vector<String> &get_diagnostics() const { return diagnostics; }
 };

@@ -57,6 +57,7 @@ Error WGodotCppProject::prepare_editor_only() {
 	HashMap<String, Vector<SourceEdit>> edits;
 	{
 		ExportAnalysis parsed(export_project, export_context);
+		parsed.parse_scripts_parallel(jobs);
 		for (const String &path : export_project.get_script_paths()) {
 			if (!export_project.is_exported(path)) {
 				continue;

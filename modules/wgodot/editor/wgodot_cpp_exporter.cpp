@@ -9,6 +9,7 @@
 #include "core/io/dir_access.h"
 #include "core/io/file_access.h"
 #include "core/io/json.h"
+#include "core/object/worker_thread_pool.h"
 #include "core/os/os.h"
 #include "core/string/print_string.h"
 #include "editor/editor_interface.h"
@@ -32,7 +33,7 @@ Dictionary failure(const String &p_message) {
 } // namespace
 
 int WGodotCppExporter::run(const Vector<String> &p_arguments) {
-	const String usage = "Usage: wg export-cpp <absolute-output-directory> [--target client|server] [--analyze-only] [--standalone] [--trace on|off|true|false] (defaults: client, trace off). --standalone exports saved files in this process without using the editor.";
+	const String usage = "Usage: wg export-cpp <absolute-output-directory> [--target client|server] [--jobs N] [--analyze-only] [--standalone] [--trace on|off|true|false] (defaults: client, jobs 0 = available worker threads, trace off). --standalone exports saved files in this process without using the editor.";
 	if (p_arguments.is_empty()) {
 		print_error(usage);
 		return 2;
@@ -40,12 +41,19 @@ int WGodotCppExporter::run(const Vector<String> &p_arguments) {
 	bool analyze_only = false;
 	bool standalone = false;
 	bool trace_enabled = false;
+	int jobs = 0;
 	String target = "client";
 	for (int i = 1; i < p_arguments.size(); i++) {
 		if (p_arguments[i] == "--analyze-only") {
 			analyze_only = true;
 		} else if (p_arguments[i] == "--standalone") {
 			standalone = true;
+		} else if (p_arguments[i] == "--jobs") {
+			if (++i >= p_arguments.size() || !p_arguments[i].is_valid_int() || p_arguments[i].to_int() < 0 || p_arguments[i].to_int() > INT32_MAX) {
+				print_error("--jobs requires a nonnegative integer (0 = available worker threads).");
+				return 2;
+			}
+			jobs = p_arguments[i].to_int();
 		} else if (p_arguments[i] == "--target") {
 			if (++i >= p_arguments.size() || (p_arguments[i] != "client" && p_arguments[i] != "server")) {
 				print_error("--target requires client or server.");
@@ -86,6 +94,7 @@ int WGodotCppExporter::run(const Vector<String> &p_arguments) {
 	options["analyze_only"] = analyze_only;
 	options["trace"] = trace_enabled;
 	options["target"] = target;
+	options["jobs"] = jobs;
 	Dictionary response;
 	if (standalone) {
 		response = execute(options);
@@ -146,19 +155,25 @@ Dictionary WGodotCppExporter::execute(const Dictionary &p_options) {
 	}
 	const bool analyze_only = p_options.get("analyze_only", false);
 	const bool trace_enabled = p_options.get("trace", false);
+	const Variant requested_jobs = p_options.get("jobs", 0);
+	if (requested_jobs.get_type() != Variant::INT || int64_t(requested_jobs) < 0 || int64_t(requested_jobs) > INT32_MAX) {
+		return failure("jobs must be a nonnegative integer (0 = available worker threads).");
+	}
+	const int available_jobs = WorkerThreadPool::get_singleton()->get_thread_count();
+	const int jobs = int64_t(requested_jobs) == 0 ? available_jobs : MIN(int64_t(requested_jobs), available_jobs);
 	WGodotEditorActivity activity("Exporting native C++", output);
 	WGodotCppProject project;
 	uint64_t started = OS::get_singleton()->get_ticks_msec();
 	print_line("Analyzing native scripts...");
-	Error result = project.analyze(p_options.get("target", "client"));
+	Error result = project.analyze(p_options.get("target", "client"), jobs);
 	print_line(vformat("Native analysis: %d ms", OS::get_singleton()->get_ticks_msec() - started));
 	Dictionary report = project.describe();
 	Vector<String> diagnostics = project.get_diagnostics();
 	if (result == OK && !analyze_only) {
 		WGodotCppEmitter emitter(project, trace_enabled);
 		started = OS::get_singleton()->get_ticks_msec();
-		print_line("Generating native scripts and authored scene/resource factories...");
-		result = emitter.generate();
+		print_line(vformat("Generating native scripts and authored scene/resource factories (up to %d workers)...", jobs));
+		result = emitter.generate(output, jobs);
 		print_line(vformat("Native generation: %d ms", OS::get_singleton()->get_ticks_msec() - started));
 		diagnostics = emitter.get_diagnostics();
 		if (result == OK) {
@@ -172,6 +187,8 @@ Dictionary WGodotCppExporter::execute(const Dictionary &p_options) {
 	report["success"] = result == OK;
 	report["analysis_only"] = analyze_only;
 	report["trace"] = trace_enabled;
+	report["jobs_requested"] = requested_jobs;
+	report["jobs_effective"] = jobs;
 	Error write_error = DirAccess::make_dir_recursive_absolute(output);
 	if (write_error == OK) {
 		Ref<FileAccess> file = FileAccess::open(output.path_join("cpp-export-report.json"), FileAccess::WRITE, &write_error);

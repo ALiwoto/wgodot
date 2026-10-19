@@ -45,7 +45,7 @@ ExportAnalysis::ExportAnalysis(const ExportProject &p_project, const ExportConte
 	}
 }
 
-void ExportAnalysis::parse_scripts_parallel() {
+void ExportAnalysis::parse_scripts_parallel(int p_jobs) {
 	// Parsing owns only its source tree. Resolve cross-script interfaces/bodies
 	// afterwards on the analysis owner; they can mutate dependency trees.
 	Vector<Ref<GDScriptParserRef>> pending;
@@ -66,7 +66,7 @@ void ExportAnalysis::parse_scripts_parallel() {
 		}
 	} work;
 	const WorkerThreadPool::GroupID group = pool->add_template_group_task(
-			&work, &ParseWork::parse, pending.ptr(), pending.size(), -1, false, "Parse project scripts");
+			&work, &ParseWork::parse, pending.ptr(), pending.size(), p_jobs, true, "Parse project scripts");
 	pool->wait_for_group_task_completion(group);
 }
 

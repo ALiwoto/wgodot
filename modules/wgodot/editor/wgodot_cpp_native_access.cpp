@@ -52,6 +52,6 @@ void WGodotCppEmitter::emit_native_access() {
 			header += owner.value[method];
 		}
 		header += "};\n} // namespace WGodotNative\n";
-		files.insert("native_access_" + symbol(owner.key) + ".h", header);
+		store_file("native_access_" + symbol(owner.key) + ".h", header);
 	}
 }

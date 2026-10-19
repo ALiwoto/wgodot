@@ -30,6 +30,7 @@ public:
 	};
 
 private:
+	int jobs = -1;
 	WGodotExportTarget target;
 	WGodotGDScriptExportTransform::ExportProject export_project;
 	WGodotGDScriptExportTransform::ExportContext export_context;
@@ -53,7 +54,7 @@ public:
 	WGodotCppProject(const WGodotCppProject &) = delete;
 	WGodotCppProject &operator=(const WGodotCppProject &) = delete;
 
-	Error analyze(const String &p_target = "client");
+	Error analyze(const String &p_target = "client", int p_jobs = -1);
 	const WGodotExportTarget &get_target() const { return target; }
 	bool is_editor_member(const GDScriptParser::ClassNode *p_class, const StringName &p_member) const;
 	const Vector<Class> &get_classes() const { return classes; }

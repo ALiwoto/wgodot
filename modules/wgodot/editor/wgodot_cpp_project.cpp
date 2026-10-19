@@ -124,6 +124,7 @@ Error WGodotCppProject::prepare_sources(const Vector<String> &p_scripts) {
 	}
 	export_analysis = memnew(ExportAnalysis(export_project, export_context));
 	export_analysis->set_excluded_members(editor_members);
+	export_analysis->parse_scripts_parallel(jobs);
 	return OK;
 }
 
@@ -141,7 +142,8 @@ void WGodotCppProject::collect_classes(const String &p_script_path, GDScriptPars
 	}
 }
 
-Error WGodotCppProject::analyze(const String &p_target) {
+Error WGodotCppProject::analyze(const String &p_target, int p_jobs) {
+	jobs = p_jobs;
 	ERR_FAIL_COND_V(!ProjectSettings::get_singleton()->is_project_loaded(), ERR_UNCONFIGURED);
 	classes.clear();
 	class_indices.clear();

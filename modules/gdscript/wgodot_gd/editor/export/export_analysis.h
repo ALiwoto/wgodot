@@ -43,7 +43,7 @@ public:
 	ExportAnalysis &operator=(const ExportAnalysis &) = delete;
 	static ExportAnalysis *get_active() { return active; }
 	bool is_for_export() const { return for_export; }
-	void parse_scripts_parallel();
+	void parse_scripts_parallel(int p_jobs = -1);
 	void set_excluded_members(const HashMap<String, HashSet<StringName>> &p_members) { excluded_members = p_members; }
 	bool is_excluded_member(const String &p_class, const StringName &p_member) const;
 	const HashMap<uint64_t, String> &get_decoded_string_resources();

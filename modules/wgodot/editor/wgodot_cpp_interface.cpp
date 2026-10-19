@@ -67,7 +67,7 @@ void WGodotCppEmitter::emit_native_interface(const WGodotNativeInterfaces::Descr
 	value = value.replace("};\n", signal_declarations + "};\n");
 	header += value + signals + signal_definitions;
 	header += "}\n" + interface_value_traits(name);
-	files.insert(name + ".h", header);
+	store_file(name + ".h", header);
 }
 
 String WGodotCppEmitter::native_interface_signal_type(const MethodInfo &p_signal) {
@@ -156,7 +156,7 @@ void WGodotCppEmitter::emit_interface(const WGodotCppProject::Class &p_class) {
 	}
 	header += contract + interface_value_definition(name, native_cpp_names[native], interface, constant_declarations);
 	header += "}\n" + interface_value_traits(name);
-	files.insert(name + ".h", header);
+	store_file(name + ".h", header);
 	if (!constant_definitions.is_empty()) {
 		String source = source_header(p_class.script_path, p_class.node->fqcn) + "#include \"" + name + ".h\"\n";
 		headers.clear();
@@ -173,7 +173,7 @@ void WGodotCppEmitter::emit_interface(const WGodotCppProject::Class &p_class) {
 			}
 		}
 		source += "\nnamespace WGodotGame {\n" + constant_definitions + "}\n";
-		files.insert(name + ".cpp", source);
+		store_file(name + ".cpp", source);
 	}
 }
 

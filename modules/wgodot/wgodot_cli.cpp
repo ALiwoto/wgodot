@@ -209,7 +209,7 @@ void print_cli_help() {
 	print_line("Usage: godot [Godot options] --wg <command> [arguments]");
 	print_line("");
 	print_line("Commands:");
-	print_line("  export-cpp <directory> [--target client|server] [--analyze-only] [--standalone] [--trace on|off|true|false] Generate native game C++; --standalone uses saved files without blocking the editor.");
+	print_line("  export-cpp <directory> [--target client|server] [--jobs N] [--analyze-only] [--standalone] [--trace on|off|true|false] Generate native game C++; jobs 0 uses available worker threads; --standalone uses saved files without blocking the editor.");
 	print_line("  import                            Refresh/import assets and reload changed scenes in the running editor.");
 	print_line("  move <source> <destination> [...] [--dry-run] [--json]  Move project files/folders and update resource references.");
 	print_line("  status [--json] [--session <id>]  Show the matching editor and running game sessions.");

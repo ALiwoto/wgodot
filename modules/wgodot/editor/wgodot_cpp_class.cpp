@@ -357,8 +357,8 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 		}
 	}
 	source += "\nnamespace WGodotGame {\n" + definitions + "} // namespace WGodotGame\n";
-	files.insert(name + ".h", header);
-	files.insert(name + ".cpp", source);
+	store_file(name + ".h", header);
+	store_file(name + ".cpp", source);
 }
 
 void WGodotCppEmitter::register_class(const WGodotCppProject::Class &p_class, HashSet<String> &r_registered, String &r_code) {

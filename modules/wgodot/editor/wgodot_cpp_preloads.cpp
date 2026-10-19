@@ -7,6 +7,10 @@ int WGodotCppEmitter::resource_index(const Resource *p_resource) {
 	if (const int *index = preload_indices.getptr(path)) {
 		return *index;
 	}
+	if (prepared_resource_ids) {
+		diagnostics.push_back("Preload was not prepared before parallel resource generation: " + path);
+		return -1;
+	}
 	int index = preloads.size();
 	preloads.push_back({ path, p_resource->get_class(), false });
 	preload_indices.insert(path, index);
@@ -43,5 +47,5 @@ void WGodotCppEmitter::emit_preloads() {
 		source += "};\n\n";
 	}
 	source += "void register_main_game_preloads() {\n\tWGodotPreloads::set_manifest(" + String(preloads.is_empty() ? "nullptr" : "preloads") + ", " + itos(preloads.size()) + ");\n}\n";
-	files.insert("game_preloads.cpp", source);
+	store_file("game_preloads.cpp", source);
 }

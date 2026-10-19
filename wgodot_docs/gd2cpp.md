@@ -19,6 +19,8 @@ So your entire game project will be split into two parts:
 
 `wg export-cpp <absolute-directory> --target client|server` selects ownership before native generation. Default: `client`. Server export requires `res://wgodot_targets.cfg`; projects without it retain shared ownership for all content.
 
+`--jobs N` limits parallel script parsing and scene/resource factory generation; `0` (default) uses the available engine worker threads. Requests above that pool size are capped and the effective count is reported. `1` uses the same pipeline with one worker. Dependency analysis, GDScript lowering, resource loading/property snapshots and final manifest publication remain serial. Factories use private emitter state and a prepared read-only resource catalog; IDs do not depend on worker scheduling. Completed sources are spooled to a private `.wgodot-cpp-*` directory inside the output and released from memory. Normal completion/failure removes that staging directory; a process/OS crash may leave it behind. An existing module is replaced only after successful generation; `main_game.json` is written last. Progress reports factory counts and preparation/generation times. Use `--headless` before `--wg` and `--standalone` after `export-cpp` for an export process without rendering or a running editor.
+
 ```ini
 [paths]
 res://src/client/="client"
