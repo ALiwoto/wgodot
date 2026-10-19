@@ -48,6 +48,10 @@ private:
 
 	struct DummyShader {
 		HashMap<StringName, ShaderLanguage::ShaderNode::Uniform> uniforms;
+		// wgodot-changes::begin
+		Ref<WShaderParameterLayout> parameter_layout;
+		HashMap<StringName, HashMap<int, RID>> default_textures;
+		// wgodot-changes::end
 	};
 
 	mutable RID_Owner<DummyShader, true> shader_owner;
@@ -102,9 +106,14 @@ public:
 	virtual String shader_get_code(RID p_shader) const override { return ""; }
 	virtual void get_shader_parameter_list(RID p_shader, List<PropertyInfo> *p_param_list) const override;
 
-	virtual void shader_set_default_texture_parameter(RID p_shader, const StringName &p_name, RID p_texture, int p_index) override {}
-	virtual RID shader_get_default_texture_parameter(RID p_shader, const StringName &p_name, int p_index) const override { return RID(); }
-	virtual Variant shader_get_parameter_default(RID p_material, const StringName &p_param) const override { return Variant(); }
+	// wgodot-changes::begin
+	virtual void shader_set_default_texture_parameter(RID p_shader, const StringName &p_name, RID p_texture, int p_index) override;
+	virtual RID shader_get_default_texture_parameter(RID p_shader, const StringName &p_name, int p_index) const override;
+	virtual Variant shader_get_parameter_default(RID p_shader, const StringName &p_param) const override;
+	virtual Ref<WShaderParameterLayout> shader_get_parameter_layout(RID p_shader) const override;
+	virtual void material_set_parameters(RID p_material, const WShaderParameters &p_parameters) override {}
+	virtual void material_update_parameter(RID p_material, const WShaderParameterUpdate &p_update) override {}
+	// wgodot-changes::end
 
 	virtual RenderingServerTypes::ShaderNativeSourceCode shader_get_native_source_code(RID p_shader) const override { return RenderingServerTypes::ShaderNativeSourceCode(); }
 	virtual void shader_embedded_set_lock() override {}

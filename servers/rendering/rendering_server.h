@@ -30,6 +30,10 @@
 
 #pragma once
 
+// wgodot-changes::begin
+#include "servers/rendering/storage/wgodot_shader_parameters.h"
+// wgodot-changes::end
+
 #include "core/io/image.h"
 #include "core/templates/rid.h"
 #include "core/variant/typed_array.h"
@@ -172,6 +176,11 @@ public:
 	virtual String shader_get_code(RID p_shader) const = 0;
 	virtual void get_shader_parameter_list(RID p_shader, List<PropertyInfo> *p_param_list) const = 0;
 	virtual Variant shader_get_parameter_default(RID p_shader, const StringName &p_param) const = 0;
+	// wgodot-changes::begin
+	virtual Ref<WShaderParameterLayout> shader_get_parameter_layout(RID p_shader) const = 0;
+	virtual void material_set_parameters(RID p_material, const WShaderParameters &p_parameters) = 0;
+	virtual void material_update_parameter(RID p_material, const WShaderParameterUpdate &p_update) = 0;
+	// wgodot-changes::end
 
 	virtual void shader_set_default_texture_parameter(RID p_shader, const StringName &p_name, RID p_texture, int p_index = 0) = 0;
 	virtual RID shader_get_default_texture_parameter(RID p_shader, const StringName &p_name, int p_index = 0) const = 0;

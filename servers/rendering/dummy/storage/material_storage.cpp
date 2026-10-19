@@ -161,6 +161,10 @@ void MaterialStorage::shader_free(RID p_rid) {
 void MaterialStorage::shader_set_code(RID p_shader, const String &p_code) {
 	DummyShader *shader = shader_owner.get_or_null(p_shader);
 	ERR_FAIL_NULL(shader);
+	// wgodot-changes::begin
+	shader->uniforms.clear();
+	shader->parameter_layout.unref();
+	// wgodot-changes::end
 	if (p_code.is_empty()) {
 		return;
 	}
@@ -190,6 +194,14 @@ void MaterialStorage::shader_set_code(RID p_shader, const String &p_code) {
 
 	Error err = MaterialStorage::get_singleton()->dummy_compiler.compile(new_mode, p_code, &actions, "", gen_code);
 	ERR_FAIL_COND_MSG(err != OK, "Shader compilation failed.");
+	// wgodot-changes::begin
+	shader->parameter_layout = gen_code.parameter_layout;
+	for (const auto &parameter : shader->default_textures) {
+		for (const auto &texture : parameter.value) {
+			shader->parameter_layout = shader->parameter_layout->with_texture_default(parameter.key, texture.key, texture.value);
+		}
+	}
+	// wgodot-changes::end
 }
 
 void MaterialStorage::get_shader_parameter_list(RID p_shader, List<PropertyInfo> *p_param_list) const {

@@ -233,6 +233,9 @@ void SceneShaderForwardClustered::ShaderData::set_code(const String &p_code) {
 
 	ubo_size = gen_code.uniform_total_size;
 	ubo_offsets = gen_code.uniform_offsets;
+	// wgodot-changes::begin
+	parameter_layout = gen_code.parameter_layout;
+	// wgodot-changes::end
 	texture_uniforms = gen_code.texture_uniforms;
 
 	pipeline_hash_map.clear_pipelines();
@@ -589,7 +592,9 @@ void SceneShaderForwardClustered::MaterialData::set_next_pass(RID p_pass) {
 	next_pass = p_pass;
 }
 
-bool SceneShaderForwardClustered::MaterialData::update_parameters(const HashMap<StringName, Variant> &p_parameters, bool p_uniform_dirty, bool p_textures_dirty) {
+// wgodot-changes::begin
+bool SceneShaderForwardClustered::MaterialData::update_parameters(const WMaterialParameters &p_parameters, bool p_uniform_dirty, bool p_textures_dirty) {
+// wgodot-changes::end
 	if (shader_data->version.is_valid()) {
 		RID shader_rid = SceneShaderForwardClustered::singleton->shader.version_get_shader(shader_data->version, 0);
 

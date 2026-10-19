@@ -10,6 +10,8 @@
 class MethodBind;
 class WGodotCppAsync;
 class WGodotCppResources;
+class WGodotCppSource;
+struct WGodotGDScriptPropertyPath;
 
 class WGodotCppEmitter {
 	friend class WGodotCppAsync;
@@ -28,6 +30,7 @@ class WGodotCppEmitter {
 	int jobs = 1;
 	const HashMap<String, int64_t> *prepared_resource_ids = nullptr;
 	void store_file(const String &p_name, const String &p_contents);
+	void store_source(const String &p_name, const String &p_header, WGodotCppSource &p_declarations, const String &p_middle, WGodotCppSource &p_body, const String &p_footer);
 	void merge_resource_worker(WGodotCppEmitter &p_worker);
 	WGodotCppEmitter(const WGodotCppEmitter &p_parent);
 	Vector<String> diagnostics;
@@ -45,6 +48,9 @@ class WGodotCppEmitter {
 	HashSet<const GDScriptParser::ClassNode *> inherited_classes;
 	HashSet<String> reflection_default_classes;
 	HashSet<String> class_call_headers;
+	HashSet<NodePath> animation_property_paths;
+	void emit_animation_bindings();
+	String property_path_accessor(const WGodotGDScriptPropertyPath &p_path, const GDScriptParser::ExpressionNode *p_origin, bool p_write, int p_writeback_start = 0, bool p_variant_boundary = false);
 	HashMap<String, int> preload_indices;
 	Vector<WGodotCppProject::Preload> preloads;
 	HashMap<const GDScriptParser::ConstantNode *, const WGodotCppProject::Class *> container_constant_owners;

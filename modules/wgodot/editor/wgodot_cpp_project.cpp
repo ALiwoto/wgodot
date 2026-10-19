@@ -2,6 +2,7 @@
 #include "wgodot_cpp_project.h"
 
 #include "wgodot_cpp_ast.h"
+#include "wgodot_cpp_memory_profile.h"
 
 #include "core/config/project_settings.h"
 #include "core/io/dir_access.h"
@@ -103,6 +104,7 @@ Error WGodotCppProject::prepare_sources(const Vector<String> &p_scripts) {
 
 	NoExportPass no_export;
 	ExportPassOutput output(export_context);
+	WGodotCppMemoryProfile::sample("no-export-begin");
 	{
 		ExportAnalysis analysis(original, export_context);
 		const ExportAnalysisInput input{ { original, export_context }, analysis };
@@ -111,6 +113,7 @@ Error WGodotCppProject::prepare_sources(const Vector<String> &p_scripts) {
 			error = no_export.transform(input, output, error_text);
 		}
 	}
+	WGodotCppMemoryProfile::sample("no-export-complete");
 	if (error == OK) {
 		error = original.apply(output.edits, no_export.get_name(), export_project, error_text);
 	}
@@ -118,13 +121,16 @@ Error WGodotCppProject::prepare_sources(const Vector<String> &p_scripts) {
 		diagnostics.push_back("no_export: " + error_text);
 		return error;
 	}
+	WGodotCppMemoryProfile::sample("editor-only-begin");
 	error = prepare_editor_only();
+	WGodotCppMemoryProfile::sample("editor-only-complete");
 	if (error != OK) {
 		return error;
 	}
 	export_analysis = memnew(ExportAnalysis(export_project, export_context));
 	export_analysis->set_excluded_members(editor_members);
 	export_analysis->parse_scripts_parallel(jobs);
+	WGodotCppMemoryProfile::sample("parallel-parse-complete");
 	return OK;
 }
 
@@ -186,7 +192,9 @@ Error WGodotCppProject::analyze(const String &p_target, int p_jobs) {
 		if (!target.includes(path)) {
 			continue;
 		}
+		WGodotCppMemoryProfile::sample("script-begin", path);
 		Ref<GDScriptParserRef> parser = export_analysis->get_parser(path, GDScriptParserRef::FULLY_SOLVED, error);
+		WGodotCppMemoryProfile::sample("script-analyzed", path);
 		if (parser.is_valid()) {
 			parsers.push_back(parser);
 		}

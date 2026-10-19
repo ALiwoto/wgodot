@@ -3,6 +3,7 @@
 
 #include "wgodot_export_scene.h"
 #include "wgodot_export_target.h"
+#include "modules/wgodot/codecs/resource_codec.h"
 
 #include "core/io/file_access.h"
 #include "core/object/script_language.h"
@@ -17,6 +18,7 @@ class OwnedResources {
 
 public:
 	bool scripted = false;
+	bool native_codec = false;
 	bool target_nodes = false;
 
 	explicit OwnedResources(const Ref<Resource> &p_resource) : owner(p_resource->get_path().get_slice("::", 0)) {
@@ -38,6 +40,8 @@ public:
 				return; // External resources keep their own serialization boundary.
 			}
 			visited.insert(resource.ptr());
+			const WResourceCodec *codec = WResourceCodec::find(resource->get_class());
+			native_codec |= codec && codec->requires_native_factory();
 			const Ref<Script> script = resource->get_script();
 			scripted |= script.is_valid();
 			const Ref<PackedScene> scene = resource;
@@ -99,7 +103,11 @@ bool WGodotNativeResourcePolicy::is_authored(const String &p_path) {
 }
 
 bool WGodotNativeResourcePolicy::needs_factory(const Ref<Resource> &p_resource) {
-	return Object::cast_to<PackedScene>(p_resource.ptr()) || OwnedResources(p_resource).scripted;
+	if (Object::cast_to<PackedScene>(p_resource.ptr())) {
+		return true;
+	}
+	const OwnedResources contents(p_resource);
+	return contents.scripted || contents.native_codec;
 }
 
 Error WGodotNativeResourcePolicy::prepare_external(Ref<Resource> &r_resource, const WGodotExportTarget &p_target, String &r_error) {

@@ -1803,6 +1803,9 @@ void ParticlesStorage::ParticlesShaderData::set_code(const String &p_code) {
 
 	ubo_size = gen_code.uniform_total_size;
 	ubo_offsets = gen_code.uniform_offsets;
+	// wgodot-changes::begin
+	parameter_layout = gen_code.parameter_layout;
+	// wgodot-changes::end
 	texture_uniforms = gen_code.texture_uniforms;
 
 	//update pipelines
@@ -1841,7 +1844,9 @@ MaterialStorage::ShaderData *ParticlesStorage::_create_particles_shader_func() {
 	return shader_data;
 }
 
-bool ParticlesStorage::ParticleProcessMaterialData::update_parameters(const HashMap<StringName, Variant> &p_parameters, bool p_uniform_dirty, bool p_textures_dirty) {
+// wgodot-changes::begin
+bool ParticlesStorage::ParticleProcessMaterialData::update_parameters(const WMaterialParameters &p_parameters, bool p_uniform_dirty, bool p_textures_dirty) {
+// wgodot-changes::end
 	return update_parameters_uniform_set(p_parameters, p_uniform_dirty, p_textures_dirty, shader_data->uniforms, shader_data->ubo_offsets.ptr(), shader_data->texture_uniforms, shader_data->default_texture_params, shader_data->ubo_size, uniform_set, ParticlesStorage::get_singleton()->particles_shader.shader.version_get_shader(shader_data->version, 0), 3, true, false);
 }
 

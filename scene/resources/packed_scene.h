@@ -247,6 +247,7 @@ public:
 	void set_native_property(int p_node, int p_property, const WGodotSceneProperty *p_accessor);
 	void set_native_connection(int p_connection, const WGodotSceneConnection *p_connection_data);
 	void copy_native_accessors_from(const Ref<SceneState> &p_source);
+	void compact_storage();
 	// wgodot-changes::end
 
 	bool remove_group_references(const StringName &p_name);

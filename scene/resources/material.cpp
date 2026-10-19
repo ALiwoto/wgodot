@@ -197,15 +197,9 @@ Material::~Material() {
 
 bool ShaderMaterial::_set(const StringName &p_name, const Variant &p_value) {
 	if (shader.is_valid()) {
-		const StringName *sn = remap_cache.getptr(p_name);
-		if (sn) {
-			set_shader_parameter(*sn, p_value);
-			return true;
-		}
 		String s = p_name;
 		if (s.begins_with("shader_parameter/")) {
 			String param = s.replace_first("shader_parameter/", "");
-			remap_cache[s] = param;
 			set_shader_parameter(param, p_value);
 			return true;
 		}
@@ -223,7 +217,6 @@ bool ShaderMaterial::_set(const StringName &p_name, const Variant &p_value) {
 
 		WARN_PRINT("This material (containing shader with path: '" + shader->get_path() + "') uses an old deprecated parameter names. Consider re-saving this resource (or scene which contains it) in order for it to continue working in future versions.");
 		String param = s.replace_first("shader_parameter/", "");
-		remap_cache[s] = param;
 		set_shader_parameter(param, p_value);
 		return true;
 #endif
@@ -232,23 +225,27 @@ bool ShaderMaterial::_set(const StringName &p_name, const Variant &p_value) {
 	return false;
 }
 
+// wgodot-changes::begin
 bool ShaderMaterial::_get(const StringName &p_name, Variant &r_ret) const {
-	if (shader.is_valid()) {
-		const StringName *sn = remap_cache.getptr(p_name);
-		if (sn) {
-			// Only return a parameter if it was previously set.
-			r_ret = get_shader_parameter(*sn);
+	const String name = p_name;
+	if (shader.is_valid() && name.begins_with("shader_parameter/")) {
+		const StringName parameter = name.trim_prefix("shader_parameter/");
+		if (get_shader_parameter_type(parameter) != Variant::NIL) {
+			r_ret = get_shader_parameter(parameter);
 			return true;
 		}
 	}
-
 	return false;
 }
+// wgodot-changes::end
 
 void ShaderMaterial::_get_property_list(List<PropertyInfo> *p_list) const {
 	if (shader.is_valid()) {
 		List<PropertyInfo> list;
-		shader->get_shader_uniform_list(&list, true);
+		// wgodot-changes::begin
+		shader->get_shader_uniform_list(&list, true, true);
+		_ensure_parameters();
+		// wgodot-changes::end
 
 		HashMap<String, List<PropertyInfo>> groups;
 		LocalVector<String> vgroups;
@@ -298,53 +295,17 @@ void ShaderMaterial::_get_property_list(List<PropertyInfo> *p_list) const {
 				vgroups.push_back("<None>");
 			}
 
-			const bool is_uniform_cached = param_cache.has(pi.name);
-			bool is_uniform_type_compatible = true;
-
-			if (is_uniform_cached) {
-				// Check if the uniform Variant type changed, for example vec3 to vec4.
-				const Variant &cached = param_cache.get(pi.name);
-
-				if (cached.is_array()) {
-					// Allow some array conversions for backwards compatibility.
-					is_uniform_type_compatible = Variant::can_convert(pi.type, cached.get_type());
-				} else {
-					is_uniform_type_compatible = pi.type == cached.get_type();
-				}
-
-#ifndef DISABLE_DEPRECATED
-				// PackedFloat32Array -> PackedVector4Array conversion.
-				if (!is_uniform_type_compatible && pi.type == Variant::PACKED_VECTOR4_ARRAY && cached.get_type() == Variant::PACKED_FLOAT32_ARRAY) {
-					PackedVector4Array varray;
-					PackedFloat32Array array = (PackedFloat32Array)cached;
-
-					for (int i = 0; i + 3 < array.size(); i += 4) {
-						varray.push_back(Vector4(array[i], array[i + 1], array[i + 2], array[i + 3]));
-					}
-
-					param_cache.insert(pi.name, varray);
-					is_uniform_type_compatible = true;
-				}
-#endif
-
-				if (is_uniform_type_compatible && pi.type == Variant::OBJECT && cached.get_type() == Variant::OBJECT) {
-					// Check if the Object class (hint string) changed, for example Texture2D sampler to Texture3D.
-					// Allow inheritance, Texture2D type sampler should also accept CompressedTexture2D.
-					Object *cached_obj = cached;
-					if (!cached_obj->is_class(pi.hint_string)) {
-						is_uniform_type_compatible = false;
-					}
-				}
-			}
-
+			// wgodot-changes::begin
 			PropertyInfo info = pi;
-			info.name = "shader_parameter/" + info.name;
-			if (!is_uniform_cached || !is_uniform_type_compatible) {
-				// Property has never been edited or its type changed, retrieve with default value.
-				Variant default_value = RenderingServer::get_singleton()->shader_get_parameter_default(shader->get_rid(), pi.name);
-				param_cache.insert(pi.name, default_value);
-				remap_cache.insert(info.name, pi.name);
+			if (shader->has_default_texture_parameter(pi.name)) {
+				info.usage &= ~PROPERTY_USAGE_EDITOR;
 			}
+			info.name = "shader_parameter/" + info.name;
+			const int slot = parameters.layout.is_valid() ? parameters.layout->find(pi.name) : -1;
+			if (slot < 0 || !parameters.buffer.overridden[slot]) {
+				info.usage &= ~PROPERTY_USAGE_STORAGE;
+			}
+			// wgodot-changes::end
 			groups[last_group].push_back(info);
 		}
 
@@ -357,33 +318,42 @@ void ShaderMaterial::_get_property_list(List<PropertyInfo> *p_list) const {
 	}
 }
 
+// wgodot-changes::begin
 bool ShaderMaterial::_property_can_revert(const StringName &p_name) const {
-	if (shader.is_valid()) {
-		if (remap_cache.has(p_name)) {
-			return true;
-		}
-		const String sname = p_name;
-		return sname == "render_priority" || sname == "next_pass";
+	if (shader.is_null()) {
+		return false;
 	}
-	return false;
+	const String name = p_name;
+	if (name.begins_with("shader_parameter/")) {
+		return get_shader_parameter_type(name.trim_prefix("shader_parameter/")) != Variant::NIL;
+	}
+	return p_name == SNAME("render_priority") || p_name == SNAME("next_pass");
 }
 
 bool ShaderMaterial::_property_get_revert(const StringName &p_name, Variant &r_property) const {
-	if (shader.is_valid()) {
-		const StringName *pr = remap_cache.getptr(p_name);
-		if (pr) {
-			r_property = RenderingServer::get_singleton()->shader_get_parameter_default(shader->get_rid(), *pr);
-			return true;
-		} else if (p_name == "render_priority") {
-			r_property = 0;
-			return true;
-		} else if (p_name == "next_pass") {
-			r_property = Variant();
-			return true;
+	if (shader.is_null()) {
+		return false;
+	}
+	const String name = p_name;
+	if (name.begins_with("shader_parameter/")) {
+		const StringName parameter = name.trim_prefix("shader_parameter/");
+		if (get_shader_parameter_type(parameter) == Variant::NIL) {
+			return false;
 		}
+		r_property = RS::get_singleton()->shader_get_parameter_default(shader->get_rid(), parameter);
+		return true;
+	}
+	if (p_name == SNAME("render_priority")) {
+		r_property = 0;
+		return true;
+	}
+	if (p_name == SNAME("next_pass")) {
+		r_property = Variant();
+		return true;
 	}
 	return false;
 }
+// wgodot-changes::end
 
 void ShaderMaterial::set_shader(const Ref<Shader> &p_shader) {
 	// Only connect/disconnect the signal when running in the editor.
@@ -394,6 +364,10 @@ void ShaderMaterial::set_shader(const Ref<Shader> &p_shader) {
 	}
 
 	shader = p_shader;
+	// wgodot-changes::begin
+	parameter_revision = UINT64_MAX;
+	_ensure_parameters();
+	// wgodot-changes::end
 
 	RID rid;
 	if (shader.is_valid()) {
@@ -407,6 +381,9 @@ void ShaderMaterial::set_shader(const Ref<Shader> &p_shader) {
 	RID material_rid = _get_material();
 	if (material_rid.is_valid()) {
 		RS::get_singleton()->material_set_shader(material_rid, rid);
+		// wgodot-changes::begin
+		RS::get_singleton()->material_set_parameters(material_rid, parameters);
+		// wgodot-changes::end
 	}
 
 	notify_property_list_changed(); //properties for shader exposed
@@ -417,49 +394,11 @@ Ref<Shader> ShaderMaterial::get_shader() const {
 	return shader;
 }
 
-void ShaderMaterial::set_shader_parameter(const StringName &p_param, const Variant &p_value) {
-	RID material_rid = _get_material();
-	if (p_value.get_type() == Variant::NIL) {
-		param_cache.erase(p_param);
-		if (material_rid.is_valid()) {
-			RS::get_singleton()->material_set_param(material_rid, p_param, Variant());
-		}
-	} else {
-		Variant *v = param_cache.getptr(p_param);
-		if (!v) {
-			// Never assigned, also update the remap cache.
-			remap_cache["shader_parameter/" + p_param.string()] = p_param;
-			param_cache.insert(p_param, p_value);
-		} else {
-			*v = p_value;
-		}
-
-		if (p_value.get_type() == Variant::OBJECT) {
-			RID tex_rid = p_value;
-			if (tex_rid == RID()) {
-				param_cache.erase(p_param);
-
-				if (material_rid.is_valid()) {
-					RS::get_singleton()->material_set_param(material_rid, p_param, Variant());
-				}
-			} else if (material_rid.is_valid()) {
-				RS::get_singleton()->material_set_param(material_rid, p_param, tex_rid);
-			}
-		} else if (material_rid.is_valid()) {
-			RS::get_singleton()->material_set_param(material_rid, p_param, p_value);
-		}
-	}
-}
-
-Variant ShaderMaterial::get_shader_parameter(const StringName &p_param) const {
-	if (param_cache.has(p_param)) {
-		return param_cache[p_param];
-	} else {
-		return Variant();
-	}
-}
-
 void ShaderMaterial::_shader_changed() {
+	// wgodot-changes::begin
+	// Remap lazily: VisualShader may emit this while rebuilding its source.
+	// Renderer storage independently remaps the GPU state on shader changes.
+	// wgodot-changes::end
 	notify_property_list_changed(); //update all properties
 }
 
@@ -474,26 +413,26 @@ void ShaderMaterial::_check_material_rid() const {
 
 		_set_material(RS::get_singleton()->material_create_from_shader(next_pass_rid, get_render_priority(), shader_rid));
 
-		for (KeyValue<StringName, Variant> param : param_cache) {
-			if (param.value.get_type() == Variant::OBJECT) {
-				RID tex_rid = param.value;
-				if (tex_rid.is_valid()) {
-					RS::get_singleton()->material_set_param(_get_material(), param.key, tex_rid);
-				} else {
-					RS::get_singleton()->material_set_param(_get_material(), param.key, Variant());
-				}
-			} else {
-				RS::get_singleton()->material_set_param(_get_material(), param.key, param.value);
-			}
-		}
+		// wgodot-changes::begin
+		_ensure_parameters();
+		RS::get_singleton()->material_set_parameters(_get_material(), parameters);
+		// wgodot-changes::end
 	}
 }
 
 void ShaderMaterial::_bind_methods() {
+	// wgodot-changes::begin
+	_bind_typed_parameters();
+	// wgodot-changes::end
 	ClassDB::bind_method(D_METHOD("set_shader", "shader"), &ShaderMaterial::set_shader);
 	ClassDB::bind_method(D_METHOD("get_shader"), &ShaderMaterial::get_shader);
 	ClassDB::bind_method(D_METHOD("set_shader_parameter", "param", "value"), &ShaderMaterial::set_shader_parameter);
-	ClassDB::bind_method(D_METHOD("get_shader_parameter", "param"), &ShaderMaterial::get_shader_parameter);
+	// wgodot-changes::begin
+	// Generic reads are internal Resource IO; scripts use get_shader_parameter_as().
+#ifdef TOOLS_ENABLED
+	ClassDB::get_method(get_class_static(), SNAME("set_shader_parameter"))->wgodot_set_native_export_error("Shader parameter values must be statically typed.");
+#endif
+	// wgodot-changes::end
 
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "shader", PROPERTY_HINT_RESOURCE_TYPE, Shader::get_class_static()), "set_shader", "get_shader");
 }
@@ -501,7 +440,10 @@ void ShaderMaterial::_bind_methods() {
 #ifdef TOOLS_ENABLED
 void ShaderMaterial::get_argument_options(const StringName &p_function, int p_idx, List<String> *r_options) const {
 	const String pf = p_function;
-	if (p_idx == 0 && (pf == "get_shader_parameter" || pf == "set_shader_parameter")) {
+	// wgodot-changes::begin
+	if ((p_idx == 1 && pf == "get_shader_parameter_as") ||
+			(p_idx == 0 && (pf.begins_with("get_shader_parameter_") || pf.begins_with("set_shader_parameter")))) {
+	// wgodot-changes::end
 		if (shader.is_valid()) {
 			List<PropertyInfo> pl;
 			shader->get_shader_uniform_list(&pl);

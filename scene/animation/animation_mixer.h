@@ -32,6 +32,9 @@
 
 #include "core/templates/a_hash_map.h"
 #include "scene/animation/tween.h"
+// wgodot-changes::begin
+#include "scene/animation/wgodot_animation_property.h"
+// wgodot-changes::end
 #include "scene/main/node.h"
 #include "scene/resources/animation.h"
 #include "scene/resources/animation_library.h"
@@ -231,6 +234,26 @@ protected:
 		Variant init_value;
 		Variant value;
 		Vector<StringName> subpath;
+		// wgodot-changes::begin
+		const WGodotAnimationProperty *native_property = nullptr;
+		Variant read(Object *p_target) const {
+			return native_property ? native_property->read(p_target) : p_target->get_indexed(subpath);
+		}
+		void write(Object *p_target, const Variant &p_value) const {
+			if (native_property) {
+				native_property->write(p_target, p_value);
+			} else {
+				p_target->set_indexed(subpath, p_value);
+			}
+		}
+		ObjectID post_process_object_id() const {
+			if (!native_property || !native_property->target_id) {
+				return object_id;
+			}
+			Object *target = ObjectDB::get_instance(object_id);
+			return target ? native_property->target_id(target) : ObjectID();
+		}
+		// wgodot-changes::end
 
 		// TODO: There are many boolean, can be packed into one integer.
 		bool is_init = false;
@@ -246,6 +269,9 @@ protected:
 				init_value(p_other.init_value),
 				value(p_other.value),
 				subpath(p_other.subpath),
+				// wgodot-changes::begin
+				native_property(p_other.native_property),
+				// wgodot-changes::end
 				is_init(p_other.is_init),
 				use_continuous(p_other.use_continuous),
 				use_discrete(p_other.use_discrete),

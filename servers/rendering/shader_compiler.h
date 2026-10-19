@@ -30,6 +30,10 @@
 
 #pragma once
 
+// wgodot-changes::begin
+#include "servers/rendering/storage/wgodot_shader_parameters.h"
+// wgodot-changes::end
+
 #include "core/templates/pair.h"
 #include "servers/rendering/rendering_server_enums.h"
 #include "servers/rendering/shader_language.h"
@@ -80,6 +84,9 @@ public:
 
 		Vector<Texture> texture_uniforms;
 
+		// wgodot-changes::begin
+		Ref<WShaderParameterLayout> parameter_layout;
+		// wgodot-changes::end
 		Vector<uint32_t> uniform_offsets;
 		uint32_t uniform_total_size = 0;
 		String uniforms;

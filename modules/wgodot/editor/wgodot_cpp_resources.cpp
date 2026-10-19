@@ -1,5 +1,8 @@
 // wgodot-changes::file
 #include "wgodot_cpp_emitter.h"
+#include "wgodot_cpp_memory_profile.h"
+#include "modules/wgodot/codecs/native_literals.h"
+#include "wgodot_cpp_source.h"
 #include "modules/wgodot/codecs/resource_codec.h"
 #include "wgodot_cpp_names.h"
 #include "wgodot_export_scene.h"
@@ -18,11 +21,13 @@
 #include "core/os/os.h"
 #include "core/string/string_builder.h"
 #include "scene/resources/packed_scene.h"
+#include "scene/property_utils.h"
 
 using Parser = GDScriptParser;
 using namespace WGodotCppNames;
 
 class WGodotCppResources {
+	using Value = WGodotCppExpression;
 	WGodotCppEmitter *emitter;
 	WGodotExportScene scenes;
 	Parser::ClassNode origin;
@@ -39,8 +44,9 @@ class WGodotCppResources {
 	HashMap<int, Vector<int>> resource_dependencies;
 	int collecting_resource = -1;
 	HashMap<String, String> dependencies;
-	StringBuilder declarations;
-	StringBuilder body;
+	HashMap<String, HashMap<StringName, String>> property_descriptors;
+	WGodotCppSource declarations;
+	WGodotCppSource body;
 	String source_path;
 	int temporary = 0;
 
@@ -49,10 +55,15 @@ class WGodotCppResources {
 
 	public:
 		explicit CodecWriter(WGodotCppResources &p_owner) : owner(p_owner) {}
-		String value(const Variant &p_value) override { return owner.value(p_value); }
+		String value(const Variant &p_value) override { return owner.value(p_value).code; }
 		String symbol() override { return "codec_" + itos(owner.temporary++); }
 		void include(const String &p_header) override { owner.emitter->class_native_headers.insert(p_header); }
 		void line(const String &p_line) override { owner.body += "\t" + p_line + "\n"; }
+		void animation_property(const NodePath &p_path) override {
+			if (p_path.get_subname_count() > 0) {
+				owner.emitter->animation_property_paths.insert(NodePath(Vector<StringName>(), p_path.get_subnames(), false));
+			}
+		}
 	};
 
 	void error(const String &p_message) {
@@ -81,6 +92,13 @@ class WGodotCppResources {
 	const WGodotCppProject::Class *resource_class(const Ref<Resource> &p_resource) {
 		const Ref<Script> script = p_resource->get_script();
 		return script_class(script);
+	}
+
+	String resource_type(const Ref<Resource> &p_resource) {
+		if (const auto *game = resource_class(p_resource)) {
+			return game->cpp_name;
+		}
+		return emitter->native_headers.has(p_resource->get_class()) ? native_class(p_resource->get_class()) : "Resource";
 	}
 
 	const WGodotCppProject::Class *node_class(const Ref<SceneState> &p_state, const NodePath &p_path) {
@@ -174,73 +192,109 @@ class WGodotCppResources {
 		}
 	}
 
-	String value(const Variant &p_value) {
+	String rewritten_string(const String &p_value) {
+		auto path = [&](const String &p_original) { return "res://" + itos(emitter->resource_id(p_original)); };
+		String rewritten = WGodotResourceRewrite::value(p_value, PropertyInfo(), path);
+		if (rewritten.contains("#include")) {
+			rewritten = WGodotResourceRewrite::text(rewritten, source_path, path);
+		}
+		return rewritten;
+	}
+
+	template <class T>
+	void packed_values(const Vector<T> &p_values, const String &p_name, const String &p_type) {
+		declarations += "static constexpr " + p_type + " " + p_name + "[] = {\n";
+		for (int i = 0; i < p_values.size(); i++) {
+			declarations += "\t" + WGodotCppLiterals::packed_element(p_values[i]) + ",\n";
+		}
+		declarations += "};\n";
+	}
+
+	Value value(const Variant &p_value) {
 		if (p_value.get_type() == Variant::STRING || p_value.get_type() == Variant::STRING_NAME) {
-			auto path = [&](const String &p_original) { return "res://" + itos(emitter->resource_id(p_original)); };
-			String rewritten = WGodotResourceRewrite::value(p_value, PropertyInfo(), path);
-			if (rewritten.contains("#include")) {
-				rewritten = WGodotResourceRewrite::text(rewritten, source_path, path);
-			}
-			const String literal = "String::utf8(" + quoted(rewritten) + ")";
-			return p_value.get_type() == Variant::STRING_NAME ? "StringName(" + literal + ")" : literal;
+			const String rewritten = rewritten_string(p_value);
+			const String literal = rewritten.is_empty() ? "String()" : "String::utf8(" + quoted(rewritten) + ")";
+			return p_value.get_type() == Variant::STRING_NAME ? Value("StringName(" + literal + ")", "StringName") : Value(literal, "String");
 		}
 		if (p_value.get_type() >= Variant::PACKED_BYTE_ARRAY && p_value.get_type() <= Variant::PACKED_VECTOR4_ARRAY) {
 			const String type = Variant::get_type_name(p_value.get_type());
 			const uint64_t count = p_value.get_indexed_size();
 			if (count == 0) {
-				return type + "()";
+				return Value(type + "()", type);
 			}
 			const String name = "data_" + itos(temporary++);
-			const String element_type = name + "_element";
-			declarations += "using " + element_type + " = std::remove_pointer_t<decltype(std::declval<" + type + ">().ptrw())>;\n";
-			Vector<String> elements;
-			for (uint64_t i = 0; i < count; i++) {
-				bool valid;
-				bool out_of_bounds;
-				elements.push_back(element_type + "(" + value(p_value.get_indexed(i, valid, out_of_bounds)) + ")");
+			const String element_type = emitter->packed_element_type(p_value.get_type());
+			switch (p_value.get_type()) {
+				case Variant::PACKED_BYTE_ARRAY: packed_values(PackedByteArray(p_value), name, element_type); break;
+				case Variant::PACKED_INT32_ARRAY: packed_values(PackedInt32Array(p_value), name, element_type); break;
+				case Variant::PACKED_INT64_ARRAY: packed_values(PackedInt64Array(p_value), name, element_type); break;
+				case Variant::PACKED_FLOAT32_ARRAY: packed_values(PackedFloat32Array(p_value), name, element_type); break;
+				case Variant::PACKED_FLOAT64_ARRAY: packed_values(PackedFloat64Array(p_value), name, element_type); break;
+				case Variant::PACKED_VECTOR2_ARRAY: packed_values(PackedVector2Array(p_value), name, element_type); break;
+				case Variant::PACKED_VECTOR3_ARRAY: packed_values(PackedVector3Array(p_value), name, element_type); break;
+				case Variant::PACKED_VECTOR4_ARRAY: packed_values(PackedVector4Array(p_value), name, element_type); break;
+				case Variant::PACKED_COLOR_ARRAY: packed_values(PackedColorArray(p_value), name, element_type); break;
+				case Variant::PACKED_STRING_ARRAY: {
+					declarations += "static constexpr const char *" + name + "[] = {\n";
+					for (const String &item : PackedStringArray(p_value)) {
+						declarations += "\t" + quoted(rewritten_string(item)) + ",\n";
+					}
+					declarations += "};\n";
+					return Value("WGodotNative::packed_strings(" + name + ")", type);
+				}
+				default: ERR_FAIL_V(Value());
 			}
-			declarations += "static const " + element_type + " " + name + "[] = {\n\t" + String(",\n\t").join(elements) + "\n};\n";
-			return "WGodotNative::packed_data<" + type + ">(" + name + ")";
+			return Value("WGodotNative::packed_data<" + type + ">(" + name + ")", type);
 		}
 		if (p_value.get_type() == Variant::OBJECT) {
 			const Ref<Resource> resource = p_value;
 			if (resource.is_null()) {
-				return "Variant()";
+				return Value("Variant()", "Variant");
 			}
 			if (Object::cast_to<Script>(resource.ptr())) {
 				error("A stored Script resource cannot be used in a native game: " + resource->get_path());
-				return "Variant()";
+				return Value("Variant()", "Variant");
 			}
 			if (const int *index = embedded.getptr(resource.ptr())) {
-				return "resource_" + itos(*index);
+				return Value("resource_" + itos(*index), "Ref<" + resource_type(resource) + ">");
 			}
 			const String path = resource->get_path();
 			if (const String *existing = dependencies.getptr(path)) {
-				return *existing;
+				return Value(*existing, "Ref<Resource>");
 			}
 			const String name = "dependency_" + itos(dependencies.size());
 			dependencies.insert(path, name);
 			body += "\tRef<Resource> " + name + " = ResourceLoader::load(WGodotResourcePaths::to_path(" + itos(emitter->resource_id(path)) + "), String(), dependency_cache);\n\tERR_FAIL_COND_V(" + name + ".is_null(), Ref<Resource>());\n";
-			return name;
+			return Value(name, "Ref<Resource>");
 		}
 		if (p_value.get_type() == Variant::ARRAY) {
 			const Array array = p_value;
 			const String name = "array_" + itos(temporary++);
-			body += "\tArray " + name + ";\n";
+			String array_type = "Array";
 			if (array.is_typed()) {
-				StringName type = array.get_typed_class_name();
+				String element_type;
 				const Ref<Script> script = array.get_typed_script();
 				if (const auto *game = script_class(script)) {
-					type = game->cpp_name;
+					element_type = game->cpp_name;
 					emitter->class_dependencies.insert(game->cpp_name);
+				} else if (array.get_typed_builtin() == Variant::OBJECT) {
+					element_type = native_class(array.get_typed_class_name().is_empty() ? StringName("Object") : array.get_typed_class_name());
+				} else {
+					element_type = emitter->native_argument_type(PropertyInfo(Variant::Type(array.get_typed_builtin()), String()), &origin);
 				}
-				body += "\t" + name + ".set_typed(Variant::Type(" + itos(array.get_typed_builtin()) + "), StringName(" + quoted(type) + "), Variant());\n";
+				array_type = "TypedArray<" + element_type + ">";
 			}
+			if (array.is_empty()) {
+				return Value(array_type + "()", array_type);
+			}
+			body += "\t" + array_type + " " + name + ";\n";
+			body += "\t" + name + ".resize(" + itos(array.size()) + ");\n";
+			int index = 0;
 			for (const Variant &element : array) {
-				const String item = value(element);
-				body += "\t" + name + ".push_back(" + item + ");\n";
+				const String item = value(element).code;
+				body += "\t" + name + "[" + itos(index++) + "] = " + item + ";\n";
 			}
-			return name;
+			return Value(name, array_type);
 		}
 		if (p_value.get_type() == Variant::DICTIONARY) {
 			const Dictionary dictionary = p_value;
@@ -258,13 +312,13 @@ class WGodotCppResources {
 				body += "\t" + name + ".set_typed(Variant::Type(" + itos(dictionary.get_typed_key_builtin()) + "), StringName(" + quoted(key) + "), Variant(), Variant::Type(" + itos(dictionary.get_typed_value_builtin()) + "), StringName(" + quoted(item) + "), Variant());\n";
 			}
 			for (const KeyValue<Variant, Variant> &entry : dictionary) {
-				const String key = value(entry.key);
-				const String item = value(entry.value);
+				const String key = value(entry.key).code;
+				const String item = value(entry.value).code;
 				body += "\t" + name + ".set(" + key + ", " + item + ");\n";
 			}
-			return name;
+			return Value(name, "Dictionary");
 		}
-		return emitter->literal(p_value, &origin);
+		return emitter->lower_literal(p_value, &origin);
 	}
 
 	Variant encode(const Variant &p_value, const Parser::DataType &p_type) {
@@ -291,8 +345,35 @@ class WGodotCppResources {
 	}
 
 	String typed_value(const Variant &p_value, const Parser::DataType &p_type) {
-		const String convert = emitter->is_warray(p_type) || emitter->is_wdictionary(p_type) ? "deserialize_value" : "convert";
-		return "WGodotNative::" + convert + "<" + emitter->type(p_type, &origin) + ">(" + value(encode(p_value, p_type)) + ")";
+		const String type = emitter->type(p_type, &origin);
+		if (emitter->is_warray(p_type)) {
+			const Array array = p_value;
+			if (array.is_empty()) {
+				return type + "()";
+			}
+			const String name = "array_" + itos(temporary++);
+			body += "\t" + type + " " + name + ";\n\t" + name + ".resize(" + itos(array.size()) + ");\n";
+			for (int i = 0; i < array.size(); i++) {
+				const String item = typed_value(array[i], p_type.get_container_element_type(0));
+				body += "\t" + name + ".set(" + itos(i) + ", " + item + ");\n";
+			}
+			return name;
+		}
+		if (emitter->is_wdictionary(p_type)) {
+			const Dictionary dictionary = p_value;
+			if (dictionary.is_empty()) {
+				return type + "()";
+			}
+			const String name = "dictionary_" + itos(temporary++);
+			body += "\t" + type + " " + name + ";\n";
+			for (const KeyValue<Variant, Variant> &entry : dictionary) {
+				const String key = typed_value(entry.key, p_type.get_container_element_type(0));
+				const String item = typed_value(entry.value, p_type.get_container_element_type(1));
+				body += "\t" + name + ".set(" + key + ", " + item + ");\n";
+			}
+			return name;
+		}
+		return emitter->convert_value(value(encode(p_value, p_type)), type);
 	}
 
 	void assign(const String &p_target, const StringName &p_native_type, const WGodotCppProject::Class *p_class, const StringName &p_name, const Variant &p_value) {
@@ -302,27 +383,37 @@ class WGodotCppResources {
 			body += "\t" + p_target + "->write_" + symbol(p_name) + "(" + argument + ");\n";
 			return;
 		}
-		const String argument = value(p_value);
+		const Value argument = value(p_value);
 		const StringName setter = ClassDB::get_property_setter(p_native_type, p_name);
 		const MethodBind *method = ClassDB::get_method(p_native_type, setter);
 		const String key = method ? String(method->get_instance_class()) + "::" + String(method->get_name()) : String();
 		const int property_index = ClassDB::get_property_index(p_native_type, p_name);
 		if (method && !method->is_vararg() && method->get_argument_count() == (property_index >= 0 ? 2 : 1) && emitter->native_methods.has(key)) {
 			Vector<String> arguments;
-			arguments.push_back("static_cast<" + native_class(method->get_instance_class()) + " *>(" + p_target + ".ptr())");
+			const String pointer = p_target + ".ptr()";
+			// Concrete handles already convert to the accessor's base pointer.
+			// Only the generic Ref<Resource> fallback needs a downcast.
+			arguments.push_back(p_class || emitter->native_headers.has(p_native_type) ? pointer : "static_cast<" + native_class(method->get_instance_class()) + " *>(" + pointer + ")");
 			const int index = property_index;
 			if (index >= 0) {
-				arguments.push_back("WGodotNative::convert<" + emitter->native_argument_type(method->get_argument_info(0), &origin) + ">(" + itos(index) + ")");
+				arguments.push_back(emitter->convert_value(emitter->lower_literal(index, &origin), emitter->native_argument_type(method->get_argument_info(0), &origin)));
 			}
-			arguments.push_back("WGodotNative::convert<" + emitter->native_argument_type(method->get_argument_info(index >= 0 ? 1 : 0), &origin) + ">(" + argument + ")");
+			const PropertyInfo parameter = method->get_argument_info(index >= 0 ? 1 : 0);
+			// Preserve a concrete TypedArray at its native boundary; erasing it to
+			// Array here would force the engine's typed setter to validate it again.
+			arguments.push_back(parameter.type == Variant::ARRAY ? argument.code : emitter->convert_value(argument, emitter->native_argument_type(parameter, &origin)));
 			body += "\t" + emitter->native_access(method, &origin) + "(" + String(", ").join(arguments) + ");\n";
 		} else {
-			body += "\t" + p_target + "->set(StringName(" + quoted(p_name) + "), " + argument + ");\n";
+			body += "\t" + p_target + "->set(StringName(" + quoted(p_name) + "), " + argument.code + ");\n";
 		}
 	}
 
 	String property(const StringName &p_native_type, const WGodotCppProject::Class *p_class, const StringName &p_name) {
-		const String descriptor = "property_" + itos(temporary++);
+		const String owner = p_class ? p_class->cpp_name : String(p_native_type);
+		auto &descriptors = property_descriptors[owner];
+		if (const String *existing = descriptors.getptr(p_name)) {
+			return *existing;
+		}
 		String read;
 		String write;
 		if (const auto *variable = field(p_class, p_name)) {
@@ -348,18 +439,21 @@ class WGodotCppResources {
 			String getter_args = receiver;
 			String setter_args = receiver;
 			if (index >= 0) {
-				getter_args += ", WGodotNative::convert<" + emitter->native_argument_type(getter->get_argument_info(0), &origin) + ">(" + itos(index) + ")";
-				setter_args += ", WGodotNative::convert<" + emitter->native_argument_type(setter->get_argument_info(0), &origin) + ">(" + itos(index) + ")";
+				const Value argument = emitter->lower_literal(index, &origin);
+				getter_args += ", " + emitter->convert_value(argument, emitter->native_argument_type(getter->get_argument_info(0), &origin));
+				setter_args += ", " + emitter->convert_value(argument, emitter->native_argument_type(setter->get_argument_info(0), &origin));
 			}
-			setter_args += ", WGodotNative::convert<" + emitter->native_argument_type(setter->get_argument_info(index_args), &origin) + ">(p_value)";
+			setter_args += ", " + emitter->convert_value(Value("p_value", "Variant"), emitter->native_argument_type(setter->get_argument_info(index_args), &origin));
 			read = "Variant(" + emitter->native_access(getter, &origin) + "(" + getter_args + "))";
 			write = emitter->native_access(setter, &origin) + "(" + setter_args + ")";
 		}
-		declarations += "static const WGodotSceneProperty " + descriptor + " = {\n\t[](const Node *p_source) -> Variant { Node *p_node = const_cast<Node *>(p_source); return " + read + "; },\n\t[](Node *p_node, const Variant &p_value) { " + write + "; }\n};\n";
+		const String descriptor = "property_" + itos(temporary++);
+		declarations += "static constexpr WGodotSceneProperty " + descriptor + " = {\n\t[](const Node *p_source) -> Variant { Node *p_node = const_cast<Node *>(p_source); return " + read + "; },\n\t[](Node *p_node, const Variant &p_value) { " + write + "; }\n};\n";
+		descriptors.insert(p_name, descriptor);
 		return descriptor;
 	}
 
-	bool connection(const Ref<SceneState> &p_state, int p_index, const String &p_state_name) {
+	bool connection(const Ref<SceneState> &p_state, int p_index, const String &p_state_name, StringBuilder &r_attachments) {
 		const auto *source = node_class(p_state, p_state->get_connection_source(p_index));
 		const auto *target = node_class(p_state, p_state->get_connection_target(p_index));
 		const StringName method_name = p_state->get_connection_method(p_index);
@@ -445,7 +539,7 @@ class WGodotCppResources {
 		}
 		const String descriptor = "connection_" + itos(temporary++);
 		declarations += "static const WGodotSceneConnection " + descriptor + " = {\n\t[](Node *p_source, Node *p_target, const Array &p_binds, int p_flags) {\n\t\t" + connect + "\n\t}\n};\n";
-		body += "\t" + p_state_name + "->set_native_connection(" + itos(p_index) + ", &" + descriptor + ");\n";
+		r_attachments += "\t" + p_state_name + "->set_native_connection(" + itos(p_index) + ", &" + descriptor + ");\n";
 		return true;
 	}
 
@@ -458,11 +552,6 @@ class WGodotCppResources {
 		Array variants = bundled["variants"];
 		const int blank = names.size();
 		names.push_back(String());
-		HashSet<int> used_names;
-		HashSet<int> used_variants;
-		if (bundled.has("base_scene")) {
-			used_variants.insert(int(bundled["base_scene"]));
-		}
 		const String state_name = "state_" + itos(temporary++);
 		StringBuilder attachments;
 		int offset = 0;
@@ -473,12 +562,8 @@ class WGodotCppResources {
 			int type = nodes[offset++];
 			const int name = nodes[offset++];
 			const int instance = nodes[offset++];
-			if (instance >= 0) {
-				used_variants.insert(instance & SceneState::FLAG_MASK);
-			}
 			const int count = nodes[offset++];
 			const auto *game = node_class(state, state->get_node_path(i));
-			used_names.insert(names.find(String(state->get_node_name(i))));
 			if (type != SceneState::TYPE_INSTANTIATED) {
 				String constructor;
 				if (game) {
@@ -490,9 +575,8 @@ class WGodotCppResources {
 					constructor = native_class(state->get_node_type(i));
 				}
 				if (!constructor.is_empty()) {
-					attachments += "\t" + state_name + "->set_native_node(" + itos(i) + ", []() -> Node * { return memnew(" + constructor + "); });\n";
+					attachments += "\t" + state_name + "->set_native_node(" + itos(i) + ", &WGodotNative::scene_node<" + constructor + ">);\n";
 				}
-				used_names.insert(type);
 			}
 			PackedInt32Array properties;
 			for (int j = 0; j < count; j++) {
@@ -516,12 +600,9 @@ class WGodotCppResources {
 							variants.push_back(encode(state->get_node_property_value(i, j), emitter->variable_type(variable)));
 						}
 					}
-				} else {
-					used_names.insert(property_name & SceneState::FLAG_PROP_NAME_MASK);
 				}
 				properties.push_back(property_name);
 				properties.push_back(property_value);
-				used_variants.insert(property_value);
 			}
 			output.push_back(parent);
 			output.push_back(owner);
@@ -534,45 +615,28 @@ class WGodotCppResources {
 			output.push_back(groups);
 			for (int j = 0; j < groups; j++) {
 				const int group = nodes[offset++];
-				used_names.insert(group);
 				output.push_back(group);
 			}
 		}
-		StringBuilder previous_body = std::move(body);
-		body = StringBuilder();
 		PackedInt32Array connections = bundled["conns"];
 		offset = 0;
 		for (int i = 0; i < state->get_connection_count(); i++) {
-			if (connection(state, i, state_name)) {
+			if (connection(state, i, state_name, attachments)) {
 				connections.set(offset + 2, blank);
 				connections.set(offset + 3, blank);
-			} else {
-				used_names.insert(connections[offset + 2]);
-				used_names.insert(connections[offset + 3]);
 			}
 			const int binds = connections[offset + 5];
-			for (int j = 0; j < binds; j++) {
-				used_variants.insert(connections[offset + 6 + j]);
-			}
 			offset += 7 + binds;
-		}
-		attachments += body.as_string();
-		body = std::move(previous_body);
-		for (int i = 0; i < names.size(); i++) {
-			if (!used_names.has(i)) {
-				names.set(i, String());
-			}
 		}
 		bundled["names"] = names;
 		bundled["nodes"] = output;
 		bundled["conns"] = connections;
-		for (int i = 0; i < variants.size(); i++) {
-			if (!used_variants.has(i)) {
-				variants[i] = Variant();
-			}
-		}
 		bundled["variants"] = variants;
-		const String definition = value(bundled);
+		// This filtered state belongs to this factory, not the loaded resource.
+		// Compact through SceneState so index flags and format details have one owner.
+		state->set_bundled_scene(bundled);
+		state->compact_storage();
+		const String definition = value(state->get_bundled_scene()).code;
 		body += "\tRef<SceneState> " + state_name + " = " + p_target + "->get_state();\n\t" + state_name + "->set_bundled_scene(" + definition + ");\n";
 		body += attachments.as_string();
 	}
@@ -583,8 +647,6 @@ class WGodotCppResources {
 		graph.clear();
 		resource_dependencies.clear();
 		dependencies.clear();
-		declarations = StringBuilder();
-		body = StringBuilder();
 		temporary = 0;
 		emitter->class_call_headers.clear();
 		emitter->class_native_headers.clear();
@@ -617,10 +679,17 @@ class WGodotCppResources {
 				if (game && emitter->project.is_editor_member(game->node, property.name)) {
 					continue;
 				}
-				if (!(property.usage & PROPERTY_USAGE_STORAGE) || property.name == SNAME("script") || property.name == SNAME("resource_path") || (packed.is_valid() && property.name == SNAME("_bundled")) || (codec && codec->owns_property(property.name))) {
+				if (!(property.usage & PROPERTY_USAGE_STORAGE) || property.name == SNAME("script") || property.name == SNAME("resource_path") || (packed.is_valid() && property.name == SNAME("_bundled")) || (codec && codec->owns_native_property(property.name))) {
 					continue;
 				}
 				const Variant value = graph[i]->get(property.name);
+				const Variant default_value = PropertyUtils::get_property_default_value(graph[i].ptr(), property.name, nullptr, nullptr, false);
+				if (default_value.get_type() != Variant::NIL && bool(Variant::evaluate(Variant::OP_EQUAL, value, default_value))) {
+					continue;
+				}
+				if (property.type == Variant::OBJECT && value.is_zero() && !(property.usage & PROPERTY_USAGE_STORE_IF_NULL)) {
+					continue;
+				}
 				collect(value);
 				if (const auto *variable = field(game, property.name)) {
 					encode(value, emitter->variable_type(variable));
@@ -633,7 +702,7 @@ class WGodotCppResources {
 				List<PropertyInfo> references;
 				WGodotNativeResourcePolicy::get_reference_properties(graph[i], references);
 				for (const PropertyInfo &property : references) {
-					if (codec->owns_property(property.name)) {
+					if (codec->owns_native_property(property.name)) {
 						collect(graph[i]->get(property.name));
 					}
 				}
@@ -644,6 +713,18 @@ class WGodotCppResources {
 	void emit_factory(WGodotCppEmitter &p_worker) {
 		emitter = &p_worker;
 		const String &p_path = source_path;
+		const int64_t id = emitter->resource_id(p_path);
+		const String name = "resource_" + itos(id);
+		const String staging = emitter->staging_directory.path_join(name);
+		Error section_error = declarations.open(staging + ".declarations.tmp");
+		if (section_error == OK) {
+			section_error = body.open(staging + ".body.tmp");
+		}
+		if (section_error != OK) {
+			emitter->output_error = section_error;
+			error("Cannot open generated source sections: " + error_names[section_error]);
+			return;
+		}
 		const Ref<Resource> resource = graph[0];
 		WGodotCppProject::Class resource_origin{ source_path, String(), &origin };
 		emitter->current_class = &resource_origin;
@@ -655,15 +736,27 @@ class WGodotCppResources {
 		for (int i = 0; i < graph.size(); i++) {
 			const auto *game = resource_class(graph[i]);
 			const bool mapped = game || emitter->native_headers.has(graph[i]->get_class());
-			const String type = game ? game->cpp_name : mapped ? native_class(graph[i]->get_class())
-															   : "Resource";
+			const String type = resource_type(graph[i]);
 			if (game) {
 				emitter->class_dependencies.insert(type);
 			}
-			const String constructor = mapped ? "WGodotNative::instantiate<" + type + ">()" : "Ref<Resource>(Object::cast_to<Resource>(ClassDB::instantiate(StringName(" + quoted(graph[i]->get_class()) + "))))";
-			body += "\tRef<" + type + "> resource_" + itos(i) + " = " + constructor + ";\n\tERR_FAIL_COND_V(resource_" + itos(i) + ".is_null(), Ref<Resource>());\n";
-			if (i > 0) {
-				body += "\tresource_" + itos(i) + "->set_path_cache(" + quoted("res://" + itos(emitter->resource_id(p_path)) + "::" + itos(i)) + ");\n";
+			String constructor;
+			if (game) {
+				if (game->node->is_abstract) {
+					error("Cannot construct an abstract resource class: " + game->node->fqcn);
+					return;
+				}
+				// Keep scene initialization for concrete generated resource classes
+				// through memnew rather than their explicit GDScript new() entry point.
+				constructor = "memnew(" + type + ")";
+			} else if (mapped) {
+				constructor = "WGodotNative::instantiate<" + type + ">()";
+			} else {
+				constructor = "Ref<Resource>(Object::cast_to<Resource>(ClassDB::instantiate(StringName(" + quoted(graph[i]->get_class()) + "))))";
+			}
+			body += "\tRef<" + type + "> resource_" + itos(i) + " = " + constructor + ";\n";
+			if (!game) {
+				body += "\tERR_FAIL_COND_V(resource_" + itos(i) + ".is_null(), Ref<Resource>());\n";
 			}
 		}
 		// Allocate the whole graph, then populate dependencies before their owners.
@@ -703,7 +796,7 @@ class WGodotCppResources {
 
 		}
 		body += "\treturn resource_0;\n";
-		String source = "// wgodot-changes::file\n// Generated native resource factory.\n#include \"core/io/resource_loader.h\"\n#include \"core/io/wgodot_resource_paths.h\"\n#include \"scene/resources/packed_scene.h\"\n#include \"modules/wgodot/native/wgodot_native_serialization.h\"\n#include \"modules/wgodot/native/wgodot_native_callback.h\"\n";
+		String source = emitter->source_header(p_path, resource->get_class()) + "#include \"core/io/resource_loader.h\"\n#include \"core/io/wgodot_resource_paths.h\"\n#include \"scene/resources/packed_scene.h\"\n#include \"modules/wgodot/native/wgodot_native_serialization.h\"\n#include \"modules/wgodot/native/wgodot_native_callback.h\"\n";
 		HashSet<String> includes;
 		for (const String &header : emitter->class_call_headers) {
 			includes.insert(header);
@@ -722,9 +815,9 @@ class WGodotCppResources {
 		for (const String &include : ordered) {
 			source += "#include " + quoted(include) + "\n";
 		}
-		const int64_t id = emitter->resource_id(p_path);
-		source += "\nnamespace WGodotGame {\n" + declarations.as_string() + "Ref<Resource> create_resource_" + itos(id) + "(ResourceFormatLoader::CacheMode p_cache_mode) {\n\tconst auto dependency_cache = p_cache_mode == ResourceFormatLoader::CACHE_MODE_IGNORE_DEEP || p_cache_mode == ResourceFormatLoader::CACHE_MODE_REPLACE_DEEP ? p_cache_mode : ResourceFormatLoader::CACHE_MODE_REUSE;\n" + body.as_string() + "}\n}\n";
-		emitter->store_file("resource_" + itos(id) + ".cpp", source);
+		source += "\nnamespace WGodotGame {\n";
+		const String function = "Ref<Resource> create_resource_" + itos(id) + "(ResourceFormatLoader::CacheMode p_cache_mode) {\n\tconst auto dependency_cache = p_cache_mode == ResourceFormatLoader::CACHE_MODE_IGNORE_DEEP || p_cache_mode == ResourceFormatLoader::CACHE_MODE_REPLACE_DEEP ? p_cache_mode : ResourceFormatLoader::CACHE_MODE_REUSE;\n";
+		emitter->store_source(name + ".cpp", source, declarations, function, body, "}\n}\n");
 		const auto *game = resource_class(resource);
 		emitter->compiled_resources[p_path] = game ? game->cpp_name : String(resource->get_class());
 		emitter->current_class = nullptr;
@@ -872,6 +965,7 @@ class WGodotCppResources {
 			const uint64_t started = OS::get_singleton()->get_ticks_msec();
 			const auto group = pool->add_template_group_task(&batch, &Batch::generate, static_cast<void *>(nullptr), batch.factories.size(), concurrency, true, "Generate native resource factories");
 			pool->wait_for_group_task_completion(group);
+			WGodotCppMemoryProfile::sample("batch-emitted", String(), batch.factories.size());
 			generation_msec += OS::get_singleton()->get_ticks_msec() - started;
 			for (const auto *worker : workers) {
 				failed |= !worker->diagnostics.is_empty() || worker->output_error != OK;
@@ -881,6 +975,7 @@ class WGodotCppResources {
 			}
 			completed += batch.factories.size();
 			batch.factories.clear();
+			WGodotCppMemoryProfile::sample("batch-released", String(), completed);
 			const uint64_t now = OS::get_singleton()->get_ticks_msec();
 			if (now - last_progress >= 5000) {
 				print_line(vformat("Native factories: %d generated (%d workers)", completed, concurrency));
@@ -891,6 +986,7 @@ class WGodotCppResources {
 			const uint64_t started = OS::get_singleton()->get_ticks_msec();
 			WGodotCppResources *factory = memnew(WGodotCppResources(*emitter));
 			factory->prepare_factory(p_path, p_resource);
+			WGodotCppMemoryProfile::sample("factory-prepared", p_path, factory->graph.size());
 			preparation_msec += OS::get_singleton()->get_ticks_msec() - started;
 			batch.factories.push_back(factory);
 			if (batch.factories.size() == concurrency) {
@@ -933,7 +1029,9 @@ class WGodotCppResources {
 				}
 				const bool authored = WGodotNativeResourcePolicy::is_authored(path);
 				if (authored || ResourceLoader::get_resource_type(path) == "PackedScene") {
+					WGodotCppMemoryProfile::sample("resource-load-begin", path);
 					const Ref<Resource> resource = ResourceLoader::load(path);
+					WGodotCppMemoryProfile::sample("resource-loaded", path);
 					if (resource.is_null()) {
 						emitter->diagnostics.push_back("Cannot load required export resource: " + path);
 						continue;

@@ -3,6 +3,7 @@
 
 #include "../wgodot_cli.h"
 #include "wgodot_cpp_emitter.h"
+#include "wgodot_cpp_memory_profile.h"
 #include "wgodot_cpp_project.h"
 
 #include "core/config/project_settings.h"
@@ -33,12 +34,13 @@ Dictionary failure(const String &p_message) {
 } // namespace
 
 int WGodotCppExporter::run(const Vector<String> &p_arguments) {
-	const String usage = "Usage: wg export-cpp <absolute-output-directory> [--target client|server] [--jobs N] [--analyze-only] [--standalone] [--trace on|off|true|false] (defaults: client, jobs 0 = available worker threads, trace off). --standalone exports saved files in this process without using the editor.";
+	const String usage = "Usage: wg export-cpp <absolute-output-directory> [--target client|server] [--jobs N] [--analyze-only] [--profile-memory] [--standalone] [--trace on|off|true|false] (defaults: client, jobs 0 = available worker threads, trace off). --standalone exports saved files in this process without using the editor. --profile-memory writes allocation/resource CSV diagnostics to the output directory.";
 	if (p_arguments.is_empty()) {
 		print_error(usage);
 		return 2;
 	}
 	bool analyze_only = false;
+	bool profile_memory = false;
 	bool standalone = false;
 	bool trace_enabled = false;
 	int jobs = 0;
@@ -46,6 +48,8 @@ int WGodotCppExporter::run(const Vector<String> &p_arguments) {
 	for (int i = 1; i < p_arguments.size(); i++) {
 		if (p_arguments[i] == "--analyze-only") {
 			analyze_only = true;
+		} else if (p_arguments[i] == "--profile-memory") {
+			profile_memory = true;
 		} else if (p_arguments[i] == "--standalone") {
 			standalone = true;
 		} else if (p_arguments[i] == "--jobs") {
@@ -92,6 +96,7 @@ int WGodotCppExporter::run(const Vector<String> &p_arguments) {
 	Dictionary options;
 	options["output"] = output;
 	options["analyze_only"] = analyze_only;
+	options["profile_memory"] = profile_memory;
 	options["trace"] = trace_enabled;
 	options["target"] = target;
 	options["jobs"] = jobs;
@@ -162,10 +167,17 @@ Dictionary WGodotCppExporter::execute(const Dictionary &p_options) {
 	const int available_jobs = WorkerThreadPool::get_singleton()->get_thread_count();
 	const int jobs = int64_t(requested_jobs) == 0 ? available_jobs : MIN(int64_t(requested_jobs), available_jobs);
 	WGodotEditorActivity activity("Exporting native C++", output);
+	const bool profile_memory = p_options.get("profile_memory", false);
+	WGodotCppMemoryProfile memory_profile(profile_memory ? output : String());
+	if (profile_memory && !memory_profile.is_open()) {
+		return failure("Cannot create memory diagnostics in: " + output);
+	}
 	WGodotCppProject project;
 	uint64_t started = OS::get_singleton()->get_ticks_msec();
 	print_line("Analyzing native scripts...");
 	Error result = project.analyze(p_options.get("target", "client"), jobs);
+	WGodotCppMemoryProfile::sample("analysis-complete");
+	WGodotCppMemoryProfile::snapshot_resources("analysis-complete");
 	print_line(vformat("Native analysis: %d ms", OS::get_singleton()->get_ticks_msec() - started));
 	Dictionary report = project.describe();
 	Vector<String> diagnostics = project.get_diagnostics();
@@ -174,15 +186,18 @@ Dictionary WGodotCppExporter::execute(const Dictionary &p_options) {
 		started = OS::get_singleton()->get_ticks_msec();
 		print_line(vformat("Generating native scripts and authored scene/resource factories (up to %d workers)...", jobs));
 		result = emitter.generate(output, jobs);
+		WGodotCppMemoryProfile::sample("generation-complete");
 		print_line(vformat("Native generation: %d ms", OS::get_singleton()->get_ticks_msec() - started));
 		diagnostics = emitter.get_diagnostics();
 		if (result == OK) {
 			started = OS::get_singleton()->get_ticks_msec();
 			print_line("Writing native output...");
 			result = emitter.write(output);
+			WGodotCppMemoryProfile::sample("output-complete");
 			print_line(vformat("Native output: %d ms", OS::get_singleton()->get_ticks_msec() - started));
 		}
 	}
+	WGodotCppMemoryProfile::sample("emitter-released");
 	report["diagnostics"] = diagnostics;
 	report["success"] = result == OK;
 	report["analysis_only"] = analyze_only;

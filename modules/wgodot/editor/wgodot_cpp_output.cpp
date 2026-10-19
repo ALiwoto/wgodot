@@ -1,5 +1,6 @@
 // wgodot-changes::file
 #include "wgodot_cpp_emitter.h"
+#include "wgodot_cpp_source.h"
 
 #include "core/io/dir_access.h"
 #include "core/io/file_access.h"
@@ -45,7 +46,38 @@ void WGodotCppEmitter::store_file(const String &p_name, const String &p_contents
 	files.insert(p_name, p_contents.sha256_text());
 }
 
+void WGodotCppEmitter::store_source(const String &p_name, const String &p_header, WGodotCppSource &p_declarations, const String &p_middle, WGodotCppSource &p_body, const String &p_footer) {
+	if (output_error != OK) {
+		return;
+	}
+	const String path = staging_directory.path_join(p_name);
+	Ref<FileAccess> file = FileAccess::open(path, FileAccess::WRITE, &output_error);
+	CryptoCore::SHA256Context digest;
+	uint8_t hash[32];
+	auto write = [&]() -> Error {
+		RETURN_IF_ERROR(output_error);
+		RETURN_IF_ERROR(digest.start());
+		RETURN_IF_ERROR(WGodotCppSource::write_text(*file.ptr(), digest, p_header));
+		RETURN_IF_ERROR(p_declarations.copy_to(*file.ptr(), digest));
+		RETURN_IF_ERROR(WGodotCppSource::write_text(*file.ptr(), digest, p_middle));
+		RETURN_IF_ERROR(p_body.copy_to(*file.ptr(), digest));
+		RETURN_IF_ERROR(WGodotCppSource::write_text(*file.ptr(), digest, p_footer));
+		file->flush();
+		RETURN_IF_ERROR(file->get_error());
+		return digest.finish(hash);
+	};
+	output_error = write();
+	if (output_error != OK) {
+		diagnostics.push_back("Cannot write generated source " + path + ": " + error_names[output_error]);
+		return;
+	}
+	files.insert(p_name, String::hex_encode_buffer(hash, 32));
+}
+
 void WGodotCppEmitter::merge_resource_worker(WGodotCppEmitter &p_worker) {
+	for (const NodePath &path : p_worker.animation_property_paths) {
+		animation_property_paths.insert(path);
+	}
 	diagnostics.append_array(p_worker.diagnostics);
 	if (output_error == OK) {
 		output_error = p_worker.output_error;

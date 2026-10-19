@@ -143,7 +143,7 @@ Error WGodotResourceExport::rewrite_binary(const String &p_source, Vector<uint8_
 		struct Context {
 			WGodotResourceExport *exporter;
 			String source;
-		} context{ this, p_source };
+		} rewrite_context{ this, p_source };
 		WGodotResourceSerialization rewrite([](void *p_context, const String &p_value) {
 			Context *context = static_cast<Context *>(p_context);
 			if (p_value.contains("#include")) {
@@ -151,7 +151,7 @@ Error WGodotResourceExport::rewrite_binary(const String &p_source, Vector<uint8_
 			}
 			return String(context->exporter->rewrite_value(p_value));
 		},
-				&context);
+				&rewrite_context);
 		ResourceFormatSaverBinaryInstance saver;
 		const uint32_t flags = memcmp(r_data.ptr(), "RSCC", 4) == 0 ? ResourceSaver::FLAG_COMPRESS : ResourceSaver::FLAG_NONE;
 		result = saver.save(temporary, resource, flags);

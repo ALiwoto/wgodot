@@ -136,6 +136,9 @@ void SkyRD::SkyShaderData::set_code(const String &p_code) {
 
 	ubo_size = gen_code.uniform_total_size;
 	ubo_offsets = gen_code.uniform_offsets;
+	// wgodot-changes::begin
+	parameter_layout = gen_code.parameter_layout;
+	// wgodot-changes::end
 	texture_uniforms = gen_code.texture_uniforms;
 
 	//update pipelines
@@ -187,7 +190,9 @@ SkyRD::SkyShaderData::~SkyShaderData() {
 ////////////////////////////////////////////////////////////////////////////////
 // Sky material
 
-bool SkyRD::SkyMaterialData::update_parameters(const HashMap<StringName, Variant> &p_parameters, bool p_uniform_dirty, bool p_textures_dirty) {
+// wgodot-changes::begin
+bool SkyRD::SkyMaterialData::update_parameters(const WMaterialParameters &p_parameters, bool p_uniform_dirty, bool p_textures_dirty) {
+// wgodot-changes::end
 	RendererSceneRenderRD *scene_singleton = static_cast<RendererSceneRenderRD *>(RendererSceneRenderRD::singleton);
 
 	uniform_set_updated = true;

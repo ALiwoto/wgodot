@@ -778,7 +778,21 @@ bool AnimationMixer::_update_caches() {
 				Ref<Resource> resource;
 				Vector<StringName> leftover_path;
 
-				Node *child = parent->get_node_and_resource(path, resource, leftover_path);
+				// wgodot-changes::begin
+				const WGodotAnimationProperty *native_property = nullptr;
+				Node *child = nullptr;
+				if (track_cache_type == Animation::TYPE_VALUE) {
+					if (auto resolve = WGodotAnimationProperty::find(path)) {
+						child = parent->get_node_or_null(path);
+						if (child) {
+							native_property = resolve(child);
+						}
+					}
+				}
+				if (!native_property) {
+					child = parent->get_node_and_resource(path, resource, leftover_path);
+				}
+				// wgodot-changes::end
 				if (!child) {
 					if (check_path) {
 						WARN_PRINT_ED(mixer_name + ": '" + String(E) + "', couldn't resolve track:  '" + String(path) + "'. This warning can be disabled in Project Settings.");
@@ -807,6 +821,9 @@ bool AnimationMixer::_update_caches() {
 						track_value->is_using_angle = anim->track_get_interpolation_type(i) == Animation::INTERPOLATION_LINEAR_ANGLE || anim->track_get_interpolation_type(i) == Animation::INTERPOLATION_CUBIC_ANGLE;
 
 						track_value->subpath = leftover_path;
+						// wgodot-changes::begin
+						track_value->native_property = native_property;
+						// wgodot-changes::end
 
 						track = track_value;
 
@@ -1692,7 +1709,9 @@ void AnimationMixer::_blend_process(double p_delta, bool p_update_only) {
 						Variant value;
 						if (t->is_variant_interpolatable) {
 							value = is_value ? a->value_track_interpolate(i, time, is_discrete && force_continuous ? backward : false) : Variant(a->bezier_track_interpolate(i, time));
-							value = post_process_key_value(a, i, value, t->object_id);
+							// wgodot-changes::begin
+							value = post_process_key_value(a, i, value, t->post_process_object_id());
+							// wgodot-changes::end
 							if (value == Variant()) {
 								continue;
 							}
@@ -1704,7 +1723,9 @@ void AnimationMixer::_blend_process(double p_delta, bool p_update_only) {
 								continue;
 							}
 							value = a->track_get_key_value(i, idx);
-							value = post_process_key_value(a, i, value, t->object_id);
+							// wgodot-changes::begin
+							value = post_process_key_value(a, i, value, t->post_process_object_id());
+							// wgodot-changes::end
 							if (value == Variant()) {
 								continue;
 							}
@@ -1736,10 +1757,14 @@ void AnimationMixer::_blend_process(double p_delta, bool p_update_only) {
 							}
 							t->use_discrete = true;
 							Variant value = a->track_get_key_value(i, idx);
-							value = post_process_key_value(a, i, value, t->object_id);
+							// wgodot-changes::begin
+							value = post_process_key_value(a, i, value, t->post_process_object_id());
+							// wgodot-changes::end
 							Object *t_obj = ObjectDB::get_instance(t->object_id);
 							if (t_obj) {
-								t_obj->set_indexed(t->subpath, value);
+								// wgodot-changes::begin
+								t->write(t_obj, value);
+								// wgodot-changes::end
 							}
 						} else {
 							LocalVector<int> indices;
@@ -1747,10 +1772,14 @@ void AnimationMixer::_blend_process(double p_delta, bool p_update_only) {
 							for (int &F : indices) {
 								t->use_discrete = true;
 								Variant value = a->track_get_key_value(i, F);
-								value = post_process_key_value(a, i, value, t->object_id);
+								// wgodot-changes::begin
+								value = post_process_key_value(a, i, value, t->post_process_object_id());
+								// wgodot-changes::end
 								Object *t_obj = ObjectDB::get_instance(t->object_id);
 								if (t_obj) {
-									t_obj->set_indexed(t->subpath, value);
+									// wgodot-changes::begin
+									t->write(t_obj, value);
+									// wgodot-changes::end
 								}
 							}
 						}
@@ -2075,7 +2104,9 @@ void AnimationMixer::_blend_apply() {
 
 				Object *t_obj = ObjectDB::get_instance(t->object_id);
 				if (t_obj) {
-					t_obj->set_indexed(t->subpath, Animation::cast_from_blendwise(t->value, t->init_value.get_type()));
+					// wgodot-changes::begin
+					t->write(t_obj, Animation::cast_from_blendwise(t->value, t->init_value.get_type()));
+					// wgodot-changes::end
 				}
 
 			} break;
@@ -2301,7 +2332,9 @@ void AnimationMixer::_build_backup_track_cache() {
 				TrackCacheValue *t = static_cast<TrackCacheValue *>(track);
 				Object *t_obj = ObjectDB::get_instance(t->object_id);
 				if (t_obj) {
-					t->value = Animation::cast_to_blendwise(t_obj->get_indexed(t->subpath));
+					// wgodot-changes::begin
+					t->value = Animation::cast_to_blendwise(t->read(t_obj));
+					// wgodot-changes::end
 				}
 				t->use_continuous = true;
 				t->use_discrete = false;
@@ -2438,7 +2471,9 @@ void AnimationMixer::capture(const StringName &p_name, double p_duration, Tween:
 			TrackCacheValue *t = static_cast<TrackCacheValue *>(track_cache[reference_animation->track_get_unique_id(i)]);
 			Object *t_obj = ObjectDB::get_instance(t->object_id);
 			if (t_obj) {
-				Variant value = t_obj->get_indexed(t->subpath);
+				// wgodot-changes::begin
+				Variant value = t->read(t_obj);
+				// wgodot-changes::end
 				int inserted_idx = capture_cache.animation->add_track(Animation::TYPE_VALUE);
 				capture_cache.animation->track_set_path(inserted_idx, reference_animation->track_get_path(i));
 				capture_cache.animation->track_insert_key(inserted_idx, 0, value);

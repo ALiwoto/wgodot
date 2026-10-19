@@ -15,7 +15,9 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-Import-Module Microsoft.PowerShell.Utility
+# Python launchers can carry PowerShell 7's module paths into Windows PowerShell.
+# Load the module belonging to this host, including its Get-FileHash implementation.
+Import-Module "$PSHOME/Modules/Microsoft.PowerShell.Utility/Microsoft.PowerShell.Utility.psd1"
 
 if ($Game -and $Templates) {
 	throw "Use either -Game or -Templates."

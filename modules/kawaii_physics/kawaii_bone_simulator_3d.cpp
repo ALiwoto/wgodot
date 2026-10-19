@@ -94,7 +94,7 @@ void KawaiiBoneSimulator3D::_invalidate() {
 
 void KawaiiBoneSimulator3D::_skeleton_changed(Skeleton3D *p_old, Skeleton3D *p_new) {
 	const Callable changed = callable_mp(this, &KawaiiBoneSimulator3D::_invalidate);
-	for (const StringName signal : { SNAME("bone_list_changed"), SNAME("rest_updated") }) {
+	for (const StringName &signal : { SNAME("bone_list_changed"), SNAME("rest_updated") }) {
 		if (p_old && p_old->is_connected(signal, changed)) {
 			p_old->disconnect(signal, changed);
 		}

@@ -254,11 +254,11 @@ bool ParticleInstance3D::sample_playback(double p_seconds, double p_delta, const
 					break;
 				case Target::SurfacePlane:
 					if (p_birth_source->get_surface_ray()) {
-						Transform3D frame = get_particle_transform();
+						Transform3D particle_transform = get_particle_transform();
 						if (!follows_emitter) {
-							frame.orthonormalize();
+							particle_transform.orthonormalize();
 						}
-						p_birth_source->capture_surface_plane(frame.xform(state_position));
+						p_birth_source->capture_surface_plane(particle_transform.xform(state_position));
 						publish_surface_plane(p_birth_source->get_surface_plane());
 					}
 					break;

@@ -3535,7 +3535,13 @@ void GDScriptAnalyzer::reduce_call(GDScriptParser::CallNode *p_call, bool p_is_a
 	HashMap<int, GDScriptParser::ArrayNode *> arrays; // For array literal to potentially type when passing.
 	HashMap<int, GDScriptParser::DictionaryNode *> dictionaries; // Same, but for dictionaries.
 	for (uint32_t i = 0; i < p_call->arguments.size(); i++) {
-		reduce_expression(p_call->arguments[i]);
+		// wgodot-changes::begin
+		if (i == 0 && p_call->function_name == SNAME("get_shader_parameter_as") && p_call->arguments[i]->type == GDScriptParser::Node::IDENTIFIER) {
+			reduce_identifier(static_cast<GDScriptParser::IdentifierNode *>(p_call->arguments[i]), true);
+		} else {
+			reduce_expression(p_call->arguments[i]);
+		}
+		// wgodot-changes::end
 		if (p_call->arguments[i]->type == GDScriptParser::Node::ARRAY) {
 			arrays[i] = static_cast<GDScriptParser::ArrayNode *>(p_call->arguments[i]);
 		} else if (p_call->arguments[i]->type == GDScriptParser::Node::DICTIONARY) {
@@ -3931,6 +3937,9 @@ void GDScriptAnalyzer::reduce_call(GDScriptParser::CallNode *p_call, bool p_is_a
 	bool is_constructor = (base_type.is_meta_type || (p_call->callee && p_call->callee->type == GDScriptParser::Node::IDENTIFIER)) && p_call->function_name == SNAME("new");
 
 	// wgodot-changes::begin
+	if (!wgodot_lower_shader_parameter_call(base_type, p_call)) {
+		return;
+	}
 	wgodot_validate_strict_object_call(base_type, p_call);
 	// wgodot-changes::end
 
@@ -4750,6 +4759,10 @@ void GDScriptAnalyzer::reduce_identifier_from_base(GDScriptParser::IdentifierNod
 		if (ClassDB::get_method_info(native, name, &method_info)) {
 			// wgodot-changes::begin
 			wgodot_validate_strict_native_property_access(native, name, p_identifier);
+			if (ClassDB::is_parent_class(native, SNAME("ShaderMaterial")) &&
+					(name == SNAME("get_shader_parameter") || name == SNAME("set_shader_parameter"))) {
+				push_error("Shader parameter methods require a statically typed call. Use get_shader_parameter_as(Type, name), or a typed wrapper function for a Callable.", p_identifier);
+			}
 			if (wgodot_strict_type_checking_enabled() && ClassDB::is_parent_class(native, SNAME("SceneTree")) &&
 					(name == SNAME("call_group") || name == SNAME("call_group_flags") || name == SNAME("call_group_as"))) {
 				push_error("Strict type checking does not allow storing SceneTree group methods as Callable. Use call_group_as(NodeType, \"method\", ...) directly so its target can be checked statically.", p_identifier);

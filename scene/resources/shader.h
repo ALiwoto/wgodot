@@ -31,6 +31,9 @@
 #pragma once
 
 #include "core/io/resource.h"
+// wgodot-changes::begin
+#include "servers/rendering/storage/wgodot_shader_parameters.h"
+// wgodot-changes::end
 #include "scene/resources/shader_include.h"
 
 class Texture;
@@ -56,6 +59,10 @@ private:
 	mutable RID shader_rid;
 	mutable String preprocessed_code;
 	mutable Mutex shader_rid_mutex;
+	// wgodot-changes::begin
+	mutable Ref<WShaderParameterLayout> parameter_layout;
+	uint64_t parameter_revision = 1;
+	// wgodot-changes::end
 
 	Mode mode = MODE_SPATIAL;
 	HashSet<Ref<ShaderInclude>> include_dependencies;
@@ -86,12 +93,20 @@ public:
 	virtual void set_path(const String &p_path, bool p_take_over = false) override;
 	void set_include_path(const String &p_path);
 
+	// wgodot-changes::begin
+	Ref<WShaderParameterLayout> get_parameter_layout() const;
+	uint64_t get_parameter_revision() const;
+	// wgodot-changes::end
+
 	void set_code(const String &p_code);
 	String get_code() const;
 
 	void inspect_native_shader_code();
 
-	void get_shader_uniform_list(List<PropertyInfo> *p_params, bool p_get_groups = false) const;
+	// wgodot-changes::begin
+	void get_shader_uniform_list(List<PropertyInfo> *p_params, bool p_get_groups = false, bool p_include_defaults = false) const;
+	bool has_default_texture_parameter(const StringName &p_name) const { return default_textures.has(p_name); }
+	// wgodot-changes::end
 
 	void set_default_texture_parameter(const StringName &p_name, const Ref<Texture> &p_texture, int p_index = 0);
 	Ref<Texture> get_default_texture_parameter(const StringName &p_name, int p_index = 0) const;

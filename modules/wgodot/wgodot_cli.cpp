@@ -209,7 +209,7 @@ void print_cli_help() {
 	print_line("Usage: godot [Godot options] --wg <command> [arguments]");
 	print_line("");
 	print_line("Commands:");
-	print_line("  export-cpp <directory> [--target client|server] [--jobs N] [--analyze-only] [--standalone] [--trace on|off|true|false] Generate native game C++; jobs 0 uses available worker threads; --standalone uses saved files without blocking the editor.");
+	print_line("  export-cpp <directory> [--target client|server] [--jobs N] [--analyze-only] [--profile-memory] [--standalone] [--trace on|off|true|false] Generate native game C++; --profile-memory writes allocation/resource CSV diagnostics; --standalone uses saved files without blocking the editor.");
 	print_line("  import                            Refresh/import assets and reload changed scenes in the running editor.");
 	print_line("  move <source> <destination> [...] [--dry-run] [--json]  Move project files/folders and update resource references.");
 	print_line("  status [--json] [--session <id>]  Show the matching editor and running game sessions.");
@@ -628,7 +628,7 @@ int print_command_response(const Dictionary &p_response, bool p_json_output) {
 		print_line(vformat("Project files refreshed and assets imported; %d changed scene(s) reloaded.", scenes.size()));
 	} else if (command == "move") {
 		const Array moves = p_response.get("moves", Array());
-		for (const Dictionary &move : moves) {
+		for (const Dictionary move : moves) {
 			print_line(String(move["source"]) + " -> " + String(move["destination"]));
 		}
 		print_line(vformat("%s %d resource(s); %d file(s) reference them.", (bool)p_response.get("dry_run", false) ? "Would move" : "Moved", (int)p_response.get("resource_count", 0), (int)p_response.get("updated_files", 0)));

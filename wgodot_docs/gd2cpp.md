@@ -15,6 +15,10 @@ So your entire game project will be split into two parts:
   - Engine AND your translated code -> compiled into machine code
   - resources: as .pck file (which can be embedded into your executable as well. however, there is no guarantee that they won't be decompiled/reverse-engineered)
 
+## Embedded resources
+
+Resources embedded in native factories are anonymous: their `resource_path` is empty. Factories connect them through typed references and do not assign synthetic `res://owner::index` paths or invoke path-change hooks for them. Do not use embedded resource paths as identity; use resource references or explicit application identifiers. Root/external resources keep their normal loader/catalog identities. Editor loading of source assets is unchanged.
+
 ## Client/server targets
 
 `wg export-cpp <absolute-directory> --target client|server` selects ownership before native generation. Default: `client`. Server export requires `res://wgodot_targets.cfg`; projects without it retain shared ownership for all content.

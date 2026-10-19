@@ -216,7 +216,8 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 						decoded = "WGodotResourcePaths::from_variant(p_value)";
 					}
 					property_writes += "\tif (p_name == " + property + ") { " + setter + "(" + decoded + "); return true; }\n";
-					property_list += "\t{ PropertyInfo info = GetTypeInfo<" + String(is_warray(datatype) ? "Array" : is_wdictionary(datatype) ? "Dictionary" : field_type) + ">::get_class_info(); info.name = " + property + "; info.usage = " + itos(scene_field ? variable->export_info.usage & ~PROPERTY_USAGE_EDITOR : PROPERTY_USAGE_NONE) + "; p_list->push_back(info); }\n";
+					const uint32_t usage = scene_field ? variable->export_info.usage & ~PROPERTY_USAGE_EDITOR : uint32_t(PROPERTY_USAGE_NONE);
+					property_list += "\t{ PropertyInfo info = GetTypeInfo<" + String(is_warray(datatype) ? "Array" : is_wdictionary(datatype) ? "Dictionary" : field_type) + ">::get_class_info(); info.name = " + property + "; info.usage = " + itos(usage) + "; p_list->push_back(info); }\n";
 				}
 				const bool stored_field = scene_field && (variable->export_info.usage & PROPERTY_USAGE_STORAGE);
 				if (!serialized && (node_field || (stored_field && ClassDB::is_parent_class(native_base(node->self_type), SNAME("Resource"))))) {

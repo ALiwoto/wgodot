@@ -352,6 +352,11 @@ public:
 
 	FUNC2(material_set_shader, RID, RID)
 
+	// wgodot-changes::begin
+	FUNC1RC(Ref<WShaderParameterLayout>, shader_get_parameter_layout, RID)
+	FUNC2(material_set_parameters, RID, const WShaderParameters &)
+	FUNC2(material_update_parameter, RID, const WShaderParameterUpdate &)
+	// wgodot-changes::end
 	FUNC3(material_set_param, RID, const StringName &, const Variant &)
 	FUNC2RC(Variant, material_get_param, RID, const StringName &)
 

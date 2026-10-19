@@ -310,7 +310,7 @@ int run(const Vector<String> &p_arguments) {
 		print_line("wgodot: " + String(response.get("message", "Could not format scripts.")));
 	} else {
 		const Array files = response["files"];
-		for (const Dictionary &file : files) {
+		for (const Dictionary file : files) {
 			if (file.has("error")) {
 				print_line(String(file["path"]) + ": " + String(file["error"]));
 			} else if (file.has("diff")) {

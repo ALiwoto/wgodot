@@ -69,6 +69,9 @@ public:
 
 		String path;
 		HashMap<StringName, ShaderLanguage::ShaderNode::Uniform> uniforms;
+	// wgodot-changes::begin
+	Ref<WShaderParameterLayout> parameter_layout;
+	// wgodot-changes::end
 		HashMap<StringName, HashMap<int, RID>> default_texture_params;
 
 		virtual void set_path_hint(const String &p_hint);
@@ -95,18 +98,26 @@ public:
 
 	struct MaterialData {
 		Vector<RendererRD::TextureStorage::RenderTarget *> render_target_cache;
-		void update_uniform_buffer(const HashMap<StringName, ShaderLanguage::ShaderNode::Uniform> &p_uniforms, const uint32_t *p_uniform_offsets, const HashMap<StringName, Variant> &p_parameters, uint8_t *p_buffer, uint32_t p_buffer_size, bool p_use_linear_color);
-		void update_textures(const HashMap<StringName, Variant> &p_parameters, const HashMap<StringName, HashMap<int, RID>> &p_default_textures, const Vector<ShaderCompiler::GeneratedCode::Texture> &p_texture_uniforms, RID *p_textures, bool p_use_linear_color, bool p_3d_material);
+		// wgodot-changes::begin
+		void update_uniform_buffer(const HashMap<StringName, ShaderLanguage::ShaderNode::Uniform> &p_uniforms, const uint32_t *p_uniform_offsets, const WMaterialParameters &p_parameters, uint8_t *p_buffer, uint32_t p_buffer_size, bool p_use_linear_color);
+		// wgodot-changes::end
+		// wgodot-changes::begin
+		void update_textures(const WMaterialParameters &p_parameters, const HashMap<StringName, HashMap<int, RID>> &p_default_textures, const Vector<ShaderCompiler::GeneratedCode::Texture> &p_texture_uniforms, RID *p_textures, bool p_use_linear_color, bool p_3d_material);
+		// wgodot-changes::end
 		void set_as_used();
 		RID get_default_texture_id(ShaderLanguage::DataType p_type, ShaderLanguage::ShaderNode::Uniform::Hint p_hint);
 
 		virtual void set_render_priority(int p_priority) = 0;
 		virtual void set_next_pass(RID p_pass) = 0;
-		virtual bool update_parameters(const HashMap<StringName, Variant> &p_parameters, bool p_uniform_dirty, bool p_textures_dirty) = 0;
+		// wgodot-changes::begin
+		virtual bool update_parameters(const WMaterialParameters &p_parameters, bool p_uniform_dirty, bool p_textures_dirty) = 0;
+		// wgodot-changes::end
 		virtual ~MaterialData();
 
 		//to be used internally by update_parameters, in the most common configuration of material parameters
-		bool update_parameters_uniform_set(const HashMap<StringName, Variant> &p_parameters, bool p_uniform_dirty, bool p_textures_dirty, const HashMap<StringName, ShaderLanguage::ShaderNode::Uniform> &p_uniforms, const uint32_t *p_uniform_offsets, const Vector<ShaderCompiler::GeneratedCode::Texture> &p_texture_uniforms, const HashMap<StringName, HashMap<int, RID>> &p_default_texture_params, uint32_t p_ubo_size, RID &r_uniform_set, RID p_shader, uint32_t p_shader_uniform_set, bool p_use_linear_color, bool p_3d_material);
+		// wgodot-changes::begin
+		bool update_parameters_uniform_set(const WMaterialParameters &p_parameters, bool p_uniform_dirty, bool p_textures_dirty, const HashMap<StringName, ShaderLanguage::ShaderNode::Uniform> &p_uniforms, const uint32_t *p_uniform_offsets, const Vector<ShaderCompiler::GeneratedCode::Texture> &p_texture_uniforms, const HashMap<StringName, HashMap<int, RID>> &p_default_texture_params, uint32_t p_ubo_size, RID &r_uniform_set, RID p_shader, uint32_t p_shader_uniform_set, bool p_use_linear_color, bool p_3d_material);
+		// wgodot-changes::end
 		void free_parameters_uniform_set(RID p_uniform_set);
 		RID material_feedback_rid;
 
@@ -179,7 +190,9 @@ public:
 
 		virtual void set_render_priority(int p_priority) {}
 		virtual void set_next_pass(RID p_pass) {}
-		virtual bool update_parameters(const HashMap<StringName, Variant> &p_parameters, bool p_uniform_dirty, bool p_textures_dirty);
+		// wgodot-changes::begin
+		virtual bool update_parameters(const WMaterialParameters &p_parameters, bool p_uniform_dirty, bool p_textures_dirty);
+		// wgodot-changes::end
 		virtual ~TexBlitMaterialData();
 	};
 
@@ -303,7 +316,9 @@ private:
 		uint32_t shader_id = 0;
 		bool uniform_dirty = false;
 		bool texture_dirty = false;
-		HashMap<StringName, Variant> params;
+		// wgodot-changes::begin
+	WMaterialParameters params;
+	// wgodot-changes::end
 		int32_t priority = 0;
 		RID next_pass;
 		SelfList<Material> update_element;
@@ -484,6 +499,11 @@ public:
 	virtual void shader_set_default_texture_parameter(RID p_shader, const StringName &p_name, RID p_texture, int p_index) override;
 	virtual RID shader_get_default_texture_parameter(RID p_shader, const StringName &p_name, int p_index) const override;
 	virtual Variant shader_get_parameter_default(RID p_shader, const StringName &p_param) const override;
+	// wgodot-changes::begin
+	virtual Ref<WShaderParameterLayout> shader_get_parameter_layout(RID p_shader) const override;
+	virtual void material_set_parameters(RID p_material, const WShaderParameters &p_parameters) override;
+	virtual void material_update_parameter(RID p_material, const WShaderParameterUpdate &p_update) override;
+	// wgodot-changes::end
 	void shader_set_data_request_function(ShaderType p_shader_type, ShaderDataRequestFunction p_function);
 	ShaderData *shader_get_data(RID p_shader) const;
 

@@ -166,7 +166,9 @@ Vector3 Fog::fog_volume_get_size(RID p_fog_volume) const {
 ////////////////////////////////////////////////////////////////////////////////
 // Fog material
 
-bool Fog::FogMaterialData::update_parameters(const HashMap<StringName, Variant> &p_parameters, bool p_uniform_dirty, bool p_textures_dirty) {
+// wgodot-changes::begin
+bool Fog::FogMaterialData::update_parameters(const WMaterialParameters &p_parameters, bool p_uniform_dirty, bool p_textures_dirty) {
+// wgodot-changes::end
 	uniform_set_updated = true;
 
 	return update_parameters_uniform_set(p_parameters, p_uniform_dirty, p_textures_dirty, shader_data->uniforms, shader_data->ubo_offsets.ptr(), shader_data->texture_uniforms, shader_data->default_texture_params, shader_data->ubo_size, uniform_set, Fog::get_singleton()->volumetric_fog.shader.version_get_shader(shader_data->version, _get_fog_variant()), VolumetricFogShader::FogSet::FOG_SET_MATERIAL, true, true);
@@ -394,6 +396,9 @@ void Fog::FogShaderData::set_code(const String &p_code) {
 
 	ubo_size = gen_code.uniform_total_size;
 	ubo_offsets = gen_code.uniform_offsets;
+	// wgodot-changes::begin
+	parameter_layout = gen_code.parameter_layout;
+	// wgodot-changes::end
 	texture_uniforms = gen_code.texture_uniforms;
 
 	pipeline.create_compute_pipeline(fog_singleton->volumetric_fog.shader.version_get_shader(version, _get_fog_variant()));

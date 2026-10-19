@@ -29,6 +29,9 @@
 /**************************************************************************/
 
 #include "material_storage.h"
+// wgodot-changes::begin
+#include "servers/rendering/storage/wgodot_shader_parameter_io.h"
+// wgodot-changes::end
 
 #ifdef GLES3_ENABLED
 
@@ -554,6 +557,11 @@ void ShaderData::set_path_hint(const String &p_hint) {
 }
 
 void ShaderData::set_default_texture_parameter(const StringName &p_name, RID p_texture, int p_index) {
+	// wgodot-changes::begin
+	if (parameter_layout.is_valid()) {
+		parameter_layout = parameter_layout->with_texture_default(p_name, p_index, p_texture);
+	}
+	// wgodot-changes::end
 	if (!p_texture.is_valid()) {
 		if (default_texture_params.has(p_name) && default_texture_params[p_name].has(p_index)) {
 			default_texture_params[p_name].erase(p_index);
@@ -712,7 +720,14 @@ static const RSE::CanvasItemTextureFilter filter_from_uniform_canvas[ShaderLangu
 	RSE::CanvasItemTextureFilter::CANVAS_ITEM_TEXTURE_FILTER_LINEAR, // ShaderLanguage::TextureFilter::FILTER_DEFAULT,
 };
 
-void MaterialData::update_uniform_buffer(const HashMap<StringName, ShaderLanguage::ShaderNode::Uniform> &p_uniforms, const uint32_t *p_uniform_offsets, const HashMap<StringName, Variant> &p_parameters, uint8_t *p_buffer, uint32_t p_buffer_size) {
+// wgodot-changes::begin
+void MaterialData::update_uniform_buffer(const HashMap<StringName, ShaderLanguage::ShaderNode::Uniform> &p_uniforms, const uint32_t *p_uniform_offsets, const WMaterialParameters &p_parameters, uint8_t *p_buffer, uint32_t p_buffer_size) {
+// wgodot-changes::end
+	// wgodot-changes::begin
+	if (p_parameters.typed.layout.is_valid()) {
+		p_parameters.typed.copy_uniforms(p_buffer, p_buffer_size, false);
+	}
+	// wgodot-changes::end
 	MaterialStorage *material_storage = MaterialStorage::get_singleton();
 	bool uses_global_buffer = false;
 
@@ -742,6 +757,11 @@ void MaterialData::update_uniform_buffer(const HashMap<StringName, ShaderLanguag
 			continue;
 		}
 
+		// wgodot-changes::begin
+		if (p_parameters.typed.layout.is_valid()) {
+			continue;
+		}
+		// wgodot-changes::end
 		//regular uniform
 		uint32_t offset = p_uniform_offsets[E.value.order];
 #ifdef DEBUG_ENABLED
@@ -759,7 +779,7 @@ void MaterialData::update_uniform_buffer(const HashMap<StringName, ShaderLanguag
 		ERR_CONTINUE(offset + size > p_buffer_size);
 #endif
 		uint8_t *data = &p_buffer[offset];
-		HashMap<StringName, Variant>::ConstIterator V = p_parameters.find(E.key);
+		HashMap<StringName, Variant>::ConstIterator V = p_parameters.named.find(E.key);
 
 		if (V) {
 			//user provided
@@ -828,7 +848,9 @@ MaterialData::~MaterialData() {
 	}
 }
 
-void MaterialData::update_textures(const HashMap<StringName, Variant> &p_parameters, const HashMap<StringName, HashMap<int, RID>> &p_default_textures, const Vector<ShaderCompiler::GeneratedCode::Texture> &p_texture_uniforms, RID *p_textures, bool p_is_3d_shader_type) {
+// wgodot-changes::begin
+void MaterialData::update_textures(const WMaterialParameters &p_parameters, const HashMap<StringName, HashMap<int, RID>> &p_default_textures, const Vector<ShaderCompiler::GeneratedCode::Texture> &p_texture_uniforms, RID *p_textures, bool p_is_3d_shader_type) {
+// wgodot-changes::end
 	MaterialStorage *material_storage = MaterialStorage::get_singleton();
 
 #ifdef TOOLS_ENABLED
@@ -883,8 +905,12 @@ void MaterialData::update_textures(const HashMap<StringName, Variant> &p_paramet
 			} else {
 				WARN_PRINT("Shader uses global parameter texture '" + String(uniform_name) + "', but it was removed at some point. Material will not display correctly.");
 			}
+		// wgodot-changes::begin
+		} else if (p_parameters.typed.layout.is_valid()) {
+			p_parameters.typed.get_textures(i, textures);
+		// wgodot-changes::end
 		} else {
-			HashMap<StringName, Variant>::ConstIterator V = p_parameters.find(uniform_name);
+			HashMap<StringName, Variant>::ConstIterator V = p_parameters.named.find(uniform_name);
 			if (V) {
 				if (V->value.is_array()) {
 					Array array = (Array)V->value;
@@ -1097,7 +1123,9 @@ RID MaterialData::get_default_texture_id(ShaderLanguage::DataType p_type, Shader
 	return gl_texture;
 }
 
-void MaterialData::update_parameters_internal(const HashMap<StringName, Variant> &p_parameters, bool p_uniform_dirty, bool p_textures_dirty, const HashMap<StringName, ShaderLanguage::ShaderNode::Uniform> &p_uniforms, const uint32_t *p_uniform_offsets, const Vector<ShaderCompiler::GeneratedCode::Texture> &p_texture_uniforms, const HashMap<StringName, HashMap<int, RID>> &p_default_texture_params, uint32_t p_ubo_size, bool p_is_3d_shader_type) {
+// wgodot-changes::begin
+void MaterialData::update_parameters_internal(const WMaterialParameters &p_parameters, bool p_uniform_dirty, bool p_textures_dirty, const HashMap<StringName, ShaderLanguage::ShaderNode::Uniform> &p_uniforms, const uint32_t *p_uniform_offsets, const Vector<ShaderCompiler::GeneratedCode::Texture> &p_texture_uniforms, const HashMap<StringName, HashMap<int, RID>> &p_default_texture_params, uint32_t p_ubo_size, bool p_is_3d_shader_type) {
+// wgodot-changes::end
 	if ((uint32_t)ubo_data.size() != p_ubo_size) {
 		p_uniform_dirty = true;
 		if (!uniform_buffer) {
@@ -2330,7 +2358,17 @@ void MaterialStorage::shader_set_code(RID p_shader, const String &p_code) {
 
 	if (shader->data) {
 		shader->data->set_path_hint(shader->path_hint);
+		// wgodot-changes::begin
+		shader->data->parameter_layout.unref();
+		// wgodot-changes::end
 		shader->data->set_code(p_code);
+		// wgodot-changes::begin
+		for (const auto &parameter : shader->default_texture_parameter) {
+			for (const auto &texture : parameter.value) {
+				shader->data->set_default_texture_parameter(parameter.key, texture.value, texture.key);
+			}
+		}
+		// wgodot-changes::end
 	}
 
 	for (Material *E : shader->owners) {
@@ -2437,6 +2475,11 @@ void MaterialStorage::_update_queued_materials() {
 		Material *material = material_update_list.first()->self();
 
 		if (material->data) {
+			// wgodot-changes::begin
+			if (material->params.typed.layout.is_valid()) {
+				material->params.typed.remap(material->shader->data->parameter_layout);
+			}
+			// wgodot-changes::end
 			material->data->update_parameters(material->params, material->uniform_dirty, material->texture_dirty);
 		}
 		material->texture_dirty = false;
@@ -2462,7 +2505,7 @@ void MaterialStorage::material_free(RID p_rid) {
 
 	// Need to clear texture arrays to prevent spin locking of their RID's.
 	// This happens when the app is being closed.
-	for (KeyValue<StringName, Variant> &E : material->params) {
+	for (KeyValue<StringName, Variant> &E : material->params.named) {
 		if (E.value.get_type() == Variant::ARRAY) {
 			// Clear the array for this material only (the array may be shared).
 			E.value = Variant();
@@ -2521,12 +2564,23 @@ void MaterialStorage::material_set_shader(RID p_material, RID p_shader) {
 void MaterialStorage::material_set_param(RID p_material, const StringName &p_param, const Variant &p_value) {
 	GLES3::Material *material = material_owner.get_or_null(p_material);
 	ERR_FAIL_NULL(material);
+	// wgodot-changes::begin
+	if (material->params.typed.layout.is_valid()) {
+		const int slot = material->params.typed.layout->find(p_param);
+		ERR_FAIL_COND_MSG(slot < 0, "Unknown shader parameter: " + p_param);
+		if (WShaderParameterIO::write(material->params.typed, slot, p_value)) {
+			const bool texture = material->params.typed.layout->entries[slot].texture >= 0;
+			_material_queue_update(material, !texture, texture);
+		}
+		return;
+	}
+	// wgodot-changes::end
 
 	if (p_value.get_type() == Variant::NIL) {
-		material->params.erase(p_param);
+		material->params.named.erase(p_param);
 	} else {
 		ERR_FAIL_COND(p_value.get_type() == Variant::OBJECT); //object not allowed
-		material->params[p_param] = p_value;
+		material->params.named[p_param] = p_value;
 	}
 
 	if (material->shader && material->shader->data) { //shader is valid
@@ -2540,8 +2594,14 @@ void MaterialStorage::material_set_param(RID p_material, const StringName &p_par
 Variant MaterialStorage::material_get_param(RID p_material, const StringName &p_param) const {
 	const GLES3::Material *material = material_owner.get_or_null(p_material);
 	ERR_FAIL_NULL_V(material, Variant());
-	if (material->params.has(p_param)) {
-		return material->params[p_param];
+	// wgodot-changes::begin
+	if (material->params.typed.layout.is_valid()) {
+		const int slot = material->params.typed.layout->find(p_param);
+		return slot >= 0 ? WShaderParameterIO::read(material->params.typed, slot) : Variant();
+	}
+	// wgodot-changes::end
+	if (material->params.named.has(p_param)) {
+		return material->params.named[p_param];
 	} else {
 		return Variant();
 	}
@@ -2732,6 +2792,9 @@ void CanvasShaderData::set_code(const String &p_code) {
 
 	ubo_size = gen_code.uniform_total_size;
 	ubo_offsets = gen_code.uniform_offsets;
+	// wgodot-changes::begin
+	parameter_layout = gen_code.parameter_layout;
+	// wgodot-changes::end
 	texture_uniforms = gen_code.texture_uniforms;
 
 	valid = true;
@@ -2766,7 +2829,9 @@ GLES3::ShaderData *GLES3::_create_canvas_shader_func() {
 	return shader_data;
 }
 
-void CanvasMaterialData::update_parameters(const HashMap<StringName, Variant> &p_parameters, bool p_uniform_dirty, bool p_textures_dirty) {
+// wgodot-changes::begin
+void CanvasMaterialData::update_parameters(const WMaterialParameters &p_parameters, bool p_uniform_dirty, bool p_textures_dirty) {
+// wgodot-changes::end
 	update_parameters_internal(p_parameters, p_uniform_dirty, p_textures_dirty, shader_data->uniforms, shader_data->ubo_offsets.ptr(), shader_data->texture_uniforms, shader_data->default_texture_params, shader_data->ubo_size, false);
 }
 
@@ -2904,6 +2969,9 @@ void SkyShaderData::set_code(const String &p_code) {
 
 	ubo_size = gen_code.uniform_total_size;
 	ubo_offsets = gen_code.uniform_offsets;
+	// wgodot-changes::begin
+	parameter_layout = gen_code.parameter_layout;
+	// wgodot-changes::end
 	texture_uniforms = gen_code.texture_uniforms;
 
 	valid = true;
@@ -2939,7 +3007,9 @@ GLES3::ShaderData *GLES3::_create_sky_shader_func() {
 ////////////////////////////////////////////////////////////////////////////////
 // Sky material
 
-void SkyMaterialData::update_parameters(const HashMap<StringName, Variant> &p_parameters, bool p_uniform_dirty, bool p_textures_dirty) {
+// wgodot-changes::begin
+void SkyMaterialData::update_parameters(const WMaterialParameters &p_parameters, bool p_uniform_dirty, bool p_textures_dirty) {
+// wgodot-changes::end
 	uniform_set_updated = true;
 	update_parameters_internal(p_parameters, p_uniform_dirty, p_textures_dirty, shader_data->uniforms, shader_data->ubo_offsets.ptr(), shader_data->texture_uniforms, shader_data->default_texture_params, shader_data->ubo_size, true);
 }
@@ -3202,6 +3272,9 @@ void SceneShaderData::set_code(const String &p_code) {
 
 	ubo_size = gen_code.uniform_total_size;
 	ubo_offsets = gen_code.uniform_offsets;
+	// wgodot-changes::begin
+	parameter_layout = gen_code.parameter_layout;
+	// wgodot-changes::end
 	texture_uniforms = gen_code.texture_uniforms;
 
 	// If any form of Alpha Antialiasing is enabled, set the blend mode to alpha to coverage.
@@ -3256,7 +3329,9 @@ void SceneMaterialData::set_next_pass(RID p_pass) {
 	next_pass = p_pass;
 }
 
-void SceneMaterialData::update_parameters(const HashMap<StringName, Variant> &p_parameters, bool p_uniform_dirty, bool p_textures_dirty) {
+// wgodot-changes::begin
+void SceneMaterialData::update_parameters(const WMaterialParameters &p_parameters, bool p_uniform_dirty, bool p_textures_dirty) {
+// wgodot-changes::end
 	update_parameters_internal(p_parameters, p_uniform_dirty, p_textures_dirty, shader_data->uniforms, shader_data->ubo_offsets.ptr(), shader_data->texture_uniforms, shader_data->default_texture_params, shader_data->ubo_size, true);
 }
 
@@ -3330,6 +3405,9 @@ void ParticlesShaderData::set_code(const String &p_code) {
 
 	ubo_size = gen_code.uniform_total_size;
 	ubo_offsets = gen_code.uniform_offsets;
+	// wgodot-changes::begin
+	parameter_layout = gen_code.parameter_layout;
+	// wgodot-changes::end
 	texture_uniforms = gen_code.texture_uniforms;
 
 	valid = true;
@@ -3358,7 +3436,9 @@ GLES3::ShaderData *GLES3::_create_particles_shader_func() {
 	return shader_data;
 }
 
-void ParticleProcessMaterialData::update_parameters(const HashMap<StringName, Variant> &p_parameters, bool p_uniform_dirty, bool p_textures_dirty) {
+// wgodot-changes::begin
+void ParticleProcessMaterialData::update_parameters(const WMaterialParameters &p_parameters, bool p_uniform_dirty, bool p_textures_dirty) {
+// wgodot-changes::end
 	update_parameters_internal(p_parameters, p_uniform_dirty, p_textures_dirty, shader_data->uniforms, shader_data->ubo_offsets.ptr(), shader_data->texture_uniforms, shader_data->default_texture_params, shader_data->ubo_size, true);
 }
 
@@ -3443,6 +3523,9 @@ void TexBlitShaderData::set_code(const String &p_code) {
 
 	ubo_size = gen_code.uniform_total_size;
 	ubo_offsets = gen_code.uniform_offsets;
+	// wgodot-changes::begin
+	parameter_layout = gen_code.parameter_layout;
+	// wgodot-changes::end
 	texture_uniforms = gen_code.texture_uniforms;
 
 	valid = true;
@@ -3475,7 +3558,9 @@ GLES3::ShaderData *GLES3::_create_tex_blit_shader_func() {
 	return shader_data;
 }
 
-void TexBlitMaterialData::update_parameters(const HashMap<StringName, Variant> &p_parameters, bool p_uniform_dirty, bool p_textures_dirty) {
+// wgodot-changes::begin
+void TexBlitMaterialData::update_parameters(const WMaterialParameters &p_parameters, bool p_uniform_dirty, bool p_textures_dirty) {
+// wgodot-changes::end
 	update_parameters_internal(p_parameters, p_uniform_dirty, p_textures_dirty, shader_data->uniforms, shader_data->ubo_offsets.ptr(), shader_data->texture_uniforms, shader_data->default_texture_params, shader_data->ubo_size, false);
 }
 

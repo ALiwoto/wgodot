@@ -242,6 +242,9 @@ void SceneShaderForwardMobile::ShaderData::set_code(const String &p_code) {
 
 	ubo_size = gen_code.uniform_total_size;
 	ubo_offsets = gen_code.uniform_offsets;
+	// wgodot-changes::begin
+	parameter_layout = gen_code.parameter_layout;
+	// wgodot-changes::end
 	texture_uniforms = gen_code.texture_uniforms;
 
 	pipeline_hash_map.clear_pipelines();
@@ -547,7 +550,9 @@ void SceneShaderForwardMobile::MaterialData::set_next_pass(RID p_pass) {
 	next_pass = p_pass;
 }
 
-bool SceneShaderForwardMobile::MaterialData::update_parameters(const HashMap<StringName, Variant> &p_parameters, bool p_uniform_dirty, bool p_textures_dirty) {
+// wgodot-changes::begin
+bool SceneShaderForwardMobile::MaterialData::update_parameters(const WMaterialParameters &p_parameters, bool p_uniform_dirty, bool p_textures_dirty) {
+// wgodot-changes::end
 	if (shader_data->version.is_valid()) {
 		RID base_shader = SceneShaderForwardMobile::singleton->shader.version_get_shader(shader_data->version, (SceneShaderForwardMobile::singleton->use_fp16 ? SHADER_VERSION_MAX * 2 : 0));
 		MutexLock lock(SceneShaderForwardMobile::singleton_mutex);

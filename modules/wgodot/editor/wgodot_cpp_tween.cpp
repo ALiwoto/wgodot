@@ -21,74 +21,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::tween_property_call(const Parser::Call
 		return String();
 	}
 	const String target = class_name(target_type, p_call);
-	const String value = type(value_type, p_call);
 	class_call_headers.insert("modules/wgodot/native/wgodot_native_tween.h");
-
-	auto access = [&](int p_index, const String &p_receiver, const String &p_value = String()) {
-		const auto &segment = path->segments[p_index];
-		if (segment.base_type.kind == Parser::DataType::BUILTIN) {
-			return Value(builtin_member(segment.base_type.builtin_type, segment.name, p_call, p_receiver, p_value), p_value.is_empty() ? type(segment.datatype, p_call) : String("void"));
-		}
-		// A subscript origin preserves normal getter/setter semantics, including
-		// when the tween was declared inside the property's own accessor.
-		Parser::SubscriptNode origin;
-		origin.start_line = p_call->start_line;
-		origin.start_column = p_call->start_column;
-		origin.type_constraint = segment.datatype;
-		const bool contract = is_interface_type(segment.base_type);
-		Value receiver(p_receiver, contract ? type(segment.base_type, &origin) : class_name(segment.base_type, &origin) + " *");
-		receiver.object_pointer = !contract;
-		receiver.nonnull = true; // The generated accessor checks each object before access.
-		receiver.effects = false;
-		receiver.borrowed = true;
-		Value assigned(p_value, type(segment.datatype, &origin));
-		assigned.effects = false;
-		assigned.borrowed = true;
-		return property_access(segment.base_type, segment.name, &origin, receiver, assigned);
-	};
-	auto accessor = [&](bool p_write) {
-		const String parameter = target_interface ? "const " + target + " &target" : target + " *target";
-		String body = "[](" + parameter + (p_write ? ", " + value + " value" : "") + ") -> " + (p_write ? "void" : value) + " {\n";
-		Vector<String> receivers;
-		for (int i = 0; i < path->segments.size(); i++) {
-			String receiver = i == 0 ? "target" : "part_" + itos(i - 1);
-			if (i > 0 && path->segments[i].base_type.kind != Parser::DataType::BUILTIN) {
-				const String pointer = "object_" + itos(i);
-				const bool contract = is_interface_type(path->segments[i].base_type);
-				body += "\tauto *" + pointer + " = " + (contract ? receiver + ".operator->()" : "WGodotNative::object_pointer(" + receiver + ")") + ";\n";
-				body += p_write ? "\tERR_FAIL_NULL(" + pointer + ");\n" : "\tERR_FAIL_NULL_V(" + pointer + ", (" + value + "()));\n";
-				if (!contract) {
-					receiver = pointer;
-				}
-			}
-			receivers.push_back(receiver);
-			if (p_write && i == path->segments.size() - 1) {
-				break;
-			}
-			if (!p_write && i == path->segments.size() - 1) {
-				body += access(i, receiver).statement(1, true);
-				break;
-			}
-			Value part = access(i, receiver);
-			if (is_interface_type(path->segments[i].datatype)) {
-				// A native getter may return an Object pointer. Keep the interface
-				// handle so the next segment can access either base or contract members.
-				const String part_type = type(path->segments[i].datatype, p_call);
-				part.code = convert_value(part, part_type);
-				part.cpp_type = part_type;
-				part.object_pointer = false;
-			}
-			body += "\tauto part_" + itos(i) + " = " + part.expression() + ";\n";
-		}
-		if (p_write) {
-			// Object::set_indexed writes EVERY parent back, even Object references.
-			// Retain that order and each setter's side effects, using typed locals.
-			for (int i = path->segments.size() - 1; i >= 0; i--) {
-				body += access(i, receivers[i], i == path->segments.size() - 1 ? "value" : "part_" + itos(i)).statement(1);
-			}
-		}
-		return body + "}";
-	};
 
 	// Match native_call's argument/receiver evaluation order, but never emit
 	// the path literal: only its analyzer-resolved property accesses survive.
@@ -98,6 +31,6 @@ WGodotCppEmitter::Value WGodotCppEmitter::tween_property_call(const Parser::Call
 	result.effects = true;
 	const String receiver = target_interface ? operands[0].code : "static_cast<" + target + " *>(WGodotNative::object_pointer(" + operands[0].code + "))";
 	result.code = "WGodotNative::tween_property(WGodotNative::object_pointer(" + operands[3].code + "), " + receiver + ",\n";
-	result.code += accessor(false) + ",\n" + accessor(true) + ", " + convert_value(operands[1], "Variant") + ", " + operands[2].code + ")";
+	result.code += property_path_accessor(*path, p_call, false) + ",\n" + property_path_accessor(*path, p_call, true) + ", " + convert_value(operands[1], "Variant") + ", " + operands[2].code + ")";
 	return result;
 }

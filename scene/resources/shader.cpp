@@ -81,6 +81,10 @@ void Shader::set_include_path(const String &p_path) {
 }
 
 void Shader::set_code(const String &p_code) {
+	// wgodot-changes::begin
+	parameter_layout.unref();
+	parameter_revision++;
+	// wgodot-changes::end
 	for (const Ref<ShaderInclude> &E : include_dependencies) {
 		E->disconnect_changed(callable_mp(this, &Shader::_dependency_changed));
 	}
@@ -147,7 +151,9 @@ void Shader::inspect_native_shader_code() {
 	}
 }
 
-void Shader::get_shader_uniform_list(List<PropertyInfo> *p_params, bool p_get_groups) const {
+// wgodot-changes::begin
+void Shader::get_shader_uniform_list(List<PropertyInfo> *p_params, bool p_get_groups, bool p_include_defaults) const {
+// wgodot-changes::end
 	_update_shader();
 	_check_shader_rid();
 
@@ -170,7 +176,9 @@ void Shader::get_shader_uniform_list(List<PropertyInfo> *p_params, bool p_get_gr
 			continue;
 		}
 		if (!is_group) {
-			if (default_textures.has(pi.name)) { //do not show default textures
+			// wgodot-changes::begin
+			if (!p_include_defaults && default_textures.has(pi.name)) { // Inspector hides defaults; serialization includes overrides.
+			// wgodot-changes::end
 				continue;
 			}
 		}
@@ -216,6 +224,10 @@ RID Shader::get_rid() const {
 }
 
 void Shader::set_default_texture_parameter(const StringName &p_name, const Ref<Texture> &p_texture, int p_index) {
+	// wgodot-changes::begin
+	parameter_layout.unref();
+	parameter_revision++;
+	// wgodot-changes::end
 	_check_shader_rid();
 
 	if (p_texture.is_valid()) {

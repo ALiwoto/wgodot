@@ -14,6 +14,9 @@ public:
 		virtual String symbol() = 0;
 		virtual void include(const String &p_header) = 0;
 		virtual void line(const String &p_line) = 0;
+		// Literal animated property paths, collected during the existing resource
+		// pass. Native bindings are emitted once after all workers have joined.
+		virtual void animation_property(const NodePath &p_path) = 0;
 		virtual ~NativeWriter() = default;
 	};
 
@@ -31,6 +34,8 @@ public:
 	static const WResourceCodec *find(const StringName &p_type);
 
 	virtual bool owns_property(const StringName &p_name) const = 0;
+	virtual bool owns_native_property(const StringName &p_name) const { return owns_property(p_name); }
+	virtual bool requires_native_factory() const { return false; }
 	virtual bool owns_assignment(const String &p_name) const = 0;
 	virtual Error read(Resource *p_resource, VariantParser::Token &p_token, VariantParser::Stream *p_stream, int &r_line, String &r_error, VariantParser::ResourceParser *p_resources) const = 0;
 	virtual Error write(const Resource *p_resource, String &r_text, VariantWriter::EncodeResourceFunc p_encode, void *p_userdata) const = 0;

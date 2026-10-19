@@ -30,6 +30,10 @@
 
 #pragma once
 
+// wgodot-changes::begin
+#include "servers/rendering/storage/wgodot_shader_parameters.h"
+// wgodot-changes::end
+
 #include "servers/rendering/rendering_server_enums.h"
 #include "servers/rendering/rendering_server_types.h"
 #include "servers/rendering/storage/utilities.h"
@@ -70,6 +74,11 @@ public:
 	virtual void shader_set_default_texture_parameter(RID p_shader, const StringName &p_name, RID p_texture, int p_index) = 0;
 	virtual RID shader_get_default_texture_parameter(RID p_shader, const StringName &p_name, int p_index) const = 0;
 	virtual Variant shader_get_parameter_default(RID p_material, const StringName &p_param) const = 0;
+	// wgodot-changes::begin
+	virtual Ref<WShaderParameterLayout> shader_get_parameter_layout(RID p_shader) const = 0;
+	virtual void material_set_parameters(RID p_material, const WShaderParameters &p_parameters) = 0;
+	virtual void material_update_parameter(RID p_material, const WShaderParameterUpdate &p_update) = 0;
+	// wgodot-changes::end
 
 	virtual RenderingServerTypes::ShaderNativeSourceCode shader_get_native_source_code(RID p_shader) const = 0;
 	virtual void shader_embedded_set_lock() = 0;

@@ -33,6 +33,10 @@
 #include "core/io/resource.h"
 #include "core/templates/self_list.h"
 #include "scene/resources/shader.h"
+// wgodot-changes::begin
+#include "scene/resources/texture.h"
+#include <initializer_list>
+// wgodot-changes::end
 #include "servers/rendering/rendering_server_enums.h"
 
 class Material : public Resource {
@@ -96,8 +100,14 @@ class ShaderMaterial : public Material {
 	GDCLASS(ShaderMaterial, Material);
 	Ref<Shader> shader;
 
-	mutable HashMap<StringName, StringName> remap_cache;
-	mutable HashMap<StringName, Variant> param_cache;
+	// wgodot-changes::begin
+	mutable WShaderParameters parameters;
+	mutable Vector<Ref<Texture>> parameter_textures;
+	mutable uint64_t parameter_revision = 0;
+	void _ensure_parameters() const;
+	void _send_parameter(int p_slot) const;
+	static void _bind_typed_parameters();
+	// wgodot-changes::end
 	mutable Mutex material_rid_mutex;
 
 protected:
@@ -122,6 +132,73 @@ protected:
 public:
 	void set_shader(const Ref<Shader> &p_shader);
 	Ref<Shader> get_shader() const;
+
+	// wgodot-changes::begin
+	int get_shader_parameter_slot(const StringName &p_name) const;
+	Variant::Type get_shader_parameter_type(const StringName &p_name) const;
+	void clear_shader_parameter(const StringName &p_name);
+	const WShaderParameters &get_shader_parameters() const;
+	void mark_shader_parameter_overrides(std::initializer_list<int> p_slots);
+
+	// Slots belong to the current shader declaration. Native factories use the matching exported shader.
+	template <typename T>
+	void set_shader_parameter_at(int p_slot, const T &p_value) {
+		_ensure_parameters();
+		if (parameters.set(p_slot, p_value)) {
+			_send_parameter(p_slot);
+		}
+	}
+
+	template <typename T>
+	T get_shader_parameter_at(int p_slot) const {
+		_ensure_parameters();
+		return parameters.get<T>(p_slot);
+	}
+
+	void set_shader_parameter_at(int p_slot, const Ref<Texture> &p_texture);
+	template <typename T>
+	void set_shader_parameter_at(int p_slot, const Ref<T> &p_texture) {
+		static_assert(std::is_base_of_v<Texture, T>);
+		set_shader_parameter_at(p_slot, Ref<Texture>(p_texture));
+	}
+	void set_shader_parameter_at(int p_slot, const Vector<Ref<Texture>> &p_textures);
+	Ref<Texture> get_shader_texture_at(int p_slot, int p_index = 0) const;
+
+#define WGODOT_SHADER_PARAMETER(Type, Name) \
+	void set_shader_parameter_##Name(const StringName &p_name, const Type &p_value) { \
+		set_shader_parameter_at(get_shader_parameter_slot(p_name), p_value); \
+	} \
+	Type get_shader_parameter_##Name(const StringName &p_name) const { \
+		return get_shader_parameter_at<Type>(get_shader_parameter_slot(p_name)); \
+	}
+	WGODOT_SHADER_PARAMETER(bool, bool)
+	WGODOT_SHADER_PARAMETER(int64_t, int)
+	WGODOT_SHADER_PARAMETER(double, float)
+	WGODOT_SHADER_PARAMETER(Vector2, vector2)
+	WGODOT_SHADER_PARAMETER(Vector3, vector3)
+	WGODOT_SHADER_PARAMETER(Vector4, vector4)
+	WGODOT_SHADER_PARAMETER(Vector2i, vector2i)
+	WGODOT_SHADER_PARAMETER(Vector3i, vector3i)
+	WGODOT_SHADER_PARAMETER(Vector4i, vector4i)
+	WGODOT_SHADER_PARAMETER(Color, color)
+	WGODOT_SHADER_PARAMETER(Transform2D, transform2d)
+	WGODOT_SHADER_PARAMETER(Basis, basis)
+	WGODOT_SHADER_PARAMETER(Projection, projection)
+	WGODOT_SHADER_PARAMETER(Transform3D, transform3d)
+	WGODOT_SHADER_PARAMETER(PackedFloat32Array, float32_array)
+	WGODOT_SHADER_PARAMETER(PackedFloat64Array, float64_array)
+	WGODOT_SHADER_PARAMETER(PackedInt32Array, int32_array)
+	WGODOT_SHADER_PARAMETER(PackedVector2Array, vector2_array)
+	WGODOT_SHADER_PARAMETER(PackedVector3Array, vector3_array)
+	WGODOT_SHADER_PARAMETER(PackedVector4Array, vector4_array)
+	WGODOT_SHADER_PARAMETER(PackedColorArray, color_array)
+#undef WGODOT_SHADER_PARAMETER
+	void set_shader_parameter_texture(const StringName &p_name, const Ref<Texture> &p_value);
+	Ref<Texture> get_shader_parameter_texture(const StringName &p_name) const;
+	Ref<Texture2D> get_shader_parameter_texture2d(const StringName &p_name) const;
+	Ref<Texture3D> get_shader_parameter_texture3d(const StringName &p_name) const;
+	Ref<TextureLayered> get_shader_parameter_texture_layered(const StringName &p_name) const;
+	// wgodot-changes::end
 
 	void set_shader_parameter(const StringName &p_param, const Variant &p_value);
 	Variant get_shader_parameter(const StringName &p_param) const;

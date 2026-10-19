@@ -3,9 +3,29 @@
 
 #include "wgodot_native_calls.h"
 #include "scene/main/node.h"
+#include "core/variant/typed_array.h"
 #include <algorithm>
+#include <limits>
 
 namespace WGodotNative {
+template <class T>
+Node *scene_node() {
+	return memnew(T);
+}
+
+template <size_t Count>
+PackedStringArray packed_strings(const char *const (&p_data)[Count]) {
+	PackedStringArray result;
+	result.resize(Count);
+	String *values = result.ptrw();
+	for (size_t i = 0; i < Count; i++) {
+		if (p_data[i][0]) {
+			values[i] = String::utf8(p_data[i]);
+		}
+	}
+	return result;
+}
+
 template <class Packed, class Element, size_t Count>
 Packed packed_data(const Element (&p_data)[Count]) {
 	Packed result;

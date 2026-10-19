@@ -52,6 +52,9 @@ namespace GLES3 {
 struct ShaderData {
 	String path;
 	HashMap<StringName, ShaderLanguage::ShaderNode::Uniform> uniforms;
+	// wgodot-changes::begin
+	Ref<WShaderParameterLayout> parameter_layout;
+	// wgodot-changes::end
 	HashMap<StringName, HashMap<int, RID>> default_texture_params;
 
 	virtual void set_path_hint(const String &p_hint);
@@ -88,18 +91,26 @@ struct Shader {
 /* Material structs */
 
 struct MaterialData {
-	void update_uniform_buffer(const HashMap<StringName, ShaderLanguage::ShaderNode::Uniform> &p_uniforms, const uint32_t *p_uniform_offsets, const HashMap<StringName, Variant> &p_parameters, uint8_t *p_buffer, uint32_t p_buffer_size);
-	void update_textures(const HashMap<StringName, Variant> &p_parameters, const HashMap<StringName, HashMap<int, RID>> &p_default_textures, const Vector<ShaderCompiler::GeneratedCode::Texture> &p_texture_uniforms, RID *p_textures, bool p_use_linear_color);
+	// wgodot-changes::begin
+	void update_uniform_buffer(const HashMap<StringName, ShaderLanguage::ShaderNode::Uniform> &p_uniforms, const uint32_t *p_uniform_offsets, const WMaterialParameters &p_parameters, uint8_t *p_buffer, uint32_t p_buffer_size);
+	// wgodot-changes::end
+	// wgodot-changes::begin
+	void update_textures(const WMaterialParameters &p_parameters, const HashMap<StringName, HashMap<int, RID>> &p_default_textures, const Vector<ShaderCompiler::GeneratedCode::Texture> &p_texture_uniforms, RID *p_textures, bool p_use_linear_color);
+	// wgodot-changes::end
 	RID get_default_texture_id(ShaderLanguage::DataType p_type, ShaderLanguage::ShaderNode::Uniform::Hint p_hint);
 
 	virtual void set_render_priority(int p_priority) = 0;
 	virtual void set_next_pass(RID p_pass) = 0;
-	virtual void update_parameters(const HashMap<StringName, Variant> &p_parameters, bool p_uniform_dirty, bool p_textures_dirty) = 0;
+	// wgodot-changes::begin
+	virtual void update_parameters(const WMaterialParameters &p_parameters, bool p_uniform_dirty, bool p_textures_dirty) = 0;
+	// wgodot-changes::end
 	virtual void bind_uniforms() = 0;
 	virtual ~MaterialData();
 
 	// Used internally by all Materials
-	void update_parameters_internal(const HashMap<StringName, Variant> &p_parameters, bool p_uniform_dirty, bool p_textures_dirty, const HashMap<StringName, ShaderLanguage::ShaderNode::Uniform> &p_uniforms, const uint32_t *p_uniform_offsets, const Vector<ShaderCompiler::GeneratedCode::Texture> &p_texture_uniforms, const HashMap<StringName, HashMap<int, RID>> &p_default_texture_params, uint32_t p_ubo_size, bool p_is_3d_shader_type);
+	// wgodot-changes::begin
+	void update_parameters_internal(const WMaterialParameters &p_parameters, bool p_uniform_dirty, bool p_textures_dirty, const HashMap<StringName, ShaderLanguage::ShaderNode::Uniform> &p_uniforms, const uint32_t *p_uniform_offsets, const Vector<ShaderCompiler::GeneratedCode::Texture> &p_texture_uniforms, const HashMap<StringName, HashMap<int, RID>> &p_default_texture_params, uint32_t p_ubo_size, bool p_is_3d_shader_type);
+	// wgodot-changes::end
 
 protected:
 	Vector<uint8_t> ubo_data;
@@ -126,7 +137,9 @@ struct Material {
 	uint32_t shader_id = 0;
 	bool uniform_dirty = false;
 	bool texture_dirty = false;
-	HashMap<StringName, Variant> params;
+	// wgodot-changes::begin
+	WMaterialParameters params;
+	// wgodot-changes::end
 	int32_t priority = 0;
 	RID next_pass;
 	SelfList<Material> update_element;
@@ -190,7 +203,9 @@ struct CanvasMaterialData : public MaterialData {
 
 	virtual void set_render_priority(int p_priority) {}
 	virtual void set_next_pass(RID p_pass) {}
-	virtual void update_parameters(const HashMap<StringName, Variant> &p_parameters, bool p_uniform_dirty, bool p_textures_dirty);
+	// wgodot-changes::begin
+	virtual void update_parameters(const WMaterialParameters &p_parameters, bool p_uniform_dirty, bool p_textures_dirty);
+	// wgodot-changes::end
 	virtual void bind_uniforms();
 	virtual ~CanvasMaterialData();
 };
@@ -235,7 +250,9 @@ struct SkyMaterialData : public MaterialData {
 
 	virtual void set_render_priority(int p_priority) {}
 	virtual void set_next_pass(RID p_pass) {}
-	virtual void update_parameters(const HashMap<StringName, Variant> &p_parameters, bool p_uniform_dirty, bool p_textures_dirty);
+	// wgodot-changes::begin
+	virtual void update_parameters(const WMaterialParameters &p_parameters, bool p_uniform_dirty, bool p_textures_dirty);
+	// wgodot-changes::end
 	virtual void bind_uniforms();
 	virtual ~SkyMaterialData();
 };
@@ -376,7 +393,9 @@ struct SceneMaterialData : public MaterialData {
 	uint8_t priority = 0;
 	virtual void set_render_priority(int p_priority);
 	virtual void set_next_pass(RID p_pass);
-	virtual void update_parameters(const HashMap<StringName, Variant> &p_parameters, bool p_uniform_dirty, bool p_textures_dirty);
+	// wgodot-changes::begin
+	virtual void update_parameters(const WMaterialParameters &p_parameters, bool p_uniform_dirty, bool p_textures_dirty);
+	// wgodot-changes::end
 	virtual void bind_uniforms();
 	virtual ~SceneMaterialData();
 };
@@ -426,7 +445,9 @@ struct ParticleProcessMaterialData : public MaterialData {
 
 	virtual void set_render_priority(int p_priority) {}
 	virtual void set_next_pass(RID p_pass) {}
-	virtual void update_parameters(const HashMap<StringName, Variant> &p_parameters, bool p_uniform_dirty, bool p_textures_dirty);
+	// wgodot-changes::begin
+	virtual void update_parameters(const WMaterialParameters &p_parameters, bool p_uniform_dirty, bool p_textures_dirty);
+	// wgodot-changes::end
 	virtual void bind_uniforms();
 	virtual ~ParticleProcessMaterialData();
 };
@@ -473,7 +494,9 @@ struct TexBlitMaterialData : public MaterialData {
 
 	virtual void set_render_priority(int p_priority) {}
 	virtual void set_next_pass(RID p_pass) {}
-	virtual void update_parameters(const HashMap<StringName, Variant> &p_parameters, bool p_uniform_dirty, bool p_textures_dirty);
+	// wgodot-changes::begin
+	virtual void update_parameters(const WMaterialParameters &p_parameters, bool p_uniform_dirty, bool p_textures_dirty);
+	// wgodot-changes::end
 	virtual void bind_uniforms();
 	virtual ~TexBlitMaterialData();
 };
@@ -670,6 +693,11 @@ public:
 	virtual void shader_set_default_texture_parameter(RID p_shader, const StringName &p_name, RID p_texture, int p_index) override;
 	virtual RID shader_get_default_texture_parameter(RID p_shader, const StringName &p_name, int p_index) const override;
 	virtual Variant shader_get_parameter_default(RID p_shader, const StringName &p_name) const override;
+	// wgodot-changes::begin
+	virtual Ref<WShaderParameterLayout> shader_get_parameter_layout(RID p_shader) const override;
+	virtual void material_set_parameters(RID p_material, const WShaderParameters &p_parameters) override;
+	virtual void material_update_parameter(RID p_material, const WShaderParameterUpdate &p_update) override;
+	// wgodot-changes::end
 
 	virtual RenderingServerTypes::ShaderNativeSourceCode shader_get_native_source_code(RID p_shader) const override;
 	virtual void shader_embedded_set_lock() override {}

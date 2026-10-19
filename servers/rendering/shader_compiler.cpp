@@ -1707,6 +1707,11 @@ Error ShaderCompiler::compile(RSE::ShaderMode p_mode, const String &p_code, Iden
 	function = nullptr;
 	// Return value only relevant within nested calls.
 	_ALLOW_DISCARD_ _dump_node_code(shader, 1, r_gen_code, *p_actions, actions, false);
+	// wgodot-changes::begin
+	if (p_actions->uniforms) {
+		r_gen_code.parameter_layout = WShaderParameterLayout::create(*p_actions->uniforms, r_gen_code.uniform_offsets, r_gen_code.uniform_total_size);
+	}
+	// wgodot-changes::end
 
 	return OK;
 }
