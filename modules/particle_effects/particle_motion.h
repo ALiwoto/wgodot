@@ -19,12 +19,17 @@ class ParticleMotionProfile3D : public Resource {
 	Ref<ParticleBirthRule3D> initial_velocity;
 	Ref<ParticleVectorCurve3D> source_movement;
 	Ref<ParticleVectorCurve3D> size_scale;
+	bool size_by_speed = false;
+	Vector2 size_speed_scale;
+	Vector2 size_speed_maximum = Vector2(1, 1);
+	int size_speed_life_start = 0;
 	TypedArray<ParticleVectorCurve3D> size_over_life;
 	int size_life_spawn_start = 0;
 	bool inherit_parent_rotation = false;
 	bool align_to_velocity = false;
 	bool orbit = false;
 	Vector3 orbit_offset;
+	Ref<ParticleVectorCurve3D> orbit_offset_over_emission;
 	Ref<ParticleVectorCurve3D> orbit_offset_over_life;
 	Vector3 orbit_offset_variation;
 	bool random_orbit_offset = false;
@@ -61,6 +66,14 @@ public:
 	Ref<ParticleBirthRule3D> get_initial_velocity() const { return initial_velocity; }
 	void set_source_movement(const Ref<ParticleVectorCurve3D> & p_value) { source_movement = p_value; }
 	Ref<ParticleVectorCurve3D> get_source_movement() const { return source_movement; }
+	void set_size_by_speed(bool p_value) { size_by_speed = p_value; }
+	bool get_size_by_speed() const { return size_by_speed; }
+	void set_size_speed_scale(const Vector2 &p_value) { size_speed_scale = p_value; }
+	Vector2 get_size_speed_scale() const { return size_speed_scale; }
+	void set_size_speed_maximum(const Vector2 &p_value) { size_speed_maximum = p_value; }
+	Vector2 get_size_speed_maximum() const { return size_speed_maximum; }
+	void set_size_speed_life_start(int p_value) { size_speed_life_start = p_value; }
+	int get_size_speed_life_start() const { return size_speed_life_start; }
 	void set_size_scale(const Ref<ParticleVectorCurve3D> & p_value) { size_scale = p_value; }
 	Ref<ParticleVectorCurve3D> get_size_scale() const { return size_scale; }
 	void set_size_over_life(const TypedArray<ParticleVectorCurve3D> & p_value) { size_over_life = p_value; }
@@ -75,6 +88,8 @@ public:
 	bool get_orbit() const { return orbit; }
 	void set_orbit_offset(const Vector3 & p_value) { orbit_offset = p_value; }
 	Vector3 get_orbit_offset() const { return orbit_offset; }
+	void set_orbit_offset_over_emission(const Ref<ParticleVectorCurve3D> &p_value) { orbit_offset_over_emission = p_value; }
+	Ref<ParticleVectorCurve3D> get_orbit_offset_over_emission() const { return orbit_offset_over_emission; }
 	void set_orbit_offset_over_life(const Ref<ParticleVectorCurve3D> & p_value) { orbit_offset_over_life = p_value; }
 	Ref<ParticleVectorCurve3D> get_orbit_offset_over_life() const { return orbit_offset_over_life; }
 	void set_orbit_offset_variation(const Vector3 & p_value) { orbit_offset_variation = p_value; }
@@ -110,8 +125,8 @@ public:
 	void set_orbit_rotation_threshold(double p_value) { orbit_rotation_threshold = p_value; }
 	double get_orbit_rotation_threshold() const { return orbit_rotation_threshold; }
 	double direct_velocity_at(double p_relative_age) const;
-	Vector3 scale_size_over_life(Vector3 p_size, double p_relative_age, const Ref<RandomStream32> & p_random, bool p_spawning) const;
-	Vector3 sample_orbit_offset(const Ref<RandomStream32> & p_random) const;
+	Vector3 scale_size_over_life(Vector3 p_size, Vector3 p_initial_size, double p_relative_age, const Ref<RandomStream32> &p_random, bool p_spawning, Vector3 p_velocity) const;
+	Vector3 sample_orbit_offset(const Ref<RandomStream32> &p_random, double p_emitter_seconds = 0.0) const;
 	Vector3 sample_orbit_rotation(const Ref<RandomStream32> & p_random, double p_emitter_seconds) const;
 	Vector3 sample_orbit_rate(double p_time, const Ref<RandomStream32> & p_random) const;
 	Vector3 rotate_orbit_offset(Vector3 p_offset, Vector3 p_turns) const;
@@ -167,7 +182,7 @@ public:
 	bool get_change_random_frame() const { return change_random_frame; }
 	void set_frame_change_interval(double p_value) { frame_change_interval = p_value; }
 	double get_frame_change_interval() const { return frame_change_interval; }
-	Vector2 size_at(double p_relative_age, Vector3 p_initial_size, const Ref<RandomStream32> & p_random, const Ref<RandomStream32> & p_life_random, bool p_spawning) const;
+	Vector2 size_at(double p_relative_age, Vector3 p_initial_size, const Ref<RandomStream32> & p_random, const Ref<RandomStream32> & p_life_random, bool p_spawning, Vector3 p_velocity = Vector3()) const;
 	double angular_velocity_at(double p_relative_age, double p_initial_rate, const Ref<RandomStream32> & p_random) const;
 	double sample_frame(double p_relative_age, const Ref<RandomStream32> & p_random) const;
 };
@@ -214,6 +229,6 @@ public:
 	void set_pre_orientation(const Ref<ParticleOrientation3D> & p_value) { pre_orientation = p_value; }
 	Ref<ParticleOrientation3D> get_pre_orientation() const { return pre_orientation; }
 	Vector3 velocity_rotation(Vector3 p_direction_velocity) const;
-	Vector3 scale_at(double p_relative_age, Vector3 p_initial_size, const Ref<RandomStream32> & p_random, const Ref<RandomStream32> & p_life_random, bool p_spawning) const;
+	Vector3 scale_at(double p_relative_age, Vector3 p_initial_size, const Ref<RandomStream32> & p_random, const Ref<RandomStream32> & p_life_random, bool p_spawning, Vector3 p_velocity = Vector3()) const;
 	Vector3 angular_velocity_at(double p_relative_age, Vector3 p_initial_rate) const;
 };

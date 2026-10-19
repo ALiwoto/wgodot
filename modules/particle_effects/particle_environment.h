@@ -1,7 +1,7 @@
 // wgodot-changes::file
 #pragma once
 
-#include "particle_curves.h"
+#include "particle_appearance.h"
 #include "core/variant/typed_array.h"
 #include "scene/resources/gradient.h"
 #include "scene/resources/mesh.h"
@@ -12,7 +12,9 @@ class ParticleLightProfile3D : public Resource {
 	GDCLASS(ParticleLightProfile3D, Resource);
 
 	Ref<Gradient> color;
+	Ref<ParticleColorCurve> color_distribution;
 	Ref<ParticleFloatCurve> brightness;
+	Ref<ParticleFloatCurve> radius_over_emission;
 	double radius_scale = 0.0;
 	double spawn_fraction = 1.0;
 	bool high_quality = false;
@@ -27,8 +29,12 @@ protected:
 public:
 	void set_color(const Ref<Gradient> & p_value) { color = p_value; }
 	Ref<Gradient> get_color() const { return color; }
+	void set_color_distribution(const Ref<ParticleColorCurve> &p_value) { color_distribution = p_value; }
+	Ref<ParticleColorCurve> get_color_distribution() const { return color_distribution; }
 	void set_brightness(const Ref<ParticleFloatCurve> & p_value) { brightness = p_value; }
 	Ref<ParticleFloatCurve> get_brightness() const { return brightness; }
+	void set_radius_over_emission(const Ref<ParticleFloatCurve> &p_value) { radius_over_emission = p_value; }
+	Ref<ParticleFloatCurve> get_radius_over_emission() const { return radius_over_emission; }
 	void set_radius_scale(double p_value) { radius_scale = p_value; }
 	double get_radius_scale() const { return radius_scale; }
 	void set_spawn_fraction(double p_value) { spawn_fraction = p_value; }
@@ -43,7 +49,7 @@ public:
 	double get_inverse_squared_scale() const { return inverse_squared_scale; }
 	void set_normalization_units(double p_value) { normalization_units = p_value; }
 	double get_normalization_units() const { return normalization_units; }
-	void apply(OmniLight3D * p_light, double p_relative_age, Color p_tint, Vector2 p_size, Vector3 p_emitter_scale) const;
+	void apply(OmniLight3D *p_light, double p_relative_age, Color p_tint, Vector2 p_size, Vector3 p_emitter_scale, double p_task_ratio = 0.0, const Ref<RandomStream32> &p_random = Ref<RandomStream32>(), double p_radius_multiplier = 1.0) const;
 };
 
 class ParticleGroundProjector3D : public RayCast3D {
@@ -51,6 +57,7 @@ class ParticleGroundProjector3D : public RayCast3D {
 
 	double check_height = 5.12;
 	double world_offset = 0.0;
+	Ref<ParticleFloatCurve> offset_over_life;
 	double offset_variation = 0.0;
 	bool random_offset = false;
 	bool targets_emitter = false;
@@ -66,6 +73,8 @@ public:
 	double get_check_height() const { return check_height; }
 	void set_world_offset(double p_value) { world_offset = p_value; }
 	double get_world_offset() const { return world_offset; }
+	void set_offset_over_life(const Ref<ParticleFloatCurve> &p_value) { offset_over_life = p_value; }
+	Ref<ParticleFloatCurve> get_offset_over_life() const { return offset_over_life; }
 	void set_offset_variation(double p_value) { offset_variation = p_value; }
 	double get_offset_variation() const { return offset_variation; }
 	void set_random_offset(bool p_value) { random_offset = p_value; }
@@ -79,7 +88,7 @@ public:
 	void set_emitter_rotation(const Vector3 & p_value) { emitter_rotation = p_value; }
 	Vector3 get_emitter_rotation() const { return emitter_rotation; }
 	bool project(Vector3 p_point);
-	Vector3 projected_position(const Ref<RandomStream32> & p_random);
+	Vector3 projected_position(const Ref<RandomStream32> &p_random, double p_relative_age = 0.0, double p_task_ratio = 0.0);
 	bool project_emitter(Transform3D p_frame);
 	double emitter_offset(Transform3D p_frame);
 };

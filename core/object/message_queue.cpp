@@ -236,6 +236,10 @@ Error CallQueue::flush() {
 	}
 
 	flushing = true;
+	// wgodot-changes::begin
+	flush_page = 0;
+	flush_offset = 0;
+	// wgodot-changes::end
 
 	uint32_t i = 0;
 	uint32_t offset = 0;
@@ -255,13 +259,20 @@ Error CallQueue::flush() {
 		//pre-advance so this function is reentrant
 		offset += advance;
 
-		Object *target = message->callable.get_object();
+		// wgodot-changes::begin
+		flush_page = i;
+		flush_offset = offset;
+		const bool cancelled = message->type & FLAG_CANCELLED;
+		Object *target = cancelled ? nullptr : message->callable.get_object();
+		// wgodot-changes::end
 
 		UNLOCK_MUTEX;
 
 		switch (message->type & FLAG_MASK) {
 			case TYPE_CALL: {
-				if (target || (message->type & FLAG_NULL_IS_OK)) {
+				// wgodot-changes::begin
+				if (!cancelled && (target || (message->type & FLAG_NULL_IS_OK))) {
+					// wgodot-changes::end
 					Variant *args = (Variant *)(message + 1);
 					_call_function(message->callable, args, message->args, message->type & FLAG_SHOW_ERROR);
 				}
@@ -302,6 +313,28 @@ Error CallQueue::flush() {
 	UNLOCK_MUTEX;
 	return OK;
 }
+
+// wgodot-changes::begin
+void CallQueue::cancel_pending(const HashSet<ObjectID> &p_targets) {
+	MutexLock lock(mutex);
+	uint32_t page_index = flushing ? flush_page : 0;
+	uint32_t offset = flushing ? flush_offset : 0;
+	for (; page_index < pages_used; page_index++, offset = 0) {
+		while (offset < page_bytes[page_index]) {
+			Message *message = reinterpret_cast<Message *>(&pages[page_index]->data[offset]);
+			offset += sizeof(Message);
+			if ((message->type & FLAG_MASK) != TYPE_NOTIFICATION) {
+				offset += sizeof(Variant) * message->args;
+			}
+			if (p_targets.has(message->callable.get_object_id())) {
+				// Keep the payload until normal queue cleanup; cancellation must
+				// not destroy arguments while another message is executing.
+				message->type |= FLAG_CANCELLED;
+			}
+		}
+	}
+}
+// wgodot-changes::end
 
 void CallQueue::clear() {
 	LOCK_MUTEX;

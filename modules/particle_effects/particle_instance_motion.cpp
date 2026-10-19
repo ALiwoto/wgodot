@@ -1,6 +1,8 @@
 // wgodot-changes::file
 #include "particle_instance_3d.h"
 
+#include <cmath>
+
 void ParticleInstance3D::copy_source_state(ParticleInstance3D *p_source, bool p_spawning) {
 	Vector3 location = p_source->state_position;
 	Vector3 velocity = p_source->state_velocity;
@@ -23,7 +25,7 @@ void ParticleInstance3D::copy_source_state(ParticleInstance3D *p_source, bool p_
 	state_relative_age = p_source->state_relative_age;
 }
 
-bool ParticleInstance3D::project_ground(ParticleGroundProjector3D *p_ground, bool p_spawning) {
+bool ParticleInstance3D::project_ground(ParticleGroundProjector3D *p_ground, double p_task_ratio, bool p_spawning) {
 	Transform3D frame = get_particle_transform();
 	if (p_spawning && !follows_emitter) {
 		frame.orthonormalize();
@@ -33,7 +35,7 @@ bool ParticleInstance3D::project_ground(ParticleGroundProjector3D *p_ground, boo
 	if (!p_ground->project(frame.xform(state_position))) {
 		return false;
 	}
-	state_position = frame.affine_inverse().xform(p_ground->projected_position(ground_random));
+	state_position = frame.affine_inverse().xform(p_ground->projected_position(ground_random, state_relative_age, p_task_ratio));
 	return true;
 }
 
@@ -51,7 +53,7 @@ void ParticleInstance3D::prepare_orbit(const Ref<ParticleMotionProfile3D> &p_tra
 	if (p_trajectory.is_null() || !p_trajectory->get_orbit()) {
 		return;
 	}
-	state_orbit_offset = p_trajectory->sample_orbit_offset(sprite_random);
+	state_orbit_offset = p_trajectory->sample_orbit_offset(sprite_random, p_emitter_seconds);
 	state_orbit_rotation = p_trajectory->sample_orbit_rotation(sprite_random, p_emitter_seconds);
 	state_base_orbit_rate = Vector3();
 	if (p_trajectory->get_orbit_rate_on_spawn()) {
@@ -76,11 +78,11 @@ Vector3 ParticleInstance3D::advance_orbit(const Ref<ParticleMotionProfile3D> &p_
 	return state_render_orbit_offset;
 }
 
-void ParticleInstance3D::advance_sprite(double p_relative_age, double p_delta, bool p_spawned_now, double p_simulation_delta, const Ref<RandomStream32> &p_random, ParticleInstance3D *p_linked_particle, double p_emitter_seconds) {
+void ParticleInstance3D::advance_sprite(double p_relative_age, double p_delta, bool p_spawned_now, double p_simulation_delta, const Ref<RandomStream32> &p_random, ParticleInstance3D *p_linked_particle, double p_emitter_seconds, double p_parameter_ratio) {
 	const Vector3 position_before_motion = state_position;
 	if (!p_spawned_now) {
 		state_velocity = state_base_velocity;
-		update_motion_velocity(p_relative_age, p_simulation_delta);
+		update_motion_velocity(p_relative_age, p_simulation_delta, p_emitter_seconds, p_parameter_ratio);
 		if (p_linked_particle) {
 			copy_source_state(p_linked_particle, false);
 		}
@@ -107,7 +109,13 @@ void ParticleInstance3D::advance_sprite(double p_relative_age, double p_delta, b
 	} else {
 		state_position += spawn_displacement + displacement;
 	}
-	state_angle += sprite_motion->angular_velocity_at(p_relative_age, state_angular_speed, rotation_random) * step;
+	// Keep the simulation phase in binary32, like its shader input. Wrapping
+	// each step avoids losing the visible phase after many fast revolutions.
+	const float angular_velocity = sprite_motion->angular_velocity_at(p_relative_age, state_angular_speed, rotation_random);
+	const float angle = float(state_angle) + angular_velocity * float(step);
+	const float turns = std::trunc(angle / float(Math::TAU));
+	const float whole_turns = turns * float(Math::TAU);
+	state_angle = angle - (Math::abs(whole_turns) > Math::abs(angle) ? angle : whole_turns);
 	if (sprite_motion->get_source_movement().is_valid()) {
 		inherit_source_movement(sprite_motion->get_source_movement(), p_relative_age, p_simulation_delta);
 	}
@@ -121,7 +129,7 @@ void ParticleInstance3D::advance_sprite(double p_relative_age, double p_delta, b
 	if (!geometry) {
 		return;
 	}
-	uniform(bindings()->sprite_size, sprite_motion->size_at(p_relative_age, state_size, size_random, size_life_random, p_spawned_now));
+	uniform(bindings()->sprite_size, sprite_motion->size_at(source_size_clock ? state_relative_age : p_relative_age, state_size, size_random, size_life_random, p_spawned_now, state_velocity));
 	uniform(bindings()->angle, state_angle);
 	if (sprite_motion->get_frame_over_life().is_valid() && (p_spawned_now || p_relative_age <= 1.0)) {
 		set_frame(sprite_motion->sample_frame(p_relative_age, frame_random));
@@ -178,7 +186,7 @@ void ParticleInstance3D::apply_accelerations_on_spawn(double p_age) {
 	}
 }
 
-void ParticleInstance3D::update_motion_velocity(double p_relative_age, double p_delta) {
+void ParticleInstance3D::update_motion_velocity(double p_relative_age, double p_delta, double p_emitter_seconds, double p_parameter_ratio) {
 	using Operation = ParticleVelocityRule3D::Operation;
 	for (int index = 0; index < velocity_modifiers.size(); ++index) {
 		const Ref<ParticleVelocityRule3D> modifier = velocity_modifiers[index];
@@ -193,7 +201,7 @@ void ParticleInstance3D::update_motion_velocity(double p_relative_age, double p_
 				add_acceleration(acceleration_in_simulation(modifier->get_vector()->sample(p_relative_age), modifier->get_world_space()), p_delta);
 				break;
 			case Operation::Scale:
-				update_velocity(modifier->get_vector()->sample(p_relative_age), modifier->get_world_space(), modifier->get_apply_owner_scale());
+				update_velocity(modifier->sample_scale(p_relative_age, get_emitter_transform().basis, follows_emitter));
 				break;
 			case Operation::Drag: {
 				const double coefficient = modifier->get_scalar()->sample(p_relative_age, 0.0, drag_random);
@@ -201,23 +209,68 @@ void ParticleInstance3D::update_motion_velocity(double p_relative_age, double p_
 				state_velocity += change;
 				state_base_velocity += change;
 			} break;
+			case Operation::PointAttraction:
+				apply_point_attraction(modifier, p_delta, p_emitter_seconds, p_parameter_ratio);
+				break;
 			default:
 				break;
 		}
 	}
 }
 
-void ParticleInstance3D::update_velocity(Vector3 p_multiplier, bool p_world_space, bool p_owner_scale) {
-	const Transform3D emitter = get_emitter_transform();
-	const Basis rotation = emitter.basis.orthonormalized();
-	if (p_world_space && follows_emitter) {
-		p_multiplier = rotation.inverse().xform(p_multiplier);
-	} else if (!p_world_space && !follows_emitter) {
-		p_multiplier = rotation.xform(p_multiplier);
+void ParticleInstance3D::apply_point_attraction(const Ref<ParticleVelocityRule3D> &p_rule, double p_delta, double p_emitter_seconds, double p_parameter_ratio) {
+	Vector3 target = p_rule->get_vector()->sample(p_emitter_seconds);
+	Vector3 position = state_position;
+	Vector3 scale(1, 1, 1);
+	const bool transform_target = !follows_emitter && !p_rule->get_world_space();
+	const bool transform_particle = !follows_emitter && sprite_motion.is_valid();
+	if (transform_target) {
+		const Transform3D emitter = get_emitter_transform();
+		target = emitter.xform(target);
+		scale = emitter.basis.get_scale();
 	}
-	if (p_owner_scale) {
-		p_multiplier *= emitter.basis.get_scale();
+	if (transform_particle) {
+		position = get_particle_transform().xform(position);
 	}
+	const float scale_length = scale.length();
+	const float range = float(p_rule->get_range()->sample(p_emitter_seconds, p_parameter_ratio)) * scale_length;
+	Vector3 direction = target - position;
+	const float squared_distance = direction.length_squared();
+	const float distance = Math::sqrt(squared_distance);
+	if (distance > range) {
+		return;
+	}
+	float strength = 0.0f;
+	if (!p_rule->get_strength_by_distance() || range != 0.0f) {
+		const float time = p_rule->get_strength_by_distance() ? (range - distance) / range : float(p_emitter_seconds);
+		strength = p_rule->get_scalar()->sample(time, p_parameter_ratio, attraction_random);
+	}
+	if (transform_target) {
+		strength *= scale_length;
+	}
+	if (squared_distance > p_rule->get_normalization_threshold_squared()) {
+		direction /= distance;
+	}
+	if (strength < 0.0f) {
+		direction = -direction;
+		strength = -strength;
+	}
+	const Vector3i positive = p_rule->get_positive();
+	const Vector3i negative = p_rule->get_negative();
+	for (int axis = 0; axis < 3; ++axis) {
+		direction[axis] = CLAMP(direction[axis], -float(negative[axis]), float(positive[axis]));
+	}
+	Vector3 change = (direction * strength) * float(p_delta);
+	if (transform_particle) {
+		change = get_particle_transform().basis.inverse().xform(change);
+	}
+	state_velocity += change;
+	if (p_rule->get_affect_base_velocity()) {
+		state_base_velocity += change;
+	}
+}
+
+void ParticleInstance3D::update_velocity(Vector3 p_multiplier) {
 	if (follows_emitter || motion.is_valid()) {
 		state_velocity *= p_multiplier;
 	} else {

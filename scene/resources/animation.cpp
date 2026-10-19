@@ -1119,6 +1119,12 @@ Animation::TrackCacheID Animation::track_get_unique_id(int p_track) const {
 
 void Animation::track_set_interpolation_type(int p_track, InterpolationType p_interp) {
 	ERR_FAIL_UNSIGNED_INDEX((uint32_t)p_track, tracks.size());
+	// wgodot-changes::begin
+	if (p_interp == INTERPOLATION_LINEAR_NORMALIZED && tracks[p_track]->type == TYPE_ROTATION_3D) {
+		ERR_FAIL_COND_MSG(static_cast<RotationTrack *>(tracks[p_track])->compressed_track >= 0,
+				"Normalized linear interpolation requires uncompressed rotation keys.");
+	}
+	// wgodot-changes::end
 	tracks[p_track]->interpolation = p_interp;
 	emit_changed();
 }
@@ -1328,6 +1334,13 @@ Error Animation::try_rotation_track_interpolate(int p_track, double p_time, Quat
 	bool ok = false;
 
 	Quaternion tk = _interpolate(rt->rotations, p_time, rt->interpolation, rt->loop_wrap, &ok, p_backward);
+	// wgodot-changes::begin
+	// Normalize endpoints too. Retimed NLERP curves can contain weighted
+	// quaternion keys whose magnitude preserves the original interpolation.
+	if (ok && rt->interpolation == INTERPOLATION_LINEAR_NORMALIZED) {
+		tk.normalize();
+	}
+	// wgodot-changes::end
 
 	if (!ok) {
 		return ERR_UNAVAILABLE;
@@ -2722,6 +2735,17 @@ T Animation::_interpolate(const LocalVector<TKey<T>> &p_keys, double p_time, Int
 		case INTERPOLATION_LINEAR: {
 			return _interpolate(p_keys[idx].value, p_keys[next].value, c);
 		} break;
+		// wgodot-changes::begin
+		case INTERPOLATION_LINEAR_NORMALIZED: {
+			if constexpr (std::is_same_v<T, Quaternion>) {
+				const Quaternion &from = p_keys[idx].value;
+				const Quaternion &to = p_keys[next].value;
+				return (from * (1 - c) + to * (from.dot(to) < 0 ? -c : c)).normalized();
+			} else {
+				return _interpolate(p_keys[idx].value, p_keys[next].value, c);
+			}
+		} break;
+		// wgodot-changes::end
 		case INTERPOLATION_LINEAR_ANGLE: {
 			return _interpolate_angle(p_keys[idx].value, p_keys[next].value, c);
 		} break;
@@ -4139,6 +4163,9 @@ void Animation::_bind_methods() {
 	BIND_ENUM_CONSTANT(INTERPOLATION_CUBIC);
 	BIND_ENUM_CONSTANT(INTERPOLATION_LINEAR_ANGLE);
 	BIND_ENUM_CONSTANT(INTERPOLATION_CUBIC_ANGLE);
+	// wgodot-changes::begin
+	BIND_ENUM_CONSTANT(INTERPOLATION_LINEAR_NORMALIZED);
+	// wgodot-changes::end
 
 	BIND_ENUM_CONSTANT(UPDATE_CONTINUOUS);
 	BIND_ENUM_CONSTANT(UPDATE_DISCRETE);
@@ -4937,6 +4964,12 @@ void Animation::compress(uint32_t p_page_size, uint32_t p_fps, float p_split_tol
 
 	for (int i = 0; i < get_track_count(); i++) {
 		TrackType type = track_get_type(i);
+		// wgodot-changes::begin
+		// The compressed rotation codec uses SLERP and cannot retain NLERP.
+		if (type == TYPE_ROTATION_3D && track_get_interpolation_type(i) == INTERPOLATION_LINEAR_NORMALIZED) {
+			continue;
+		}
+		// wgodot-changes::end
 		if (type != TYPE_POSITION_3D && type != TYPE_ROTATION_3D && type != TYPE_SCALE_3D && type != TYPE_BLEND_SHAPE) {
 			continue;
 		}

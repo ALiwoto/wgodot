@@ -63,6 +63,9 @@ public:
 		INTERPOLATION_CUBIC,
 		INTERPOLATION_LINEAR_ANGLE,
 		INTERPOLATION_CUBIC_ANGLE,
+		// wgodot-changes::begin
+		INTERPOLATION_LINEAR_NORMALIZED,
+		// wgodot-changes::end
 	};
 
 	enum UpdateMode : uint8_t {

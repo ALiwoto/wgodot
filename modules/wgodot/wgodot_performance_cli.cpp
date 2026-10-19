@@ -96,6 +96,10 @@ int run(const String &p_command, const Vector<String> &p_arguments) {
 		if (argument == "--json") {
 			continue;
 		}
+		if (i == 0 && p_command == "perf" && (argument == "start" || argument == "read" || argument == "stop")) {
+			options["action"] = argument;
+			continue;
+		}
 		if (argument == "--unused" && p_command == "textures") {
 			options["unused"] = true;
 			continue;
@@ -183,7 +187,7 @@ int run(const String &p_command, const Vector<String> &p_arguments) {
 			print_line("Capture reached its time limit; results are partial.");
 		}
 		if (bool(response.get("capture_truncated", false))) {
-			print_line("Capture reached its texture limit; results are partial.");
+			print_line("Capture reached its capacity; results are partial.");
 		}
 		print_line(String(response.get("note", String())));
 		if (!output.is_empty()) {

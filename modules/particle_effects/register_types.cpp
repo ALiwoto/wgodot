@@ -7,6 +7,7 @@
 #include "random_stream_32.h"
 #include "particle_instance_pool_3d.h"
 #include "particle_simulation_3d.h"
+#include "particle_emission_batch_3d.h"
 #include "scene_preparation.h"
 #include "scene_work_queue.h"
 #include "visual_layer_scope_3d.h"
@@ -36,6 +37,7 @@ void initialize_particle_effects_module(ModuleInitializationLevel p_level) {
 	ParticleInstance3D::initialize_defaults();
 	GDREGISTER_CLASS(ParticleInstancePool3D);
 	GDREGISTER_CLASS(ParticleSimulation3D);
+	GDREGISTER_CLASS(ParticleEmissionBatch3D);
 	GDREGISTER_CLASS(ScenePreparation);
 	GDREGISTER_CLASS(SceneWorkItem);
 	GDREGISTER_CLASS(SceneWorkQueue);

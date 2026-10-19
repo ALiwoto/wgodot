@@ -1,6 +1,7 @@
 // wgodot-changes::file
 #include "scene_work_queue.h"
 
+#include "core/config/engine.h"
 #include "core/object/class_db.h"
 #include "core/os/os.h"
 
@@ -21,14 +22,22 @@ void SceneWorkQueue::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("clear"), &SceneWorkQueue::clear);
 	ClassDB::bind_method(D_METHOD("set_time_budget_msec", "value"), &SceneWorkQueue::set_time_budget_msec);
 	ClassDB::bind_method(D_METHOD("get_time_budget_msec"), &SceneWorkQueue::get_time_budget_msec);
+	ClassDB::bind_method(D_METHOD("set_frame_budget_fraction", "value"), &SceneWorkQueue::set_frame_budget_fraction);
+	ClassDB::bind_method(D_METHOD("get_frame_budget_fraction"), &SceneWorkQueue::get_frame_budget_fraction);
 	ClassDB::bind_method(D_METHOD("get_pending_count"), &SceneWorkQueue::get_pending_count);
 	ClassDB::bind_method(D_METHOD("get_last_process_usec"), &SceneWorkQueue::get_last_process_usec);
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "time_budget_msec", PROPERTY_HINT_RANGE, "0.1,10,0.1,or_greater,suffix:ms"), "set_time_budget_msec", "get_time_budget_msec");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "frame_budget_fraction", PROPERTY_HINT_RANGE, "0,1,0.01"), "set_frame_budget_fraction", "get_frame_budget_fraction");
 }
 
 void SceneWorkQueue::set_time_budget_msec(double p_value) {
 	ERR_FAIL_COND(!Math::is_finite(p_value) || p_value <= 0.0);
 	time_budget_msec = p_value;
+}
+
+void SceneWorkQueue::set_frame_budget_fraction(double p_value) {
+	ERR_FAIL_COND(!Math::is_finite(p_value) || p_value < 0.0 || p_value > 1.0);
+	frame_budget_fraction = p_value;
 }
 
 void SceneWorkQueue::add(const Ref<SceneWorkItem> &p_item) {
@@ -60,7 +69,19 @@ void SceneWorkQueue::_notification(int p_what) {
 		return;
 	}
 	const uint64_t started = OS::get_singleton()->get_ticks_usec();
-	const uint64_t deadline = started + uint64_t(time_budget_msec * 1000.0);
+	double budget_usec = time_budget_msec * 1000.0;
+	if (frame_budget_fraction > 0.0) {
+		Engine *engine = Engine::get_singleton();
+		// Use the capped frame interval when available. An overloaded frame
+		// must not expand the queue's budget and create a catch-up spiral.
+		double frame_usec = engine->get_process_step() * 1000000.0;
+		if (engine->get_max_fps() > 0) {
+			frame_usec = MIN(frame_usec, 1000000.0 / engine->get_max_fps());
+		}
+		const double spent_usec = double(started - engine->get_frame_ticks());
+		budget_usec = MAX(budget_usec, MAX(0.0, frame_usec - spent_usec) * frame_budget_fraction);
+	}
+	const uint64_t deadline = started + uint64_t(budget_usec);
 	while (!pending.is_empty()) {
 		Ref<SceneWorkItem> item = pending.front()->get();
 		pending.pop_front();

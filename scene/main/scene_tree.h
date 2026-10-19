@@ -423,6 +423,9 @@ public:
 	int get_node_count() const;
 
 	void queue_delete(RequiredParam<Object> p_object);
+	// wgodot-changes::begin
+	void cancel_pending_calls(const HashSet<ObjectID> &p_targets);
+	// wgodot-changes::end
 
 	Vector<Node *> get_nodes_in_group(const StringName &p_group);
 	Node *get_first_node_in_group(const StringName &p_group);

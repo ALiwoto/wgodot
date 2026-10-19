@@ -1173,7 +1173,9 @@ Ref<Resource> ResourceLoader::_load_complete_inner(LoadToken &p_load_token, Erro
 				if (!load_task_ptr->resource_changed_connections.is_empty()) {
 					for (const ThreadLoadTask::ResourceChangedConnection &rcc : load_task_ptr->resource_changed_connections) {
 						if (rcc.callable.is_valid()) {
-							MessageQueue::get_main_singleton()->push_callable(callable_mp(rcc.source, &Resource::connect_changed).bind(rcc.callable, rcc.flags));
+							// wgodot-changes::begin
+							MessageQueue::get_main_singleton()->push_callable(callable_mp_static(&WGodotResourceLoaderLifetime::connect_changed_deferred).bind(Ref<Resource>(rcc.source), rcc.callable, rcc.flags));
+							// wgodot-changes::end
 						}
 					}
 					if (!import_thread) { // Main thread is blocked by initial resource reimport, do not wait.
@@ -1208,7 +1210,9 @@ void ResourceLoader::resource_changed_connect(Resource *p_source, const Callable
 	MutexLock lock(thread_load_mutex);
 
 	for (const ThreadLoadTask::ResourceChangedConnection &rcc : curr_load_task->resource_changed_connections) {
-		if (unlikely(rcc.source == p_source && rcc.callable == p_callable)) {
+		// wgodot-changes::begin: preserve reference-counted alias subscriptions.
+		if (!(p_flags & Object::CONNECT_REFERENCE_COUNTED) && unlikely(rcc.source == p_source && *rcc.callable.get_base_comparator() == *p_callable.get_base_comparator())) {
+		// wgodot-changes::end
 			return;
 		}
 	}
@@ -1228,12 +1232,19 @@ void ResourceLoader::resource_changed_disconnect(Resource *p_source, const Calla
 
 	for (uint32_t i = 0; i < curr_load_task->resource_changed_connections.size(); ++i) {
 		const ThreadLoadTask::ResourceChangedConnection &rcc = curr_load_task->resource_changed_connections[i];
-		if (unlikely(rcc.source == p_source && rcc.callable == p_callable)) {
+		// wgodot-changes::begin: match Object::disconnect's bound-callable semantics.
+		if (unlikely(rcc.source == p_source && *rcc.callable.get_base_comparator() == *p_callable.get_base_comparator())) {
+		// wgodot-changes::end
 			curr_load_task->resource_dependencies.erase(p_source);
 			curr_load_task->resource_changed_connections.remove_at_unordered(i);
 			return;
 		}
 	}
+	// wgodot-changes::begin
+	// CACHE_MODE_REPLACE can remove a connection established by an earlier load.
+	// Its disconnect must precede the new load's queued subscriptions.
+	MessageQueue::get_main_singleton()->push_callable(callable_mp_static(&WGodotResourceLoaderLifetime::disconnect_changed_deferred).bind(Ref<Resource>(p_source), p_callable));
+	// wgodot-changes::end
 }
 
 void ResourceLoader::resource_changed_emit(Resource *p_source) {
@@ -1241,11 +1252,17 @@ void ResourceLoader::resource_changed_emit(Resource *p_source) {
 
 	MutexLock lock(thread_load_mutex);
 
+	// wgodot-changes::begin
+	// Reference-counted aliases still emit once per connection, as Object does.
+	HashSet<Callable> emitted;
 	for (const ThreadLoadTask::ResourceChangedConnection &rcc : curr_load_task->resource_changed_connections) {
-		if (unlikely(rcc.source == p_source)) {
+		const Callable &base = *rcc.callable.get_base_comparator();
+		if (unlikely(rcc.source == p_source) && !emitted.has(base) && rcc.callable.is_valid()) {
+			emitted.insert(base);
 			rcc.callable.call();
 		}
 	}
+	// wgodot-changes::end
 }
 
 Ref<Resource> ResourceLoader::ensure_resource_ref_override_for_outer_load(const String &p_path, const String &p_res_type) {

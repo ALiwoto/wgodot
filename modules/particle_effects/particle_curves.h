@@ -14,8 +14,16 @@ class ParticleFloatCurve : public Resource {
 	double sample_start = 0.0;
 	double samples_per_second = 0.0;
 	Ref<ParticleFloatCurve> maximum;
+	bool remap = false;
+	double input_scale = 1.0;
+	bool absolute = false;
+	Vector2 input_range = Vector2(-INFINITY, INFINITY);
+	double input_offset = 0.0;
+	double output_scale = 1.0;
+	double output_offset = 0.0;
 
 	double sample_value(double p_time, double p_task_ratio) const;
+	double remap_value(double p_value) const;
 
 protected:
 	static void _bind_methods();
@@ -35,6 +43,20 @@ public:
 	double get_samples_per_second() const { return samples_per_second; }
 	void set_maximum(const Ref<ParticleFloatCurve> &p_value) { maximum = p_value; }
 	Ref<ParticleFloatCurve> get_maximum() const { return maximum; }
+	void set_remap(bool p_value) { remap = p_value; }
+	bool get_remap() const { return remap; }
+	void set_input_scale(double p_value) { input_scale = p_value; }
+	double get_input_scale() const { return input_scale; }
+	void set_absolute(bool p_value) { absolute = p_value; }
+	bool get_absolute() const { return absolute; }
+	void set_input_range(Vector2 p_value) { input_range = p_value; }
+	Vector2 get_input_range() const { return input_range; }
+	void set_input_offset(double p_value) { input_offset = p_value; }
+	double get_input_offset() const { return input_offset; }
+	void set_output_scale(double p_value) { output_scale = p_value; }
+	double get_output_scale() const { return output_scale; }
+	void set_output_offset(double p_value) { output_offset = p_value; }
+	double get_output_offset() const { return output_offset; }
 	double sample(double p_time, double p_task_ratio = 0.0, const Ref<RandomStream32> &p_random = Ref<RandomStream32>()) const;
 	Vector2 get_bounds() const;
 };

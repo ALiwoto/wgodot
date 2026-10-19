@@ -4,6 +4,9 @@
 #include "core/object/class_db.h"
 
 void ParticleShaderBindings::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("set_surface_plane", "name"), &ParticleShaderBindings::set_surface_plane);
+	ClassDB::bind_method(D_METHOD("get_surface_plane"), &ParticleShaderBindings::get_surface_plane);
+	ADD_PROPERTY(PropertyInfo(Variant::STRING_NAME, "surface_plane"), "set_surface_plane", "get_surface_plane");
 	ClassDB::bind_method(D_METHOD("set_camera_offset", "name"), &ParticleShaderBindings::set_camera_offset);
 	ClassDB::bind_method(D_METHOD("get_camera_offset"), &ParticleShaderBindings::get_camera_offset);
 	ADD_PROPERTY(PropertyInfo(Variant::STRING_NAME, "camera_offset"), "set_camera_offset", "get_camera_offset");
@@ -46,16 +49,36 @@ void ParticleShaderBindings::_bind_methods() {
 }
 
 void ParticleSpawnContext3D::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("set_surface_ray", "value"), &ParticleSpawnContext3D::set_surface_ray);
+	ClassDB::bind_method(D_METHOD("get_surface_ray"), &ParticleSpawnContext3D::get_surface_ray);
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "surface_ray", PROPERTY_HINT_NODE_TYPE, "RayCast3D"), "set_surface_ray", "get_surface_ray");
+	ClassDB::bind_method(D_METHOD("set_surface_origin_offset", "value"), &ParticleSpawnContext3D::set_surface_origin_offset);
+	ClassDB::bind_method(D_METHOD("get_surface_origin_offset"), &ParticleSpawnContext3D::get_surface_origin_offset);
+	ADD_PROPERTY(PropertyInfo(Variant::VECTOR3, "surface_origin_offset"), "set_surface_origin_offset", "get_surface_origin_offset");
+	ClassDB::bind_method(D_METHOD("set_surface_plane", "value"), &ParticleSpawnContext3D::set_surface_plane);
+	ClassDB::bind_method(D_METHOD("get_surface_plane"), &ParticleSpawnContext3D::get_surface_plane);
+	ADD_PROPERTY(PropertyInfo(Variant::VECTOR4, "surface_plane"), "set_surface_plane", "get_surface_plane");
+	ClassDB::bind_method(D_METHOD("sample_source", "random", "initial"), &ParticleSpawnContext3D::sample_source);
+	ClassDB::bind_method(D_METHOD("set_source_channel", "channel", "sources"), &ParticleSpawnContext3D::set_source_channel);
 	ClassDB::bind_method(D_METHOD("set_sources", "value"), &ParticleSpawnContext3D::set_sources);
 	ClassDB::bind_method(D_METHOD("get_sources"), &ParticleSpawnContext3D::get_sources);
 	ADD_PROPERTY(PropertyInfo(Variant::ARRAY, "sources"), "set_sources", "get_sources");
 	ClassDB::bind_method(D_METHOD("set_ground_offset", "value"), &ParticleSpawnContext3D::set_ground_offset);
 	ClassDB::bind_method(D_METHOD("get_ground_offset"), &ParticleSpawnContext3D::get_ground_offset);
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "ground_offset"), "set_ground_offset", "get_ground_offset");
+	ClassDB::bind_method(D_METHOD("set_emitter_velocity", "value"), &ParticleSpawnContext3D::set_emitter_velocity);
+	ClassDB::bind_method(D_METHOD("get_emitter_velocity"), &ParticleSpawnContext3D::get_emitter_velocity);
+	ADD_PROPERTY(PropertyInfo(Variant::VECTOR3, "emitter_velocity"), "set_emitter_velocity", "get_emitter_velocity");
 	ClassDB::bind_method(D_METHOD("reset"), &ParticleSpawnContext3D::reset);
 }
 
 void ParticleInstance3D::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("set_source_size_clock", "enabled"), &ParticleInstance3D::set_source_size_clock);
+	ClassDB::bind_method(D_METHOD("get_source_size_clock"), &ParticleInstance3D::get_source_size_clock);
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "source_size_clock"), "set_source_size_clock", "get_source_size_clock");
+	ClassDB::bind_method(D_METHOD("set_source_material_clock", "enabled"), &ParticleInstance3D::set_source_material_clock);
+	ClassDB::bind_method(D_METHOD("get_source_material_clock"), &ParticleInstance3D::get_source_material_clock);
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "source_material_clock"), "set_source_material_clock", "get_source_material_clock");
 	ClassDB::bind_method(D_METHOD("get_instance_pool"), &ParticleInstance3D::get_instance_pool);
 	ClassDB::bind_method(D_METHOD("get_particle_transform"), &ParticleInstance3D::get_particle_transform);
 	ClassDB::bind_method(D_METHOD("get_render_transform", "node"), &ParticleInstance3D::get_render_transform);

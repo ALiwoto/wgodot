@@ -2,11 +2,20 @@
 #include "scene_preparation.h"
 
 #include "core/object/worker_thread_pool.h"
+#include "core/object/message_queue.h"
+#include "scene/main/scene_tree.h"
 
 namespace {
 
 Vector<WorkerThreadPool::TaskID> disposal_tasks;
 bool finishing_disposals = false;
+
+void collect_disposal_targets(Node *p_node, HashSet<ObjectID> &r_targets) {
+	r_targets.insert(p_node->get_instance_id());
+	for (int i = 0; i < p_node->get_child_count(true); i++) {
+		collect_disposal_targets(p_node->get_child(i, true), r_targets);
+	}
+}
 
 void dispose_branches(void *p_data) {
 	Vector<Node *> *roots = static_cast<Vector<Node *> *>(p_data);
@@ -40,6 +49,17 @@ void ScenePreparation::free_branches_async(const Vector<Node *> &p_roots) {
 	}
 	if (p_roots.is_empty()) {
 		return;
+	}
+	// Detaching removes process callbacks, but not notifications already queued
+	// by that branch (for example a skeleton pose update). Retire those before
+	// publishing exclusive ownership to the disposal worker.
+	HashSet<ObjectID> targets;
+	for (Node *root : p_roots) {
+		collect_disposal_targets(root, targets);
+	}
+	MessageQueue::get_main_singleton()->cancel_pending(targets);
+	if (SceneTree::get_singleton()) {
+		SceneTree::get_singleton()->cancel_pending_calls(targets);
 	}
 	WorkerThreadPool *pool = WorkerThreadPool::get_singleton();
 	for (int i = disposal_tasks.size() - 1; i >= 0; --i) {

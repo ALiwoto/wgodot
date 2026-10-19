@@ -18,8 +18,21 @@ double ParticleFloatCurve::sample_value(double p_time, double p_task_ratio) cons
 	return curve.is_valid() ? double(curve->sample(task_clock ? p_task_ratio : p_time)) : value;
 }
 
+double ParticleFloatCurve::remap_value(double p_value) const {
+	if (!remap) {
+		return p_value;
+	}
+	double result = round_float(p_value * input_scale);
+	if (absolute) {
+		result = Math::abs(result);
+	}
+	result = CLAMP(result, double(input_range.x), double(input_range.y));
+	result = round_float(result + input_offset);
+	return round_float(round_float(result * output_scale) + output_offset);
+}
+
 double ParticleFloatCurve::sample(double p_time, double p_task_ratio, const Ref<RandomStream32> &p_random) const {
-	double result = sample_value(p_time, p_task_ratio);
+	double result = remap_value(sample_value(p_time, p_task_ratio));
 	if (maximum.is_valid()) {
 		ERR_FAIL_COND_V(p_random.is_null(), result);
 		result += (maximum->sample(p_time, p_task_ratio) - result) * p_random->next_float();
@@ -54,6 +67,16 @@ Vector2 ParticleFloatCurve::get_bounds() const {
 			low = MIN(low, MIN(right, left));
 			high = MAX(high, MAX(right, left));
 		}
+	}
+	const double mapped_low = remap_value(low);
+	const double mapped_high = remap_value(high);
+	const bool crosses_zero = low <= 0.0 && high >= 0.0;
+	low = MIN(mapped_low, mapped_high);
+	high = MAX(mapped_low, mapped_high);
+	if (remap && absolute && crosses_zero) {
+		const double zero = remap_value(0.0);
+		low = MIN(low, zero);
+		high = MAX(high, zero);
 	}
 	if (maximum.is_valid()) {
 		const Vector2 other = maximum->get_bounds();
@@ -90,6 +113,27 @@ Vector3 ParticleVectorCurve3D::sample(double p_time, const Ref<RandomStream32> &
 }
 
 void ParticleFloatCurve::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("set_remap", "value"), &ParticleFloatCurve::set_remap);
+	ClassDB::bind_method(D_METHOD("get_remap"), &ParticleFloatCurve::get_remap);
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "remap"), "set_remap", "get_remap");
+	ClassDB::bind_method(D_METHOD("set_input_scale", "value"), &ParticleFloatCurve::set_input_scale);
+	ClassDB::bind_method(D_METHOD("get_input_scale"), &ParticleFloatCurve::get_input_scale);
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "input_scale"), "set_input_scale", "get_input_scale");
+	ClassDB::bind_method(D_METHOD("set_absolute", "value"), &ParticleFloatCurve::set_absolute);
+	ClassDB::bind_method(D_METHOD("get_absolute"), &ParticleFloatCurve::get_absolute);
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "absolute"), "set_absolute", "get_absolute");
+	ClassDB::bind_method(D_METHOD("set_input_range", "value"), &ParticleFloatCurve::set_input_range);
+	ClassDB::bind_method(D_METHOD("get_input_range"), &ParticleFloatCurve::get_input_range);
+	ADD_PROPERTY(PropertyInfo(Variant::VECTOR2, "input_range"), "set_input_range", "get_input_range");
+	ClassDB::bind_method(D_METHOD("set_input_offset", "value"), &ParticleFloatCurve::set_input_offset);
+	ClassDB::bind_method(D_METHOD("get_input_offset"), &ParticleFloatCurve::get_input_offset);
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "input_offset"), "set_input_offset", "get_input_offset");
+	ClassDB::bind_method(D_METHOD("set_output_scale", "value"), &ParticleFloatCurve::set_output_scale);
+	ClassDB::bind_method(D_METHOD("get_output_scale"), &ParticleFloatCurve::get_output_scale);
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "output_scale"), "set_output_scale", "get_output_scale");
+	ClassDB::bind_method(D_METHOD("set_output_offset", "value"), &ParticleFloatCurve::set_output_offset);
+	ClassDB::bind_method(D_METHOD("get_output_offset"), &ParticleFloatCurve::get_output_offset);
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "output_offset"), "set_output_offset", "get_output_offset");
 	ClassDB::bind_method(D_METHOD("get_bounds"), &ParticleFloatCurve::get_bounds);
 	ClassDB::bind_method(D_METHOD("set_value", "value"), &ParticleFloatCurve::set_value);
 	ClassDB::bind_method(D_METHOD("get_value"), &ParticleFloatCurve::get_value);

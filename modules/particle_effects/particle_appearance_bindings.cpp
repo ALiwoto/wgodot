@@ -21,7 +21,10 @@ void ParticleColorCurve::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_color_order", "value"), &ParticleColorCurve::set_color_order);
 	ClassDB::bind_method(D_METHOD("get_color_order"), &ParticleColorCurve::get_color_order);
 	ADD_PROPERTY(PropertyInfo(Variant::VECTOR3I, "color_order"), "set_color_order", "get_color_order");
-	ClassDB::bind_method(D_METHOD("sample", "relative_age", "random"), &ParticleColorCurve::sample);
+	ClassDB::bind_method(D_METHOD("set_channels", "value"), &ParticleColorCurve::set_channels);
+	ClassDB::bind_method(D_METHOD("get_channels"), &ParticleColorCurve::get_channels);
+	ADD_PROPERTY(PropertyInfo(Variant::ARRAY, "channels", PROPERTY_HINT_ARRAY_TYPE, "ParticleFloatCurve"), "set_channels", "get_channels");
+	ClassDB::bind_method(D_METHOD("sample", "relative_age", "random", "task_ratio"), &ParticleColorCurve::sample, DEFVAL(0.0));
 }
 
 void ParticleOrientation3D::_bind_methods() {
@@ -42,6 +45,17 @@ void ParticleOrientation3D::_bind_methods() {
 }
 
 void ParticleMaterialChannels::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("set_velocity_sources", "value"), &ParticleMaterialChannels::set_velocity_sources);
+	ClassDB::bind_method(D_METHOD("get_velocity_sources"), &ParticleMaterialChannels::get_velocity_sources);
+	ADD_PROPERTY(PropertyInfo(Variant::VECTOR4I, "velocity_sources"), "set_velocity_sources", "get_velocity_sources");
+	ClassDB::bind_method(D_METHOD("set_velocity_scales", "value"), &ParticleMaterialChannels::set_velocity_scales);
+	ClassDB::bind_method(D_METHOD("get_velocity_scales"), &ParticleMaterialChannels::get_velocity_scales);
+	ADD_PROPERTY(PropertyInfo(Variant::VECTOR4, "velocity_scales"), "set_velocity_scales", "get_velocity_scales");
+	BIND_CONSTANT(VELOCITY_NONE);
+	BIND_CONSTANT(VELOCITY_X);
+	BIND_CONSTANT(VELOCITY_Y);
+	BIND_CONSTANT(VELOCITY_Z);
+	BIND_CONSTANT(VELOCITY_LENGTH);
 	ClassDB::bind_method(D_METHOD("set_channels", "value"), &ParticleMaterialChannels::set_channels);
 	ClassDB::bind_method(D_METHOD("get_channels"), &ParticleMaterialChannels::get_channels);
 	ADD_PROPERTY(PropertyInfo(Variant::ARRAY, "channels", PROPERTY_HINT_ARRAY_TYPE, "ParticleFloatCurve"), "set_channels", "get_channels");
@@ -60,6 +74,6 @@ void ParticleMaterialChannels::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_random_spreads", "value"), &ParticleMaterialChannels::set_random_spreads);
 	ClassDB::bind_method(D_METHOD("get_random_spreads"), &ParticleMaterialChannels::get_random_spreads);
 	ADD_PROPERTY(PropertyInfo(Variant::VECTOR4, "random_spreads"), "set_random_spreads", "get_random_spreads");
-	ClassDB::bind_method(D_METHOD("spawn_values", "relative_age", "initial", "task_ratio", "emitter_seconds"), &ParticleMaterialChannels::spawn_values, DEFVAL(0.0), DEFVAL(0.0));
-	ClassDB::bind_method(D_METHOD("sample", "relative_age", "initial", "task_ratio", "random", "spawned_now", "emitter_seconds"), &ParticleMaterialChannels::sample, DEFVAL(Vector4()), DEFVAL(0.0), DEFVAL(Ref<RandomStream32>()), DEFVAL(false), DEFVAL(0.0));
+	ClassDB::bind_method(D_METHOD("spawn_values", "relative_age", "initial", "task_ratio", "emitter_seconds", "velocity"), &ParticleMaterialChannels::spawn_values, DEFVAL(0.0), DEFVAL(0.0), DEFVAL(Vector3()));
+	ClassDB::bind_method(D_METHOD("sample", "relative_age", "initial", "task_ratio", "random", "spawned_now", "emitter_seconds", "velocity"), &ParticleMaterialChannels::sample, DEFVAL(Vector4()), DEFVAL(0.0), DEFVAL(Ref<RandomStream32>()), DEFVAL(false), DEFVAL(0.0), DEFVAL(Vector3()));
 }

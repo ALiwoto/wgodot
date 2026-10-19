@@ -32,6 +32,7 @@ class SceneWorkQueue : public Node {
 	List<Ref<SceneWorkItem>> pending;
 	Ref<SceneWorkItem> active;
 	double time_budget_msec = 1.0;
+	double frame_budget_fraction = 0.0;
 	uint64_t last_process_usec = 0;
 
 protected:
@@ -42,7 +43,9 @@ public:
 	void add(const Ref<SceneWorkItem> &p_item);
 	void clear();
 	void set_time_budget_msec(double p_value);
+	void set_frame_budget_fraction(double p_value);
 	double get_time_budget_msec() const { return time_budget_msec; }
+	double get_frame_budget_fraction() const { return frame_budget_fraction; }
 	int get_pending_count() const { return pending.size(); }
 	uint64_t get_last_process_usec() const { return last_process_usec; }
 	~SceneWorkQueue();

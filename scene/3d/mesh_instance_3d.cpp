@@ -360,6 +360,14 @@ void MeshInstance3D::_notification(int p_what) {
 #endif
 			_resolve_skeleton_path();
 		} break;
+		// wgodot-changes::begin
+		case NOTIFICATION_EXIT_TREE: {
+			// A detached mesh can be disposed on a worker while its former
+			// skeleton remains live. Release that binding on the tree thread.
+			RenderingServer::get_singleton()->instance_attach_skeleton(get_instance(), RID());
+			skin_ref.unref();
+		} break;
+		// wgodot-changes::end
 		case NOTIFICATION_TRANSLATION_CHANGED: {
 			if (mesh.is_valid()) {
 				mesh->notification(NOTIFICATION_TRANSLATION_CHANGED);

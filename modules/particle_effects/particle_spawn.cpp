@@ -1,6 +1,22 @@
 // wgodot-changes::file
 #include "particle_spawn.h"
 
+#include <cmath>
+
+Vector3 ParticleVelocityRule3D::sample_scale(double p_relative_age, Basis p_emitter_basis, bool p_local_space) const {
+	Vector3 multiplier = vector->sample(p_relative_age);
+	const Basis rotation = p_emitter_basis.orthonormalized();
+	if (world_space && p_local_space) {
+		multiplier = rotation.inverse().xform(multiplier);
+	} else if (!world_space && !p_local_space) {
+		multiplier = rotation.xform(multiplier);
+	}
+	if (apply_owner_scale) {
+		multiplier *= p_emitter_basis.get_scale();
+	}
+	return multiplier;
+}
+
 int64_t ParticleSeed::select(const Ref<RandomStream32> &p_random) const {
 	if (!random_selection) {
 		return value;
@@ -11,6 +27,35 @@ int64_t ParticleSeed::select(const Ref<RandomStream32> &p_random) const {
 
 Vector3 ParticleSpawnShape3D::sample_center(const Ref<RandomStream32> &p_random, double p_emitter_seconds) const {
 	return center_curve.is_valid() ? center_curve->sample(p_emitter_seconds, p_random) : center;
+}
+
+ParticleSpawnShape3D::Sample ParticleSpawnShape3D::sample(const Ref<RandomStream32> &p_random, double p_emitter_seconds, int64_t p_index) const {
+	const Vector3 origin = sample_center(p_random, p_emitter_seconds);
+	if (kind != int(Kind::TriangularPrism)) {
+		const Vector3 offset = sample_offset(p_random, p_emitter_seconds, p_index);
+		return { origin + offset, offset };
+	}
+	const float height = triangle_height.is_valid() ? triangle_height->sample(p_emitter_seconds, 0.0, p_random) : 0.0;
+	const float angle = triangle_angle_degrees.is_valid() ? triangle_angle_degrees->sample(p_emitter_seconds, 0.0, p_random) : 0.0;
+	const float thickness = triangle_thickness.is_valid() ? triangle_thickness->sample(p_emitter_seconds, 0.0, p_random) : 0.0;
+	const float half_width = std::tan(angle * float(Math::PI / 360.0)) * height;
+	float a = p_random->next_float();
+	float b = p_random->next_float();
+	float c = p_random->next_float();
+	const float depth = p_random->next_float();
+	// Normalized independent weights deliberately preserve the authored
+	// sampler's density; these are not uniform-area barycentric coordinates.
+	const float sum = MAX((a + b) + c, 0.0001f);
+	a /= sum;
+	b /= sum;
+	c /= sum;
+	const float start_x = origin[direction_order.x];
+	const float start_y = origin[direction_order.y];
+	Vector3 position;
+	position[direction_order.x] = (start_x - height * 0.5f) * (c + b) + (height * 0.5f + start_x) * a;
+	position[direction_order.y] = (a * start_y + (start_y + half_width) * b) + (start_y - half_width) * c;
+	position[direction_order.z] = depth * thickness - thickness * 0.5f;
+	return { position, position - origin };
 }
 
 Vector3 ParticleSpawnShape3D::sample_direction(const Ref<RandomStream32> &p_random) const {
@@ -30,12 +75,24 @@ Vector3 ParticleSpawnShape3D::sample_direction(const Ref<RandomStream32> &p_rand
 	return direction;
 }
 
-Vector3 ParticleSpawnShape3D::sample_offset(const Ref<RandomStream32> &p_random, double p_emitter_seconds) const {
+Vector3 ParticleSpawnShape3D::sample_offset(const Ref<RandomStream32> &p_random, double p_emitter_seconds, int64_t p_index) const {
 	Vector3 direction;
 	if (kind == int(Kind::Sphere)) {
 		direction = sample_direction(p_random);
 	}
 	const double sampled_radius = radius_curve.is_valid() ? radius_curve->sample(p_emitter_seconds, 0.0, p_random) : radius;
+	if (kind == int(Kind::Circle)) {
+		const double start = arc_start_degrees.is_valid() ? arc_start_degrees->sample(p_emitter_seconds, 0.0, p_random) : 0.0;
+		const double arc = arc_size_degrees.is_valid() ? arc_size_degrees->sample(p_emitter_seconds, 0.0, p_random) : 360.0;
+		const int64_t count = point_count.is_valid() ? MAX(int64_t(Math::floor(point_count->sample(p_emitter_seconds, 0.0, p_random))), int64_t(2)) : 2;
+		const double clamped_arc = CLAMP(arc, -360.0, 360.0);
+		const int64_t divisions = Math::abs(clamped_arc) == 360.0 ? count : count - 1;
+		const double angle = Math::deg_to_rad(CLAMP(start, -360.0, 360.0) + clamped_arc * double(p_index % count) / divisions);
+		Vector3 offset;
+		offset[direction_order.x] = Math::cos(angle) * sampled_radius;
+		offset[direction_order.y] = Math::sin(angle) * sampled_radius;
+		return offset;
+	}
 	const double sampled_height = half_height_curve.is_valid() ? half_height_curve->sample(p_emitter_seconds, 0.0, p_random) : half_height;
 	if (kind == int(Kind::Sphere)) {
 		const Vector3 normal = direction.normalized();
@@ -146,6 +203,9 @@ Vector3 ParticleBirthRule3D::sample_texture_sign(const Ref<RandomStream32> &p_ra
 
 Vector3 ParticleBirthRule3D::sample_velocity(const Ref<RandomStream32> &p_random, const Basis &p_emitter_basis, bool p_local_space, double p_emitter_seconds) const {
 	Vector3 velocity = sample_vector(p_random, p_emitter_seconds);
+	if (!velocity_in_world_space) {
+		velocity = velocity_basis.xform(velocity);
+	}
 	const Basis rotation = p_emitter_basis.orthonormalized();
 	if (p_local_space && velocity_in_world_space) {
 		velocity = rotation.inverse().xform(velocity);
@@ -156,4 +216,11 @@ Vector3 ParticleBirthRule3D::sample_velocity(const Ref<RandomStream32> &p_random
 		velocity *= p_emitter_basis.get_scale();
 	}
 	return p_local_space ? velocity : rotation.inverse().xform(velocity);
+}
+
+Vector3 ParticleBirthRule3D::sample_parent_velocity(const Ref<RandomStream32> &p_random, const Basis &p_emitter_basis, bool p_local_space, const Vector3 &p_world_velocity, double p_emitter_seconds) const {
+	Vector3 velocity = p_local_space ? p_emitter_basis.inverse().xform(p_world_velocity) : p_world_velocity;
+	velocity *= sample_vector(p_random, p_emitter_seconds);
+	// Detached particles retain their birth rotation as their simulation basis.
+	return p_local_space ? velocity : p_emitter_basis.orthonormalized().inverse().xform(velocity);
 }

@@ -42,7 +42,9 @@ class AnimationLibrary : public Resource {
 
 	TypedArray<StringName> _get_animation_list() const;
 
-	void _animation_changed(const StringName &p_name);
+	// wgodot-changes::begin
+	void _animation_changed(uint64_t p_animation_id);
+	// wgodot-changes::end
 
 	friend class AnimationMixer; // For faster access.
 	RBMap<StringName, Ref<Animation>, StringName::AlphCompare> animations;

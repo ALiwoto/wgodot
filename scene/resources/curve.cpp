@@ -441,6 +441,13 @@ real_t Curve::sample_local_nocheck(int p_index, real_t p_local_offset) const {
 		return b.position.y;
 	}
 	p_local_offset /= d;
+	// wgodot-changes::begin
+	// Linear tangents describe a line. Evaluating its equivalent Bezier adds
+	// unnecessary arithmetic and changes binary32 animation samples.
+	if (a.right_mode == TANGENT_LINEAR && b.left_mode == TANGENT_LINEAR) {
+		return Math::lerp(a.position.y, b.position.y, p_local_offset);
+	}
+	// wgodot-changes::end
 	d /= 3.0;
 	real_t yac = a.position.y + d * a.right_tangent;
 	real_t ybc = b.position.y - d * b.left_tangent;

@@ -124,6 +124,10 @@ protected:
 	virtual void _animation_removed(const StringName &p_name, const StringName &p_library);
 	virtual void _animation_renamed(const StringName &p_name, const StringName &p_to_name, const StringName &p_library);
 	virtual void _animation_changed(const StringName &p_name);
+	// wgodot-changes::begin
+	void _library_animation_removed(const StringName &p_name, uint64_t p_library_id);
+	void _library_animation_renamed(const StringName &p_name, const StringName &p_to_name, uint64_t p_library_id);
+	// wgodot-changes::end
 
 	/* ---- General settings for animation ---- */
 	AnimationCallbackModeProcess callback_mode_process = ANIMATION_CALLBACK_MODE_PROCESS_IDLE;

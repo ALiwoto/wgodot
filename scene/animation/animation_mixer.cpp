@@ -227,9 +227,9 @@ void AnimationMixer::_animation_removed(const StringName &p_name, const StringNa
 		return; // No need to update because not the one from the library being used.
 	}
 
-	_animation_set_cache_update();
-
+	// wgodot-changes::begin: the library callback updates after all aliases.
 	_remove_animation(name);
+	// wgodot-changes::end
 }
 
 void AnimationMixer::_animation_renamed(const StringName &p_name, const StringName &p_to_name, const StringName &p_library) {
@@ -239,10 +239,30 @@ void AnimationMixer::_animation_renamed(const StringName &p_name, const StringNa
 	if (!animation_set.has(from_name)) {
 		return; // No need to update because not the one from the library being used.
 	}
-	_animation_set_cache_update();
-
+	// wgodot-changes::begin: preserve old names until every alias is notified.
 	_rename_animation(from_name, to_name);
+	// wgodot-changes::end
 }
+
+// wgodot-changes::begin
+void AnimationMixer::_library_animation_removed(const StringName &p_name, uint64_t p_library_id) {
+	for (const AnimationLibraryData &lib : animation_libraries) {
+		if (uint64_t(lib.library->get_instance_id()) == p_library_id) {
+			_animation_removed(p_name, lib.name);
+		}
+	}
+	_animation_set_cache_update();
+}
+
+void AnimationMixer::_library_animation_renamed(const StringName &p_name, const StringName &p_to_name, uint64_t p_library_id) {
+	for (const AnimationLibraryData &lib : animation_libraries) {
+		if (uint64_t(lib.library->get_instance_id()) == p_library_id) {
+			_animation_renamed(p_name, p_to_name, lib.name);
+		}
+	}
+	_animation_set_cache_update();
+}
+// wgodot-changes::end
 
 void AnimationMixer::_animation_changed(const StringName &p_name) {
 	_clear_caches();
@@ -313,7 +333,8 @@ Error AnimationMixer::add_animation_library(const StringName &p_name, const Ref<
 
 	for (const AnimationLibraryData &lib : animation_libraries) {
 		ERR_FAIL_COND_V_MSG(lib.name == p_name, ERR_ALREADY_EXISTS, "Can't add animation library twice with name: " + String(p_name));
-		ERR_FAIL_COND_V_MSG(lib.library == p_animation_library, ERR_ALREADY_EXISTS, "Can't add animation library twice (adding as '" + p_name.string() + "', exists as '" + lib.name.string() + "'.");
+		// wgodot-changes::begin: aliases may share one library's animation data.
+		// wgodot-changes::end
 
 		if (lib.name.string() >= p_name.string()) {
 			break;
@@ -328,10 +349,15 @@ Error AnimationMixer::add_animation_library(const StringName &p_name, const Ref<
 
 	animation_libraries.insert(insert_pos, ald);
 
-	ald.library->connect(SNAME("animation_added"), callable_mp(this, &AnimationMixer::_animation_added).bind(p_name));
-	ald.library->connect(SNAME("animation_removed"), callable_mp(this, &AnimationMixer::_animation_removed).bind(p_name));
-	ald.library->connect(SNAME("animation_renamed"), callable_mp(this, &AnimationMixer::_animation_renamed).bind(p_name));
-	ald.library->connect(SceneStringName(animation_changed), callable_mp(this, &AnimationMixer::_animation_changed));
+	// wgodot-changes::begin
+	// One subscription per resource, retained until its last alias is removed.
+	// Bind identity rather than a Ref to avoid a signal holding its source alive.
+	uint64_t library_id = ald.library->get_instance_id();
+	ald.library->connect(SNAME("animation_added"), callable_mp(this, &AnimationMixer::_animation_added).bind(StringName()), CONNECT_REFERENCE_COUNTED);
+	ald.library->connect(SNAME("animation_removed"), callable_mp(this, &AnimationMixer::_library_animation_removed).bind(library_id), CONNECT_REFERENCE_COUNTED);
+	ald.library->connect(SNAME("animation_renamed"), callable_mp(this, &AnimationMixer::_library_animation_renamed).bind(library_id), CONNECT_REFERENCE_COUNTED);
+	ald.library->connect(SceneStringName(animation_changed), callable_mp(this, &AnimationMixer::_animation_changed), CONNECT_REFERENCE_COUNTED);
+	// wgodot-changes::end
 
 	_animation_set_cache_update();
 
@@ -353,8 +379,10 @@ void AnimationMixer::remove_animation_library(const StringName &p_name) {
 	ERR_FAIL_COND(at_pos == -1);
 
 	animation_libraries[at_pos].library->disconnect(SNAME("animation_added"), callable_mp(this, &AnimationMixer::_animation_added));
-	animation_libraries[at_pos].library->disconnect(SNAME("animation_removed"), callable_mp(this, &AnimationMixer::_animation_removed));
-	animation_libraries[at_pos].library->disconnect(SNAME("animation_renamed"), callable_mp(this, &AnimationMixer::_animation_renamed));
+	// wgodot-changes::begin
+	animation_libraries[at_pos].library->disconnect(SNAME("animation_removed"), callable_mp(this, &AnimationMixer::_library_animation_removed));
+	animation_libraries[at_pos].library->disconnect(SNAME("animation_renamed"), callable_mp(this, &AnimationMixer::_library_animation_renamed));
+	// wgodot-changes::end
 	animation_libraries[at_pos].library->disconnect(SceneStringName(animation_changed), callable_mp(this, &AnimationMixer::_animation_changed));
 
 	animation_libraries.remove_at(at_pos);
@@ -377,14 +405,9 @@ void AnimationMixer::rename_animation_library(const StringName &p_name, const St
 		if (lib.name == p_name) {
 			found = true;
 			lib.name = p_new_name;
-			// rename connections
-			lib.library->disconnect(SNAME("animation_added"), callable_mp(this, &AnimationMixer::_animation_added));
-			lib.library->disconnect(SNAME("animation_removed"), callable_mp(this, &AnimationMixer::_animation_removed));
-			lib.library->disconnect(SNAME("animation_renamed"), callable_mp(this, &AnimationMixer::_animation_renamed));
-
-			lib.library->connect(SNAME("animation_added"), callable_mp(this, &AnimationMixer::_animation_added).bind(p_new_name));
-			lib.library->connect(SNAME("animation_removed"), callable_mp(this, &AnimationMixer::_animation_removed).bind(p_new_name));
-			lib.library->connect(SNAME("animation_renamed"), callable_mp(this, &AnimationMixer::_animation_renamed).bind(p_new_name));
+			// wgodot-changes::begin
+			// Connections follow resource identity, independent of alias names.
+			// wgodot-changes::end
 
 			for (const KeyValue<StringName, Ref<Animation>> &K : lib.library->animations) {
 				StringName old_name = p_name == StringName() ? K.key : StringName(String(p_name) + "/" + String(K.key));

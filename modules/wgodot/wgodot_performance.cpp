@@ -6,6 +6,7 @@
 #include "core/config/engine.h"
 #include "core/debugger/engine_debugger.h"
 #include "core/io/resource.h"
+#include "core/object/worker_thread_pool.h"
 #include "core/os/os.h"
 #include "core/os/thread.h"
 #include "main/performance.h"
@@ -55,6 +56,10 @@ const Performance::Monitor MONITORS[] = {
 
 struct Capture {
 	uint64_t request_id = 0;
+	bool continuous = false;
+	bool collecting = true;
+	bool truncated = false;
+	uint64_t stop_request_id = 0;
 	String command;
 	Dictionary options;
 	uint64_t started_usec = 0;
@@ -73,6 +78,15 @@ struct Capture {
 
 Capture capture;
 int region_depth[REGION_COUNT] = {};
+
+struct PendingReport {
+	Capture data;
+	Dictionary response;
+	uint64_t request_id = 0;
+	WorkerThreadPool::TaskID task = WorkerThreadPool::INVALID_TASK_ID;
+};
+
+PendingReport *pending_report = nullptr;
 
 Dictionary error(const String &p_command, const String &p_message) {
 	Dictionary response;
@@ -298,46 +312,87 @@ Dictionary texture_report(const Dictionary &p_options, const WGodotTextureCaptur
 	return response;
 }
 
-void complete(bool p_timed_out) {
-	Dictionary response;
-	if (capture.command == "textures") {
-		const WGodotTextureCapture::Result usage = WGodotTextureCapture::finish();
-		response = texture_report(capture.options, &usage, capture.nodes);
-	} else {
-		response = performance_snapshot();
-		Array monitors = response["monitors"];
-		for (int i = 0; i < monitors.size(); i++) {
-			Dictionary entry = monitors[i];
-			const Vector<double> *values = capture.samples.getptr(entry["name"]);
-			if (values) {
-				entry["samples"] = statistics(*values);
-			}
+void build_performance_report(void *p_userdata) {
+	PendingReport &report = *static_cast<PendingReport *>(p_userdata);
+	const Capture &data = report.data;
+	Dictionary &response = report.response;
+	Array monitors = response["monitors"];
+	for (int i = 0; i < monitors.size(); i++) {
+		Dictionary entry = monitors[i];
+		const Vector<double> *values = data.samples.getptr(entry["name"]);
+		if (values) {
+			entry["samples"] = statistics(*values);
 		}
-		response["frame_interval_ms"] = statistics(capture.frame_intervals);
-		response["frames"] = capture.frames;
-		Array timings;
-		for (const FrameTiming &timing : capture.frame_timings) {
-			Dictionary row;
-			row["frame"] = int64_t(timing.frame);
-			row["time_usec"] = int64_t(timing.started_usec);
-			double total = 0.0;
-			for (int i = 0; i < PHASE_COUNT; ++i) {
-				row[PHASE_NAMES[i]] = timing.milliseconds[i];
-				total += timing.milliseconds[i];
-			}
-			row["total_ms"] = total;
-			Dictionary regions;
-			for (int i = 0; i < REGION_COUNT; ++i) {
-				Dictionary region;
-				region["milliseconds"] = timing.region_milliseconds[i];
-				region["calls"] = int64_t(timing.region_calls[i]);
-				regions[REGION_NAMES[i]] = region;
-			}
-			row["regions"] = regions;
-			timings.push_back(row);
-		}
-		response["frame_cpu_ms"] = timings;
 	}
+	response["frame_interval_ms"] = statistics(data.frame_intervals);
+	response["frames"] = data.frames;
+	Array timings;
+	for (const FrameTiming &timing : data.frame_timings) {
+		Dictionary row;
+		row["frame"] = int64_t(timing.frame);
+		row["time_usec"] = int64_t(timing.started_usec);
+		double total = 0.0;
+		for (int i = 0; i < PHASE_COUNT; ++i) {
+			row[PHASE_NAMES[i]] = timing.milliseconds[i];
+			total += timing.milliseconds[i];
+		}
+		row["total_ms"] = total;
+		Dictionary regions;
+		for (int i = 0; i < REGION_COUNT; ++i) {
+			Dictionary region;
+			region["milliseconds"] = timing.region_milliseconds[i];
+			region["calls"] = int64_t(timing.region_calls[i]);
+			regions[REGION_NAMES[i]] = region;
+		}
+		row["regions"] = regions;
+		timings.push_back(row);
+	}
+	response["frame_cpu_ms"] = timings;
+}
+
+void poll_report() {
+	if (!pending_report || !WorkerThreadPool::get_singleton()->is_task_completed(pending_report->task)) {
+		return;
+	}
+	WorkerThreadPool::get_singleton()->wait_for_task_completion(pending_report->task);
+	if (EngineDebugger::is_active()) {
+		EngineDebugger::get_singleton()->send_message("wgodot:response", { pending_report->request_id, pending_report->response });
+	}
+	memdelete(pending_report);
+	pending_report = nullptr;
+}
+
+void queue_performance_report(uint64_t p_request_id, bool p_timed_out, bool p_continue) {
+	pending_report = memnew(PendingReport);
+	pending_report->data = capture;
+	pending_report->request_id = p_request_id;
+	Dictionary &response = pending_report->response;
+	response = performance_snapshot();
+	response["requested_frames"] = capture.requested_frames;
+	response["timed_out"] = p_timed_out;
+	response["capture_truncated"] = capture.truncated;
+	response["recording"] = p_continue && capture.collecting;
+	response["elapsed_seconds"] = (OS::get_singleton()->get_ticks_usec() - capture.started_usec) / 1000000.0;
+	if (p_continue) {
+		// Transfer completed frames; keep the current frame and its open scopes.
+		// The worker owns the previous buffers while sampling continues.
+		capture.frames = 0;
+		capture.frame_intervals.clear();
+		capture.frame_timings.clear();
+		capture.samples.clear();
+	} else {
+		capture = Capture();
+	}
+	pending_report->task = WorkerThreadPool::get_singleton()->add_native_task(build_performance_report, pending_report, false, "Performance report");
+}
+
+void complete(bool p_timed_out) {
+	if (capture.command == "perf") {
+		queue_performance_report(capture.request_id, p_timed_out, false);
+		return;
+	}
+	const WGodotTextureCapture::Result usage = WGodotTextureCapture::finish();
+	Dictionary response = texture_report(capture.options, &usage, capture.nodes);
 	response["requested_frames"] = capture.requested_frames;
 	response["timed_out"] = p_timed_out;
 	response["elapsed_seconds"] = (OS::get_singleton()->get_ticks_usec() - capture.started_usec) / 1000000.0;
@@ -374,7 +429,7 @@ RegionScope::~RegionScope() {
 }
 
 void begin_frame() {
-	if (capture.request_id == 0 || capture.command != "perf") {
+	if (!capture.collecting || capture.command != "perf") {
 		return;
 	}
 	capture.current_timing = FrameTiming();
@@ -396,7 +451,29 @@ void begin_phase(FramePhase p_phase) {
 
 Dictionary execute(uint64_t p_request_id, const String &p_command, const Dictionary &p_options, bool &r_deferred) {
 	r_deferred = false;
-	const int64_t frames = p_options.get("frames", 0);
+	const String action = p_options.get("action", String());
+	if (!action.is_empty() && (p_command != "perf" || (action != "start" && action != "read" && action != "stop"))) {
+		return error(p_command, "Performance action must be start, read, or stop.");
+	}
+	if (action == "read" || action == "stop") {
+		if (!capture.continuous) {
+			return error(p_command, "No continuous performance capture is running.");
+		}
+		if (pending_report || capture.stop_request_id != 0) {
+			return error(p_command, "A performance report is still being delivered.");
+		}
+		if (action == "read") {
+			queue_performance_report(p_request_id, false, true);
+		} else if (!capture.collecting) {
+			queue_performance_report(p_request_id, false, false);
+		} else {
+			// Finish the in-flight frame, including the stop command's work.
+			capture.stop_request_id = p_request_id;
+		}
+		r_deferred = true;
+		return Dictionary();
+	}
+	const int64_t frames = p_options.get("frames", action == "start" ? MAX_SAMPLES : 0);
 	const int64_t timeout = p_options.get("timeout", 10);
 	const int64_t limit = p_options.get("limit", 30);
 	const double headroom = p_options.get("headroom", 1.25);
@@ -411,19 +488,32 @@ Dictionary execute(uint64_t p_request_id, const String &p_command, const Diction
 		return error(p_command, "--unused and sorting by savings/ratio require --frames.");
 	}
 	if (frames == 0) {
+		if (action == "start") {
+			return error(p_command, "Continuous capture requires a positive frame capacity.");
+		}
 		return p_command == "perf" ? performance_snapshot() : texture_report(p_options, nullptr, HashMap<RID, String>());
 	}
-	if (capture.request_id != 0) {
+	if (!capture.command.is_empty() || pending_report) {
 		return error(p_command, "Another performance or texture capture is running.");
 	}
 	RenderingServer::get_singleton()->sync();
 	capture.request_id = p_request_id;
+	capture.continuous = action == "start";
 	capture.command = p_command;
 	capture.options = p_options;
 	capture.started_usec = OS::get_singleton()->get_ticks_usec();
 	capture.previous_usec = capture.started_usec;
 	capture.deadline_usec = capture.started_usec + uint64_t(timeout) * 1000000;
 	capture.requested_frames = frames;
+	if (capture.continuous) {
+		Dictionary response;
+		response["ok"] = true;
+		response["command"] = "perf";
+		response["recording"] = true;
+		response["capacity_frames"] = frames;
+		response["note"] = "Use perf read to drain completed frames without stopping, then perf stop. Sampling stops at capacity; reports explicitly mark truncation.";
+		return response;
+	}
 	if (p_command == "textures") {
 		HashMap<RID, RID> canvas_textures;
 		Vector<ObjectID> texture_ids;
@@ -450,17 +540,20 @@ Dictionary execute(uint64_t p_request_id, const String &p_command, const Diction
 }
 
 void end_frame() {
-	if (capture.request_id == 0) {
+	poll_report();
+	if (capture.command.is_empty() || !capture.collecting) {
 		return;
 	}
 	const uint64_t now = OS::get_singleton()->get_ticks_usec();
 	if (capture.command == "perf") {
-		if (capture.phase_started_usec != 0) {
-			capture.current_timing.milliseconds[capture.phase] += (now - capture.phase_started_usec) / 1000.0;
-			capture.frame_timings.push_back(capture.current_timing);
-			capture.phase_started_usec = 0;
+		if (capture.phase_started_usec == 0) {
+			// A request received mid-frame starts sampling at the next frame.
+			return;
 		}
-		if (capture.frames > 0) {
+		capture.current_timing.milliseconds[capture.phase] += (now - capture.phase_started_usec) / 1000.0;
+		capture.frame_timings.push_back(capture.current_timing);
+		capture.phase_started_usec = 0;
+		if (capture.previous_usec != capture.started_usec) {
 			capture.frame_intervals.push_back((now - capture.previous_usec) / 1000.0);
 		}
 		capture.previous_usec = now;
@@ -470,6 +563,15 @@ void end_frame() {
 		}
 		capture.frames++;
 	}
+	if (capture.continuous) {
+		if (capture.stop_request_id != 0) {
+			queue_performance_report(capture.stop_request_id, false, false);
+		} else if (capture.frames >= capture.requested_frames) {
+			capture.collecting = false;
+			capture.truncated = true;
+		}
+		return;
+	}
 	const bool done = capture.command == "perf" ? capture.frames >= capture.requested_frames : WGodotTextureCapture::is_complete();
 	if (done || now >= capture.deadline_usec) {
 		complete(!done);
@@ -477,6 +579,11 @@ void end_frame() {
 }
 
 void reset() {
+	if (pending_report) {
+		WorkerThreadPool::get_singleton()->wait_for_task_completion(pending_report->task);
+		memdelete(pending_report);
+		pending_report = nullptr;
+	}
 	WGodotTextureCapture::cancel();
 	capture = Capture();
 }

@@ -1628,7 +1628,10 @@ Error GLTFDocument::_parse_meshes(Ref<GLTFState> p_state) {
 						num_channels = 4;
 					}
 					if (!num_channels) {
-						break;
+						// wgodot-changes::begin
+						// Custom attributes are independent; a gap must not drop later channels.
+						continue;
+						// wgodot-changes::end
 					}
 					if (num_channels == 2 || num_channels == 4) {
 						cur_custom.resize_initialized(vertex_num * num_channels);
@@ -6224,7 +6227,9 @@ bool GLTFDocument::_convert_animation_node_track(Ref<GLTFState> p_state, GLTFAni
 			}
 		}
 	} else if (track_type == Animation::TYPE_ROTATION_3D) {
-		if (gltf_interpolation == GLTFAnimation::INTERP_CUBIC_SPLINE) {
+		// wgodot-changes::begin: glTF rotations cannot directly represent NLERP.
+		if (gltf_interpolation == GLTFAnimation::INTERP_CUBIC_SPLINE || p_godot_animation->track_get_interpolation_type(p_godot_anim_track_index) == Animation::INTERPOLATION_LINEAR_NORMALIZED) {
+			// wgodot-changes::end
 			gltf_interpolation = GLTFAnimation::INTERP_LINEAR;
 			p_gltf_node_track.rotation_track.times.clear();
 			p_gltf_node_track.rotation_track.values.clear();

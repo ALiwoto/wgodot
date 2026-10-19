@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "../wgodot_cli.h"
 #include "core/templates/hash_set.h"
 #include "core/variant/dictionary.h"
 
@@ -16,6 +17,6 @@ class WGodotProjectRefresh {
 public:
 	static void resources_changed(const Vector<String> &p_paths);
 	// Empty results mean the refresh started successfully, or is still pending.
-	Dictionary start(uint64_t p_timeout_msec = 60000, bool p_refresh_scenes = true);
+	Dictionary start(uint64_t p_timeout_msec = WGodotCLI::PROJECT_OPERATION_TIMEOUT_MSEC, bool p_refresh_scenes = true);
 	Dictionary poll();
 };

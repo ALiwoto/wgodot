@@ -81,23 +81,21 @@ void WGodotCLIListener::listen() {
 		const Dictionary busy = busy_response();
 		{
 			MutexLock lock(ready_mutex);
-			// Work may have started after a request was queued but before the editor
-			// claimed it. Reject it here as well; never leave it waiting on that work.
-			if (!busy.is_empty()) {
-				for (Request &request : ready) {
+			// Startup and refresh commands wait for existing work within their own
+			// timeout. Other commands retain immediate busy diagnostics.
+			for (int i = ready.size() - 1; i >= 0; i--) {
+				Request &request = ready.write[i];
+				const bool wait = WGodotCLI::waits_for_editor(request.data.get("command", String()));
+				const uint64_t timeout = wait ? WGodotCLI::project_operation_timeout(request.data) : CONNECTION_TIMEOUT_MSEC;
+				request.tcp->poll();
+				if (request.tcp->get_status() != StreamPeerTCP::STATUS_CONNECTED) {
+					ready.remove_at(i);
+				} else if (!busy.is_empty() && !wait) {
 					reply(request, busy);
-				}
-				ready.clear();
-			} else {
-				for (int i = ready.size() - 1; i >= 0; i--) {
-					Request &request = ready.write[i];
-					request.tcp->poll();
-					if (request.tcp->get_status() != StreamPeerTCP::STATUS_CONNECTED) {
-						ready.remove_at(i);
-					} else if (OS::get_singleton()->get_ticks_msec() - request.accepted_at_msec > CONNECTION_TIMEOUT_MSEC) {
-						reply(request, failure("editor_unresponsive", "The editor did not accept the command; it has not been executed."));
-						ready.remove_at(i);
-					}
+					ready.remove_at(i);
+				} else if (OS::get_singleton()->get_ticks_msec() - request.accepted_at_msec > timeout) {
+					reply(request, failure("editor_unresponsive", "The editor did not accept the command; it has not been executed."));
+					ready.remove_at(i);
 				}
 			}
 		}
@@ -119,7 +117,7 @@ void WGodotCLIListener::listen() {
 					reply(request, failure("authentication_failed", "Authentication failed."));
 				} else if (int(request.data.get("protocol", 0)) != WGodotCLI::PROTOCOL_VERSION) {
 					reply(request, failure("protocol_mismatch", "The CLI and editor protocol versions do not match."));
-				} else if (!busy.is_empty()) {
+				} else if (!busy.is_empty() && !WGodotCLI::waits_for_editor(request.data.get("command", String()))) {
 					reply(request, busy);
 				} else {
 					MutexLock lock(ready_mutex);

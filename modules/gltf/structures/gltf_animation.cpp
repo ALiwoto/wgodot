@@ -49,6 +49,9 @@ GLTFAnimation::Interpolation GLTFAnimation::godot_to_gltf_interpolation(const Re
 	switch (interpolation) {
 		case Animation::INTERPOLATION_LINEAR:
 		case Animation::INTERPOLATION_LINEAR_ANGLE:
+		// wgodot-changes::begin
+		case Animation::INTERPOLATION_LINEAR_NORMALIZED:
+		// wgodot-changes::end
 			return INTERP_LINEAR;
 		case Animation::INTERPOLATION_NEAREST:
 			return INTERP_STEP;

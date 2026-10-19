@@ -3,6 +3,12 @@
 #include "core/object/class_db.h"
 
 void ParticleLightProfile3D::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("set_radius_over_emission", "value"), &ParticleLightProfile3D::set_radius_over_emission);
+	ClassDB::bind_method(D_METHOD("get_radius_over_emission"), &ParticleLightProfile3D::get_radius_over_emission);
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "radius_over_emission", PROPERTY_HINT_RESOURCE_TYPE, "ParticleFloatCurve"), "set_radius_over_emission", "get_radius_over_emission");
+	ClassDB::bind_method(D_METHOD("set_color_distribution", "value"), &ParticleLightProfile3D::set_color_distribution);
+	ClassDB::bind_method(D_METHOD("get_color_distribution"), &ParticleLightProfile3D::get_color_distribution);
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "color_distribution", PROPERTY_HINT_RESOURCE_TYPE, "ParticleColorCurve"), "set_color_distribution", "get_color_distribution");
 	ClassDB::bind_method(D_METHOD("set_sample_position_before_motion", "value"), &ParticleLightProfile3D::set_sample_position_before_motion);
 	ClassDB::bind_method(D_METHOD("get_sample_position_before_motion"), &ParticleLightProfile3D::get_sample_position_before_motion);
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "sample_position_before_motion"), "set_sample_position_before_motion", "get_sample_position_before_motion");
@@ -30,7 +36,7 @@ void ParticleLightProfile3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_normalization_units", "value"), &ParticleLightProfile3D::set_normalization_units);
 	ClassDB::bind_method(D_METHOD("get_normalization_units"), &ParticleLightProfile3D::get_normalization_units);
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "normalization_units"), "set_normalization_units", "get_normalization_units");
-	ClassDB::bind_method(D_METHOD("apply", "light", "relative_age", "tint", "size", "emitter_scale"), &ParticleLightProfile3D::apply);
+	ClassDB::bind_method(D_METHOD("apply", "light", "relative_age", "tint", "size", "emitter_scale", "task_ratio", "random", "radius_multiplier"), &ParticleLightProfile3D::apply, DEFVAL(0.0), DEFVAL(Ref<RandomStream32>()), DEFVAL(1.0));
 }
 
 void ParticleGroundProjector3D::_bind_methods() {
@@ -40,6 +46,9 @@ void ParticleGroundProjector3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_world_offset", "value"), &ParticleGroundProjector3D::set_world_offset);
 	ClassDB::bind_method(D_METHOD("get_world_offset"), &ParticleGroundProjector3D::get_world_offset);
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "world_offset"), "set_world_offset", "get_world_offset");
+	ClassDB::bind_method(D_METHOD("set_offset_over_life", "value"), &ParticleGroundProjector3D::set_offset_over_life);
+	ClassDB::bind_method(D_METHOD("get_offset_over_life"), &ParticleGroundProjector3D::get_offset_over_life);
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "offset_over_life", PROPERTY_HINT_RESOURCE_TYPE, "ParticleFloatCurve"), "set_offset_over_life", "get_offset_over_life");
 	ClassDB::bind_method(D_METHOD("set_offset_variation", "value"), &ParticleGroundProjector3D::set_offset_variation);
 	ClassDB::bind_method(D_METHOD("get_offset_variation"), &ParticleGroundProjector3D::get_offset_variation);
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "offset_variation"), "set_offset_variation", "get_offset_variation");
@@ -59,7 +68,7 @@ void ParticleGroundProjector3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_emitter_rotation"), &ParticleGroundProjector3D::get_emitter_rotation);
 	ADD_PROPERTY(PropertyInfo(Variant::VECTOR3, "emitter_rotation"), "set_emitter_rotation", "get_emitter_rotation");
 	ClassDB::bind_method(D_METHOD("project", "point"), &ParticleGroundProjector3D::project);
-	ClassDB::bind_method(D_METHOD("projected_position", "random"), &ParticleGroundProjector3D::projected_position);
+	ClassDB::bind_method(D_METHOD("projected_position", "random", "relative_age", "task_ratio"), &ParticleGroundProjector3D::projected_position, DEFVAL(0.0), DEFVAL(0.0));
 	ClassDB::bind_method(D_METHOD("project_emitter", "frame"), &ParticleGroundProjector3D::project_emitter);
 	ClassDB::bind_method(D_METHOD("emitter_offset", "frame"), &ParticleGroundProjector3D::emitter_offset);
 }

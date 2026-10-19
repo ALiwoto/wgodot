@@ -25,6 +25,7 @@
 #include "core/os/time.h"
 #include "editor/debugger/editor_debugger_node.h"
 #include "editor/debugger/script_editor_debugger.h"
+#include "editor/editor_node.h"
 #include "editor/file_system/editor_file_system.h"
 #include "editor/run/editor_run_bar.h"
 
@@ -132,6 +133,7 @@ bool WGodotCLIEditorPlugin::start_server() {
 	record["port"] = server->get_local_port();
 	record["token"] = token;
 	record["pid"] = OS::get_singleton()->get_process_id();
+	record["command_line"] = EditorNode::is_cmdline_mode();
 	record["started_at"] = static_cast<int64_t>(Time::get_singleton()->get_unix_time_from_system() * 1000000.0);
 
 	discovery_file = discovery_directory.path_join(instance_id + ".json");
@@ -195,7 +197,7 @@ void WGodotCLIEditorPlugin::accept_connections() {
 		connection.packet = request.packet;
 		connection.request = request.data;
 		connection.accepted_at_msec = request.accepted_at_msec;
-		connection.deadline_msec = connection.accepted_at_msec + CONNECTION_TIMEOUT_MSEC;
+		connection.deadline_msec = connection.accepted_at_msec + (WGodotCLI::waits_for_editor(request.data.get("command", String())) ? WGodotCLI::project_operation_timeout(request.data) : CONNECTION_TIMEOUT_MSEC);
 		connections.push_back(connection);
 	}
 }
@@ -308,16 +310,29 @@ void WGodotCLIEditorPlugin::finish_connection(PendingConnection &p_connection, c
 }
 
 void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
+	const Dictionary request = p_connection.request;
+	const String command = request.get("command", String());
+	const Dictionary options = request.get("options", Dictionary());
+	const bool wait_for_editor = WGodotCLI::waits_for_editor(command);
+	if (wait_for_editor && OS::get_singleton()->get_ticks_msec() >= p_connection.deadline_msec) {
+		finish_connection(p_connection, make_error_response("editor_unresponsive", "Timed out waiting for the editor; the command has not been executed."));
+		return;
+	}
 	// An import may have started after the listener handed this request over.
 	const Dictionary busy = WGodotCLIListener::busy_response();
 	if (!busy.is_empty()) {
-		finish_connection(p_connection, busy);
+		if (!wait_for_editor) {
+			finish_connection(p_connection, busy);
+		}
 		return;
 	}
 	// Cover the handoff between a completed background scan and its main-thread
 	// import phase, when there may briefly be no active synchronous scope.
 	EditorFileSystem *filesystem = EditorFileSystem::get_singleton();
-	if (filesystem && (filesystem->is_scanning() || filesystem->is_importing())) {
+	if (filesystem && filesystem->is_processing_assets()) {
+		if (wait_for_editor) {
+			return;
+		}
 		const String stage = filesystem->is_importing() ? "importing assets" : vformat("scanning project files (%d%%)", int(filesystem->get_scanning_progress() * 100.0f));
 		Dictionary response = make_error_response("editor_busy", "The editor is " + stage + ". Wait for it to finish, then retry the command.");
 		response["scan_progress"] = filesystem->get_scanning_progress();
@@ -325,10 +340,6 @@ void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
 		finish_connection(p_connection, response);
 		return;
 	}
-	const Dictionary request = p_connection.request;
-
-	const String command = request.get("command", String());
-	const Dictionary options = request.get("options", Dictionary());
 	if (command == "status") {
 		finish_connection(p_connection, make_status_response(request));
 		return;
@@ -354,7 +365,6 @@ void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
 		}
 		p_connection.game_scene = EditorRunBar::get_singleton()->get_playing_scene();
 		p_connection.game_start_check_at_msec = OS::get_singleton()->get_ticks_msec() + GAME_START_OBSERVATION_MSEC;
-		p_connection.deadline_msec = OS::get_singleton()->get_ticks_msec() + ASYNC_TIMEOUT_MSEC;
 		return;
 	}
 	if (command == "stop") {
@@ -369,7 +379,7 @@ void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
 		return;
 	}
 	if (command == "check") {
-		const Dictionary response = p_connection.project_check.start();
+		const Dictionary response = p_connection.project_check.start(p_connection.deadline_msec - OS::get_singleton()->get_ticks_msec());
 		if (!response.is_empty()) {
 			finish_connection(p_connection, response);
 			return;
@@ -382,7 +392,8 @@ void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
 		return;
 	}
 	if (command == "import" || command == "export-cpp" || command == "move") {
-		const Dictionary response = p_connection.project_refresh.start();
+		const uint64_t timeout = wait_for_editor ? p_connection.deadline_msec - OS::get_singleton()->get_ticks_msec() : WGodotCLI::PROJECT_OPERATION_TIMEOUT_MSEC;
+		const Dictionary response = p_connection.project_refresh.start(timeout);
 		if (!response.is_empty()) {
 			finish_connection(p_connection, response);
 			return;
@@ -667,15 +678,15 @@ void WGodotCLIEditorPlugin::poll_game_start(PendingConnection &p_connection) {
 	} else if (breaked) {
 		response["error"] = "game_start_breakpoint";
 		response["message"] = "Game reached a hard breakpoint during startup; it is not running.";
-	} else if (!active) {
+	} else if (!active && !EditorRunBar::get_singleton()->is_playing()) {
 		response["error"] = "game_start_failed";
 		response["message"] = session >= 0 ? "Game exited before the startup check completed." : "Game did not establish a debugger session during startup.";
 	} else if (frame_failed) {
 		response["error"] = p_connection.game_start_response.get("error", "game_start_failed");
 		response["message"] = p_connection.game_start_response.get("message", "Game did not complete a startup frame.");
-	} else if (!frame_ready) {
+	} else if (!active || !frame_ready) {
 		response["error"] = "game_start_timeout";
-		response["message"] = "Timed out waiting for the game to complete a startup frame.";
+		response["message"] = "Timed out waiting for the game to complete a startup frame. The game is still starting; it has not been stopped.";
 	} else {
 		response["ok"] = true;
 	}
@@ -688,6 +699,8 @@ void WGodotCLIEditorPlugin::poll_game_start(PendingConnection &p_connection) {
 			guidance += "After inspection, run `wg stop`, fix the errors, then rerun `wg run`. Do not continue or resume an error breakpoint; restart with the fix.";
 		} else if (breaked) {
 			guidance += "Check `wg debug state` to inspect the breakpoint before deciding how to proceed.";
+		} else if (String(response.get("error", String())) == "game_start_timeout") {
+			guidance = "Inspect `wg status` and `wg logs` before retrying; another run may restart the existing game. For a future launch, increase `wg run --timeout <seconds>`.";
 		} else {
 			guidance += "Inspect `wg logs`, then run `wg stop`, fix the startup issue, and rerun `wg run`.";
 		}
@@ -776,7 +789,6 @@ void WGodotCLIEditorPlugin::handle_debugger_started(int p_session) {
 			connection.game_session = p_session;
 			connection.game_pid = EditorDebuggerNode::get_singleton()->get_debugger(p_session)->get_remote_pid();
 			connection.game_start_check_at_msec = OS::get_singleton()->get_ticks_msec() + GAME_START_OBSERVATION_MSEC;
-			connection.deadline_msec = OS::get_singleton()->get_ticks_msec() + ASYNC_TIMEOUT_MSEC;
 		}
 	}
 }
@@ -823,7 +835,7 @@ void WGodotCLIEditorPlugin::poll_connections() {
 			}
 			connection.tcp->disconnect_from_host();
 			connections.remove_at(i);
-		} else if (connection.wait_kind != PendingConnection::WAIT_EDITOR_REFRESH && connection.wait_kind != PendingConnection::WAIT_PROJECT_REFRESH && now > connection.deadline_msec) {
+		} else if ((WGodotCLI::waits_for_editor(connection.request.get("command", String())) || (connection.wait_kind != PendingConnection::WAIT_EDITOR_REFRESH && connection.wait_kind != PendingConnection::WAIT_PROJECT_REFRESH)) && now > connection.deadline_msec) {
 			connection.profiler.cancel();
 			if (connection.wait_kind == PendingConnection::WAIT_DEBUG) {
 				WGodotDebugService::cancel_debug_wait(connection.game_session, static_cast<WGodotDebugService::WaitKind>(connection.debug_wait_kind));

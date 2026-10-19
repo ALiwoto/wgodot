@@ -28,6 +28,9 @@
 			<param index="1" name="library" type="AnimationLibrary" />
 			<description>
 				Adds [param library] to the animation player, under the key [param name].
+				<!-- wgodot-changes::begin -->
+				The same library can be added under multiple keys. These aliases share animation resources and follow additions, removals and renames; removing one alias leaves the others connected.
+				<!-- wgodot-changes::end -->
 				AnimationMixer has a global library by default with an empty string as key. For adding an animation to the global library:
 				[codeblocks]
 				[gdscript]

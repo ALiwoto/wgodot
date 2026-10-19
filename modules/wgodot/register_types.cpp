@@ -4,6 +4,8 @@
 /**************************************************************************/
 
 #include "register_types.h"
+#include "object_metadata.h"
+#include "core/object/class_db.h"
 
 #include "wgodot_game_bridge.h"
 #include "wgodot_pause_controller.h"
@@ -36,6 +38,7 @@ static void _native_export_editor_init() {
 
 void initialize_wgodot_module(ModuleInitializationLevel p_level) {
 	if (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {
+		GDREGISTER_ABSTRACT_CLASS(ObjectMetadata);
 #ifdef TOOLS_ENABLED
 		GDREGISTER_CLASS(WGPUParticleSnapshot);
 #endif

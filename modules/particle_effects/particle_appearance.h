@@ -23,6 +23,7 @@ private:
 	int alpha_sampling = 0;
 	int axis_lock = 1;
 	Vector3i color_order = Vector3i(0, 1, 2);
+	TypedArray<ParticleFloatCurve> channels;
 
 protected:
 	static void _bind_methods();
@@ -40,7 +41,12 @@ public:
 	int get_axis_lock() const { return axis_lock; }
 	void set_color_order(const Vector3i & p_value) { color_order = p_value; }
 	Vector3i get_color_order() const { return color_order; }
-	Color sample(double p_relative_age, const Ref<RandomStream32> & p_random) const;
+	void set_channels(const TypedArray<ParticleFloatCurve> &p_value) {
+		ERR_FAIL_COND_MSG(p_value.size() > 4, "Color curves have at most four channels.");
+		channels = p_value;
+	}
+	TypedArray<ParticleFloatCurve> get_channels() const { return channels; }
+	Color sample(double p_relative_age, const Ref<RandomStream32> &p_random, double p_task_ratio = 0.0) const;
 };
 
 class ParticleOrientation3D : public Resource {
@@ -71,6 +77,9 @@ public:
 class ParticleMaterialChannels : public Resource {
 	GDCLASS(ParticleMaterialChannels, Resource);
 
+	Vector4i velocity_sources;
+	Vector4 velocity_scales = Vector4(1, 1, 1, 1);
+	double velocity_factor(int p_channel, const Vector3 &p_velocity) const;
 	TypedArray<ParticleFloatCurve> channels;
 	Vector<int32_t> emitter_clock_channels;
 	Vector<int32_t> spawn_channels;
@@ -82,6 +91,17 @@ protected:
 	static void _bind_methods();
 
 public:
+	enum VelocitySource {
+		VELOCITY_NONE,
+		VELOCITY_X,
+		VELOCITY_Y,
+		VELOCITY_Z,
+		VELOCITY_LENGTH,
+	};
+	void set_velocity_sources(const Vector4i &p_value) { velocity_sources = p_value; }
+	Vector4i get_velocity_sources() const { return velocity_sources; }
+	void set_velocity_scales(const Vector4 &p_value) { velocity_scales = p_value; }
+	Vector4 get_velocity_scales() const { return velocity_scales; }
 	void set_channels(const TypedArray<ParticleFloatCurve> & p_value) { channels = p_value; }
 	TypedArray<ParticleFloatCurve> get_channels() const { return channels; }
 	void set_emitter_clock_channels(const Vector<int32_t> & p_value) { emitter_clock_channels = p_value; }
@@ -94,6 +114,6 @@ public:
 	Vector<int32_t> get_random_channels() const { return random_channels; }
 	void set_random_spreads(const Vector4 & p_value) { random_spreads = p_value; }
 	Vector4 get_random_spreads() const { return random_spreads; }
-	Vector4 spawn_values(double p_relative_age, Vector4 p_initial, double p_task_ratio = 0.0, double p_emitter_seconds = 0.0) const;
-	Vector4 sample(double p_relative_age, Vector4 p_initial = Vector4(), double p_task_ratio = 0.0, const Ref<RandomStream32> & p_random = Ref<RandomStream32>(), bool p_spawned_now = false, double p_emitter_seconds = 0.0) const;
+	Vector4 spawn_values(double p_relative_age, Vector4 p_initial, double p_task_ratio = 0.0, double p_emitter_seconds = 0.0, const Vector3 &p_velocity = Vector3()) const;
+	Vector4 sample(double p_relative_age, Vector4 p_initial = Vector4(), double p_task_ratio = 0.0, const Ref<RandomStream32> & p_random = Ref<RandomStream32>(), bool p_spawned_now = false, double p_emitter_seconds = 0.0, const Vector3 &p_velocity = Vector3()) const;
 };

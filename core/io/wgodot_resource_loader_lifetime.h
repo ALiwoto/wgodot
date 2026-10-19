@@ -12,6 +12,9 @@ class WGodotResourceLoaderLifetime {
 	static void release_pool_task(WorkerThreadPool::TaskID p_task_id);
 
 public:
+	static void connect_changed_deferred(const Ref<Resource> &p_source, const Callable &p_callable, uint32_t p_flags);
+	static void disconnect_changed_deferred(const Ref<Resource> &p_source, const Callable &p_callable);
+
 	class TaskScope {
 		ResourceLoader::LoadToken *token;
 		ResourceLoader::ThreadLoadTask *previous_task;

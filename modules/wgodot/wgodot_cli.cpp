@@ -26,6 +26,15 @@
 
 namespace WGodotCLI {
 
+bool waits_for_editor(const String &p_command) {
+	return p_command == "run" || p_command == "check" || p_command == "import";
+}
+
+uint64_t project_operation_timeout(const Dictionary &p_request) {
+	const Dictionary options = p_request.get("options", Dictionary());
+	return uint64_t(CLAMP(int(options.get("timeout", PROJECT_OPERATION_TIMEOUT_MSEC / 1000)), 1, 3600)) * 1000;
+}
+
 namespace {
 
 constexpr uint64_t DISCOVERY_TIMEOUT_MSEC = 5000;
@@ -46,6 +55,7 @@ struct EditorRecord {
 	int port = 0;
 	int64_t pid = 0;
 	int64_t started_at = 0;
+	bool command_line = false;
 };
 
 struct EditorConnection {
@@ -96,6 +106,7 @@ bool load_editor_record(const String &p_path, EditorRecord &r_record) {
 	r_record.project_root = data.get("project_root", String());
 	r_record.project_key = data.get("project_key", String());
 	r_record.instance_id = data.get("instance_id", String());
+	r_record.command_line = data.get("command_line", false);
 	r_record.host = data.get("host", String());
 	r_record.token = data.get("token", String());
 	r_record.port = data.get("port", 0);
@@ -189,7 +200,8 @@ bool send_request(const EditorConnection &p_connection, const Dictionary &p_requ
 
 	const String command = p_request.get("command", String());
 	const bool long_editor_operation = command == "export-cpp" || command == "move";
-	const uint64_t response_deadline = command == "status" ? p_discovery_deadline : OS::get_singleton()->get_ticks_msec() + (long_editor_operation ? EXPORT_TIMEOUT_MSEC : RESPONSE_TIMEOUT_MSEC);
+	const uint64_t timeout = waits_for_editor(command) ? project_operation_timeout(p_request) + 5000 : (long_editor_operation ? PROJECT_OPERATION_TIMEOUT_MSEC + 600000 + EXPORT_TIMEOUT_MSEC + 5000 : RESPONSE_TIMEOUT_MSEC);
+	const uint64_t response_deadline = command == "status" ? p_discovery_deadline : OS::get_singleton()->get_ticks_msec() + timeout;
 	return receive_response(p_connection.tcp, packet, r_response, response_deadline);
 }
 
@@ -201,12 +213,14 @@ void print_cli_help() {
 	print_line("  import                            Refresh/import assets and reload changed scenes in the running editor.");
 	print_line("  move <source> <destination> [...] [--dry-run] [--json]  Move project files/folders and update resource references.");
 	print_line("  status [--json] [--session <id>]  Show the matching editor and running game sessions.");
-	print_line("  run [--current|<scene>] [--json]  Run the main, current, or specified scene.");
+	print_line("  run [--current|<scene>] [--timeout <seconds>] [--json]  Run the main, current, or specified scene.");
+	print_line("    run, check and import: --timeout 1..3600 seconds (default 300), including waiting for editor asset work.");
 	print_line("  stop [--json]                     Stop the running game.");
 	print_line("  tree [options]                    Print the running game's scene tree.");
 	print_line("  ss [-o <path>] [--json]           Capture the running game viewport.");
 	print_line("  observe [options]                 Capture a screenshot and scene tree together.");
 	print_line("  perf [--frames <n>] [--timeout <seconds>] [--json] [--output <path>]  Snapshot or sample performance counters.");
+	print_line("  perf start [--frames <capacity>] | read | stop                 Continuous sampling; read drains without gaps.");
 	print_line("  textures [--frames <n>] [--sort bytes|savings|ratio] [--limit <n>]    Inspect texture allocations and sampled 2D use.");
 	print_line("    --filter <text> --unused --headroom <factor> --timeout <seconds> --json --output <path>");
 	print_line("    Both accept --session <id>. Frames: 0 (snapshot) to 1800; timeout: 1..30 seconds (default 10).");
@@ -390,8 +404,16 @@ int request_editor(const Dictionary &p_request, Dictionary &r_response) {
 				if (newest_index > i) {
 					newest_index--;
 				}
-			} else if (status == StreamPeerTCP::STATUS_CONNECTED && (newest_index < 0 || connections[i].record.started_at > connections[newest_index].record.started_at)) {
-				newest_index = i;
+			} else if (status == StreamPeerTCP::STATUS_CONNECTED) {
+				// Export/import processes also publish an endpoint. Keep commands
+				// on the interactive editor when it shares the same project.
+				const EditorRecord &candidate = connections[i].record;
+				if (newest_index < 0 ||
+						(candidate.command_line != connections[newest_index].record.command_line ?
+								!candidate.command_line :
+								candidate.started_at > connections[newest_index].record.started_at)) {
+					newest_index = i;
+				}
 			}
 		}
 		if (newest_index < 0) {
@@ -747,10 +769,11 @@ int run_editor_command(const Dictionary &p_request, bool p_json_output) {
 	return print_command_response(response, p_json_output);
 }
 
-int run_check_command() {
+int run_check_command(const Dictionary &p_options) {
 	Dictionary request;
 	request["protocol"] = PROTOCOL_VERSION;
 	request["command"] = "check";
+	request["options"] = p_options;
 
 	Dictionary response;
 	const int discovery_result = request_editor(request, response);
@@ -1218,13 +1241,33 @@ int run_pause_command(const String &p_command, const Vector<String> &p_arguments
 	return run_editor_command(request, json_output);
 }
 
+bool parse_project_timeout(const Vector<String> &p_arguments, int &r_index, Dictionary &r_options) {
+	if (r_index + 1 >= p_arguments.size() || !p_arguments[r_index + 1].is_valid_int()) {
+		print_line("wgodot: --timeout requires an integer from 1 to 3600 seconds.");
+		return false;
+	}
+	const int64_t seconds = p_arguments[++r_index].to_int();
+	if (seconds < 1 || seconds > 3600) {
+		print_line("wgodot: --timeout must be between 1 and 3600 seconds.");
+		return false;
+	}
+	r_options["timeout"] = seconds;
+	return true;
+}
+
 int run_run_command(const Vector<String> &p_arguments) {
 	bool json_output = false;
 	String mode = "main";
 	String scene;
-	for (const String &argument : p_arguments) {
+	Dictionary options;
+	for (int index = 0; index < p_arguments.size(); index++) {
+		const String &argument = p_arguments[index];
 		if (argument == "--json") {
 			json_output = true;
+		} else if (argument == "--timeout") {
+			if (!parse_project_timeout(p_arguments, index, options)) {
+				return 2;
+			}
 		} else if (argument == "--current") {
 			if (mode != "main" || !scene.is_empty()) {
 				print_line("wgodot: specify either --current or a scene path, not both.");
@@ -1240,7 +1283,6 @@ int run_run_command(const Vector<String> &p_arguments) {
 		}
 	}
 
-	Dictionary options;
 	options["mode"] = mode;
 	if (!scene.is_empty()) {
 		options["scene"] = scene;
@@ -1332,27 +1374,30 @@ bool execute_if_requested(int &r_exit_code) {
 		r_exit_code = WGodotFormatCLI::run(arguments);
 		return true;
 	}
-	if (command == "import") {
-		if (!arguments.is_empty()) {
-			print_line("wgodot: import does not accept arguments.");
-			r_exit_code = 2;
-		} else {
+	if (command == "import" || command == "check") {
+		Dictionary options;
+		for (int index = 0; index < arguments.size(); index++) {
+			if (arguments[index] != "--timeout") {
+				print_line("wgodot: unknown " + command + " argument: " + arguments[index]);
+				r_exit_code = 2;
+				return true;
+			}
+			if (!parse_project_timeout(arguments, index, options)) {
+				r_exit_code = 2;
+				return true;
+			}
+		}
+		if (command == "import") {
 			Dictionary request;
 			request["protocol"] = PROTOCOL_VERSION;
 			request["command"] = "import";
+			request["options"] = options;
 			r_exit_code = run_editor_command(request, false);
-		}
-		return true;
-	}
-	if (command == "check") {
-		if (!arguments.is_empty()) {
-			print_line("wgodot: check does not accept arguments.");
-			r_exit_code = 2;
 		} else if (!ProjectSettings::get_singleton()->is_project_loaded()) {
 			print_line("wgodot: no project.godot could be found.");
 			r_exit_code = 3;
 		} else {
-			r_exit_code = run_check_command();
+			r_exit_code = run_check_command(options);
 		}
 		return true;
 	}

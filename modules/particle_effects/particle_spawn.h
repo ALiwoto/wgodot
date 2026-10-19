@@ -40,6 +40,7 @@ public:
 		AccelerationOverLife,
 		Scale,
 		Drag,
+		PointAttraction,
 	};
 
 private:
@@ -47,9 +48,15 @@ private:
 	int index = 0;
 	Ref<ParticleVectorCurve3D> vector;
 	Ref<ParticleFloatCurve> scalar;
+	Ref<ParticleFloatCurve> range;
 	Vector3 constant;
 	bool world_space = false;
 	bool apply_owner_scale = false;
+	bool strength_by_distance = false;
+	bool affect_base_velocity = false;
+	Vector3i positive = Vector3i(1, 1, 1);
+	Vector3i negative = Vector3i(1, 1, 1);
+	double normalization_threshold_squared = 0.0;
 
 protected:
 	static void _bind_methods();
@@ -63,12 +70,25 @@ public:
 	Ref<ParticleVectorCurve3D> get_vector() const { return vector; }
 	void set_scalar(const Ref<ParticleFloatCurve> & p_value) { scalar = p_value; }
 	Ref<ParticleFloatCurve> get_scalar() const { return scalar; }
+	void set_range(const Ref<ParticleFloatCurve> &p_value) { range = p_value; }
+	Ref<ParticleFloatCurve> get_range() const { return range; }
 	void set_constant(const Vector3 & p_value) { constant = p_value; }
 	Vector3 get_constant() const { return constant; }
 	void set_world_space(bool p_value) { world_space = p_value; }
 	bool get_world_space() const { return world_space; }
 	void set_apply_owner_scale(bool p_value) { apply_owner_scale = p_value; }
 	bool get_apply_owner_scale() const { return apply_owner_scale; }
+	void set_strength_by_distance(bool p_value) { strength_by_distance = p_value; }
+	bool get_strength_by_distance() const { return strength_by_distance; }
+	void set_affect_base_velocity(bool p_value) { affect_base_velocity = p_value; }
+	bool get_affect_base_velocity() const { return affect_base_velocity; }
+	void set_positive(Vector3i p_value) { positive = p_value; }
+	Vector3i get_positive() const { return positive; }
+	void set_negative(Vector3i p_value) { negative = p_value; }
+	Vector3i get_negative() const { return negative; }
+	void set_normalization_threshold_squared(double p_value) { normalization_threshold_squared = p_value; }
+	double get_normalization_threshold_squared() const { return normalization_threshold_squared; }
+	Vector3 sample_scale(double p_relative_age, Basis p_emitter_basis, bool p_local_space) const;
 };
 
 class ParticleSpawnShape3D : public Resource {
@@ -79,6 +99,12 @@ public:
 		Unknown,
 		Sphere,
 		Cylinder,
+		Circle,
+		TriangularPrism,
+	};
+	struct Sample {
+		Vector3 position;
+		Vector3 velocity_offset;
 	};
 
 private:
@@ -90,6 +116,12 @@ private:
 	Ref<ParticleFloatCurve> radius_curve;
 	double half_height = 0.0;
 	Ref<ParticleFloatCurve> half_height_curve;
+	Ref<ParticleFloatCurve> arc_start_degrees;
+	Ref<ParticleFloatCurve> arc_size_degrees;
+	Ref<ParticleFloatCurve> point_count;
+	Ref<ParticleFloatCurve> triangle_height;
+	Ref<ParticleFloatCurve> triangle_angle_degrees;
+	Ref<ParticleFloatCurve> triangle_thickness;
 	int height_axis = 1;
 	Vector3i positive = Vector3i(1, 1, 1);
 	Vector3i negative = Vector3i(1, 1, 1);
@@ -124,6 +156,18 @@ public:
 	double get_half_height() const { return half_height; }
 	void set_half_height_curve(const Ref<ParticleFloatCurve> & p_value) { half_height_curve = p_value; }
 	Ref<ParticleFloatCurve> get_half_height_curve() const { return half_height_curve; }
+	void set_arc_start_degrees(const Ref<ParticleFloatCurve> &p_value) { arc_start_degrees = p_value; }
+	Ref<ParticleFloatCurve> get_arc_start_degrees() const { return arc_start_degrees; }
+	void set_arc_size_degrees(const Ref<ParticleFloatCurve> &p_value) { arc_size_degrees = p_value; }
+	Ref<ParticleFloatCurve> get_arc_size_degrees() const { return arc_size_degrees; }
+	void set_point_count(const Ref<ParticleFloatCurve> &p_value) { point_count = p_value; }
+	Ref<ParticleFloatCurve> get_point_count() const { return point_count; }
+	void set_triangle_height(const Ref<ParticleFloatCurve> &p_value) { triangle_height = p_value; }
+	Ref<ParticleFloatCurve> get_triangle_height() const { return triangle_height; }
+	void set_triangle_angle_degrees(const Ref<ParticleFloatCurve> &p_value) { triangle_angle_degrees = p_value; }
+	Ref<ParticleFloatCurve> get_triangle_angle_degrees() const { return triangle_angle_degrees; }
+	void set_triangle_thickness(const Ref<ParticleFloatCurve> &p_value) { triangle_thickness = p_value; }
+	Ref<ParticleFloatCurve> get_triangle_thickness() const { return triangle_thickness; }
 	void set_height_axis(int p_value) { height_axis = p_value; }
 	int get_height_axis() const { return height_axis; }
 	void set_positive(const Vector3i & p_value) { positive = p_value; }
@@ -149,7 +193,8 @@ public:
 	void set_direction_order(const Vector3i & p_value) { direction_order = p_value; }
 	Vector3i get_direction_order() const { return direction_order; }
 	Vector3 sample_center(const Ref<RandomStream32> & p_random, double p_emitter_seconds) const;
-	Vector3 sample_offset(const Ref<RandomStream32> & p_random, double p_emitter_seconds = 0.0) const;
+	Sample sample(const Ref<RandomStream32> &p_random, double p_emitter_seconds, int64_t p_index) const;
+	Vector3 sample_offset(const Ref<RandomStream32> & p_random, double p_emitter_seconds = 0.0, int64_t p_index = 0) const;
 	Vector3 velocity_at(Vector3 p_offset, const Ref<RandomStream32> & p_random, double p_emitter_seconds = 0.0) const;
 };
 
@@ -177,6 +222,12 @@ public:
 		Acceleration,
 		SourceParticle,
 		Ground,
+		GeometryPosition,
+		GeometryRotation,
+		GeometryScale,
+		ParentVelocity,
+		SurfacePlane,
+		WorldOffset,
 	};
 
 private:
@@ -207,20 +258,25 @@ private:
 	bool randomized = true;
 	bool random_extreme = false;
 	bool velocity_in_world_space = false;
+	Basis velocity_basis;
 	bool velocity_applies_owner_scale = false;
 	Ref<ParticleSeed> random_seed;
 	int texture_flip = int(TextureFlip::None);
 	double source_velocity_scale = 0.0;
 	double source_rotation_scale = 0.0;
 	bool sequential_source = false;
+	int source_channel = 0;
 	Ref<ParticleVelocityRule3D> acceleration;
 	Vector3i color_order = Vector3i(0, 1, 2);
+	Vector3 rotation_axis = Vector3(0, 1, 0);
 
 protected:
 	static void _bind_methods();
 
 public:
 	void set_target(int p_value) { target = p_value; }
+	void set_rotation_axis(const Vector3 &p_value) { rotation_axis = p_value; }
+	Vector3 get_rotation_axis() const { return rotation_axis; }
 	int get_target() const { return target; }
 	void set_value(const Vector3 & p_value) { value = p_value; }
 	Vector3 get_value() const { return value; }
@@ -246,6 +302,8 @@ public:
 	bool get_random_extreme() const { return random_extreme; }
 	void set_velocity_in_world_space(bool p_value) { velocity_in_world_space = p_value; }
 	bool get_velocity_in_world_space() const { return velocity_in_world_space; }
+	void set_velocity_basis(const Basis &p_value) { velocity_basis = p_value; }
+	Basis get_velocity_basis() const { return velocity_basis; }
 	void set_velocity_applies_owner_scale(bool p_value) { velocity_applies_owner_scale = p_value; }
 	bool get_velocity_applies_owner_scale() const { return velocity_applies_owner_scale; }
 	void set_random_seed(const Ref<ParticleSeed> & p_value) { random_seed = p_value; }
@@ -258,6 +316,8 @@ public:
 	double get_source_rotation_scale() const { return source_rotation_scale; }
 	void set_sequential_source(bool p_value) { sequential_source = p_value; }
 	bool get_sequential_source() const { return sequential_source; }
+	void set_source_channel(int p_value) { ERR_FAIL_COND(p_value < 0); source_channel = p_value; }
+	int get_source_channel() const { return source_channel; }
 	void set_acceleration(const Ref<ParticleVelocityRule3D> & p_value) { acceleration = p_value; }
 	Ref<ParticleVelocityRule3D> get_acceleration() const { return acceleration; }
 	void set_color_order(const Vector3i & p_value) { color_order = p_value; }
@@ -266,4 +326,5 @@ public:
 	Vector3 sample_vector(const Ref<RandomStream32> & p_random, double p_emitter_seconds = 0.0) const;
 	Vector3 sample_texture_sign(const Ref<RandomStream32> & p_random) const;
 	Vector3 sample_velocity(const Ref<RandomStream32> & p_random, const Basis & p_emitter_basis, bool p_local_space, double p_emitter_seconds = 0.0) const;
+	Vector3 sample_parent_velocity(const Ref<RandomStream32> &p_random, const Basis &p_emitter_basis, bool p_local_space, const Vector3 &p_world_velocity, double p_emitter_seconds = 0.0) const;
 };

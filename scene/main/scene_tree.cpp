@@ -1712,6 +1712,15 @@ void SceneTree::queue_delete(RequiredParam<Object> p_object) {
 	delete_queue.push_back(object->get_instance_id());
 }
 
+// wgodot-changes::begin
+void SceneTree::cancel_pending_calls(const HashSet<ObjectID> &p_targets) {
+	ERR_FAIL_COND(!Thread::is_main_thread());
+	for (ProcessGroup *group : process_groups) {
+		group->call_queue.cancel_pending(p_targets);
+	}
+}
+// wgodot-changes::end
+
 int SceneTree::get_node_count() const {
 	return nodes_in_tree_count;
 }

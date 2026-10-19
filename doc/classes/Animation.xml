@@ -738,6 +738,11 @@
 			Cubic interpolation with shortest path rotation.
 			[b]Note:[/b] The result value is always normalized and may not match the key value.
 		</constant>
+		<!-- wgodot-changes::begin -->
+		<constant name="INTERPOLATION_LINEAR_NORMALIZED" value="5" enum="InterpolationType">
+			Shortest-path normalized linear quaternion interpolation (NLERP) for [constant TYPE_ROTATION_3D]. Unlike spherical interpolation, angular speed is not constant. Quaternion keys may retain weights in their magnitudes when subdividing a curve; sampled rotations are always normalized, including endpoints. Other track types use ordinary linear interpolation. Rotation tracks using this mode are retained uncompressed by [method compress].
+		</constant>
+		<!-- wgodot-changes::end -->
 		<constant name="UPDATE_CONTINUOUS" value="0" enum="UpdateMode">
 			Update between keyframes and hold the value.
 		</constant>

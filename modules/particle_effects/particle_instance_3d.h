@@ -51,6 +51,9 @@ public:
 	StringName sprite_size = "sprite_size";
 	void set_sprite_size(const StringName &p_name) { sprite_size = p_name; }
 	StringName get_sprite_size() const { return sprite_size; }
+	StringName surface_plane = "surface_plane";
+	void set_surface_plane(const StringName &p_name) { surface_plane = p_name; }
+	StringName get_surface_plane() const { return surface_plane; }
 };
 
 class ParticleInstance3D;
@@ -59,16 +62,33 @@ class ParticleInstancePool3D;
 class ParticleSpawnContext3D : public RefCounted {
 	GDCLASS(ParticleSpawnContext3D, RefCounted);
 	HashMap<const ParticleBirthRule3D *, int> source_indices;
-	TypedArray<ParticleInstance3D> sources;
+	Vector<TypedArray<ParticleInstance3D>> source_channels;
 	double ground_offset = 0.0;
+	Vector3 emitter_velocity;
+	RayCast3D *surface_ray = nullptr;
+	Vector3 surface_origin_offset;
+	Vector4 surface_plane;
+	bool surface_plane_changed = false;
 protected:
 	static void _bind_methods();
 public:
-	void set_sources(const TypedArray<ParticleInstance3D> &p_sources) { sources = p_sources; }
-	TypedArray<ParticleInstance3D> get_sources() const { return sources; }
+	void set_source_channel(int p_channel, const TypedArray<ParticleInstance3D> &p_sources);
+	void set_sources(const TypedArray<ParticleInstance3D> &p_sources) { set_source_channel(0, p_sources); }
+	TypedArray<ParticleInstance3D> get_sources() const { return source_channels.is_empty() ? TypedArray<ParticleInstance3D>() : source_channels[0]; }
 	void set_ground_offset(double p_value) { ground_offset = p_value; }
 	double get_ground_offset() const { return ground_offset; }
-	void reset() { source_indices.clear(); ground_offset = 0.0; }
+	void set_emitter_velocity(const Vector3 &p_value) { emitter_velocity = p_value; }
+	Vector3 get_emitter_velocity() const { return emitter_velocity; }
+	void set_surface_ray(RayCast3D *p_value) { surface_ray = p_value; }
+	RayCast3D *get_surface_ray() const { return surface_ray; }
+	void set_surface_origin_offset(const Vector3 &p_value) { surface_origin_offset = p_value; }
+	Vector3 get_surface_origin_offset() const { return surface_origin_offset; }
+	void set_surface_plane(const Vector4 &p_value) { surface_plane_changed |= surface_plane != p_value; surface_plane = p_value; }
+	Vector4 get_surface_plane() const { return surface_plane; }
+	bool has_surface_plane_changed() const { return surface_plane_changed; }
+	void clear_surface_plane_changed() { surface_plane_changed = false; }
+	void capture_surface_plane(const Vector3 &p_position);
+	void reset() { source_indices.clear(); source_channels.clear(); ground_offset = 0.0; emitter_velocity = Vector3(); surface_plane_changed = false; }
 	ParticleInstance3D *sample_source(const Ref<RandomStream32> &p_random, const Ref<ParticleBirthRule3D> &p_initial);
 };
 
@@ -86,6 +106,8 @@ class ParticleInstance3D : public Node3D {
 
 	double birth = 0.0;
 	bool follows_emitter = false;
+	bool source_size_clock = false;
+	bool source_material_clock = false;
 	double lifetime = 0.0;
 	GeometryInstance3D * geometry = nullptr;
 	Color initial_color = Color(1, 1, 1, 1);
@@ -135,6 +157,7 @@ class ParticleInstance3D : public Node3D {
 	Color state_color;
 	Color state_render_color;
 	bool state_light_enabled = false;
+	double state_light_radius_multiplier = 1.0;
 	Vector3 state_previous_emitter_position;
 	double state_emitter_ground_offset = 0.0;
 	Ref<RandomStream32> sprite_random;
@@ -144,6 +167,7 @@ class ParticleInstance3D : public Node3D {
 	Ref<RandomStream32> size_life_random;
 	Ref<RandomStream32> location_random;
 	Ref<RandomStream32> drag_random;
+	Ref<RandomStream32> attraction_random;
 	Ref<RandomStream32> rotation_random;
 	Ref<RandomStream32> frame_random;
 	Ref<RandomStream32> ground_random;
@@ -155,17 +179,18 @@ class ParticleInstance3D : public Node3D {
 	void reset_random_streams();
 	void inherit_particle(ParticleInstance3D *p_source, const Ref<ParticleBirthRule3D> &p_initial);
 	void copy_source_state(ParticleInstance3D *p_source, bool p_spawning);
-	bool project_ground(ParticleGroundProjector3D *p_ground, bool p_spawning = false);
+	bool project_ground(ParticleGroundProjector3D *p_ground, double p_task_ratio, bool p_spawning = false);
 	void set_frame(double p_frame);
 	void prepare_orbit(const Ref<ParticleMotionProfile3D> &p_trajectory, double p_emitter_seconds);
 	Vector3 advance_orbit(const Ref<ParticleMotionProfile3D> &p_trajectory, double p_relative_age, double p_delta, bool p_spawned_now, double p_emitter_seconds);
-	void advance_sprite(double p_relative_age, double p_delta, bool p_spawned_now, double p_simulation_delta, const Ref<RandomStream32> &p_random, ParticleInstance3D *p_linked_particle, double p_emitter_seconds);
+	void advance_sprite(double p_relative_age, double p_delta, bool p_spawned_now, double p_simulation_delta, const Ref<RandomStream32> &p_random, ParticleInstance3D *p_linked_particle, double p_emitter_seconds, double p_parameter_ratio);
 	void inherit_source_movement(const Ref<ParticleVectorCurve3D> &p_curve, double p_relative_age, double p_delta);
 	Vector3 acceleration_in_simulation(Vector3 p_value, bool p_world_space);
 	void add_acceleration(Vector3 p_value, double p_delta);
 	void apply_accelerations_on_spawn(double p_age);
-	void update_motion_velocity(double p_relative_age, double p_delta);
-	void update_velocity(Vector3 p_multiplier, bool p_world_space, bool p_owner_scale);
+	void update_motion_velocity(double p_relative_age, double p_delta, double p_emitter_seconds, double p_parameter_ratio);
+	void apply_point_attraction(const Ref<ParticleVelocityRule3D> &p_rule, double p_delta, double p_emitter_seconds, double p_parameter_ratio);
+	void update_velocity(Vector3 p_multiplier);
 	void uniform(const StringName &p_name, const Variant &p_value);
 
 protected:
@@ -182,6 +207,7 @@ public:
 	void set_random_vector_order(const Vector3i &p_order);
 	Vector3i get_random_vector_order() const { return random_vector_order; }
 	void reset_playback();
+	void publish_surface_plane(const Vector4 &p_plane) { uniform(bindings()->surface_plane, p_plane); }
 	double remaining_seconds() const;
 	bool sample_playback(double p_seconds, double p_delta, const Ref<RandomStream32> &p_random, const TypedArray<ParticleBirthRule3D> &p_initial_values, double p_spawn_age, ParticleGroundProjector3D *p_ground, Vector3 p_birth_offset, double p_parameter_ratio, double p_emitter_seconds, const TypedArray<RandomStream32> &p_initial_random, const Ref<ParticleSpawnContext3D> &p_birth_source, ParticleInstance3D *p_linked_particle);
 	void set_shader_bindings(const Ref<ParticleShaderBindings> &p_value) { shader_bindings = p_value; }
@@ -190,6 +216,10 @@ public:
 	double get_birth() const { return birth; }
 	void set_follows_emitter(bool p_value) { follows_emitter = p_value; }
 	bool get_follows_emitter() const { return follows_emitter; }
+	void set_source_size_clock(bool p_value) { source_size_clock = p_value; }
+	bool get_source_size_clock() const { return source_size_clock; }
+	void set_source_material_clock(bool p_value) { source_material_clock = p_value; }
+	bool get_source_material_clock() const { return source_material_clock; }
 	void set_lifetime(double p_value) { lifetime = p_value; }
 	double get_lifetime() const { return lifetime; }
 	void set_geometry(GeometryInstance3D * p_value) { geometry = p_value; }

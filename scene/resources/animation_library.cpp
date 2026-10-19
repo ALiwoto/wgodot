@@ -57,7 +57,10 @@ Error AnimationLibrary::add_animation(const StringName &p_name, const Ref<Animat
 	}
 
 	animations.insert(p_name, p_animation);
-	animations[p_name]->connect_changed(callable_mp(this, &AnimationLibrary::_animation_changed).bind(p_name));
+	// wgodot-changes::begin
+	// One connection per Animation, retained until its last clip alias is removed.
+	animations[p_name]->connect_changed(callable_mp(this, &AnimationLibrary::_animation_changed).bind(uint64_t(p_animation->get_instance_id())), CONNECT_REFERENCE_COUNTED);
+	// wgodot-changes::end
 	emit_signal(SNAME("animation_added"), p_name);
 	notify_property_list_changed();
 	return OK;
@@ -77,8 +80,9 @@ void AnimationLibrary::rename_animation(const StringName &p_name, const StringNa
 	ERR_FAIL_COND_MSG(!is_valid_animation_name(p_new_name), "Invalid animation name: '" + String(p_new_name) + "'.");
 	ERR_FAIL_COND_MSG(animations.has(p_new_name), vformat("Animation name \"%s\" already exists in library.", p_new_name));
 
-	animations[p_name]->disconnect_changed(callable_mp(this, &AnimationLibrary::_animation_changed));
-	animations[p_name]->connect_changed(callable_mp(this, &AnimationLibrary::_animation_changed).bind(p_new_name));
+	// wgodot-changes::begin
+	// The subscription follows Animation identity, independent of clip aliases.
+	// wgodot-changes::end
 	animations.insert(p_new_name, animations[p_name]);
 	animations.erase(p_name);
 	emit_signal(SNAME("animation_renamed"), p_name, p_new_name);
@@ -104,9 +108,19 @@ TypedArray<StringName> AnimationLibrary::_get_animation_list() const {
 	return ret;
 }
 
-void AnimationLibrary::_animation_changed(const StringName &p_name) {
-	emit_signal(SceneStringName(animation_changed), p_name);
+// wgodot-changes::begin
+void AnimationLibrary::_animation_changed(uint64_t p_animation_id) {
+	LocalVector<StringName> names;
+	for (const KeyValue<StringName, Ref<Animation>> &entry : animations) {
+		if (uint64_t(entry.value->get_instance_id()) == p_animation_id) {
+			names.push_back(entry.key);
+		}
+	}
+	for (const StringName &name : names) {
+		emit_signal(SceneStringName(animation_changed), name);
+	}
 }
+// wgodot-changes::end
 
 void AnimationLibrary::get_animation_list(LocalVector<StringName> *p_animations) const {
 	LocalVector<StringName> anims;

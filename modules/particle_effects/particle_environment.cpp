@@ -1,9 +1,10 @@
 // wgodot-changes::file
 #include "particle_environment.h"
 
-void ParticleLightProfile3D::apply(OmniLight3D *p_light, double p_relative_age, Color p_tint, Vector2 p_size, Vector3 p_emitter_scale) const {
-	const Color scaled = p_tint * color->get_color_at_offset(p_relative_age);
-	double intensity = brightness->sample(p_relative_age) * p_tint.a;
+void ParticleLightProfile3D::apply(OmniLight3D *p_light, double p_relative_age, Color p_tint, Vector2 p_size, Vector3 p_emitter_scale, double p_task_ratio, const Ref<RandomStream32> &p_random, double p_radius_multiplier) const {
+	const Color multiplier = color_distribution.is_valid() ? color_distribution->sample(p_relative_age, p_random, p_task_ratio) : color->get_color_at_offset(p_relative_age);
+	const Color scaled = p_tint * multiplier;
+	double intensity = brightness->sample(p_relative_age, p_task_ratio) * p_tint.a;
 	if (inverse_squared) {
 		intensity *= inverse_squared_scale;
 	}
@@ -26,7 +27,7 @@ void ParticleLightProfile3D::apply(OmniLight3D *p_light, double p_relative_age, 
 	}
 	p_light->set_color(light_color);
 	p_light->set_param(Light3D::PARAM_ENERGY, energy);
-	p_light->set_param(Light3D::PARAM_RANGE, MAX(0.01, radius * radius_scale));
+	p_light->set_param(Light3D::PARAM_RANGE, MAX(0.01, radius * radius_scale * p_radius_multiplier));
 }
 
 bool ParticleGroundProjector3D::project(Vector3 p_point) {
@@ -35,8 +36,11 @@ bool ParticleGroundProjector3D::project(Vector3 p_point) {
 	return is_colliding();
 }
 
-Vector3 ParticleGroundProjector3D::projected_position(const Ref<RandomStream32> &p_random) {
+Vector3 ParticleGroundProjector3D::projected_position(const Ref<RandomStream32> &p_random, double p_relative_age, double p_task_ratio) {
 	double offset = world_offset;
+	if (offset_over_life.is_valid()) {
+		offset += offset_over_life->sample(p_relative_age, p_task_ratio, p_random);
+	}
 	if (random_offset) {
 		offset += offset_variation * p_random->next_float();
 	}

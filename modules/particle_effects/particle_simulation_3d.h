@@ -43,6 +43,7 @@ public:
 	bool advance(double p_seconds, double p_delta, const Ref<RandomStream32> &p_random, double p_parameter_ratio, double p_emitter_seconds, const TypedArray<RandomStream32> &p_initial_random, Vector3 p_birth_offset);
 	void spawn_continuous(int p_count, double p_age, double p_interval);
 	void spawn_burst(int p_count);
+	void flush_spawn_parameters();
 	void clear();
 	bool has_particles() const { return !active.is_empty(); }
 	TypedArray<ParticleInstance3D> get_active_particles() const { return active; }

@@ -2373,13 +2373,15 @@ void AnimationTrackEdit::_notification(int p_what) {
 					get_editor_theme_icon(SNAME("InterpWrapClamp")),
 					get_editor_theme_icon(SNAME("InterpWrapLoop")),
 				};
-				Ref<Texture2D> interp_icon[5] = {
+				Ref<Texture2D> interp_icon[] = { // wgodot-changes::begin: include NLERP.
 					get_editor_theme_icon(SNAME("InterpRaw")),
 					get_editor_theme_icon(SNAME("InterpLinear")),
 					get_editor_theme_icon(SNAME("InterpCubic")),
 					get_editor_theme_icon(SNAME("InterpLinearAngle")),
 					get_editor_theme_icon(SNAME("InterpCubicAngle")),
+					get_editor_theme_icon(SNAME("InterpLinear")),
 				};
+				// wgodot-changes::end
 				Ref<Texture2D> cont_icon[3] = {
 					get_editor_theme_icon(SNAME("TrackContinuous")),
 					get_editor_theme_icon(SNAME("TrackDiscrete")),
@@ -3164,6 +3166,11 @@ void AnimationTrackEdit::gui_input(const Ref<InputEvent> &p_event) {
 				menu->add_icon_item(get_editor_theme_icon(SNAME("InterpRaw")), TTR("Nearest"), MENU_INTERPOLATION_NEAREST);
 				menu->add_icon_item(get_editor_theme_icon(SNAME("InterpLinear")), TTR("Linear"), MENU_INTERPOLATION_LINEAR);
 				menu->add_icon_item(get_editor_theme_icon(SNAME("InterpCubic")), TTR("Cubic"), MENU_INTERPOLATION_CUBIC);
+				// wgodot-changes::begin
+				if (animation->track_get_type(track) == Animation::TYPE_ROTATION_3D) {
+					menu->add_icon_item(get_editor_theme_icon(SNAME("InterpLinear")), TTR("Normalized Linear"), MENU_INTERPOLATION_LINEAR_NORMALIZED);
+				}
+				// wgodot-changes::end
 				// Check whether it is angle property.
 				AnimationPlayerEditor *ape = AnimationPlayerEditor::get_singleton();
 				if (ape) {
@@ -3645,7 +3652,10 @@ void AnimationTrackEdit::_menu_selected(int p_index) {
 		case MENU_INTERPOLATION_LINEAR:
 		case MENU_INTERPOLATION_CUBIC:
 		case MENU_INTERPOLATION_LINEAR_ANGLE:
-		case MENU_INTERPOLATION_CUBIC_ANGLE: {
+		case MENU_INTERPOLATION_CUBIC_ANGLE:
+		// wgodot-changes::begin
+		case MENU_INTERPOLATION_LINEAR_NORMALIZED: {
+		// wgodot-changes::end
 			Animation::InterpolationType interp_mode = Animation::InterpolationType(p_index - MENU_INTERPOLATION_NEAREST);
 			EditorUndoRedoManager *undo_redo = EditorUndoRedoManager::get_singleton();
 			undo_redo->create_action(TTR("Change Animation Interpolation Mode"));

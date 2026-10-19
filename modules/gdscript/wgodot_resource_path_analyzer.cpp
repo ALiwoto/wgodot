@@ -108,6 +108,19 @@ bool GDScriptAnalyzer::wgodot_validate_resource_utility(const Parser::CallNode *
 	if (wgodot_is_ignored_script()) {
 		return true;
 	}
+	if (p_info.name == SNAME("str") && p_call->arguments.size() == 1) {
+		// The editor VM retains source paths as Strings. Native exports remove
+		// these functions, so this conversion cannot expose an opaque game ID.
+		Parser::FunctionNode *function = parser->current_function;
+		while (function) {
+			for (const Parser::AnnotationNode *annotation : function->annotations) {
+				if (annotation->name == SNAME("@editor_only")) {
+					return true;
+				}
+			}
+			function = function->source_lambda ? function->source_lambda->parent_function : nullptr;
+		}
+	}
 	for (uint32_t i = 0; i < p_call->arguments.size(); i++) {
 		const Parser::ExpressionNode *argument = p_call->arguments[i];
 		if (argument->type_constraint.wgodot_resource_path &&

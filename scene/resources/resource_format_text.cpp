@@ -700,7 +700,18 @@ Error ResourceLoaderText::load() {
 				//it's assignment
 			} else if (!next_tag.name.is_empty()) {
 				if (type == "PackedScene" && next_tag.name == "node") {
-					res = _parse_node_tag(res, rp);
+					// wgodot-changes::begin
+					// A surviving nested scene can be reused after its owning file
+					// has been released. Consume its text without appending nodes
+					// to the cached state, which may already be in use elsewhere.
+					Ref<PackedScene> parsed_scene = res;
+					if (!do_assign) {
+						parsed_scene.instantiate();
+					}
+					if (_parse_node_tag(parsed_scene, rp).is_null()) {
+						return error;
+					}
+					// wgodot-changes::end
 				}
 
 				error = OK;

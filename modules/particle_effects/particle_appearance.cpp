@@ -1,8 +1,14 @@
 // wgodot-changes::file
 #include "particle_appearance.h"
 
-Color ParticleColorCurve::sample(double p_relative_age, const Ref<RandomStream32> &p_random) const {
+Color ParticleColorCurve::sample(double p_relative_age, const Ref<RandomStream32> &p_random, double p_task_ratio) const {
 	Color result = value->get_color_at_offset(p_relative_age);
+	for (int index = 0; index < channels.size(); ++index) {
+		const Ref<ParticleFloatCurve> channel = channels[index];
+		if (channel.is_valid()) {
+			result[index] = channel->sample(p_relative_age, p_task_ratio);
+		}
+	}
 	if (extreme.is_null()) {
 		return result;
 	}
@@ -45,15 +51,30 @@ Vector3 ParticleOrientation3D::sample(const Ref<RandomStream32> &p_stream) {
 	return angles + variation * stream->next_vector();
 }
 
-Vector4 ParticleMaterialChannels::spawn_values(double p_relative_age, Vector4 p_initial, double p_task_ratio, double p_emitter_seconds) const {
+double ParticleMaterialChannels::velocity_factor(int p_channel, const Vector3 &p_velocity) const {
+	const int source = velocity_sources[p_channel];
+	if (source == VELOCITY_NONE) {
+		return 1.0;
+	}
+	if (source == VELOCITY_LENGTH) {
+		return p_velocity.length() * velocity_scales[p_channel];
+	}
+	ERR_FAIL_COND_V(source < VELOCITY_X || source > VELOCITY_Z, 1.0);
+	return p_velocity[source - VELOCITY_X] * velocity_scales[p_channel];
+}
+
+Vector4 ParticleMaterialChannels::spawn_values(double p_relative_age, Vector4 p_initial, double p_task_ratio, double p_emitter_seconds, const Vector3 &p_velocity) const {
 	for (int channel : curve_spawn_channels) {
 		const Ref<ParticleFloatCurve> curve = channels[channel];
 		p_initial[channel] = curve->sample(emitter_clock_channels.has(channel) ? p_emitter_seconds : p_relative_age, p_task_ratio);
 	}
+	for (int channel : spawn_channels) {
+		p_initial[channel] *= velocity_factor(channel, p_velocity);
+	}
 	return p_initial;
 }
 
-Vector4 ParticleMaterialChannels::sample(double p_relative_age, Vector4 p_initial, double p_task_ratio, const Ref<RandomStream32> &p_random, bool p_spawned_now, double p_emitter_seconds) const {
+Vector4 ParticleMaterialChannels::sample(double p_relative_age, Vector4 p_initial, double p_task_ratio, const Ref<RandomStream32> &p_random, bool p_spawned_now, double p_emitter_seconds, const Vector3 &p_velocity) const {
 	Vector4 result;
 	for (int channel = 0; channel < 4; ++channel) {
 		const Ref<ParticleFloatCurve> curve = channels[channel];
@@ -64,6 +85,11 @@ Vector4 ParticleMaterialChannels::sample(double p_relative_age, Vector4 p_initia
 	}
 	for (int channel : random_channels) {
 		result[channel] = p_spawned_now ? p_initial[channel] : result[channel] + random_spreads[channel] * p_random->next_float();
+	}
+	for (int channel = 0; channel < 4; ++channel) {
+		if (!spawn_channels.has(channel)) {
+			result[channel] *= velocity_factor(channel, p_velocity);
+		}
 	}
 	return result;
 }

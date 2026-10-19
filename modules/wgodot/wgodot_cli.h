@@ -12,6 +12,10 @@
 namespace WGodotCLI {
 
 constexpr int PROTOCOL_VERSION = 1;
+constexpr uint64_t PROJECT_OPERATION_TIMEOUT_MSEC = 300000;
+
+bool waits_for_editor(const String &p_command);
+uint64_t project_operation_timeout(const Dictionary &p_request);
 
 bool extract_arguments(List<String> &r_arguments, String &r_project_path);
 bool is_command_requested();

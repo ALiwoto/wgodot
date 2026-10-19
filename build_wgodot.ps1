@@ -15,6 +15,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+Import-Module Microsoft.PowerShell.Utility
 
 if ($Game -and $Templates) {
 	throw "Use either -Game or -Templates."

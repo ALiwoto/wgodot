@@ -32,6 +32,9 @@
 
 #include "core/object/object_id.h"
 #include "core/os/mutex.h"
+// wgodot-changes::begin
+#include "core/templates/hash_set.h"
+// wgodot-changes::end
 #include "core/templates/local_vector.h"
 #include "core/templates/paged_allocator.h"
 #include "core/variant/variant.h"
@@ -62,7 +65,10 @@ private:
 		TYPE_END, // End marker.
 		FLAG_NULL_IS_OK = 1 << 13,
 		FLAG_SHOW_ERROR = 1 << 14,
-		FLAG_MASK = FLAG_NULL_IS_OK - 1,
+		// wgodot-changes::begin
+		FLAG_CANCELLED = 1 << 12,
+		FLAG_MASK = FLAG_CANCELLED - 1,
+		// wgodot-changes::end
 	};
 
 	Mutex mutex;
@@ -75,6 +81,10 @@ private:
 	uint32_t max_pages = 0;
 	uint32_t pages_used = 0;
 	bool flushing = false;
+	// wgodot-changes::begin
+	uint32_t flush_page = 0;
+	uint32_t flush_offset = 0;
+	// wgodot-changes::end
 
 #ifdef DEV_ENABLED
 	bool is_current_thread_override = false;
@@ -135,6 +145,11 @@ public:
 	Error push_set(Object *p_object, const StringName &p_prop, const Variant &p_value);
 
 	Error flush();
+	// wgodot-changes::begin
+	// Cancel only pending messages. The caller must own the targets and ensure
+	// no other thread is currently executing one of their callbacks.
+	void cancel_pending(const HashSet<ObjectID> &p_targets);
+	// wgodot-changes::end
 	void clear();
 	void statistics();
 

@@ -6,6 +6,18 @@
 
 uint32_t WGodotResourceLoaderLifetime::active_runs = 0;
 
+void WGodotResourceLoaderLifetime::connect_changed_deferred(const Ref<Resource> &p_source, const Callable &p_callable, uint32_t p_flags) {
+	// A discarded intermediate resource can die between enqueue and dispatch.
+	// Connections are weak: do not reconnect a receiver that no longer exists.
+	if (p_callable.is_valid()) {
+		p_source->connect_changed(p_callable, p_flags);
+	}
+}
+
+void WGodotResourceLoaderLifetime::disconnect_changed_deferred(const Ref<Resource> &p_source, const Callable &p_callable) {
+	p_source->disconnect_changed(p_callable);
+}
+
 WGodotResourceLoaderLifetime::TaskScope::TaskScope(ResourceLoader::LoadToken *p_token) :
 		token(p_token),
 		previous_task(ResourceLoader::curr_load_task) {

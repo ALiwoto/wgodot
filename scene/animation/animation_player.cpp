@@ -684,7 +684,14 @@ void AnimationPlayer::seek_internal(double p_time, bool p_update, bool p_update_
 	if (!playback.current.is_enabled) {
 		if (!playback.assigned.is_empty()) {
 			AnimationData *ad = animation_set.getptr(playback.assigned);
-			ERR_FAIL_NULL_MSG(ad, vformat("Animation not found: %s.", playback.assigned));
+			// wgodot-changes::begin
+			// A streamed library can be released after playback stops. There is
+			// no pose to seek when that previously valid assignment is removed.
+			if (!ad) {
+				playback.assigned = StringName();
+				return;
+			}
+			// wgodot-changes::end
 			playback.current.is_enabled = true;
 			playback.current.animation_name = playback.assigned;
 			playback.current.animation_length = ad->animation->get_length();
@@ -939,7 +946,9 @@ void AnimationPlayer::_animation_removed(const StringName &p_name, const StringN
 		return; // No need to update because not the one from the library being used.
 	}
 
-	_animation_set_cache_update();
+	// wgodot-changes::begin
+	// AnimationMixer updates the set after every alias has cleaned its blends.
+	// wgodot-changes::end
 
 	// Erase blends if needed
 	LocalVector<BlendKey> to_erase;

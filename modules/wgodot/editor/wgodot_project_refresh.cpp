@@ -198,9 +198,12 @@ Dictionary WGodotProjectRefresh::poll() {
 	if (!filesystem) {
 		return failure("filesystem_unavailable", "The editor filesystem became unavailable.");
 	}
-	if (filesystem->is_scanning() || filesystem->is_importing()) {
+	if (filesystem->is_processing_assets()) {
 		if (OS::get_singleton()->get_ticks_msec() > deadline_msec) {
-			return failure("timeout", "Timed out while refreshing project files.");
+			Dictionary result = failure("timeout", "Timed out while refreshing project files. The editor is still processing assets; the refresh has not been cancelled. Use a longer --timeout if needed.");
+			result["scan_progress"] = filesystem->get_scanning_progress();
+			result["importing"] = filesystem->is_importing();
+			return result;
 		}
 		return Dictionary();
 	}

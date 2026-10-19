@@ -6,8 +6,8 @@
 
 #include "modules/gdscript/wgodot_gd/editor/gdscript_check_cli.h"
 
-Dictionary WGodotProjectCheck::start() {
-	return refresh.start(60000, false);
+Dictionary WGodotProjectCheck::start(uint64_t p_timeout_msec) {
+	return refresh.start(p_timeout_msec, false);
 }
 
 Dictionary WGodotProjectCheck::poll() {

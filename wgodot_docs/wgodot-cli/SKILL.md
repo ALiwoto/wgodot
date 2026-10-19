@@ -82,6 +82,8 @@ Stop the running game:
 godot --wg stop
 ```
 
+`run`, `check`, and `import` wait up to 300 seconds, including queued editor work and asset discovery/imports. Use `--timeout <seconds>` to change that budget (1–3600). A timeout does not cancel an ongoing import or stop a game that is still starting; inspect the editor/session before retrying a launch.
+
 These commands also support `--json` when their results need to be parsed.
 
 ## Logs and errors

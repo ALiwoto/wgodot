@@ -19,6 +19,7 @@ void ParticleSeed::_bind_methods() {
 }
 
 void ParticleVelocityRule3D::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("sample_scale", "relative_age", "emitter_basis", "local_space"), &ParticleVelocityRule3D::sample_scale);
 	ClassDB::bind_method(D_METHOD("set_operation", "value"), &ParticleVelocityRule3D::set_operation);
 	ClassDB::bind_method(D_METHOD("get_operation"), &ParticleVelocityRule3D::get_operation);
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "operation"), "set_operation", "get_operation");
@@ -40,6 +41,24 @@ void ParticleVelocityRule3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_apply_owner_scale", "value"), &ParticleVelocityRule3D::set_apply_owner_scale);
 	ClassDB::bind_method(D_METHOD("get_apply_owner_scale"), &ParticleVelocityRule3D::get_apply_owner_scale);
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "apply_owner_scale"), "set_apply_owner_scale", "get_apply_owner_scale");
+	ClassDB::bind_method(D_METHOD("set_range", "value"), &ParticleVelocityRule3D::set_range);
+	ClassDB::bind_method(D_METHOD("get_range"), &ParticleVelocityRule3D::get_range);
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "range", PROPERTY_HINT_RESOURCE_TYPE, "ParticleFloatCurve"), "set_range", "get_range");
+	ClassDB::bind_method(D_METHOD("set_strength_by_distance", "value"), &ParticleVelocityRule3D::set_strength_by_distance);
+	ClassDB::bind_method(D_METHOD("get_strength_by_distance"), &ParticleVelocityRule3D::get_strength_by_distance);
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "strength_by_distance"), "set_strength_by_distance", "get_strength_by_distance");
+	ClassDB::bind_method(D_METHOD("set_affect_base_velocity", "value"), &ParticleVelocityRule3D::set_affect_base_velocity);
+	ClassDB::bind_method(D_METHOD("get_affect_base_velocity"), &ParticleVelocityRule3D::get_affect_base_velocity);
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "affect_base_velocity"), "set_affect_base_velocity", "get_affect_base_velocity");
+	ClassDB::bind_method(D_METHOD("set_positive", "value"), &ParticleVelocityRule3D::set_positive);
+	ClassDB::bind_method(D_METHOD("get_positive"), &ParticleVelocityRule3D::get_positive);
+	ADD_PROPERTY(PropertyInfo(Variant::VECTOR3I, "positive"), "set_positive", "get_positive");
+	ClassDB::bind_method(D_METHOD("set_negative", "value"), &ParticleVelocityRule3D::set_negative);
+	ClassDB::bind_method(D_METHOD("get_negative"), &ParticleVelocityRule3D::get_negative);
+	ADD_PROPERTY(PropertyInfo(Variant::VECTOR3I, "negative"), "set_negative", "get_negative");
+	ClassDB::bind_method(D_METHOD("set_normalization_threshold_squared", "value"), &ParticleVelocityRule3D::set_normalization_threshold_squared);
+	ClassDB::bind_method(D_METHOD("get_normalization_threshold_squared"), &ParticleVelocityRule3D::get_normalization_threshold_squared);
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "normalization_threshold_squared"), "set_normalization_threshold_squared", "get_normalization_threshold_squared");
 }
 
 void ParticleSpawnShape3D::_bind_methods() {
@@ -67,6 +86,24 @@ void ParticleSpawnShape3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_half_height_curve", "value"), &ParticleSpawnShape3D::set_half_height_curve);
 	ClassDB::bind_method(D_METHOD("get_half_height_curve"), &ParticleSpawnShape3D::get_half_height_curve);
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "half_height_curve", PROPERTY_HINT_RESOURCE_TYPE, "ParticleFloatCurve"), "set_half_height_curve", "get_half_height_curve");
+	ClassDB::bind_method(D_METHOD("set_arc_start_degrees", "value"), &ParticleSpawnShape3D::set_arc_start_degrees);
+	ClassDB::bind_method(D_METHOD("get_arc_start_degrees"), &ParticleSpawnShape3D::get_arc_start_degrees);
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "arc_start_degrees", PROPERTY_HINT_RESOURCE_TYPE, "ParticleFloatCurve"), "set_arc_start_degrees", "get_arc_start_degrees");
+	ClassDB::bind_method(D_METHOD("set_arc_size_degrees", "value"), &ParticleSpawnShape3D::set_arc_size_degrees);
+	ClassDB::bind_method(D_METHOD("get_arc_size_degrees"), &ParticleSpawnShape3D::get_arc_size_degrees);
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "arc_size_degrees", PROPERTY_HINT_RESOURCE_TYPE, "ParticleFloatCurve"), "set_arc_size_degrees", "get_arc_size_degrees");
+	ClassDB::bind_method(D_METHOD("set_point_count", "value"), &ParticleSpawnShape3D::set_point_count);
+	ClassDB::bind_method(D_METHOD("get_point_count"), &ParticleSpawnShape3D::get_point_count);
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "point_count", PROPERTY_HINT_RESOURCE_TYPE, "ParticleFloatCurve"), "set_point_count", "get_point_count");
+	ClassDB::bind_method(D_METHOD("set_triangle_height", "value"), &ParticleSpawnShape3D::set_triangle_height);
+	ClassDB::bind_method(D_METHOD("get_triangle_height"), &ParticleSpawnShape3D::get_triangle_height);
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "triangle_height", PROPERTY_HINT_RESOURCE_TYPE, "ParticleFloatCurve"), "set_triangle_height", "get_triangle_height");
+	ClassDB::bind_method(D_METHOD("set_triangle_angle_degrees", "value"), &ParticleSpawnShape3D::set_triangle_angle_degrees);
+	ClassDB::bind_method(D_METHOD("get_triangle_angle_degrees"), &ParticleSpawnShape3D::get_triangle_angle_degrees);
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "triangle_angle_degrees", PROPERTY_HINT_RESOURCE_TYPE, "ParticleFloatCurve"), "set_triangle_angle_degrees", "get_triangle_angle_degrees");
+	ClassDB::bind_method(D_METHOD("set_triangle_thickness", "value"), &ParticleSpawnShape3D::set_triangle_thickness);
+	ClassDB::bind_method(D_METHOD("get_triangle_thickness"), &ParticleSpawnShape3D::get_triangle_thickness);
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "triangle_thickness", PROPERTY_HINT_RESOURCE_TYPE, "ParticleFloatCurve"), "set_triangle_thickness", "get_triangle_thickness");
 	ClassDB::bind_method(D_METHOD("set_height_axis", "value"), &ParticleSpawnShape3D::set_height_axis);
 	ClassDB::bind_method(D_METHOD("get_height_axis"), &ParticleSpawnShape3D::get_height_axis);
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "height_axis"), "set_height_axis", "get_height_axis");
@@ -104,7 +141,7 @@ void ParticleSpawnShape3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_direction_order"), &ParticleSpawnShape3D::get_direction_order);
 	ADD_PROPERTY(PropertyInfo(Variant::VECTOR3I, "direction_order"), "set_direction_order", "get_direction_order");
 	ClassDB::bind_method(D_METHOD("sample_center", "random", "emitter_seconds"), &ParticleSpawnShape3D::sample_center);
-	ClassDB::bind_method(D_METHOD("sample_offset", "random", "emitter_seconds"), &ParticleSpawnShape3D::sample_offset, DEFVAL(0.0));
+	ClassDB::bind_method(D_METHOD("sample_offset", "random", "emitter_seconds", "index"), &ParticleSpawnShape3D::sample_offset, DEFVAL(0.0), DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("velocity_at", "offset", "random", "emitter_seconds"), &ParticleSpawnShape3D::velocity_at, DEFVAL(0.0));
 }
 
@@ -148,6 +185,9 @@ void ParticleBirthRule3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_velocity_in_world_space", "value"), &ParticleBirthRule3D::set_velocity_in_world_space);
 	ClassDB::bind_method(D_METHOD("get_velocity_in_world_space"), &ParticleBirthRule3D::get_velocity_in_world_space);
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "velocity_in_world_space"), "set_velocity_in_world_space", "get_velocity_in_world_space");
+	ClassDB::bind_method(D_METHOD("set_velocity_basis", "value"), &ParticleBirthRule3D::set_velocity_basis);
+	ClassDB::bind_method(D_METHOD("get_velocity_basis"), &ParticleBirthRule3D::get_velocity_basis);
+	ADD_PROPERTY(PropertyInfo(Variant::BASIS, "velocity_basis"), "set_velocity_basis", "get_velocity_basis");
 	ClassDB::bind_method(D_METHOD("set_velocity_applies_owner_scale", "value"), &ParticleBirthRule3D::set_velocity_applies_owner_scale);
 	ClassDB::bind_method(D_METHOD("get_velocity_applies_owner_scale"), &ParticleBirthRule3D::get_velocity_applies_owner_scale);
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "velocity_applies_owner_scale"), "set_velocity_applies_owner_scale", "get_velocity_applies_owner_scale");
@@ -166,14 +206,21 @@ void ParticleBirthRule3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_sequential_source", "value"), &ParticleBirthRule3D::set_sequential_source);
 	ClassDB::bind_method(D_METHOD("get_sequential_source"), &ParticleBirthRule3D::get_sequential_source);
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "sequential_source"), "set_sequential_source", "get_sequential_source");
+	ClassDB::bind_method(D_METHOD("set_source_channel", "value"), &ParticleBirthRule3D::set_source_channel);
+	ClassDB::bind_method(D_METHOD("get_source_channel"), &ParticleBirthRule3D::get_source_channel);
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "source_channel"), "set_source_channel", "get_source_channel");
 	ClassDB::bind_method(D_METHOD("set_acceleration", "value"), &ParticleBirthRule3D::set_acceleration);
 	ClassDB::bind_method(D_METHOD("get_acceleration"), &ParticleBirthRule3D::get_acceleration);
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "acceleration", PROPERTY_HINT_RESOURCE_TYPE, "ParticleVelocityRule3D"), "set_acceleration", "get_acceleration");
 	ClassDB::bind_method(D_METHOD("set_color_order", "value"), &ParticleBirthRule3D::set_color_order);
 	ClassDB::bind_method(D_METHOD("get_color_order"), &ParticleBirthRule3D::get_color_order);
 	ADD_PROPERTY(PropertyInfo(Variant::VECTOR3I, "color_order"), "set_color_order", "get_color_order");
+	ClassDB::bind_method(D_METHOD("set_rotation_axis", "value"), &ParticleBirthRule3D::set_rotation_axis);
+	ClassDB::bind_method(D_METHOD("get_rotation_axis"), &ParticleBirthRule3D::get_rotation_axis);
+	ADD_PROPERTY(PropertyInfo(Variant::VECTOR3, "rotation_axis"), "set_rotation_axis", "get_rotation_axis");
 	ClassDB::bind_method(D_METHOD("sample_scalar", "random", "emitter_seconds"), &ParticleBirthRule3D::sample_scalar, DEFVAL(0.0));
 	ClassDB::bind_method(D_METHOD("sample_vector", "random", "emitter_seconds"), &ParticleBirthRule3D::sample_vector, DEFVAL(0.0));
 	ClassDB::bind_method(D_METHOD("sample_texture_sign", "random"), &ParticleBirthRule3D::sample_texture_sign);
 	ClassDB::bind_method(D_METHOD("sample_velocity", "random", "emitter_basis", "local_space", "emitter_seconds"), &ParticleBirthRule3D::sample_velocity, DEFVAL(0.0));
+	ClassDB::bind_method(D_METHOD("sample_parent_velocity", "random", "emitter_basis", "local_space", "world_velocity", "emitter_seconds"), &ParticleBirthRule3D::sample_parent_velocity, DEFVAL(0.0));
 }

@@ -3,6 +3,7 @@
 #include "core/object/class_db.h"
 
 void ParticleSimulation3D::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("flush_spawn_parameters"), &ParticleSimulation3D::flush_spawn_parameters);
 	ClassDB::bind_method(D_METHOD("reset", "pool", "authored", "legacy_spawning", "initial_values", "ground", "context", "follow_sources"), &ParticleSimulation3D::reset);
 	ClassDB::bind_method(D_METHOD("advance", "seconds", "delta", "random", "parameter_ratio", "emitter_seconds", "initial_random", "birth_offset"), &ParticleSimulation3D::advance);
 	ClassDB::bind_method(D_METHOD("spawn_continuous", "count", "age", "interval"), &ParticleSimulation3D::spawn_continuous);
@@ -67,6 +68,17 @@ bool ParticleSimulation3D::advance(double p_seconds, double p_delta, const Ref<R
 		}
 	}
 	return has_particles();
+}
+
+void ParticleSimulation3D::flush_spawn_parameters() {
+	if (!context->get_surface_ray() || !context->has_surface_plane_changed()) {
+		return;
+	}
+	for (int i = 0; i < active.size(); ++i) {
+		ParticleInstance3D *particle = Object::cast_to<ParticleInstance3D>(active[i]);
+		particle->publish_surface_plane(context->get_surface_plane());
+	}
+	context->clear_surface_plane_changed();
 }
 
 bool ParticleSimulation3D::uses_legacy_spawning() const {
