@@ -8,6 +8,7 @@ Import("env_modules")
 env_wgodot = env_modules.Clone()
 
 env_wgodot.add_source_files(env.modules_sources, "*.cpp")
+env_wgodot.add_source_files(env.modules_sources, "codecs/*.cpp")
 
 if env.editor_build:
     import pathlib

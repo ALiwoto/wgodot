@@ -59,10 +59,7 @@ void ParticleSpawnContext3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_surface_plane"), &ParticleSpawnContext3D::get_surface_plane);
 	ADD_PROPERTY(PropertyInfo(Variant::VECTOR4, "surface_plane"), "set_surface_plane", "get_surface_plane");
 	ClassDB::bind_method(D_METHOD("sample_source", "random", "initial"), &ParticleSpawnContext3D::sample_source);
-	ClassDB::bind_method(D_METHOD("set_source_channel", "channel", "sources"), &ParticleSpawnContext3D::set_source_channel);
-	ClassDB::bind_method(D_METHOD("set_sources", "value"), &ParticleSpawnContext3D::set_sources);
-	ClassDB::bind_method(D_METHOD("get_sources"), &ParticleSpawnContext3D::get_sources);
-	ADD_PROPERTY(PropertyInfo(Variant::ARRAY, "sources"), "set_sources", "get_sources");
+	ClassDB::bind_method(D_METHOD("clear_source_channel", "channel"), &ParticleSpawnContext3D::clear_source_channel);
 	ClassDB::bind_method(D_METHOD("set_ground_offset", "value"), &ParticleSpawnContext3D::set_ground_offset);
 	ClassDB::bind_method(D_METHOD("get_ground_offset"), &ParticleSpawnContext3D::get_ground_offset);
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "ground_offset"), "set_ground_offset", "get_ground_offset");

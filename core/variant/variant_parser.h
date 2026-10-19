@@ -134,6 +134,15 @@ public:
 		HashMap<String, Variant> fields;
 	};
 
+	// wgodot-changes::begin
+	class AssignmentParser {
+	public:
+		bool handled = false;
+		virtual Error parse(const String &p_name, Token &p_token, Stream *p_stream, int &r_line, String &r_error, ResourceParser *p_resources) = 0;
+		virtual ~AssignmentParser() = default;
+	};
+	// wgodot-changes::end
+
 private:
 	static const char *tk_name[TK_MAX];
 
@@ -147,7 +156,9 @@ private:
 
 public:
 	static Error parse_tag(Stream *p_stream, int &r_line, String &r_err_str, Tag &r_tag, ResourceParser *p_res_parser = nullptr, bool p_simple_tag = false);
-	static Error parse_tag_assign_eof(Stream *p_stream, int &r_line, String &r_err_str, Tag &r_tag, String &r_assign, Variant &r_value, ResourceParser *p_res_parser = nullptr, bool p_simple_tag = false);
+	// wgodot-changes::begin
+	static Error parse_tag_assign_eof(Stream *p_stream, int &r_line, String &r_err_str, Tag &r_tag, String &r_assign, Variant &r_value, ResourceParser *p_res_parser = nullptr, bool p_simple_tag = false, AssignmentParser *p_assignment_parser = nullptr);
+	// wgodot-changes::end
 
 	static Error parse_value(Token &r_token, Variant &r_value, Stream *p_stream, int &r_line, String &r_err_str, ResourceParser *p_res_parser = nullptr);
 	static Error get_token(Stream *p_stream, Token &r_token, int &r_line, String &r_err_str);

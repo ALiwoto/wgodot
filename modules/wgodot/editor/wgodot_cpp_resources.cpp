@@ -1,5 +1,6 @@
 // wgodot-changes::file
 #include "wgodot_cpp_emitter.h"
+#include "modules/wgodot/codecs/resource_codec.h"
 #include "wgodot_cpp_names.h"
 #include "wgodot_export_scene.h"
 #include "wgodot_native_resource_policy.h"
@@ -34,6 +35,17 @@ class WGodotCppResources {
 	StringBuilder body;
 	String source_path;
 	int temporary = 0;
+
+	class CodecWriter : public WResourceCodec::NativeWriter {
+		WGodotCppResources &owner;
+
+	public:
+		explicit CodecWriter(WGodotCppResources &p_owner) : owner(p_owner) {}
+		String value(const Variant &p_value) override { return owner.value(p_value); }
+		String symbol() override { return "codec_" + itos(owner.temporary++); }
+		void include(const String &p_header) override { owner.emitter.class_native_headers.insert(p_header); }
+		void line(const String &p_line) override { owner.body += "\t" + p_line + "\n"; }
+	};
 
 	void error(const String &p_message) {
 		emitter.diagnostics.push_back(source_path + ": " + p_message);
@@ -628,8 +640,21 @@ class WGodotCppResources {
 				if (game && emitter.project.is_editor_member(game->node, property.name)) {
 					continue;
 				}
+				if (const WResourceCodec *codec = WResourceCodec::find(graph[i]->get_class())) {
+					if (codec->owns_property(property.name)) {
+						continue;
+					}
+				}
 				assign(target, graph[i]->get_class(), game, property.name, graph[i]->get(property.name));
 			}
+			if (const WResourceCodec *codec = WResourceCodec::find(graph[i]->get_class())) {
+				CodecWriter writer(*this);
+				if (codec->write_native(graph[i].ptr(), target, writer) != OK) {
+					error("Resource codec could not generate native construction for " + String(graph[i]->get_class()));
+					return;
+				}
+			}
+
 		}
 		body += "\treturn resource_0;\n";
 		String source = "// wgodot-changes::file\n// Generated native resource factory.\n#include \"core/io/resource_loader.h\"\n#include \"core/io/wgodot_resource_paths.h\"\n#include \"scene/resources/packed_scene.h\"\n#include \"modules/wgodot/native/wgodot_native_serialization.h\"\n#include \"modules/wgodot/native/wgodot_native_callback.h\"\n";

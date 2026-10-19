@@ -41,7 +41,8 @@ public:
 	void set_ground(ParticleGroundProjector3D *p_value) { ground = p_value; }
 	ParticleGroundProjector3D *get_ground() const { return ground; }
 	Error configure(const TypedArray<ParticleBirthRule3D> &p_rules, const Transform3D &p_birth_transform, bool p_local_space, double p_world_unit_scale, const Vector3 &p_position_offset, const Vector3 &p_position_variation, const Vector3 &p_attribute_minimum, const Vector3 &p_attribute_maximum, int p_inverse_lifetime_mantissa_bits = 23);
-	void begin_frame(RID p_particles, const Transform3D &p_emitter_transform, double p_emitter_seconds, const Ref<RandomStream32> &p_random, const TypedArray<RandomStream32> &p_rule_streams, const Ref<RandomStream32> &p_attribute_random, const Vector3 &p_movement_offset, const Vector3 &p_emitter_velocity = Vector3());
+	void set_rule_streams(const TypedArray<RandomStream32> &p_rule_streams);
+	void begin_frame(RID p_particles, const Transform3D &p_emitter_transform, double p_emitter_seconds, const Ref<RandomStream32> &p_random, const Ref<RandomStream32> &p_attribute_random, const Vector3 &p_movement_offset, const Vector3 &p_emitter_velocity = Vector3());
 	// Returns the longest remaining lifetime, accounting for each birth's age
 	// and the requested inverse-lifetime mantissa precision of the GPU storage.
 	double emit(int p_count, double p_age = 0.0, double p_interval = 0.0, int64_t p_start_index = 0);

@@ -207,6 +207,7 @@ class WGodotCppEmitter {
 	String end_loop(int p_indent);
 	String loop_break();
 	String suite(const GDScriptParser::SuiteNode *p_suite, int p_indent);
+	String assertion_failure(const GDScriptParser::AssertNode *p_assert, const String &p_message, int p_indent, bool p_async);
 	bool integer_match_cases(const GDScriptParser::MatchNode *p_match, Vector<Vector<String>> &r_labels);
 	String match_statement(const GDScriptParser::MatchNode *p_match, int p_indent);
 	String match_condition(const GDScriptParser::PatternNode *p_pattern, const String &p_value, const GDScriptParser::DataType &p_value_type);

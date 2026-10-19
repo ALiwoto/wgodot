@@ -1765,7 +1765,12 @@ Error VariantParser::parse_tag(Stream *p_stream, int &r_line, String &r_err_str,
 	return _parse_tag(token, p_stream, r_line, r_err_str, r_tag, p_res_parser, p_simple_tag);
 }
 
-Error VariantParser::parse_tag_assign_eof(Stream *p_stream, int &r_line, String &r_err_str, Tag &r_tag, String &r_assign, Variant &r_value, ResourceParser *p_res_parser, bool p_simple_tag) {
+// wgodot-changes::begin
+Error VariantParser::parse_tag_assign_eof(Stream *p_stream, int &r_line, String &r_err_str, Tag &r_tag, String &r_assign, Variant &r_value, ResourceParser *p_res_parser, bool p_simple_tag, AssignmentParser *p_assignment_parser) {
+	if (p_assignment_parser) {
+		p_assignment_parser->handled = false;
+	}
+// wgodot-changes::end
 	//assign..
 	r_assign = "";
 	String what;
@@ -1825,6 +1830,14 @@ Error VariantParser::parse_tag_assign_eof(Stream *p_stream, int &r_line, String 
 				r_assign = what;
 				Token token;
 				get_token(p_stream, token, r_line, r_err_str);
+				// wgodot-changes::begin
+				if (p_assignment_parser) {
+					RETURN_IF_ERROR(p_assignment_parser->parse(what, token, p_stream, r_line, r_err_str, p_res_parser));
+					if (p_assignment_parser->handled) {
+						return OK;
+					}
+				}
+				// wgodot-changes::end
 				Error err = parse_value(token, r_value, p_stream, r_line, r_err_str, p_res_parser);
 				return err;
 			}

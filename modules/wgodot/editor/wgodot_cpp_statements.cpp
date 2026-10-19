@@ -7,11 +7,35 @@
 using Parser = GDScriptParser;
 using namespace WGodotCppNames;
 
+String WGodotCppEmitter::assertion_failure(const Parser::AssertNode *p_assert, const String &p_message, int p_indent, bool p_async) {
+	class_call_headers.insert("core/error/error_macros.h");
+	const String indent = String("\t").repeat(p_indent);
+	String code = indent + "_err_print_error(__FUNCTION__, " + quoted("res://" + itos(resource_id(current_class->script_path))) + ", " + itos(p_assert->start_line) + ", \"Assertion failed.\", " + p_message + ", false, ERR_HANDLER_SCRIPT);\n";
+	if (p_async) {
+		return code + indent + "task.cancel();\n" + indent + "return;\n";
+	}
+	const bool returns_void = current_function->identifier && current_function->identifier->name == SNAME("_init");
+	return code + indent + (returns_void || type(current_function->return_type_constraint, current_function) == "void" ? "return;\n" : "return {};\n");
+}
+
 String WGodotCppEmitter::suite(const Parser::SuiteNode *p_suite, int p_indent) {
 	StringBuilder code;
 	const String indent = String("\t").repeat(p_indent);
 	for (const Parser::Node *statement : p_suite->statements) {
 		switch (statement->type) {
+			case Parser::Node::ASSERT: {
+				const auto *node = static_cast<const Parser::AssertNode *>(statement);
+				const String test = "assert_condition_" + itos(temporary_index++);
+				const String message = "assert_message_" + itos(temporary_index++);
+				code += "#ifdef DEBUG_ENABLED\n";
+				code += indent + "const bool " + test + " = " + truth(node->condition) + ";\n";
+				// GDScript evaluates the optional message even when the test passes.
+				code += indent + "const String " + message + " = " + (node->message ? expression(node->message) : "String()") + ";\n";
+				code += indent + "if (!" + test + ") {\n";
+				code += assertion_failure(node, message, p_indent + 1, false);
+				code += indent + "}\n#endif\n";
+				break;
+			}
 			case Parser::Node::RETURN: {
 				const auto *node = static_cast<const Parser::ReturnNode *>(statement);
 				if (node->return_value) {

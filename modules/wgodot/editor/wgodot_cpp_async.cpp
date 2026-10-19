@@ -298,6 +298,26 @@ void WGodotCppAsync::suite(const Parser::SuiteNode *p_suite, int p_indent, bool 
 	}
 	for (const auto *statement : p_suite->statements) {
 		switch (statement->type) {
+			case Parser::Node::ASSERT: {
+				const auto *node = static_cast<const Parser::AssertNode *>(statement);
+				const int first_resume = resume_count + 1;
+				line(p_indent, "#ifdef DEBUG_ENABLED");
+				const String test = condition(node->condition, p_indent);
+				const String message = add_field("String", "assert_message");
+				if (node->message) {
+					(void)expression(node->message, p_indent);
+				}
+				line(p_indent, message + " = " + (node->message ? emitter.expression(node->message) : "String()") + ";");
+				line(p_indent, "if (!" + test + ") {");
+				code += emitter.assertion_failure(node, message, p_indent + 1, true);
+				line(p_indent, "}");
+				line(p_indent, message + " = String();");
+				line(p_indent, "#endif");
+				for (int i = first_resume; i <= resume_count; i++) {
+					debug_resumes.insert(i);
+				}
+				break;
+			}
 			case Parser::Node::VARIABLE: {
 				const auto *node = static_cast<const Parser::VariableNode *>(statement);
 				const String name = emitter.local_overrides[node];
@@ -546,7 +566,13 @@ String WGodotCppAsync::generate(const Parser::FunctionNode *p_function, const St
 	emitter.class_function_definitions.push_back({ handle_type + " " + owner + "::" + p_name + "(" + String(", ").join(p_parameters) + ")", body, is_static });
 	definition += "void " + owner + "::" + resume_name + "(" + frame_name + " &frame, " + task_type + " &task) {\n\tswitch (frame.continuation) {\n";
 	for (int i = 1; i <= resume_count; i++) {
+		if (debug_resumes.has(i)) {
+			definition += "#ifdef DEBUG_ENABLED\n";
+		}
 		definition += "\t\tcase " + itos(i) + ": goto resume_" + itos(i) + ";\n";
+		if (debug_resumes.has(i)) {
+			definition += "#endif\n";
+		}
 	}
 	definition += "\t\tdefault: break;\n\t}\n" + code + "}\n\n";
 	emitter.local_overrides.clear();

@@ -39,14 +39,19 @@ protected:
 	static void _bind_methods();
 
 public:
-	void reset(ParticleInstancePool3D *p_pool, const TypedArray<ParticleInstance3D> &p_authored, bool p_legacy_spawning, const TypedArray<ParticleBirthRule3D> &p_initial_values, ParticleGroundProjector3D *p_ground, const Ref<ParticleSpawnContext3D> &p_context, bool p_follow_sources);
-	bool advance(double p_seconds, double p_delta, const Ref<RandomStream32> &p_random, double p_parameter_ratio, double p_emitter_seconds, const TypedArray<RandomStream32> &p_initial_random, Vector3 p_birth_offset);
+	void reset(ParticleInstancePool3D *p_pool, const TypedArray<ParticleInstance3D> &p_authored, bool p_legacy_spawning, const TypedArray<ParticleBirthRule3D> &p_initial_values, const TypedArray<RandomStream32> &p_initial_random, ParticleGroundProjector3D *p_ground, const Ref<ParticleSpawnContext3D> &p_context, bool p_follow_sources);
+	bool advance(double p_seconds, double p_delta, const Ref<RandomStream32> &p_random, double p_parameter_ratio, double p_emitter_seconds, Vector3 p_birth_offset);
 	void spawn_continuous(int p_count, double p_age, double p_interval);
 	void spawn_burst(int p_count);
 	void flush_spawn_parameters();
 	void clear();
 	bool has_particles() const { return !active.is_empty(); }
-	TypedArray<ParticleInstance3D> get_active_particles() const { return active; }
+	// Source contexts share the live list. Only this simulation changes membership;
+	// clear it before the owning pool or authored nodes are destroyed.
+	void bind_source(const Ref<ParticleSpawnContext3D> &p_context, int p_channel) const;
+	int get_active_particle_count() const { return active.size(); }
+	ParticleInstance3D *get_active_particle(int p_index) const;
+	bool has_active_particle(ParticleInstance3D *p_particle) const { return active.has(p_particle); }
 	int get_spawned_count() const { return spawned_count; }
 	double remaining_seconds() const;
 };

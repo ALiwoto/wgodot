@@ -31,6 +31,13 @@
 #include "resource_format_text.h"
 
 // wgodot-changes::begin
+#include "modules/modules_enabled.gen.h"
+#ifdef MODULE_WGODOT_ENABLED
+#include "modules/wgodot/codecs/resource_codec.h"
+#endif
+// wgodot-changes::end
+
+// wgodot-changes::begin
 #include "wgodot_text_resource_cache.h"
 // wgodot-changes::end
 
@@ -643,7 +650,17 @@ Error ResourceLoaderText::load() {
 			String assign;
 			Variant value;
 
+			// wgodot-changes::begin
+#ifdef MODULE_WGODOT_ENABLED
+			WResourceCodec::Assignment codec_assignment(res.ptr(), type, do_assign);
+			error = VariantParser::parse_tag_assign_eof(&stream, lines, error_text, next_tag, assign, value, &rp, false, &codec_assignment);
+			if (error == OK && codec_assignment.handled) {
+				continue;
+			}
+#else
 			error = VariantParser::parse_tag_assign_eof(&stream, lines, error_text, next_tag, assign, value, &rp);
+#endif
+			// wgodot-changes::end
 
 			ERR_FAIL_COND_V_MSG(error, error, _get_error_string());
 
@@ -806,7 +823,17 @@ Error ResourceLoaderText::load() {
 			String assign;
 			Variant value;
 
+			// wgodot-changes::begin
+#ifdef MODULE_WGODOT_ENABLED
+			WResourceCodec::Assignment codec_assignment(resource.ptr(), res_type);
+			error = VariantParser::parse_tag_assign_eof(&stream, lines, error_text, next_tag, assign, value, &rp, false, &codec_assignment);
+			if (error == OK && codec_assignment.handled) {
+				continue;
+			}
+#else
 			error = VariantParser::parse_tag_assign_eof(&stream, lines, error_text, next_tag, assign, value, &rp);
+#endif
+			// wgodot-changes::end
 
 			bool empty_assign = assign.is_empty();
 			if (error) {
@@ -1275,6 +1302,11 @@ Error ResourceLoaderText::get_classes_used(HashSet<StringName> *r_classes) {
 	}
 
 	while (next_tag.name == "sub_resource" || next_tag.name == "resource") {
+		// wgodot-changes::begin
+#ifdef MODULE_WGODOT_ENABLED
+		const StringName codec_type = next_tag.name == "sub_resource" ? String(next_tag.fields["type"]) : res_type;
+#endif
+		// wgodot-changes::end
 		if (next_tag.name == "sub_resource") {
 			if (!next_tag.fields.has("type")) {
 				error = ERR_FILE_CORRUPT;
@@ -1285,14 +1317,23 @@ Error ResourceLoaderText::get_classes_used(HashSet<StringName> *r_classes) {
 			r_classes->insert(next_tag.fields["type"]);
 
 		} else {
-			r_classes->insert(next_tag.fields["res_type"]);
+			// wgodot-changes::begin
+			r_classes->insert(res_type);
+			// wgodot-changes::end
 		}
 
 		while (true) {
 			String assign;
 			Variant value;
 
+			// wgodot-changes::begin
+#ifdef MODULE_WGODOT_ENABLED
+			WResourceCodec::Assignment codec_assignment(nullptr, codec_type);
+			error = VariantParser::parse_tag_assign_eof(&stream, lines, error_text, next_tag, assign, value, &rp_new, false, &codec_assignment);
+#else
 			error = VariantParser::parse_tag_assign_eof(&stream, lines, error_text, next_tag, assign, value, &rp_new);
+#endif
+			// wgodot-changes::end
 
 			if (error) {
 				ERR_FAIL_COND_V_MSG(error != ERR_FILE_EOF, error, _get_error_string());
@@ -1535,6 +1576,17 @@ Ref<Resource> ResourceFormatLoaderText::load(const String &p_path, const String 
 				}
 				// Keep empty resources too: their defaults must remain defaults.
 				List<WGodotResourceProperty> &properties = source_properties[resource];
+#ifdef MODULE_WGODOT_ENABLED
+				if (const WResourceCodec *codec = WResourceCodec::find(resource->get_class())) {
+					List<PropertyInfo> codec_properties;
+					resource->get_property_list(&codec_properties);
+					for (const PropertyInfo &property : codec_properties) {
+						if ((property.usage & PROPERTY_USAGE_STORAGE) && codec->owns_property(property.name)) {
+							properties.push_back({ property.name, resource->get(property.name) });
+						}
+					}
+				}
+#endif
 				if (Object::cast_to<PackedScene>(resource.ptr())) {
 					properties.push_back({ "_bundled", resource->get("_bundled") });
 				}
@@ -2180,9 +2232,21 @@ Error ResourceFormatSaverTextInstance::save(const String &p_path, const Ref<Reso
 
 		Dictionary missing_resource_properties = res->get_meta(META_MISSING_RESOURCES, Dictionary());
 
+		// wgodot-changes::begin
+#ifdef MODULE_WGODOT_ENABLED
+		const WResourceCodec *codec = WResourceCodec::find(res->get_class());
+#endif
+		// wgodot-changes::end
 		List<PropertyInfo> property_list;
 		res->get_property_list(&property_list);
 		for (const PropertyInfo &pi : property_list) {
+			// wgodot-changes::begin
+#ifdef MODULE_WGODOT_ENABLED
+			if (codec && codec->owns_property(pi.name)) {
+				continue;
+			}
+#endif
+			// wgodot-changes::end
 			String name = pi.name;
 			if (skip_editor && name.begins_with("__editor")) {
 				continue;
@@ -2240,6 +2304,16 @@ Error ResourceFormatSaverTextInstance::save(const String &p_path, const Ref<Reso
 				f->store_string(name.property_name_encode() + " = " + vars + "\n");
 			}
 		}
+
+		// wgodot-changes::begin
+#ifdef MODULE_WGODOT_ENABLED
+		if (codec) {
+			String encoded;
+			RETURN_IF_ERROR(codec->write(res.ptr(), encoded, _write_resources, this));
+			f->store_string(encoded);
+		}
+#endif
+		// wgodot-changes::end
 
 		if (!main && is_scene && res.is_valid()) {
 			_parse_nodes(res, f);

@@ -24,7 +24,7 @@ namespace {
 
 constexpr int MAX_SAMPLES = 1800;
 const char *PHASE_NAMES[] = { "physics", "process", "deferred_calls", "navigation", "render_sync", "render_draw", "diagnostics" };
-const char *REGION_NAMES[] = { "scene_instantiate", "node_attach", "delete_queue", "script_instance_free", "animation_free", "animation_caches", "resource_load" };
+const char *REGION_NAMES[] = { "scene_instantiate", "node_attach", "delete_queue", "script_instance_free", "animation_free", "animation_caches", "animation_evaluate", "resource_load" };
 
 struct FrameTiming {
 	uint64_t frame = 0;

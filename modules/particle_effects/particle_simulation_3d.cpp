@@ -4,13 +4,16 @@
 
 void ParticleSimulation3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("flush_spawn_parameters"), &ParticleSimulation3D::flush_spawn_parameters);
-	ClassDB::bind_method(D_METHOD("reset", "pool", "authored", "legacy_spawning", "initial_values", "ground", "context", "follow_sources"), &ParticleSimulation3D::reset);
-	ClassDB::bind_method(D_METHOD("advance", "seconds", "delta", "random", "parameter_ratio", "emitter_seconds", "initial_random", "birth_offset"), &ParticleSimulation3D::advance);
+	ClassDB::bind_method(D_METHOD("reset", "pool", "authored", "legacy_spawning", "initial_values", "initial_random", "ground", "context", "follow_sources"), &ParticleSimulation3D::reset);
+	ClassDB::bind_method(D_METHOD("advance", "seconds", "delta", "random", "parameter_ratio", "emitter_seconds", "birth_offset"), &ParticleSimulation3D::advance);
 	ClassDB::bind_method(D_METHOD("spawn_continuous", "count", "age", "interval"), &ParticleSimulation3D::spawn_continuous);
 	ClassDB::bind_method(D_METHOD("spawn_burst", "count"), &ParticleSimulation3D::spawn_burst);
 	ClassDB::bind_method(D_METHOD("clear"), &ParticleSimulation3D::clear);
 	ClassDB::bind_method(D_METHOD("has_particles"), &ParticleSimulation3D::has_particles);
-	ClassDB::bind_method(D_METHOD("get_active_particles"), &ParticleSimulation3D::get_active_particles);
+	ClassDB::bind_method(D_METHOD("bind_source", "context", "channel"), &ParticleSimulation3D::bind_source);
+	ClassDB::bind_method(D_METHOD("get_active_particle_count"), &ParticleSimulation3D::get_active_particle_count);
+	ClassDB::bind_method(D_METHOD("get_active_particle", "index"), &ParticleSimulation3D::get_active_particle);
+	ClassDB::bind_method(D_METHOD("has_active_particle", "particle"), &ParticleSimulation3D::has_active_particle);
 	ClassDB::bind_method(D_METHOD("get_spawned_count"), &ParticleSimulation3D::get_spawned_count);
 	ClassDB::bind_method(D_METHOD("remaining_seconds"), &ParticleSimulation3D::remaining_seconds);
 #ifdef TOOLS_ENABLED
@@ -21,12 +24,14 @@ void ParticleSimulation3D::_bind_methods() {
 #endif
 }
 
-void ParticleSimulation3D::reset(ParticleInstancePool3D *p_pool, const TypedArray<ParticleInstance3D> &p_authored, bool p_legacy_spawning, const TypedArray<ParticleBirthRule3D> &p_initial_values, ParticleGroundProjector3D *p_ground, const Ref<ParticleSpawnContext3D> &p_context, bool p_follow_sources) {
+void ParticleSimulation3D::reset(ParticleInstancePool3D *p_pool, const TypedArray<ParticleInstance3D> &p_authored, bool p_legacy_spawning, const TypedArray<ParticleBirthRule3D> &p_initial_values, const TypedArray<RandomStream32> &p_initial_random, ParticleGroundProjector3D *p_ground, const Ref<ParticleSpawnContext3D> &p_context, bool p_follow_sources) {
+	ERR_FAIL_COND(p_initial_random.size() != p_initial_values.size());
 	clear();
 	pool = p_pool;
 	authored = p_authored;
 	legacy_spawning = p_legacy_spawning;
 	initial_values = p_initial_values;
+	initial_random = p_initial_random;
 	ground = p_ground;
 	context = p_context;
 	follow_sources = p_follow_sources;
@@ -49,13 +54,12 @@ bool ParticleSimulation3D::sample(ParticleInstance3D *p_particle, double p_age, 
 	return p_particle->sample_playback(seconds, delta, random, initial_values, p_age, ground, p_offset, parameter_ratio, emitter_seconds, initial_random, context, linked_particle(p_index));
 }
 
-bool ParticleSimulation3D::advance(double p_seconds, double p_delta, const Ref<RandomStream32> &p_random, double p_parameter_ratio, double p_emitter_seconds, const TypedArray<RandomStream32> &p_initial_random, Vector3 p_birth_offset) {
+bool ParticleSimulation3D::advance(double p_seconds, double p_delta, const Ref<RandomStream32> &p_random, double p_parameter_ratio, double p_emitter_seconds, Vector3 p_birth_offset) {
 	seconds = p_seconds;
 	delta = p_delta;
 	random = p_random;
 	parameter_ratio = p_parameter_ratio;
 	emitter_seconds = p_emitter_seconds;
-	initial_random = p_initial_random;
 	birth_offset = p_birth_offset;
 #ifdef TOOLS_ENABLED
 	debug_prepare = has_connections(SNAME("debug_particle_prepared"));
@@ -68,6 +72,16 @@ bool ParticleSimulation3D::advance(double p_seconds, double p_delta, const Ref<R
 		}
 	}
 	return has_particles();
+}
+
+void ParticleSimulation3D::bind_source(const Ref<ParticleSpawnContext3D> &p_context, int p_channel) const {
+	ERR_FAIL_COND(p_context.is_null());
+	p_context->set_source_channel(p_channel, active);
+}
+
+ParticleInstance3D *ParticleSimulation3D::get_active_particle(int p_index) const {
+	ERR_FAIL_INDEX_V(p_index, active.size(), nullptr);
+	return Object::cast_to<ParticleInstance3D>(active[p_index]);
 }
 
 void ParticleSimulation3D::flush_spawn_parameters() {

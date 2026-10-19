@@ -283,9 +283,23 @@ public:
 			elements().append_array(p_other.elements());
 		}
 	}
-	void assign(const WArray &p_other) {
-		if (writable()) {
+	template <class U>
+	void assign(const WArray<U> &p_other) {
+		if (!writable()) {
+			return;
+		}
+		if constexpr (std::is_same_v<T, U>) {
 			elements() = p_other.elements();
+		} else {
+			// assign is an explicit element copy, never an alias between arrays
+			// with different element types. Publish only the completed copy.
+			Vector<T> converted;
+			converted.resize(p_other.size());
+			T *destination = converted.ptrw();
+			for (int64_t i = 0; i < p_other.size(); i++) {
+				destination[i] = T(p_other.get(i));
+			}
+			elements() = std::move(converted);
 		}
 	}
 

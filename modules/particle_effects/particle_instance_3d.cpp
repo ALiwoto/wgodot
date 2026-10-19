@@ -32,6 +32,14 @@ void ParticleSpawnContext3D::set_source_channel(int p_channel, const TypedArray<
 	source_channels.write[p_channel] = p_sources;
 }
 
+void ParticleSpawnContext3D::clear_source_channel(int p_channel) {
+	ERR_FAIL_COND(p_channel < 0);
+	if (p_channel < source_channels.size()) {
+		// Replace this handle; clearing the shared array would clear the source.
+		source_channels.write[p_channel] = TypedArray<ParticleInstance3D>();
+	}
+}
+
 ParticleInstance3D *ParticleSpawnContext3D::sample_source(const Ref<RandomStream32> &p_random, const Ref<ParticleBirthRule3D> &p_initial) {
 	const int channel = p_initial->get_source_channel();
 	if (channel >= source_channels.size()) {

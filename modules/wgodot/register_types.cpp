@@ -4,6 +4,8 @@
 /**************************************************************************/
 
 #include "register_types.h"
+#include "codecs/animation_codec.h"
+#include "codecs/resource_load_measurement.h"
 #include "object_metadata.h"
 #include "core/object/class_db.h"
 
@@ -38,6 +40,11 @@ static void _native_export_editor_init() {
 
 void initialize_wgodot_module(ModuleInitializationLevel p_level) {
 	if (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {
+		GDREGISTER_CLASS(WAnimation);
+		register_animation_codec();
+#if defined(TOOLS_ENABLED) && defined(DEBUG_ENABLED)
+		GDREGISTER_CLASS(WResourceLoadMeasurement);
+#endif
 		GDREGISTER_ABSTRACT_CLASS(ObjectMetadata);
 #ifdef TOOLS_ENABLED
 		GDREGISTER_CLASS(WGPUParticleSnapshot);
@@ -60,6 +67,7 @@ void initialize_wgodot_module(ModuleInitializationLevel p_level) {
 
 void uninitialize_wgodot_module(ModuleInitializationLevel p_level) {
 	if (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {
+		unregister_animation_codec();
 		WGodotPreloads::deinitialize();
 		WGodotGameBridge::deinitialize();
 		WGodotWaitController::deinitialize();

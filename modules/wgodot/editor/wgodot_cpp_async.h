@@ -15,6 +15,7 @@ class WGodotCppAsync {
 	String code;
 	int resume_count = 0;
 	int field_count = 0;
+	HashSet<int> debug_resumes;
 
 	Vector<const Parser::ExpressionNode *> children(const Parser::ExpressionNode *p_expression) const;
 	bool has_await(const Parser::ExpressionNode *p_expression);

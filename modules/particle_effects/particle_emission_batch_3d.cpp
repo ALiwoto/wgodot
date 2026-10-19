@@ -9,7 +9,8 @@ void ParticleEmissionBatch3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_ground"), &ParticleEmissionBatch3D::get_ground);
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "ground", PROPERTY_HINT_NODE_TYPE, "ParticleGroundProjector3D"), "set_ground", "get_ground");
 	ClassDB::bind_method(D_METHOD("configure", "rules", "birth_transform", "local_space", "world_unit_scale", "position_offset", "position_variation", "attribute_minimum", "attribute_maximum", "inverse_lifetime_mantissa_bits"), &ParticleEmissionBatch3D::configure, DEFVAL(23));
-	ClassDB::bind_method(D_METHOD("begin_frame", "particles", "emitter_transform", "emitter_seconds", "random", "rule_streams", "attribute_random", "movement_offset", "emitter_velocity"), &ParticleEmissionBatch3D::begin_frame, DEFVAL(Vector3()));
+	ClassDB::bind_method(D_METHOD("set_rule_streams", "streams"), &ParticleEmissionBatch3D::set_rule_streams);
+	ClassDB::bind_method(D_METHOD("begin_frame", "particles", "emitter_transform", "emitter_seconds", "random", "attribute_random", "movement_offset", "emitter_velocity"), &ParticleEmissionBatch3D::begin_frame, DEFVAL(Vector3()));
 	ClassDB::bind_method(D_METHOD("emit", "count", "age", "interval", "start_index"), &ParticleEmissionBatch3D::emit, DEFVAL(0.0), DEFVAL(0.0), DEFVAL(0));
 }
 
@@ -50,8 +51,17 @@ Error ParticleEmissionBatch3D::configure(const TypedArray<ParticleBirthRule3D> &
 	return OK;
 }
 
-void ParticleEmissionBatch3D::begin_frame(RID p_particles, const Transform3D &p_emitter_transform, double p_emitter_seconds, const Ref<RandomStream32> &p_random, const TypedArray<RandomStream32> &p_rule_streams, const Ref<RandomStream32> &p_attribute_random, const Vector3 &p_movement_offset, const Vector3 &p_emitter_velocity) {
+void ParticleEmissionBatch3D::set_rule_streams(const TypedArray<RandomStream32> &p_rule_streams) {
 	ERR_FAIL_COND(p_rule_streams.size() != rules.size());
+	rule_streams.resize(rules.size());
+	for (int index = 0; index < rules.size(); index++) {
+		rule_streams.write[index] = p_rule_streams[index];
+		ERR_FAIL_COND(rules[index]->get_random_seed().is_valid() && rule_streams[index].is_null());
+	}
+}
+
+void ParticleEmissionBatch3D::begin_frame(RID p_particles, const Transform3D &p_emitter_transform, double p_emitter_seconds, const Ref<RandomStream32> &p_random, const Ref<RandomStream32> &p_attribute_random, const Vector3 &p_movement_offset, const Vector3 &p_emitter_velocity) {
+	ERR_FAIL_COND(rule_streams.size() != rules.size());
 	ERR_FAIL_COND(p_random.is_null() || p_attribute_random.is_null());
 	particles = p_particles;
 	emitter_transform = p_emitter_transform;
@@ -60,14 +70,10 @@ void ParticleEmissionBatch3D::begin_frame(RID p_particles, const Transform3D &p_
 	attribute_random = p_attribute_random;
 	movement_offset = p_movement_offset;
 	emitter_velocity = p_emitter_velocity * world_unit_scale;
-	rule_streams.resize(rules.size());
 	for (int index = 0; index < rules.size(); index++) {
-		if (rules[index]->get_random_seed().is_valid()) {
-			rule_streams.write[index] = p_rule_streams[index];
-		} else {
+		if (rules[index]->get_random_seed().is_null()) {
 			rule_streams.write[index] = random;
 		}
-		ERR_FAIL_COND(rule_streams[index].is_null());
 	}
 }
 

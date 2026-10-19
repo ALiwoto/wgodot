@@ -73,7 +73,7 @@ protected:
 	static void _bind_methods();
 public:
 	void set_source_channel(int p_channel, const TypedArray<ParticleInstance3D> &p_sources);
-	void set_sources(const TypedArray<ParticleInstance3D> &p_sources) { set_source_channel(0, p_sources); }
+	void clear_source_channel(int p_channel);
 	TypedArray<ParticleInstance3D> get_sources() const { return source_channels.is_empty() ? TypedArray<ParticleInstance3D>() : source_channels[0]; }
 	void set_ground_offset(double p_value) { ground_offset = p_value; }
 	double get_ground_offset() const { return ground_offset; }

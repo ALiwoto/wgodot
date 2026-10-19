@@ -38,6 +38,9 @@
 class Animation : public Resource {
 	GDCLASS(Animation, Resource);
 	RES_BASE_EXTENSION("anim");
+	// wgodot-changes::begin
+	friend class WAnimation;
+	// wgodot-changes::end
 
 public:
 	typedef uint64_t TrackCacheID;
