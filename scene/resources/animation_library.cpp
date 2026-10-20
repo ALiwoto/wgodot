@@ -116,8 +116,8 @@ void AnimationLibrary::_animation_changed(uint64_t p_animation_id) {
 			names.push_back(entry.key);
 		}
 	}
-	for (const StringName &name : names) {
-		emit_signal(SceneStringName(animation_changed), name);
+	for (const StringName &animation_name : names) {
+		emit_signal(SceneStringName(animation_changed), animation_name);
 	}
 }
 // wgodot-changes::end

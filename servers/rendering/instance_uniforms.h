@@ -52,23 +52,14 @@ public:
 	inline int32_t location() const { return _location; }
 	inline bool is_allocated() const { return _location != -1; }
 
-private:
-	struct Item {
-		int32_t index = -1;
-		int32_t flags = 0;
-		Variant value;
-		Variant default_value;
-		PropertyInfo info;
+// wgodot-changes::begin
+	Ref<WInstanceShaderParameters> get_parameters();
+	void upload(RID p_self, int p_slot, WInstanceShaderValue p_value);
 
-		inline bool is_valid() const { return index != -1; }
-	};
+private:
+	Ref<WInstanceShaderParameters> parameters;
 	int32_t _location = -1;
-	// wgodot-changes::begin
 	int32_t _allocated_slots = 0;
 	bool _wgodot_finish_materials(RID p_self);
-	// wgodot-changes::end
-	HashMap<StringName, Item> _parameters;
-
-	void _init_param(Item &r_item, const RendererMaterialStorage::InstanceShaderParam &p_param) const;
-	void _invalidate_items();
+// wgodot-changes::end
 };

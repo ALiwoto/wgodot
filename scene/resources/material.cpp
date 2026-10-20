@@ -227,9 +227,9 @@ bool ShaderMaterial::_set(const StringName &p_name, const Variant &p_value) {
 
 // wgodot-changes::begin
 bool ShaderMaterial::_get(const StringName &p_name, Variant &r_ret) const {
-	const String name = p_name;
-	if (shader.is_valid() && name.begins_with("shader_parameter/")) {
-		const StringName parameter = name.trim_prefix("shader_parameter/");
+	const String property_name = p_name;
+	if (shader.is_valid() && property_name.begins_with("shader_parameter/")) {
+		const StringName parameter = property_name.trim_prefix("shader_parameter/");
 		if (get_shader_parameter_type(parameter) != Variant::NIL) {
 			r_ret = get_shader_parameter(parameter);
 			return true;
@@ -323,9 +323,9 @@ bool ShaderMaterial::_property_can_revert(const StringName &p_name) const {
 	if (shader.is_null()) {
 		return false;
 	}
-	const String name = p_name;
-	if (name.begins_with("shader_parameter/")) {
-		return get_shader_parameter_type(name.trim_prefix("shader_parameter/")) != Variant::NIL;
+	const String property_name = p_name;
+	if (property_name.begins_with("shader_parameter/")) {
+		return get_shader_parameter_type(property_name.trim_prefix("shader_parameter/")) != Variant::NIL;
 	}
 	return p_name == SNAME("render_priority") || p_name == SNAME("next_pass");
 }
@@ -334,9 +334,9 @@ bool ShaderMaterial::_property_get_revert(const StringName &p_name, Variant &r_p
 	if (shader.is_null()) {
 		return false;
 	}
-	const String name = p_name;
-	if (name.begins_with("shader_parameter/")) {
-		const StringName parameter = name.trim_prefix("shader_parameter/");
+	const String property_name = p_name;
+	if (property_name.begins_with("shader_parameter/")) {
+		const StringName parameter = property_name.trim_prefix("shader_parameter/");
 		if (get_shader_parameter_type(parameter) == Variant::NIL) {
 			return false;
 		}
@@ -426,11 +426,11 @@ void ShaderMaterial::_bind_methods() {
 	// wgodot-changes::end
 	ClassDB::bind_method(D_METHOD("set_shader", "shader"), &ShaderMaterial::set_shader);
 	ClassDB::bind_method(D_METHOD("get_shader"), &ShaderMaterial::get_shader);
-	ClassDB::bind_method(D_METHOD("set_shader_parameter", "param", "value"), &ShaderMaterial::set_shader_parameter);
 	// wgodot-changes::begin
+	[[maybe_unused]] MethodBind *parameter_setter = ClassDB::bind_method(D_METHOD("set_shader_parameter", "param", "value"), &ShaderMaterial::set_shader_parameter);
 	// Generic reads are internal Resource IO; scripts use get_shader_parameter_as().
 #ifdef TOOLS_ENABLED
-	ClassDB::get_method(get_class_static(), SNAME("set_shader_parameter"))->wgodot_set_native_export_error("Shader parameter values must be statically typed.");
+	parameter_setter->wgodot_set_native_export_error("Shader parameter values must be statically typed.");
 #endif
 	// wgodot-changes::end
 

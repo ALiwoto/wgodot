@@ -32,6 +32,9 @@
 
 #include "scene/3d/node_3d.h"
 #include "servers/rendering/rendering_server_enums.h"
+// wgodot-changes::begin
+#include "servers/rendering/storage/wgodot_instance_shader_parameters.h"
+// wgodot-changes::end
 
 class Material;
 class TriangleMesh;
@@ -135,7 +138,11 @@ private:
 
 	float lod_bias = 1.0;
 
-	mutable HashMap<StringName, Variant> instance_shader_parameters;
+	// wgodot-changes::begin
+	mutable Ref<WInstanceShaderParameters> instance_shader_parameters;
+	void _send_instance_shader_parameter(int p_slot, const WInstanceShaderValue &p_value);
+	static void _bind_typed_instance_shader_parameters();
+	// wgodot-changes::end
 	mutable HashMap<StringName, StringName> instance_shader_parameter_property_remap;
 
 	float extra_cull_margin = 0.0;
@@ -201,6 +208,38 @@ public:
 
 	void set_instance_shader_parameter(const StringName &p_name, const Variant &p_value);
 	Variant get_instance_shader_parameter(const StringName &p_name) const;
+	// wgodot-changes::begin
+	const Ref<WInstanceShaderParameters> &get_instance_shader_parameters() const;
+	int get_instance_shader_parameter_slot(const StringName &p_name) const;
+	void clear_instance_shader_parameter(const StringName &p_name);
+	template <typename T> void set_instance_shader_parameter_at(int p_slot, const T &p_value) {
+		WInstanceShaderValue value = WInstanceShaderValue::pack(p_value);
+		if (get_instance_shader_parameters()->set(p_slot, value)) {
+			_send_instance_shader_parameter(p_slot, value);
+		}
+	}
+	template <typename T> T get_instance_shader_parameter_at(int p_slot) const {
+		return get_instance_shader_parameters()->value(p_slot).unpack<T>();
+	}
+#define WGODOT_INSTANCE_PARAMETER(Type, Name) \
+	void set_instance_shader_parameter_##Name(const StringName &p_name, const Type &p_value) { \
+		set_instance_shader_parameter_at(get_instance_shader_parameter_slot(p_name), p_value); \
+	} \
+	Type get_instance_shader_parameter_##Name(const StringName &p_name) const { \
+		return get_instance_shader_parameter_at<Type>(get_instance_shader_parameter_slot(p_name)); \
+	}
+	WGODOT_INSTANCE_PARAMETER(bool, bool)
+	WGODOT_INSTANCE_PARAMETER(int64_t, int)
+	WGODOT_INSTANCE_PARAMETER(double, float)
+	WGODOT_INSTANCE_PARAMETER(Vector2, vector2)
+	WGODOT_INSTANCE_PARAMETER(Vector3, vector3)
+	WGODOT_INSTANCE_PARAMETER(Vector4, vector4)
+	WGODOT_INSTANCE_PARAMETER(Vector2i, vector2i)
+	WGODOT_INSTANCE_PARAMETER(Vector3i, vector3i)
+	WGODOT_INSTANCE_PARAMETER(Vector4i, vector4i)
+	WGODOT_INSTANCE_PARAMETER(Color, color)
+#undef WGODOT_INSTANCE_PARAMETER
+	// wgodot-changes::end
 
 	void set_custom_aabb(AABB p_aabb);
 	AABB get_custom_aabb() const;

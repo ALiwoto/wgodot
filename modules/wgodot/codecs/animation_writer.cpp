@@ -281,7 +281,10 @@ public:
 		}
 		for (int i = 0; i < animation.get_track_count(); i++) {
 			switch (animation.track_get_type(i)) {
-				case Animation::TYPE_VALUE: track(i, animation.value_keys(i), property_type(animation.value_keys(i))); break;
+				case Animation::TYPE_VALUE: {
+					const auto keys = animation.value_keys(i);
+					track(i, keys, property_type(keys));
+				} break;
 				case Animation::TYPE_POSITION_3D:
 				case Animation::TYPE_SCALE_3D: track(i, animation.vector_keys(i)); break;
 				case Animation::TYPE_ROTATION_3D: track(i, animation.rotation_keys(i)); break;

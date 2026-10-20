@@ -275,7 +275,15 @@ class Reader {
 
 	template <typename T>
 	Error track_keys(WAnimation::TrackSettings settings, const Vector<double> &p_times) {
-		LocalVector<T> keys;
+		LocalVector<T> ordinary_keys;
+		WAnimationValues property_values;
+		auto &keys = [&]() -> auto & {
+			if constexpr (std::is_same_v<T, WAnimation::ValueKey>) {
+				return property_values.keys;
+			} else {
+				return ordinary_keys;
+			}
+		}();
 		keys.reserve(p_times.size());
 		String payload_type;
 		wide_values = false;
@@ -297,7 +305,7 @@ class Reader {
 				return fail("default payload requires a transform or blend-shape track");
 			}
 			keys.resize(p_times.size());
-			for (T &key : keys) {
+			for (auto &key : keys) {
 				set_default(key, settings.type);
 			}
 		} else {
@@ -319,8 +327,12 @@ class Reader {
 				RETURN_IF_ERROR(key_value(key, payload_type));
 				RETURN_IF_ERROR(expect(Parser::TK_PARENTHESIS_CLOSE));
 				keys.resize(p_times.size());
-				for (T &destination : keys) {
-					destination = key;
+				for (uint32_t i = 0; i < keys.size(); i++) {
+					if constexpr (std::is_same_v<T, WAnimation::ValueKey>) {
+						property_values.set(i, key.value);
+					} else {
+						keys[i] = key;
+					}
 				}
 			} else {
 				while (true) {
@@ -337,7 +349,11 @@ class Reader {
 					if (tuple) {
 						RETURN_IF_ERROR(expect(Parser::TK_PARENTHESIS_CLOSE));
 					}
-					keys.push_back(key);
+					if constexpr (std::is_same_v<T, WAnimation::ValueKey>) {
+						property_values.insert(keys.size(), { key.transition, key.time }, key.value);
+					} else {
+						keys.push_back(key);
+					}
 					RETURN_IF_ERROR(peek());
 					if (token.type != Parser::TK_BRACKET_CLOSE) {
 						RETURN_IF_ERROR(comma());
@@ -402,11 +418,25 @@ class Reader {
 		RETURN_IF_ERROR(expect(Parser::TK_PARENTHESIS_CLOSE));
 		W_ANIMATION_CODEC_COUNT(profile, tracks, 1);
 		W_ANIMATION_CODEC_COUNT(profile, keys, keys.size());
-		W_ANIMATION_CODEC_COUNT(profile, key_bytes, keys.size() * sizeof(T));
 #ifdef W_ANIMATION_CODEC_DIAGNOSTICS
+		if (profile.active()) {
+			if constexpr (std::is_same_v<T, WAnimation::ValueKey>) {
+				property_values.visit([&](const auto &values) {
+					W_ANIMATION_CODEC_COUNT(profile, key_bytes, keys.size() * (sizeof(WAnimationKey) + sizeof(values[0])));
+				});
+			} else {
+				W_ANIMATION_CODEC_COUNT(profile, key_bytes, keys.size() * sizeof(T));
+			}
+		}
 		const uint64_t attach_started = profile.active() ? OS::get_singleton()->get_ticks_usec() : 0;
 #endif
-		Error result = animation->set_keyframes(animation->append_track(settings), std::move(keys));
+		Error result = OK;
+		const int index = animation->append_track(settings);
+		if constexpr (std::is_same_v<T, WAnimation::ValueKey>) {
+			animation->value_track_storage(index) = std::move(property_values);
+		} else {
+			result = animation->set_keyframes(index, std::move(keys));
+		}
 #ifdef W_ANIMATION_CODEC_DIAGNOSTICS
 		if (profile.active()) {
 			profile.attach_usec += OS::get_singleton()->get_ticks_usec() - attach_started;

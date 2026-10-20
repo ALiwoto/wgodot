@@ -1594,6 +1594,23 @@ void RendererSceneCull::instance_geometry_set_shader_parameter(RID p_instance, c
 	instance->instance_uniforms.set(instance->self, p_parameter, p_value);
 }
 
+// wgodot-changes::begin
+Ref<WInstanceShaderParameters> RendererSceneCull::instance_geometry_get_shader_parameters(RID p_instance) {
+	Instance *instance = instance_owner.get_or_null(p_instance);
+	ERR_FAIL_NULL_V(instance, Ref<WInstanceShaderParameters>());
+	while (instance->update_item.in_list()) {
+		_update_dirty_instance(instance);
+	}
+	return instance->instance_uniforms.get_parameters();
+}
+
+void RendererSceneCull::instance_geometry_update_shader_parameter(RID p_instance, int p_slot, const WInstanceShaderValue &p_value) {
+	Instance *instance = instance_owner.get_or_null(p_instance);
+	ERR_FAIL_NULL(instance);
+	instance->instance_uniforms.upload(p_instance, p_slot, p_value);
+}
+// wgodot-changes::end
+
 Variant RendererSceneCull::instance_geometry_get_shader_parameter(RID p_instance, const StringName &p_parameter) const {
 	const Instance *instance = instance_owner.get_or_null(p_instance);
 	ERR_FAIL_NULL_V(instance, Variant());

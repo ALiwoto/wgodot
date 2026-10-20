@@ -5,12 +5,6 @@
 namespace {
 using NativeWriter = WResourceCodec::NativeWriter;
 
-void native_value(NativeWriter &p_writer, const String &p_key, const Variant &p_value) {
-	// Only actual property keys use Variant, matching Animation::ValueTrack.
-	const String value = p_writer.value(p_value);
-	p_writer.line(p_key + ".value = " + value + ";");
-}
-
 void native_value(NativeWriter &p_writer, const String &p_key, const StringName &p_value) {
 	const String value = p_writer.value(p_value);
 	p_writer.line(p_key + ".value = " + value + ";");
@@ -88,6 +82,64 @@ void numeric_keys(NativeWriter &p_writer, const String &p_target, const String &
 	p_writer.line("};");
 	p_writer.line("ERR_FAIL_COND_V(" + p_target + "->set_keyframes(" + p_index + ", " + keys + ", " + itos(p_keys.size()) + ") != OK, Ref<Resource>());");
 }
+
+Error property_keys(NativeWriter &p_writer, const String &p_target, const String &p_index, const WAnimationValues &p_values) {
+	if (p_values.is_empty()) {
+		return OK;
+	}
+	ERR_FAIL_COND_V_MSG(p_values.kind() == WAnimationValueKind::Generic, ERR_INVALID_DATA, "Native animation tracks require a concrete value type; heterogeneous nonnumeric keys cannot be compiled as a typed track.");
+	String cpp_type;
+	switch (p_values.kind()) {
+#define W_VALUE_CPP(m_name, m_type, m_variant) case WAnimationValueKind::m_name: cpp_type = #m_type; break;
+		W_ANIMATION_VALUE_TYPES(W_VALUE_CPP)
+#undef W_VALUE_CPP
+		case WAnimationValueKind::Number: cpp_type = "WAnimationNumber"; break;
+		default: return ERR_INVALID_DATA;
+	}
+	return p_values.visit([&](const auto &values) -> Error {
+		using T = std::decay_t<decltype(values[0])>;
+		if constexpr (!std::is_same_v<T, Variant>) {
+			constexpr bool numeric = std::is_arithmetic_v<T> || std::is_same_v<T, Vector2> || std::is_same_v<T, Vector3> || std::is_same_v<T, Vector4> || std::is_same_v<T, Quaternion> || std::is_same_v<T, Color> || std::is_same_v<T, WAnimationNumber>;
+			const String keys = p_writer.symbol();
+			const String key_type = "WAnimation::TypedValueKey<" + cpp_type + ">";
+			if constexpr (numeric) {
+				p_writer.line("static constexpr " + key_type + " " + keys + "[] = {");
+			} else {
+				p_writer.line("LocalVector<" + key_type + "> " + keys + ";");
+				p_writer.line(keys + ".resize(" + itos(values.size()) + ");");
+			}
+			for (uint32_t i = 0; i < values.size(); i++) {
+				const auto &time = p_values.keys[i];
+				String value;
+				if constexpr (std::is_same_v<T, WAnimationNumber>) {
+					value = values[i].is_integer ? "WAnimationNumber(int64_t(" + WGodotCppLiterals::number(values[i].integer) + "))" : "WAnimationNumber(" + WGodotCppLiterals::number(values[i].real) + ")";
+				} else if constexpr (std::is_same_v<T, Quaternion>) {
+					value = WGodotCppLiterals::components(values[i], 4);
+				} else if constexpr (numeric) {
+					value = WGodotCppLiterals::packed_element(values[i]);
+				} else {
+					value = p_writer.value(values[i]);
+				}
+				if constexpr (numeric) {
+					p_writer.line("\t{ { " + WGodotCppLiterals::number(time.transition) + ", " + WGodotCppLiterals::number(time.time) + " }, " + value + " },");
+				} else {
+					const String key = keys + "[" + itos(i) + "]";
+					p_writer.line(key + ".time = " + WGodotCppLiterals::number(time.time) + ";");
+					if (time.transition != 1) {
+						p_writer.line(key + ".transition = " + WGodotCppLiterals::number(time.transition) + ";");
+					}
+					p_writer.line(key + ".value = " + value + ";");
+				}
+			}
+			if constexpr (numeric) {
+				p_writer.line("};");
+			}
+			p_writer.line("ERR_FAIL_COND_V(" + p_target + "->set_value_keyframes<" + cpp_type + ">(" + p_index + ", " + keys + (numeric ? "" : ".ptr()") + ", " + itos(values.size()) + ") != OK, Ref<Resource>());");
+			return OK;
+		}
+		return ERR_INVALID_DATA;
+	});
+}
 } // namespace
 
 Error WAnimationCodec::write_native(const Resource *p_resource, const String &p_target, NativeWriter &p_writer) const {
@@ -98,7 +150,7 @@ Error WAnimationCodec::write_native(const Resource *p_resource, const String &p_
 		ERR_FAIL_COND_V(animation->track_is_compressed(i), ERR_UNAVAILABLE);
 		const auto settings = animation->track_settings(i);
 		if (settings.type == Animation::TYPE_VALUE || settings.type == Animation::TYPE_BEZIER) {
-			p_writer.animation_property(settings.path);
+			p_writer.animation_property(settings.path, settings.type == Animation::TYPE_BEZIER ? WAnimationValueKind::Float : animation->value_track_storage(i).kind());
 		}
 		const WAnimation::TrackSettings defaults;
 		const String config = p_writer.symbol();
@@ -130,7 +182,9 @@ Error WAnimationCodec::write_native(const Resource *p_resource, const String &p_
 		}
 		p_writer.line("const int " + index + " = " + p_target + "->append_track(" + config + ");");
 		switch (settings.type) {
-			case Animation::TYPE_VALUE: native_keys(p_writer, p_target, index, "ValueKey", animation->value_keys(i)); break;
+			case Animation::TYPE_VALUE: {
+				RETURN_IF_ERROR(property_keys(p_writer, p_target, index, animation->value_track_storage(i)));
+			} break;
 			case Animation::TYPE_POSITION_3D:
 			case Animation::TYPE_SCALE_3D: numeric_keys(p_writer, p_target, index, "VectorKey", animation->vector_keys(i)); break;
 			case Animation::TYPE_ROTATION_3D: numeric_keys(p_writer, p_target, index, "RotationKey", animation->rotation_keys(i)); break;

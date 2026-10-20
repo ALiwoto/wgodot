@@ -59,9 +59,9 @@ class WGodotCppResources {
 		String symbol() override { return "codec_" + itos(owner.temporary++); }
 		void include(const String &p_header) override { owner.emitter->class_native_headers.insert(p_header); }
 		void line(const String &p_line) override { owner.body += "\t" + p_line + "\n"; }
-		void animation_property(const NodePath &p_path) override {
+		void animation_property(const NodePath &p_path, WAnimationValueKind p_kind) override {
 			if (p_path.get_subname_count() > 0) {
-				owner.emitter->animation_property_paths.insert(NodePath(Vector<StringName>(), p_path.get_subnames(), false));
+				owner.emitter->animation_property_paths[NodePath(Vector<StringName>(), p_path.get_subnames(), false)] |= uint64_t(1) << int(p_kind);
 			}
 		}
 	};
@@ -722,7 +722,7 @@ class WGodotCppResources {
 		}
 		if (section_error != OK) {
 			emitter->output_error = section_error;
-			error("Cannot open generated source sections: " + error_names[section_error]);
+			error(String("Cannot open generated source sections: ") + error_names[section_error]);
 			return;
 		}
 		const Ref<Resource> resource = graph[0];

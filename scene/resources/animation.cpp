@@ -285,8 +285,10 @@ bool Animation::_set(const StringName &p_name, const Variant &p_value) {
 					vt->values.resize(valcount);
 
 					for (int i = 0; i < valcount; i++) {
-						vt->values[i].time = rt[i];
-						vt->values[i].value = values[i];
+						// wgodot-changes::begin
+						vt->values.keys[i].time = rt[i];
+						vt->values.set(i, values[i]);
+						// wgodot-changes::end
 					}
 
 					if (d.has("transitions")) {
@@ -296,7 +298,9 @@ bool Animation::_set(const StringName &p_name, const Variant &p_value) {
 						const real_t *rtr = transitions.ptr();
 
 						for (int i = 0; i < valcount; i++) {
-							vt->values[i].transition = rtr[i];
+							// wgodot-changes::begin
+							vt->values.keys[i].transition = rtr[i];
+							// wgodot-changes::end
 						}
 					}
 				}
@@ -697,12 +701,16 @@ bool Animation::_get(const StringName &p_name, Variant &r_ret) const {
 
 				int idx = 0;
 
-				const TKey<Variant> *vls = vt->values.ptr();
+				// wgodot-changes::begin
+				const WAnimationKey *vls = vt->values.keys.ptr();
+				// wgodot-changes::end
 
 				for (int i = 0; i < kk; i++) {
 					wti[idx] = vls[i].time;
 					wtr[idx] = vls[i].transition;
-					key_values[idx] = vls[i].value;
+					// wgodot-changes::begin
+					key_values[idx] = vt->values.get(i);
+					// wgodot-changes::end
 					idx++;
 				}
 
@@ -1716,11 +1724,15 @@ int Animation::track_find_key(int p_track, double p_time, FindMode p_find_mode, 
 		} break;
 		case TYPE_VALUE: {
 			ValueTrack *vt = static_cast<ValueTrack *>(t);
-			int k = _find(vt->values, p_time, p_backward, p_limit);
+			// wgodot-changes::begin
+			int k = _find(vt->values.keys, p_time, p_backward, p_limit);
+			// wgodot-changes::end
 			if ((uint32_t)k >= vt->values.size()) {
 				return -1;
 			}
-			if ((p_find_mode == FIND_MODE_APPROX && !Math::is_equal_approx(vt->values[k].time, p_time)) || (p_find_mode == FIND_MODE_EXACT && vt->values[k].time != p_time)) {
+			// wgodot-changes::begin
+			if ((p_find_mode == FIND_MODE_APPROX && !Math::is_equal_approx(vt->values.keys[k].time, p_time)) || (p_find_mode == FIND_MODE_EXACT && vt->values.keys[k].time != p_time)) {
+			// wgodot-changes::end
 				return -1;
 			}
 			return k;
@@ -1813,11 +1825,18 @@ int Animation::track_insert_key(int p_track, double p_time, const Variant &p_key
 		case TYPE_VALUE: {
 			ValueTrack *vt = static_cast<ValueTrack *>(t);
 
-			TKey<Variant> k;
-			k.time = p_time;
-			k.transition = p_transition;
-			k.value = p_key;
-			ret = _insert(p_time, vt->values, k);
+			// wgodot-changes::begin
+			int count = vt->values.size();
+			WAnimationKey key{ p_transition, p_time };
+			ret = _insert(p_time, vt->values.keys, key);
+			if (int(vt->values.size()) == count) {
+				vt->values.set(ret, p_key);
+			} else {
+				key = vt->values.keys[ret];
+				vt->values.keys.remove_at(ret);
+				vt->values.insert(ret, key, p_key);
+			}
+			// wgodot-changes::end
 
 		} break;
 		case TYPE_METHOD: {
@@ -1983,7 +2002,9 @@ Variant Animation::track_get_key_value(int p_track, int p_key_idx) const {
 		case TYPE_VALUE: {
 			ValueTrack *vt = static_cast<ValueTrack *>(t);
 			ERR_FAIL_UNSIGNED_INDEX_V((uint32_t)p_key_idx, vt->values.size(), Variant());
-			return vt->values[p_key_idx].value;
+			// wgodot-changes::begin
+			return vt->values.get(p_key_idx);
+			// wgodot-changes::end
 
 		} break;
 		case TYPE_METHOD: {
@@ -2088,7 +2109,9 @@ double Animation::track_get_key_time(int p_track, int p_key_idx) const {
 		case TYPE_VALUE: {
 			ValueTrack *vt = static_cast<ValueTrack *>(t);
 			ERR_FAIL_UNSIGNED_INDEX_V((uint32_t)p_key_idx, vt->values.size(), -1);
-			return vt->values[p_key_idx].time;
+			// wgodot-changes::begin
+			return vt->values.keys[p_key_idx].time;
+			// wgodot-changes::end
 
 		} break;
 		case TYPE_METHOD: {
@@ -2168,10 +2191,12 @@ void Animation::track_set_key_time(int p_track, int p_key_idx, double p_time) {
 		case TYPE_VALUE: {
 			ValueTrack *vt = static_cast<ValueTrack *>(t);
 			ERR_FAIL_UNSIGNED_INDEX((uint32_t)p_key_idx, vt->values.size());
-			TKey<Variant> key = vt->values[p_key_idx];
-			key.time = p_time;
+			// wgodot-changes::begin
+			Variant value = vt->values.get(p_key_idx);
+			real_t transition = vt->values.keys[p_key_idx].transition;
 			vt->values.remove_at(p_key_idx);
-			_insert(p_time, vt->values, key);
+			track_insert_key(p_track, p_time, value, transition);
+			// wgodot-changes::end
 			return;
 		}
 		case TYPE_METHOD: {
@@ -2255,7 +2280,9 @@ real_t Animation::track_get_key_transition(int p_track, int p_key_idx) const {
 		case TYPE_VALUE: {
 			ValueTrack *vt = static_cast<ValueTrack *>(t);
 			ERR_FAIL_UNSIGNED_INDEX_V((uint32_t)p_key_idx, vt->values.size(), -1);
-			return vt->values[p_key_idx].transition;
+			// wgodot-changes::begin
+			return vt->values.keys[p_key_idx].transition;
+			// wgodot-changes::end
 
 		} break;
 		case TYPE_METHOD: {
@@ -2350,7 +2377,9 @@ void Animation::track_set_key_value(int p_track, int p_key_idx, const Variant &p
 			ValueTrack *vt = static_cast<ValueTrack *>(t);
 			ERR_FAIL_UNSIGNED_INDEX((uint32_t)p_key_idx, vt->values.size());
 
-			vt->values[p_key_idx].value = p_value;
+			// wgodot-changes::begin
+			vt->values.set(p_key_idx, p_value);
+			// wgodot-changes::end
 
 		} break;
 		case TYPE_METHOD: {
@@ -2439,7 +2468,9 @@ void Animation::track_set_key_transition(int p_track, int p_key_idx, real_t p_tr
 		case TYPE_VALUE: {
 			ValueTrack *vt = static_cast<ValueTrack *>(t);
 			ERR_FAIL_UNSIGNED_INDEX((uint32_t)p_key_idx, vt->values.size());
-			vt->values[p_key_idx].transition = p_transition;
+			// wgodot-changes::begin
+			vt->values.keys[p_key_idx].transition = p_transition;
+			// wgodot-changes::end
 
 		} break;
 		case TYPE_METHOD: {
@@ -2578,28 +2609,23 @@ Variant Animation::_cubic_interpolate_angle_in_time(const Variant &p_pre_a, cons
 	return _cubic_interpolate_in_time(p_pre_a, p_a, p_b, p_post_b, p_c, p_pre_a_t, p_b_t, p_post_b_t);
 }
 
-template <typename T>
-T Animation::_interpolate(const LocalVector<TKey<T>> &p_keys, double p_time, InterpolationType p_interp, bool p_loop_wrap, bool *p_ok, bool p_backward) const {
+// wgodot-changes::begin
+template <typename K>
+WAnimationSample Animation::_interpolation_sample(const LocalVector<K> &p_keys, double p_time, InterpolationType p_interp, bool p_loop_wrap, bool p_backward) const {
 	int len = _find(p_keys, length) + 1; // try to find last key (there may be more past the end)
 
 	if (len <= 0) {
 		// (-1 or -2 returned originally) (plus one above)
 		// meaning no keys, or only key time is larger than length
-		if (p_ok) {
-			*p_ok = false;
-		}
-		return T();
+		return {};
 	} else if (len == 1) { // one key found (0+1), return it
 
-		if (p_ok) {
-			*p_ok = true;
-		}
-		return p_keys[0].value;
+		return { 0, 0 };
 	}
 
 	int idx = _find(p_keys, p_time, p_backward);
 
-	ERR_FAIL_COND_V(idx == -2, T());
+	ERR_FAIL_COND_V(idx == -2, WAnimationSample());
 	int maxi = len - 1;
 	bool is_start_edge = p_backward ? idx >= len : idx == -1;
 	bool is_end_edge = p_backward ? idx == 0 : idx >= maxi;
@@ -2714,102 +2740,114 @@ T Animation::_interpolate(const LocalVector<TKey<T>> &p_keys, double p_time, Int
 		c = from / delta;
 	}
 
-	if (p_ok) {
-		*p_ok = true;
-	}
-
 	real_t tr = p_keys[idx].transition;
 	if (tr == 0) {
 		// Don't interpolate if not needed.
-		return p_keys[idx].value;
+		return { idx, idx };
 	}
 
 	if (tr != 1.0) {
 		c = Math::ease(c, tr);
 	}
 
-	switch (p_interp) {
-		case INTERPOLATION_NEAREST: {
-			return p_keys[idx].value;
-		} break;
-		case INTERPOLATION_LINEAR: {
-			return _interpolate(p_keys[idx].value, p_keys[next].value, c);
-		} break;
-		// wgodot-changes::begin
-		case INTERPOLATION_LINEAR_NORMALIZED: {
-			if constexpr (std::is_same_v<T, Quaternion>) {
-				const Quaternion &from = p_keys[idx].value;
-				const Quaternion &to = p_keys[next].value;
-				return (from * (1 - c) + to * (from.dot(to) < 0 ? -c : c)).normalized();
-			} else {
-				return _interpolate(p_keys[idx].value, p_keys[next].value, c);
-			}
-		} break;
-		// wgodot-changes::end
-		case INTERPOLATION_LINEAR_ANGLE: {
-			return _interpolate_angle(p_keys[idx].value, p_keys[next].value, c);
-		} break;
-		case INTERPOLATION_CUBIC:
-		case INTERPOLATION_CUBIC_ANGLE: {
-			if (!p_loop_wrap || loop_mode == LOOP_NONE) {
-				pre_t = p_keys[pre].time - p_keys[idx].time;
-				to_t = p_keys[next].time - p_keys[idx].time;
-				post_t = p_keys[post].time - p_keys[idx].time;
-			} else if (loop_mode == LOOP_LINEAR) {
-				pre_t = pre > idx ? -length + p_keys[pre].time - p_keys[idx].time : p_keys[pre].time - p_keys[idx].time;
-				to_t = next < idx ? length + p_keys[next].time - p_keys[idx].time : p_keys[next].time - p_keys[idx].time;
-				post_t = next < idx || post <= idx ? length + p_keys[post].time - p_keys[idx].time : p_keys[post].time - p_keys[idx].time;
-			} else {
-				pre_t = p_keys[pre].time - p_keys[idx].time;
-				to_t = p_keys[next].time - p_keys[idx].time;
-				post_t = p_keys[post].time - p_keys[idx].time;
+	if (use_cubic) {
+		if (!p_loop_wrap || loop_mode == LOOP_NONE) {
+			pre_t = p_keys[pre].time - p_keys[idx].time;
+			to_t = p_keys[next].time - p_keys[idx].time;
+			post_t = p_keys[post].time - p_keys[idx].time;
+		} else if (loop_mode == LOOP_LINEAR) {
+			pre_t = pre > idx ? -length + p_keys[pre].time - p_keys[idx].time : p_keys[pre].time - p_keys[idx].time;
+			to_t = next < idx ? length + p_keys[next].time - p_keys[idx].time : p_keys[next].time - p_keys[idx].time;
+			post_t = next < idx || post <= idx ? length + p_keys[post].time - p_keys[idx].time : p_keys[post].time - p_keys[idx].time;
+		} else {
+			pre_t = p_keys[pre].time - p_keys[idx].time;
+			to_t = p_keys[next].time - p_keys[idx].time;
+			post_t = p_keys[post].time - p_keys[idx].time;
 
-				if ((pre > idx && idx == next && post < next) || (pre < idx && idx == next && post > next)) {
-					pre_t = p_keys[idx].time - p_keys[pre].time;
-				} else if (pre == idx) {
-					pre_t = idx < next ? -p_keys[idx].time * 2.0 : (length - p_keys[idx].time) * 2.0;
-				}
-
-				if (idx == next) {
-					to_t = pre < idx ? (length - p_keys[idx].time) * 2.0 : -p_keys[idx].time * 2.0;
-					post_t = p_keys[next].time - p_keys[post].time + to_t;
-				} else if (next == post) {
-					post_t = idx < next ? (length - p_keys[next].time) * 2.0 + to_t : -p_keys[next].time * 2.0 + to_t;
-				}
+			if ((pre > idx && idx == next && post < next) || (pre < idx && idx == next && post > next)) {
+				pre_t = p_keys[idx].time - p_keys[pre].time;
+			} else if (pre == idx) {
+				pre_t = idx < next ? -p_keys[idx].time * 2.0 : (length - p_keys[idx].time) * 2.0;
 			}
 
-			if (p_interp == INTERPOLATION_CUBIC_ANGLE) {
-				return _cubic_interpolate_angle_in_time(
-						p_keys[pre].value, p_keys[idx].value, p_keys[next].value, p_keys[post].value, c,
-						pre_t, to_t, post_t);
+			if (idx == next) {
+				to_t = pre < idx ? (length - p_keys[idx].time) * 2.0 : -p_keys[idx].time * 2.0;
+				post_t = p_keys[next].time - p_keys[post].time + to_t;
+			} else if (next == post) {
+				post_t = idx < next ? (length - p_keys[next].time) * 2.0 + to_t : -p_keys[next].time * 2.0 + to_t;
 			}
-			return _cubic_interpolate_in_time(
-					p_keys[pre].value, p_keys[idx].value, p_keys[next].value, p_keys[post].value, c,
-					pre_t, to_t, post_t);
-		} break;
-		default:
-			return p_keys[idx].value;
+		}
 	}
+	return { idx, next, pre, post, c, pre_t, to_t, post_t, int(p_interp) };
+}
 
-	// do a barrel roll
+template <typename T>
+T Animation::_interpolate(const LocalVector<TKey<T>> &p_keys, double p_time, InterpolationType p_interp, bool p_loop_wrap, bool *p_ok, bool p_backward) const {
+	const WAnimationSample s = _interpolation_sample(p_keys, p_time, p_interp, p_loop_wrap, p_backward);
+	if (p_ok) {
+		*p_ok = s.from >= 0;
+	}
+	if (s.from < 0) {
+		return T();
+	}
+	const T &a = p_keys[s.from].value;
+	if (s.interpolation == INTERPOLATION_NEAREST) {
+		return a;
+	}
+	const T &b = p_keys[s.next].value;
+	if (s.interpolation == INTERPOLATION_LINEAR_NORMALIZED) {
+		if constexpr (std::is_same_v<T, Quaternion>) {
+			return (a * (1 - s.weight) + b * (a.dot(b) < 0 ? -s.weight : s.weight)).normalized();
+		}
+	}
+	if (s.interpolation == INTERPOLATION_CUBIC || s.interpolation == INTERPOLATION_CUBIC_ANGLE) {
+		if constexpr (std::is_floating_point_v<T>) {
+			if (s.interpolation == INTERPOLATION_CUBIC_ANGLE) {
+				return Math::fposmod(float(Math::cubic_interpolate_angle_in_time(real_t(a), real_t(b), real_t(p_keys[s.pre].value), real_t(p_keys[s.post].value), s.weight, s.next_time, s.pre_time, s.post_time)), float(Math::TAU));
+			}
+		}
+		if constexpr (std::is_same_v<T, Variant>) {
+			if (s.interpolation == INTERPOLATION_CUBIC_ANGLE) {
+				return _cubic_interpolate_angle_in_time(p_keys[s.pre].value, a, b, p_keys[s.post].value, s.weight, s.pre_time, s.next_time, s.post_time);
+			}
+		}
+		return _cubic_interpolate_in_time(p_keys[s.pre].value, a, b, p_keys[s.post].value, s.weight, s.pre_time, s.next_time, s.post_time);
+	}
+	if constexpr (std::is_same_v<T, Variant>) {
+		if (s.interpolation == INTERPOLATION_LINEAR_ANGLE) {
+			return _interpolate_angle(a, b, s.weight);
+		}
+	}
+	if constexpr (std::is_floating_point_v<T>) {
+		if (s.interpolation == INTERPOLATION_LINEAR_ANGLE) {
+			return Math::fposmod(float(Math::lerp_angle(real_t(a), real_t(b), s.weight)), float(Math::TAU));
+		}
+	}
+	return _interpolate(a, b, s.weight);
+}
+
+const WAnimationValues &Animation::value_track_storage(int p_track) const {
+	DEV_ASSERT(uint32_t(p_track) < tracks.size() && tracks[p_track]->type == TYPE_VALUE);
+	return static_cast<const ValueTrack *>(tracks[p_track])->values;
+}
+
+WAnimationValues &Animation::value_track_storage(int p_track) {
+	DEV_ASSERT(uint32_t(p_track) < tracks.size() && tracks[p_track]->type == TYPE_VALUE);
+	return static_cast<ValueTrack *>(tracks[p_track])->values;
+}
+
+WAnimationSample Animation::value_track_sample(int p_track, double p_time, bool p_backward) const {
+	DEV_ASSERT(uint32_t(p_track) < tracks.size() && tracks[p_track]->type == TYPE_VALUE);
+	const ValueTrack *track = static_cast<const ValueTrack *>(tracks[p_track]);
+	return _interpolation_sample(track->values.keys, p_time, track->update_mode == UPDATE_DISCRETE ? INTERPOLATION_NEAREST : track->interpolation, track->loop_wrap, p_backward);
 }
 
 Variant Animation::value_track_interpolate(int p_track, double p_time, bool p_backward) const {
-	ERR_FAIL_UNSIGNED_INDEX_V((uint32_t)p_track, tracks.size(), 0);
-	Track *t = tracks[p_track];
-	ERR_FAIL_COND_V(t->type != TYPE_VALUE, Variant());
-	ValueTrack *vt = static_cast<ValueTrack *>(t);
-
-	bool ok = false;
-
-	Variant res = _interpolate(vt->values, p_time, vt->update_mode == UPDATE_DISCRETE ? INTERPOLATION_NEAREST : vt->interpolation, vt->loop_wrap, &ok, p_backward);
-
-	if (ok) {
-		return res;
-	}
-
-	return Variant();
+	ERR_FAIL_UNSIGNED_INDEX_V(uint32_t(p_track), tracks.size(), Variant());
+	ERR_FAIL_COND_V(tracks[p_track]->type != TYPE_VALUE, Variant());
+	return value_track_storage(p_track).sample_variant(value_track_sample(p_track, p_time, p_backward));
 }
+// wgodot-changes::end
 
 void Animation::value_track_set_update_mode(int p_track, UpdateMode p_mode) {
 	ERR_FAIL_UNSIGNED_INDEX((uint32_t)p_track, tracks.size());
@@ -3006,11 +3044,15 @@ void Animation::track_get_key_indices_in_range(int p_track, double p_time, doubl
 					case TYPE_VALUE: {
 						const ValueTrack *vt = static_cast<const ValueTrack *>(t);
 						if (!is_backward) {
-							_track_get_key_indices_in_range(vt->values, from_time, anim_end, r_indices, is_backward);
-							_track_get_key_indices_in_range(vt->values, anim_start, to_time, r_indices, is_backward);
+							// wgodot-changes::begin
+							_track_get_key_indices_in_range(vt->values.keys, from_time, anim_end, r_indices, is_backward);
+							_track_get_key_indices_in_range(vt->values.keys, anim_start, to_time, r_indices, is_backward);
+							// wgodot-changes::end
 						} else {
-							_track_get_key_indices_in_range(vt->values, anim_start, to_time, r_indices, is_backward);
-							_track_get_key_indices_in_range(vt->values, from_time, anim_end, r_indices, is_backward);
+							// wgodot-changes::begin
+							_track_get_key_indices_in_range(vt->values.keys, anim_start, to_time, r_indices, is_backward);
+							_track_get_key_indices_in_range(vt->values.keys, from_time, anim_end, r_indices, is_backward);
+							// wgodot-changes::end
 						}
 					} break;
 					case TYPE_METHOD: {
@@ -3125,8 +3167,10 @@ void Animation::track_get_key_indices_in_range(int p_track, double p_time, doubl
 					} break;
 					case TYPE_VALUE: {
 						const ValueTrack *vt = static_cast<const ValueTrack *>(t);
-						_track_get_key_indices_in_range(vt->values, start, from_time, r_indices, true);
-						_track_get_key_indices_in_range(vt->values, start, to_time, r_indices, false);
+						// wgodot-changes::begin
+						_track_get_key_indices_in_range(vt->values.keys, start, from_time, r_indices, true);
+						_track_get_key_indices_in_range(vt->values.keys, start, to_time, r_indices, false);
+						// wgodot-changes::end
 					} break;
 					case TYPE_METHOD: {
 						const MethodTrack *mt = static_cast<const MethodTrack *>(t);
@@ -3196,8 +3240,10 @@ void Animation::track_get_key_indices_in_range(int p_track, double p_time, doubl
 					} break;
 					case TYPE_VALUE: {
 						const ValueTrack *vt = static_cast<const ValueTrack *>(t);
-						_track_get_key_indices_in_range(vt->values, from_time, end, r_indices, false);
-						_track_get_key_indices_in_range(vt->values, to_time, end, r_indices, true);
+						// wgodot-changes::begin
+						_track_get_key_indices_in_range(vt->values.keys, from_time, end, r_indices, false);
+						_track_get_key_indices_in_range(vt->values.keys, to_time, end, r_indices, true);
+						// wgodot-changes::end
 					} break;
 					case TYPE_METHOD: {
 						const MethodTrack *mt = static_cast<const MethodTrack *>(t);
@@ -3266,7 +3312,9 @@ void Animation::track_get_key_indices_in_range(int p_track, double p_time, doubl
 		} break;
 		case TYPE_VALUE: {
 			const ValueTrack *vt = static_cast<const ValueTrack *>(t);
-			_track_get_key_indices_in_range(vt->values, from_time, to_time, r_indices, is_backward);
+			// wgodot-changes::begin
+			_track_get_key_indices_in_range(vt->values.keys, from_time, to_time, r_indices, is_backward);
+			// wgodot-changes::end
 		} break;
 		case TYPE_METHOD: {
 			const MethodTrack *mt = static_cast<const MethodTrack *>(t);
@@ -4469,7 +4517,9 @@ void Animation::_value_track_optimize(int p_idx, real_t p_allowed_velocity_err, 
 	if (vt->values.is_empty()) {
 		return;
 	}
-	Variant::Type type = vt->values[0].value.get_type();
+	// wgodot-changes::begin
+	Variant::Type type = vt->values.get(0).get_type();
+	// wgodot-changes::end
 
 	// Special case for angle interpolation.
 	bool is_using_angle = vt->interpolation == Animation::INTERPOLATION_LINEAR_ANGLE || vt->interpolation == Animation::INTERPOLATION_CUBIC_ANGLE;
@@ -4481,12 +4531,14 @@ void Animation::_value_track_optimize(int p_idx, real_t p_allowed_velocity_err, 
 				TKey<float> t0;
 				TKey<float> t1;
 				TKey<float> t2;
-				t0.time = vt->values[i].time;
-				t1.time = vt->values[i + 1].time;
-				t2.time = vt->values[i + 2].time;
-				t0.value = vt->values[i].value;
-				t1.value = vt->values[i + 1].value;
-				t2.value = vt->values[i + 2].value;
+				// wgodot-changes::begin
+				t0.time = vt->values.keys[i].time;
+				t1.time = vt->values.keys[i + 1].time;
+				t2.time = vt->values.keys[i + 2].time;
+				t0.value = vt->values.get(i);
+				t1.value = vt->values.get(i + 1);
+				t2.value = vt->values.get(i + 2);
+				// wgodot-changes::end
 				if (is_using_angle) {
 					float diff1 = std::fmod(t1.value - t0.value, Math::TAU);
 					t1.value = t0.value + std::fmod(2.0 * diff1, Math::TAU) - diff1;
@@ -4502,36 +4554,42 @@ void Animation::_value_track_optimize(int p_idx, real_t p_allowed_velocity_err, 
 				TKey<Vector2> t0;
 				TKey<Vector2> t1;
 				TKey<Vector2> t2;
-				t0.time = vt->values[i].time;
-				t1.time = vt->values[i + 1].time;
-				t2.time = vt->values[i + 2].time;
-				t0.value = vt->values[i].value;
-				t1.value = vt->values[i + 1].value;
-				t2.value = vt->values[i + 2].value;
+				// wgodot-changes::begin
+				t0.time = vt->values.keys[i].time;
+				t1.time = vt->values.keys[i + 1].time;
+				t2.time = vt->values.keys[i + 2].time;
+				t0.value = vt->values.get(i);
+				t1.value = vt->values.get(i + 1);
+				t2.value = vt->values.get(i + 2);
+				// wgodot-changes::end
 				erase = _vector2_track_optimize_key(t0, t1, t2, p_allowed_velocity_err, p_allowed_angular_err, p_allowed_precision_error, is_nearest);
 			} break;
 			case Variant::VECTOR3: {
 				TKey<Vector3> t0;
 				TKey<Vector3> t1;
 				TKey<Vector3> t2;
-				t0.time = vt->values[i].time;
-				t1.time = vt->values[i + 1].time;
-				t2.time = vt->values[i + 2].time;
-				t0.value = vt->values[i].value;
-				t1.value = vt->values[i + 1].value;
-				t2.value = vt->values[i + 2].value;
+				// wgodot-changes::begin
+				t0.time = vt->values.keys[i].time;
+				t1.time = vt->values.keys[i + 1].time;
+				t2.time = vt->values.keys[i + 2].time;
+				t0.value = vt->values.get(i);
+				t1.value = vt->values.get(i + 1);
+				t2.value = vt->values.get(i + 2);
+				// wgodot-changes::end
 				erase = _vector3_track_optimize_key(t0, t1, t2, p_allowed_velocity_err, p_allowed_angular_err, p_allowed_precision_error, is_nearest);
 			} break;
 			case Variant::QUATERNION: {
 				TKey<Quaternion> t0;
 				TKey<Quaternion> t1;
 				TKey<Quaternion> t2;
-				t0.time = vt->values[i].time;
-				t1.time = vt->values[i + 1].time;
-				t2.time = vt->values[i + 2].time;
-				t0.value = vt->values[i].value;
-				t1.value = vt->values[i + 1].value;
-				t2.value = vt->values[i + 2].value;
+				// wgodot-changes::begin
+				t0.time = vt->values.keys[i].time;
+				t1.time = vt->values.keys[i + 1].time;
+				t2.time = vt->values.keys[i + 2].time;
+				t0.value = vt->values.get(i);
+				t1.value = vt->values.get(i + 1);
+				t2.value = vt->values.get(i + 2);
+				// wgodot-changes::end
 				erase = _quaternion_track_optimize_key(t0, t1, t2, p_allowed_velocity_err, p_allowed_angular_err, p_allowed_precision_error, is_nearest);
 			} break;
 			default: {
@@ -4549,8 +4607,10 @@ void Animation::_value_track_optimize(int p_idx, real_t p_allowed_velocity_err, 
 		bool single_key = false;
 		switch (type) {
 			case Variant::FLOAT: {
-				float val_0 = vt->values[0].value;
-				float val_1 = vt->values[1].value;
+				// wgodot-changes::begin
+				float val_0 = vt->values.get(0);
+				float val_1 = vt->values.get(1);
+				// wgodot-changes::end
 				if (is_using_angle) {
 					float diff1 = std::fmod(val_1 - val_0, Math::TAU);
 					val_1 = val_0 + std::fmod(2.0 * diff1, Math::TAU) - diff1;
@@ -4558,18 +4618,24 @@ void Animation::_value_track_optimize(int p_idx, real_t p_allowed_velocity_err, 
 				single_key = std::abs(val_0 - val_1) < p_allowed_precision_error;
 			} break;
 			case Variant::VECTOR2: {
-				Vector2 val_0 = vt->values[0].value;
-				Vector2 val_1 = vt->values[1].value;
+				// wgodot-changes::begin
+				Vector2 val_0 = vt->values.get(0);
+				Vector2 val_1 = vt->values.get(1);
+				// wgodot-changes::end
 				single_key = (val_0 - val_1).length() < p_allowed_precision_error;
 			} break;
 			case Variant::VECTOR3: {
-				Vector3 val_0 = vt->values[0].value;
-				Vector3 val_1 = vt->values[1].value;
+				// wgodot-changes::begin
+				Vector3 val_0 = vt->values.get(0);
+				Vector3 val_1 = vt->values.get(1);
+				// wgodot-changes::end
 				single_key = (val_0 - val_1).length() < p_allowed_precision_error;
 			} break;
 			case Variant::QUATERNION: {
-				Quaternion val_0 = vt->values[0].value;
-				Quaternion val_1 = vt->values[1].value;
+				// wgodot-changes::begin
+				Quaternion val_0 = vt->values.get(0);
+				Quaternion val_1 = vt->values.get(1);
+				// wgodot-changes::end
 				single_key = (val_0 - val_1).length() < p_allowed_precision_error;
 			} break;
 			default: {

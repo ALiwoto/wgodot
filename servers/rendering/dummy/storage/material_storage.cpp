@@ -286,7 +286,9 @@ void MaterialStorage::material_get_instance_shader_parameters(RID p_material, Li
 			p.info = ShaderLanguage::uniform_to_property_info(E.value);
 			p.info.name = E.key; //supply name
 			p.index = E.value.instance_index;
-			p.default_value = ShaderLanguage::constant_value_to_variant(E.value.default_value, E.value.type, E.value.array_size, E.value.hint);
+			// wgodot-changes::begin
+		p.default_value = WInstanceShaderValue::from_uniform(E.value);
+		// wgodot-changes::end
 			r_parameters->push_back(p);
 		}
 	}

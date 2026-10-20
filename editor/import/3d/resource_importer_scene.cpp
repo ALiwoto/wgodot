@@ -3475,9 +3475,9 @@ Error ResourceImporterScene::import(ResourceUID::ID p_source_id, const String &p
 			return collision_error;
 		}
 		if (r_metadata) {
-			Dictionary metadata;
-			metadata["mesh_collision"] = WGodotMeshCollision::import_signature(p_source_file);
-			*r_metadata = metadata;
+			Dictionary collision_metadata;
+			collision_metadata["mesh_collision"] = WGodotMeshCollision::import_signature(p_source_file);
+			*r_metadata = collision_metadata;
 		}
 	}
 	// wgodot-changes::end

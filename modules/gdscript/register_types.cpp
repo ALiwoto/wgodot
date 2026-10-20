@@ -173,6 +173,7 @@ static void _editor_init() {
 void initialize_gdscript_module(ModuleInitializationLevel p_level) {
 	if (p_level == MODULE_INITIALIZATION_LEVEL_SERVERS) {
 		// wgodot-changes::begin
+		GDScriptParser::initialize();
 		WGodotGDScriptStringObfuscation::clear_runtime_cache();
 		// wgodot-changes::end
 

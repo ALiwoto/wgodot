@@ -32,137 +32,93 @@
 
 #include "servers/rendering/rendering_server_globals.h"
 
+// wgodot-changes::begin
+Ref<WInstanceShaderParameters> InstanceUniforms::get_parameters() {
+	if (parameters.is_null()) {
+		parameters = memnew(WInstanceShaderParameters);
+	}
+	return parameters;
+}
+
 void InstanceUniforms::free(RID p_self) {
 	ERR_FAIL_COND(p_self.is_null());
-
 	if (is_allocated()) {
 		RSG::material_storage->global_shader_parameters_instance_free(p_self);
 		_location = -1;
 	}
-	// wgodot-changes::begin
 	_allocated_slots = 0;
-	// wgodot-changes::end
-
-	_invalidate_items();
+	if (parameters.is_valid()) {
+		parameters->invalidate();
+	}
 }
 
 void InstanceUniforms::materials_start() {
-	_invalidate_items();
+	if (parameters.is_valid()) {
+		parameters->invalidate();
+	}
 }
 
 void InstanceUniforms::materials_append(RID p_material) {
 	ERR_FAIL_COND(p_material.is_null());
-
-	List<RendererMaterialStorage::InstanceShaderParam> params;
-	RSG::material_storage->material_get_instance_shader_parameters(p_material, &params);
-
-	for (const RendererMaterialStorage::InstanceShaderParam &srcp : params) {
-		StringName name = srcp.info.name;
-		if (Item *ptr = _parameters.getptr(name); ptr) {
-			if (!ptr->is_valid()) {
-				_init_param(*ptr, srcp);
-			} else if (ptr->index != srcp.index) {
-				WARN_PRINT("More than one material in instance export the same instance shader uniform '" + srcp.info.name +
-						"', but they do it with different indices. Only the first one (in order) will display correctly.");
-			} else if (ptr->info.type != srcp.info.type) {
-				WARN_PRINT("More than one material in instance export the same instance shader uniform '" + srcp.info.name +
-						"', but they do it with different data types. Only the first one (in order) will display correctly.");
-			}
-		} else {
-			Item i;
-			_init_param(i, srcp);
-			_parameters[name] = i;
-		}
+	List<RendererMaterialStorage::InstanceShaderParam> declarations;
+	RSG::material_storage->material_get_instance_shader_parameters(p_material, &declarations);
+	for (const auto &declaration : declarations) {
+		get_parameters()->define(declaration.info, declaration.index, declaration.default_value);
 	}
 }
 
 bool InstanceUniforms::materials_finish(RID p_self) {
-	// wgodot-changes::begin
 	return _wgodot_finish_materials(p_self);
-	// wgodot-changes::end
+}
+
+void InstanceUniforms::upload(RID p_self, int p_slot, WInstanceShaderValue p_value) {
+	ERR_FAIL_COND(parameters.is_null());
+	const int index = parameters->gpu_index(p_slot, p_value);
+	if (index >= 0) {
+		RSG::material_storage->global_shader_parameters_instance_update(p_self, index, p_value);
+	}
 }
 
 Variant InstanceUniforms::get(const StringName &p_name) const {
-	if (const Item *ptr = _parameters.getptr(p_name); ptr) {
-		return ptr->value;
-	}
-	return Variant();
+	const int slot = parameters.is_valid() ? parameters->find(p_name) : -1;
+	return slot >= 0 ? parameters->value(slot).to_variant() : Variant();
 }
 
 void InstanceUniforms::set(RID p_self, const StringName &p_name, const Variant &p_value) {
-	ERR_FAIL_COND(p_self.is_null());
-	ERR_FAIL_COND(p_value.get_type() == Variant::OBJECT);
-
-	if (Item *ptr = _parameters.getptr(p_name); ptr) {
-		ptr->value = p_value;
-		if (ptr->is_valid()) {
-			RSG::material_storage->global_shader_parameters_instance_update(p_self, ptr->index, ptr->value, ptr->flags);
-		}
-	} else {
-		Item i; // Initialize in materials_finish.
-		i.value = p_value;
-		_parameters[p_name] = i;
+	const int slot = get_parameters()->find_or_add(p_name);
+	if (p_value.get_type() == Variant::NIL) {
+		upload(p_self, slot, parameters->clear(slot));
+		return;
+	}
+	WInstanceShaderValue value = WInstanceShaderValue::from_variant(p_value);
+	if (value.valid() && parameters->set(slot, value)) {
+		upload(p_self, slot, value);
 	}
 }
 
 Variant InstanceUniforms::get_default(const StringName &p_name) const {
-	if (const Item *ptr = _parameters.getptr(p_name); ptr) {
-		return ptr->default_value;
-	}
-	return Variant();
+	const int slot = parameters.is_valid() ? parameters->find(p_name) : -1;
+	return slot >= 0 ? parameters->get(slot).default_value.to_variant() : Variant();
 }
 
 void InstanceUniforms::get_property_list(List<PropertyInfo> &r_parameters) const {
-	Vector<StringName> names;
-
-	// Invalid items won't be saved, but will remain in memory in case of shader compilation failure.
-	for (const KeyValue<StringName, Item> &kv : _parameters) {
-		if (kv.value.is_valid()) {
-			names.push_back(kv.key);
+	if (parameters.is_null()) {
+		return;
+	}
+	Vector<PropertyInfo> properties;
+	for (const auto &item : parameters->snapshot()) {
+		if (item.gpu_index >= 0) {
+			properties.push_back(item.info);
 		}
 	}
-
-	names.sort_custom<StringName::AlphCompare>();
-
-	for (const StringName &n : names) {
-		PropertyInfo pinfo = _parameters[n].info;
-		r_parameters.push_back(pinfo);
-	}
-}
-
-void InstanceUniforms::_init_param(Item &r_item, const RendererMaterialStorage::InstanceShaderParam &p_param) const {
-	r_item.index = p_param.index;
-	r_item.flags = 0;
-	r_item.info = p_param.info;
-	r_item.default_value = p_param.default_value;
-
-	if (r_item.default_value.get_type() == Variant::NIL) {
-		Callable::CallError cerr;
-		Variant::construct(r_item.info.type, r_item.default_value, nullptr, 0, cerr);
-	}
-
-	if (r_item.value.get_type() == Variant::NIL) {
-		r_item.value = r_item.default_value;
-	}
-
-	if (r_item.info.hint == PROPERTY_HINT_FLAGS) {
-		// HACK: Detect boolean flags count and prevent overhead.
-		switch (r_item.info.hint_string.length()) {
-			case 3: // "x,y"
-				r_item.flags = 1;
-				break;
-			case 5: // "x,y,z"
-				r_item.flags = 2;
-				break;
-			case 7: // "x,y,z,w"
-				r_item.flags = 3;
-				break;
+	struct NameLess {
+		bool operator()(const PropertyInfo &p_left, const PropertyInfo &p_right) const {
+			return StringName::AlphCompare()(p_left.name, p_right.name);
 		}
+	};
+	properties.sort_custom<NameLess>();
+	for (const PropertyInfo &property : properties) {
+		r_parameters.push_back(property);
 	}
 }
-
-void InstanceUniforms::_invalidate_items() {
-	for (KeyValue<StringName, Item> &kv : _parameters) {
-		kv.value.index = -1;
-	}
-}
+// wgodot-changes::end

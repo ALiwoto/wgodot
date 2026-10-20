@@ -4,11 +4,12 @@
 
 using Parser = GDScriptParser;
 
-String WGodotCppEmitter::property_path_accessor(const WGodotGDScriptPropertyPath &p_path, const Parser::ExpressionNode *p_origin, bool p_write, int p_writeback_start, bool p_variant_boundary) {
+String WGodotCppEmitter::property_path_accessor(const WGodotGDScriptPropertyPath &p_path, const Parser::ExpressionNode *p_origin, bool p_write, int p_writeback_start, bool p_object_receiver, const String &p_value_type) {
 	const auto &target_type = p_path.segments[0].base_type;
 	const bool target_interface = is_interface_type(target_type);
 	const String target = class_name(target_type, p_origin);
-	const String value = type(p_path.segments[p_path.segments.size() - 1].datatype, p_origin);
+	const String field_type = type(p_path.segments[p_path.segments.size() - 1].datatype, p_origin);
+	const String value = p_value_type.is_empty() ? field_type : p_value_type;
 	auto access = [&](int p_index, const String &p_receiver, const String &p_value = String()) {
 		const auto &segment = p_path.segments[p_index];
 		if (segment.base_type.kind == Parser::DataType::BUILTIN) {
@@ -34,17 +35,12 @@ String WGodotCppEmitter::property_path_accessor(const WGodotGDScriptPropertyPath
 	String parameter = target_interface ? "const " + target + " &target" : target + " *target";
 	String return_type = p_write ? "void" : value;
 	String value_parameter = p_write ? ", " + value + " value" : "";
-	if (p_variant_boundary) {
+	if (p_object_receiver) {
 		parameter = "Object *object";
-		return_type = p_write ? "void" : "Variant";
-		value_parameter = p_write ? ", const Variant &input" : "";
 	}
 	String body = "[](" + parameter + value_parameter + ") -> " + return_type + " {\n";
-	if (p_variant_boundary) {
+	if (p_object_receiver) {
 		body += "\tauto *target = static_cast<" + target + " *>(object);\n";
-		if (p_write) {
-			body += "\t" + value + " value = " + convert_value(Value("input", "Variant"), value) + ";\n";
-		}
 	}
 	Vector<String> receivers;
 	for (int i = 0; i < p_path.segments.size(); i++) {
@@ -63,7 +59,10 @@ String WGodotCppEmitter::property_path_accessor(const WGodotGDScriptPropertyPath
 			break;
 		}
 		if (!p_write && i == p_path.segments.size() - 1) {
-			body += access(i, receiver).statement(1, true);
+			Value result = access(i, receiver);
+			result.code = convert_value(result, value);
+			result.cpp_type = value;
+			body += result.statement(1, true);
 			break;
 		}
 		Value part = access(i, receiver);
@@ -81,7 +80,7 @@ String WGodotCppEmitter::property_path_accessor(const WGodotGDScriptPropertyPath
 		// Write back value components in the same order as Object::set_indexed.
 		// Animation resource traversal may exclude leading Resource references.
 		for (int i = p_path.segments.size() - 1; i >= p_writeback_start; i--) {
-			body += access(i, receivers[i], i == p_path.segments.size() - 1 ? "value" : "part_" + itos(i)).statement(1);
+			body += access(i, receivers[i], i == p_path.segments.size() - 1 ? convert_value(Value("value", value), field_type) : "part_" + itos(i)).statement(1);
 		}
 	}
 	return body + "}";

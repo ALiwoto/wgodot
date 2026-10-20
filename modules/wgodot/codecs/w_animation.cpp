@@ -162,9 +162,38 @@ const LocalVector<WAnimation::VectorKey> &WAnimation::vector_keys(int p_track) c
 
 W_ANIMATION_KEYS(RotationKey, rotation_keys, TYPE_ROTATION_3D, RotationTrack, rotations)
 W_ANIMATION_KEYS(ScalarKey, scalar_keys, TYPE_BLEND_SHAPE, BlendShapeTrack, blend_shapes)
-W_ANIMATION_KEYS(ValueKey, value_keys, TYPE_VALUE, ValueTrack, values)
 W_ANIMATION_KEYS(MethodKey, method_keys, TYPE_METHOD, MethodTrack, methods)
 W_ANIMATION_KEYS(BezierKey, bezier_keys, TYPE_BEZIER, BezierTrack, values)
 W_ANIMATION_KEYS(AudioKey, audio_keys, TYPE_AUDIO, AudioTrack, values)
 W_ANIMATION_KEYS(AnimationKey, animation_keys, TYPE_ANIMATION, AnimationTrack, values)
 #undef W_ANIMATION_KEYS
+
+Error WAnimation::set_keyframes(int p_track, const ValueKey *p_keys, uint32_t p_count) {
+	ERR_FAIL_COND_V(track_get_type(p_track) != TYPE_VALUE, ERR_INVALID_PARAMETER);
+	RETURN_IF_ERROR(validate_keys(p_keys, p_count));
+	WAnimationValues values;
+	values.resize(p_count);
+	for (uint32_t i = 0; i < p_count; i++) {
+		values.keys[i] = { p_keys[i].transition, p_keys[i].time };
+		values.set(i, p_keys[i].value);
+	}
+	value_track_storage(p_track) = std::move(values);
+	emit_changed();
+	return OK;
+}
+
+Error WAnimation::set_keyframes(int p_track, LocalVector<ValueKey> &&p_keys) {
+	return set_keyframes(p_track, p_keys.ptr(), p_keys.size());
+}
+
+LocalVector<WAnimation::ValueKey> WAnimation::value_keys(int p_track) const {
+	const WAnimationValues &values = value_track_storage(p_track);
+	LocalVector<ValueKey> result;
+	result.resize(values.size());
+	for (uint32_t i = 0; i < values.size(); i++) {
+		result[i].time = values.keys[i].time;
+		result[i].transition = values.keys[i].transition;
+		result[i].value = values.get(i);
+	}
+	return result;
+}

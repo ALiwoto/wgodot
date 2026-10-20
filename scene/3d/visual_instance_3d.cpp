@@ -364,7 +364,12 @@ void GeometryInstance3D::_get_property_list(List<PropertyInfo> *p_list) const {
 		if (def_value.get_type() != Variant::NIL) {
 			has_def_value = true;
 		}
-		if (instance_shader_parameters.has(pi.name)) {
+		// wgodot-changes::begin
+		const auto &parameters = get_instance_shader_parameters();
+		const int slot = parameters->find(pi.name);
+		const bool overridden = slot >= 0 && parameters->get(slot).overridden;
+		// wgodot-changes::end
+		if (overridden) {
 			pi.usage = PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_STORAGE | (has_def_value ? (PROPERTY_USAGE_CHECKABLE | PROPERTY_USAGE_CHECKED) : PROPERTY_USAGE_NONE);
 		} else {
 			pi.usage = PROPERTY_USAGE_EDITOR | (has_def_value ? PROPERTY_USAGE_CHECKABLE : PROPERTY_USAGE_NONE); //do not save if not changed
@@ -403,26 +408,6 @@ void GeometryInstance3D::set_lod_bias(float p_bias) {
 
 float GeometryInstance3D::get_lod_bias() const {
 	return lod_bias;
-}
-
-void GeometryInstance3D::set_instance_shader_parameter(const StringName &p_name, const Variant &p_value) {
-	if (p_value.get_type() == Variant::NIL) {
-		Variant def_value = RS::get_singleton()->instance_geometry_get_shader_parameter_default_value(get_instance(), p_name);
-		RS::get_singleton()->instance_geometry_set_shader_parameter(get_instance(), p_name, def_value);
-		instance_shader_parameters.erase(p_name);
-	} else {
-		instance_shader_parameters[p_name] = p_value;
-		if (p_value.get_type() == Variant::OBJECT) {
-			RID tex_id = p_value;
-			RS::get_singleton()->instance_geometry_set_shader_parameter(get_instance(), p_name, tex_id);
-		} else {
-			RS::get_singleton()->instance_geometry_set_shader_parameter(get_instance(), p_name, p_value);
-		}
-	}
-}
-
-Variant GeometryInstance3D::get_instance_shader_parameter(const StringName &p_name) const {
-	return RS::get_singleton()->instance_geometry_get_shader_parameter(get_instance(), p_name);
 }
 
 void GeometryInstance3D::set_custom_aabb(AABB p_aabb) {
@@ -551,6 +536,9 @@ void GeometryInstance3D::_validate_property(PropertyInfo &p_property) const {
 }
 
 void GeometryInstance3D::_bind_methods() {
+	// wgodot-changes::begin
+	_bind_typed_instance_shader_parameters();
+	// wgodot-changes::end
 	ClassDB::bind_method(D_METHOD("set_material_override", "material"), &GeometryInstance3D::set_material_override);
 	ClassDB::bind_method(D_METHOD("get_material_override"), &GeometryInstance3D::get_material_override);
 

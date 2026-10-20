@@ -32,6 +32,7 @@
 
 // wgodot-changes::begin
 #include "servers/rendering/storage/wgodot_shader_parameters.h"
+#include "servers/rendering/storage/wgodot_instance_shader_parameters.h"
 // wgodot-changes::end
 
 #include "servers/rendering/rendering_server_enums.h"
@@ -59,7 +60,9 @@ public:
 	virtual int32_t global_shader_parameters_instance_allocate(RID p_instance, uint32_t p_slots) = 0;
 	// wgodot-changes::end
 	virtual void global_shader_parameters_instance_free(RID p_instance) = 0;
-	virtual void global_shader_parameters_instance_update(RID p_instance, int p_index, const Variant &p_value, int p_flags_count = 0) = 0;
+	// wgodot-changes::begin
+	virtual void global_shader_parameters_instance_update(RID p_instance, int p_index, const WInstanceShaderValue &p_value) = 0;
+	// wgodot-changes::end
 
 	/* SHADER API */
 	virtual RID shader_allocate() = 0;
@@ -106,7 +109,9 @@ public:
 	struct InstanceShaderParam {
 		PropertyInfo info;
 		int index;
-		Variant default_value;
+		// wgodot-changes::begin
+		WInstanceShaderValue default_value;
+		// wgodot-changes::end
 	};
 
 	virtual void material_get_instance_shader_parameters(RID p_material, List<InstanceShaderParam> *r_parameters) = 0;

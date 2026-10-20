@@ -48,9 +48,9 @@ class WGodotCppEmitter {
 	HashSet<const GDScriptParser::ClassNode *> inherited_classes;
 	HashSet<String> reflection_default_classes;
 	HashSet<String> class_call_headers;
-	HashSet<NodePath> animation_property_paths;
+	HashMap<NodePath, uint64_t> animation_property_paths;
 	void emit_animation_bindings();
-	String property_path_accessor(const WGodotGDScriptPropertyPath &p_path, const GDScriptParser::ExpressionNode *p_origin, bool p_write, int p_writeback_start = 0, bool p_variant_boundary = false);
+	String property_path_accessor(const WGodotGDScriptPropertyPath &p_path, const GDScriptParser::ExpressionNode *p_origin, bool p_write, int p_writeback_start = 0, bool p_object_receiver = false, const String &p_value_type = String());
 	HashMap<String, int> preload_indices;
 	Vector<WGodotCppProject::Preload> preloads;
 	HashMap<const GDScriptParser::ConstantNode *, const WGodotCppProject::Class *> container_constant_owners;

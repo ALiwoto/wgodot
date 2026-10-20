@@ -90,7 +90,9 @@ public:
 	virtual int32_t global_shader_parameters_instance_allocate(RID p_instance, uint32_t p_slots) override { return 0; }
 	// wgodot-changes::end
 	virtual void global_shader_parameters_instance_free(RID p_instance) override {}
-	virtual void global_shader_parameters_instance_update(RID p_instance, int p_index, const Variant &p_value, int p_flags_count = 0) override {}
+	// wgodot-changes::begin
+	virtual void global_shader_parameters_instance_update(RID p_instance, int p_index, const WInstanceShaderValue &p_value) override {}
+	// wgodot-changes::end
 
 	/* SHADER API */
 

@@ -34,6 +34,7 @@
 #include "scene/animation/tween.h"
 // wgodot-changes::begin
 #include "scene/animation/wgodot_animation_property.h"
+#include "scene/animation/wgodot_animation_value_mixer.h"
 // wgodot-changes::end
 #include "scene/main/node.h"
 #include "scene/resources/animation.h"
@@ -230,62 +231,46 @@ protected:
 		TrackCacheBlendShape() { type = Animation::TYPE_BLEND_SHAPE; }
 	};
 
+	// wgodot-changes::begin
 	struct TrackCacheValue : public TrackCache {
-		Variant init_value;
-		Variant value;
 		Vector<StringName> subpath;
-		// wgodot-changes::begin
+		WAnimationValueMixer *values = nullptr;
 		const WGodotAnimationProperty *native_property = nullptr;
-		Variant read(Object *p_target) const {
-			return native_property ? native_property->read(p_target) : p_target->get_indexed(subpath);
-		}
-		void write(Object *p_target, const Variant &p_value) const {
-			if (native_property) {
-				native_property->write(p_target, p_value);
-			} else {
-				p_target->set_indexed(subpath, p_value);
-			}
-		}
+		Ref<RefCounted> native_context;
+		WAnimationValueTarget target() const { return { native_property, subpath, native_context }; }
 		ObjectID post_process_object_id() const {
 			if (!native_property || !native_property->target_id) {
 				return object_id;
 			}
 			Object *target = ObjectDB::get_instance(object_id);
-			return target ? native_property->target_id(target) : ObjectID();
+			return target ? native_property->target_id(native_context.is_valid() ? native_context.ptr() : target) : ObjectID();
 		}
-		// wgodot-changes::end
 
 		// TODO: There are many boolean, can be packed into one integer.
 		bool is_init = false;
 		bool use_continuous = false;
 		bool use_discrete = false;
 		bool is_using_angle = false;
-		bool is_variant_interpolatable = true;
-
-		Variant element_size;
 
 		TrackCacheValue(const TrackCacheValue &p_other) :
 				TrackCache(p_other),
-				init_value(p_other.init_value),
-				value(p_other.value),
 				subpath(p_other.subpath),
-				// wgodot-changes::begin
+				values(p_other.values ? p_other.values->clone() : nullptr),
 				native_property(p_other.native_property),
-				// wgodot-changes::end
+				native_context(p_other.native_context),
 				is_init(p_other.is_init),
 				use_continuous(p_other.use_continuous),
 				use_discrete(p_other.use_discrete),
-				is_using_angle(p_other.is_using_angle),
-				is_variant_interpolatable(p_other.is_variant_interpolatable),
-				element_size(p_other.element_size) {}
+				is_using_angle(p_other.is_using_angle) {}
 
 		TrackCacheValue() { type = Animation::TYPE_VALUE; }
 		~TrackCacheValue() {
-			// Clear ref to avoid leaking.
-			init_value = Variant();
-			value = Variant();
+			if (values) {
+				memdelete(values);
+			}
 		}
 	};
+	// wgodot-changes::end
 
 	struct TrackCacheMethod : public TrackCache {
 		TrackCacheMethod() { type = Animation::TYPE_METHOD; }
@@ -396,6 +381,12 @@ protected:
 	// For post process with retrieved key value during blending.
 	virtual Variant _post_process_key_value(const Ref<Animation> &p_anim, int p_track, Variant &p_value, ObjectID p_object_id, int p_object_sub_idx = -1);
 	Variant post_process_key_value(const Ref<Animation> &p_anim, int p_track, Variant p_value, ObjectID p_object_id, int p_object_sub_idx = -1);
+	// wgodot-changes::begin
+	Vector3 post_process_key_value(const Ref<Animation> &p_anim, int p_track, Vector3 p_value, ObjectID p_object_id, int p_object_sub_idx = -1);
+	Quaternion post_process_key_value(const Ref<Animation> &p_anim, int p_track, Quaternion p_value, ObjectID p_object_id, int p_object_sub_idx = -1);
+	float post_process_key_value(const Ref<Animation> &p_anim, int p_track, float p_value, ObjectID p_object_id, int p_object_sub_idx = -1);
+	WAnimationValuePostProcess value_post_process(const Ref<Animation> &p_animation, int p_track, ObjectID p_object);
+	// wgodot-changes::end
 	GDVIRTUAL5RC(Variant, _post_process_key_value, Ref<Animation>, int, Variant, ObjectID, int);
 
 	void _blend_init();

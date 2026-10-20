@@ -32,6 +32,9 @@
 
 #include "core/io/resource.h"
 #include "core/templates/local_vector.h"
+// wgodot-changes::begin
+#include "scene/resources/wgodot_animation_values.h"
+// wgodot-changes::end
 
 #define ANIM_MIN_LENGTH 0.001
 
@@ -129,10 +132,9 @@ public:
 	};
 
 private:
-	struct Key {
-		real_t transition = 1.0;
-		double time = 0.0; // Time in secs.
-	};
+	// wgodot-changes::begin
+	using Key = WAnimationKey;
+	// wgodot-changes::end
 
 	// Transform key holds either Vector3 or Quaternion.
 	template <typename T>
@@ -181,7 +183,9 @@ private:
 
 	struct ValueTrack : public Track {
 		UpdateMode update_mode = UPDATE_CONTINUOUS;
-		LocalVector<TKey<Variant>> values;
+		// wgodot-changes::begin
+		WAnimationValues values;
+		// wgodot-changes::end
 
 		ValueTrack() {
 			type = TYPE_VALUE;
@@ -276,6 +280,10 @@ private:
 	template <typename K>
 
 	inline int _find(const LocalVector<K> &p_keys, double p_time, bool p_backward = false, bool p_limit = false) const;
+	// wgodot-changes::begin
+	template <typename K>
+	WAnimationSample _interpolation_sample(const LocalVector<K> &p_keys, double p_time, InterpolationType p_interp, bool p_loop_wrap, bool p_backward) const;
+	// wgodot-changes::end
 
 	_FORCE_INLINE_ Vector3 _interpolate(const Vector3 &p_a, const Vector3 &p_b, real_t p_c) const;
 	_FORCE_INLINE_ Quaternion _interpolate(const Quaternion &p_a, const Quaternion &p_b, real_t p_c) const;
@@ -525,6 +533,11 @@ public:
 	bool track_get_interpolation_loop_wrap(int p_track) const;
 
 	Variant value_track_interpolate(int p_track, double p_time, bool p_backward = false) const;
+	// wgodot-changes::begin
+	const WAnimationValues &value_track_storage(int p_track) const;
+	WAnimationValues &value_track_storage(int p_track);
+	WAnimationSample value_track_sample(int p_track, double p_time, bool p_backward = false) const;
+	// wgodot-changes::end
 	void value_track_set_update_mode(int p_track, UpdateMode p_mode);
 	UpdateMode value_track_get_update_mode(int p_track) const;
 

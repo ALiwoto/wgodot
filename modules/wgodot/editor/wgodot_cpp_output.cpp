@@ -75,8 +75,8 @@ void WGodotCppEmitter::store_source(const String &p_name, const String &p_header
 }
 
 void WGodotCppEmitter::merge_resource_worker(WGodotCppEmitter &p_worker) {
-	for (const NodePath &path : p_worker.animation_property_paths) {
-		animation_property_paths.insert(path);
+	for (const auto &entry : p_worker.animation_property_paths) {
+		animation_property_paths[entry.key] |= entry.value;
 	}
 	diagnostics.append_array(p_worker.diagnostics);
 	if (output_error == OK) {

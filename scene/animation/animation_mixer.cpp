@@ -780,6 +780,7 @@ bool AnimationMixer::_update_caches() {
 
 				// wgodot-changes::begin
 				const WGodotAnimationProperty *native_property = nullptr;
+				Ref<RefCounted> native_context;
 				Node *child = nullptr;
 				if (track_cache_type == Animation::TYPE_VALUE) {
 					if (auto resolve = WGodotAnimationProperty::find(path)) {
@@ -788,8 +789,21 @@ bool AnimationMixer::_update_caches() {
 							native_property = resolve(child);
 						}
 					}
+					if (!native_property && WGodotAnimationProperty::supports_engine_path(path)) {
+						child = parent->get_node_or_null(path);
+						if (child) {
+							const WAnimationValueKind kind = track_src_type == Animation::TYPE_BEZIER ? WAnimationValueKind::Float : anim->value_track_storage(i).kind();
+							const auto binding = WGodotAnimationProperty::bind_engine(child, path, kind);
+							native_property = binding.property;
+							native_context = binding.context;
+						}
+					}
 				}
 				if (!native_property) {
+					if (track_cache_type == Animation::TYPE_VALUE && WGodotAnimationProperty::native_bindings_required()) {
+						ERR_PRINT("Missing native animation property binding: " + String(path));
+						continue;
+					}
 					child = parent->get_node_and_resource(path, resource, leftover_path);
 				}
 				// wgodot-changes::end
@@ -823,31 +837,27 @@ bool AnimationMixer::_update_caches() {
 						track_value->subpath = leftover_path;
 						// wgodot-changes::begin
 						track_value->native_property = native_property;
+						track_value->native_context = native_context;
 						// wgodot-changes::end
 
 						track = track_value;
 
 						bool is_value = track_src_type == Animation::TYPE_VALUE;
 
-						track_value->init_value = is_value ? anim->track_get_key_value(i, 0) : (anim->track_get_key_value(i, 0).operator Array())[0];
-						track_value->init_value.zero();
-
-						track_value->is_init = false;
-
-						// Can't interpolate them, need to convert.
-						track_value->is_variant_interpolatable = Animation::is_variant_interpolatable(track_value->init_value);
-
-						// If there is a Reset Animation, it takes precedence by overwriting.
+						// wgodot-changes::begin
+						const Animation *initial_animation = anim.ptr();
+						int initial_track = i;
+						bool zero_initial = true;
 						if (has_reset_anim) {
 							int rt = reset_anim->find_track(path, track_src_type);
 							if (rt >= 0 && reset_anim->track_is_enabled(rt) && reset_anim->track_get_key_count(rt) > 0) {
-								if (is_value) {
-									track_value->init_value = reset_anim->track_get_key_value(rt, 0);
-								} else {
-									track_value->init_value = (reset_anim->track_get_key_value(rt, 0).operator Array())[0];
-								}
+								initial_animation = reset_anim.ptr();
+								initial_track = rt;
+								zero_initial = false;
 							}
 						}
+						track_value->values = WAnimationValueMixer::create(*initial_animation, initial_track, zero_initial);
+						// wgodot-changes::end
 
 						if (is_value && callback_mode_discrete == ANIMATION_CALLBACK_MODE_DISCRETE_FORCE_CONTINUOUS) {
 							if (child) {
@@ -1024,10 +1034,17 @@ bool AnimationMixer::_update_caches() {
 				}
 			} else if (track_cache_type == Animation::TYPE_VALUE) {
 				TrackCacheValue *track_value = static_cast<TrackCacheValue *>(track);
+				// wgodot-changes::begin
+				if (track_src_type == Animation::TYPE_VALUE && anim->value_track_storage(i).kind() == WAnimationValueKind::Generic && !track_value->values->generic()) {
+					auto *generic = WAnimationValueMixer::create(track_value->values->initial_value(), true);
+					memdelete(track_value->values);
+					track_value->values = generic;
+				}
+				// wgodot-changes::end
 				// If it has at least one angle interpolation, it also uses angle interpolation for blending.
 				bool was_using_angle = track_value->is_using_angle;
 				if (track_src_type == Animation::TYPE_VALUE) {
-					if (track_value->init_value.is_string() && anim->value_track_get_update_mode(i) != Animation::UPDATE_DISCRETE) {
+					if (track_value->values->is_string() && anim->value_track_get_update_mode(i) != Animation::UPDATE_DISCRETE) {
 						WARN_PRINT_ONCE_ED(mixer_name + ": '" + String(E) + "', Value Track: '" + String(path) + "' blends String types. This is an experimental algorithm.");
 					}
 					track_value->is_using_angle = track_value->is_using_angle || anim->track_get_interpolation_type(i) == Animation::INTERPOLATION_LINEAR_ANGLE || anim->track_get_interpolation_type(i) == Animation::INTERPOLATION_CUBIC_ANGLE;
@@ -1177,8 +1194,9 @@ void AnimationMixer::_blend_init() {
 			} break;
 			case Animation::TYPE_VALUE: {
 				TrackCacheValue *t = static_cast<TrackCacheValue *>(track);
-				t->value = Animation::cast_to_blendwise(t->init_value);
-				t->element_size = t->init_value.is_string() ? (real_t)(t->init_value.operator String()).length() : 0;
+				// wgodot-changes::begin
+				t->values->begin();
+				// wgodot-changes::end
 				t->use_continuous = false;
 				t->use_discrete = false;
 			} break;
@@ -1302,6 +1320,9 @@ void AnimationMixer::_blend_calc_total_weight() {
 }
 
 void AnimationMixer::_blend_process(double p_delta, bool p_update_only) {
+	// wgodot-changes::begin
+	is_GDVIRTUAL_CALL_post_process_key_value = GDVIRTUAL_IS_OVERRIDDEN(_post_process_key_value);
+	// wgodot-changes::end
 	// Apply value/transform/blend/bezier blends to track caches and execute method/audio/animation tracks.
 #ifdef TOOLS_ENABLED
 	bool can_call = is_inside_tree() && !Engine::get_singleton()->is_editor_hint();
@@ -1694,97 +1715,50 @@ void AnimationMixer::_blend_process(double p_delta, bool p_update_only) {
 					t->value += (value - t->init_value) * blend;
 #endif // _3D_DISABLED
 				} break;
+				// wgodot-changes::begin
 				case Animation::TYPE_BEZIER:
 				case Animation::TYPE_VALUE: {
 					if (Math::is_zero_approx(blend)) {
-						continue; // Nothing to blend.
+						continue;
 					}
 					TrackCacheValue *t = static_cast<TrackCacheValue *>(track);
 					bool is_value = ttype == Animation::TYPE_VALUE;
-					bool is_discrete = is_value && a->value_track_get_update_mode(i) == Animation::UPDATE_DISCRETE;
+					bool discrete = is_value && a->value_track_get_update_mode(i) == Animation::UPDATE_DISCRETE;
 					bool force_continuous = callback_mode_discrete == ANIMATION_CALLBACK_MODE_DISCRETE_FORCE_CONTINUOUS;
-					if (!is_discrete || force_continuous) {
+					const auto post_process = value_post_process(a, i, t->post_process_object_id());
+					if (!discrete || force_continuous) {
 						t->use_continuous = true;
-
-						Variant value;
-						if (t->is_variant_interpolatable) {
-							value = is_value ? a->value_track_interpolate(i, time, is_discrete && force_continuous ? backward : false) : Variant(a->bezier_track_interpolate(i, time));
-							// wgodot-changes::begin
-							value = post_process_key_value(a, i, value, t->post_process_object_id());
-							// wgodot-changes::end
-							if (value == Variant()) {
-								continue;
-							}
+						WAnimationSample sample;
+						double bezier = 0;
+						if (!is_value) {
+							bezier = a->bezier_track_interpolate(i, time);
+						} else if (t->values->interpolatable()) {
+							sample = a->value_track_sample(i, time, discrete && force_continuous ? backward : false);
 						} else {
-							// Discrete track sets the value in the current _blend_process() function,
-							// but Force Continuous track does not set the value here because the value must be set in the _blend_apply() function later.
-							int idx = a->track_find_key(i, time, Animation::FIND_MODE_NEAREST, false, backward);
-							if (idx < 0) {
-								continue;
-							}
-							value = a->track_get_key_value(i, idx);
-							// wgodot-changes::begin
-							value = post_process_key_value(a, i, value, t->post_process_object_id());
-							// wgodot-changes::end
-							if (value == Variant()) {
-								continue;
-							}
-							t->value = value;
+							sample.from = a->track_find_key(i, time, Animation::FIND_MODE_NEAREST, false, backward);
+						}
+						t->values->accumulate(**a, i, sample, bezier, blend, t->is_using_angle, post_process);
+					} else if (seeked) {
+						int key = a->track_find_key(i, time, is_external_seeking ? Animation::FIND_MODE_NEAREST : Animation::FIND_MODE_EXACT, false, seeked_backward);
+						if (key < 0) {
 							continue;
 						}
-
-						// Special case for angle interpolation.
-						if (t->is_using_angle) {
-							// For blending consistency, it prevents rotation of more than 180 degrees from init_value.
-							// This is the same with Quaternion blending.
-							t->value = Animation::interpolate_via_rest((double)t->value, (double)value, blend, (double)t->init_value);
-						} else {
-							value = Animation::cast_to_blendwise(value);
-							if (t->init_value.is_array()) {
-								t->element_size = MAX(t->element_size.operator int(), (value.operator Array()).size());
-							} else if (t->init_value.is_string()) {
-								real_t length = Animation::subtract_variant((real_t)(value.operator Array()).size(), (real_t)(t->init_value.operator String()).length());
-								t->element_size = Animation::blend_variant(t->element_size, length, blend);
-							}
-							value = Animation::subtract_variant(value, Animation::cast_to_blendwise(t->init_value));
-							t->value = Animation::blend_variant(t->value, value, blend);
+						t->use_discrete = true;
+						if (Object *object = ObjectDB::get_instance(t->object_id)) {
+							WAnimationValueMixer::write_key(object, t->target(), **a, i, key, post_process);
 						}
 					} else {
-						if (seeked) {
-							int idx = a->track_find_key(i, time, is_external_seeking ? Animation::FIND_MODE_NEAREST : Animation::FIND_MODE_EXACT, false, seeked_backward);
-							if (idx < 0) {
-								continue;
-							}
+						LocalVector<int> indices;
+						a->track_get_key_indices_in_range(i, time, delta, start, end, &indices, looped_flag);
+						for (int key : indices) {
 							t->use_discrete = true;
-							Variant value = a->track_get_key_value(i, idx);
-							// wgodot-changes::begin
-							value = post_process_key_value(a, i, value, t->post_process_object_id());
-							// wgodot-changes::end
-							Object *t_obj = ObjectDB::get_instance(t->object_id);
-							if (t_obj) {
-								// wgodot-changes::begin
-								t->write(t_obj, value);
-								// wgodot-changes::end
-							}
-						} else {
-							LocalVector<int> indices;
-							a->track_get_key_indices_in_range(i, time, delta, start, end, &indices, looped_flag);
-							for (int &F : indices) {
-								t->use_discrete = true;
-								Variant value = a->track_get_key_value(i, F);
-								// wgodot-changes::begin
-								value = post_process_key_value(a, i, value, t->post_process_object_id());
-								// wgodot-changes::end
-								Object *t_obj = ObjectDB::get_instance(t->object_id);
-								if (t_obj) {
-									// wgodot-changes::begin
-									t->write(t_obj, value);
-									// wgodot-changes::end
-								}
+							if (Object *object = ObjectDB::get_instance(t->object_id)) {
+								WAnimationValueMixer::write_key(object, t->target(), **a, i, key, post_process);
 							}
 						}
 					}
 				} break;
+				// wgodot-changes::end
 				case Animation::TYPE_METHOD: {
 #ifdef TOOLS_ENABLED
 					if (!can_call) {
@@ -1994,7 +1968,7 @@ void AnimationMixer::_blend_process(double p_delta, bool p_update_only) {
 			}
 		}
 	}
-	is_GDVIRTUAL_CALL_post_process_key_value = true;
+
 }
 
 void AnimationMixer::_blend_apply() {
@@ -2089,25 +2063,11 @@ void AnimationMixer::_blend_apply() {
 					t->is_init = !t->use_continuous; // If there is no Continuous in non-Force Continuous type, it means RESET.
 				}
 
-				// Trim unused elements if init array/string is not blended.
-				if (t->value.is_array()) {
-					int actual_blended_size = (int)Math::round(Math::abs(t->element_size.operator real_t()));
-					if (actual_blended_size < (t->value.operator Array()).size()) {
-						real_t abs_weight = Math::abs(track->total_weight);
-						if (abs_weight >= 1.0) {
-							(t->value.operator Array()).resize(actual_blended_size);
-						} else if (t->init_value.is_string()) {
-							(t->value.operator Array()).resize(Animation::interpolate_variant((t->init_value.operator String()).length(), actual_blended_size, abs_weight));
-						}
-					}
+				// wgodot-changes::begin
+				if (Object *object = ObjectDB::get_instance(t->object_id)) {
+					t->values->apply(object, t->target(), track->total_weight);
 				}
-
-				Object *t_obj = ObjectDB::get_instance(t->object_id);
-				if (t_obj) {
-					// wgodot-changes::begin
-					t->write(t_obj, Animation::cast_from_blendwise(t->value, t->init_value.get_type()));
-					// wgodot-changes::end
-				}
+				// wgodot-changes::end
 
 			} break;
 			case Animation::TYPE_AUDIO: {
@@ -2333,16 +2293,11 @@ void AnimationMixer::_build_backup_track_cache() {
 				Object *t_obj = ObjectDB::get_instance(t->object_id);
 				if (t_obj) {
 					// wgodot-changes::begin
-					t->value = Animation::cast_to_blendwise(t->read(t_obj));
+					t->values->backup(t_obj, t->target());
 					// wgodot-changes::end
 				}
 				t->use_continuous = true;
 				t->use_discrete = false;
-				if (t->init_value.is_array()) {
-					t->element_size = MAX(t->element_size.operator int(), (t->value.operator Array()).size());
-				} else if (t->init_value.is_string()) {
-					t->element_size = (real_t)(t->value.operator Array()).size();
-				}
 			} break;
 			case Animation::TYPE_AUDIO: {
 				TrackCacheAudio *t = static_cast<TrackCacheAudio *>(track);
@@ -2471,12 +2426,11 @@ void AnimationMixer::capture(const StringName &p_name, double p_duration, Tween:
 			TrackCacheValue *t = static_cast<TrackCacheValue *>(track_cache[reference_animation->track_get_unique_id(i)]);
 			Object *t_obj = ObjectDB::get_instance(t->object_id);
 			if (t_obj) {
-				// wgodot-changes::begin
-				Variant value = t->read(t_obj);
-				// wgodot-changes::end
 				int inserted_idx = capture_cache.animation->add_track(Animation::TYPE_VALUE);
 				capture_cache.animation->track_set_path(inserted_idx, reference_animation->track_get_path(i));
-				capture_cache.animation->track_insert_key(inserted_idx, 0, value);
+				// wgodot-changes::begin
+				t->values->capture(t_obj, t->target(), **capture_cache.animation, inserted_idx);
+				// wgodot-changes::end
 				capture_cache.animation->value_track_set_update_mode(inserted_idx, Animation::UPDATE_CONTINUOUS);
 				capture_cache.animation->track_set_interpolation_type(inserted_idx, Animation::INTERPOLATION_LINEAR);
 				is_valid = true;

@@ -10,9 +10,10 @@ bool InstanceUniforms::_wgodot_finish_materials(RID p_self) {
 	// Explicit instance_index declarations may leave holes. Reserve through the
 	// highest live index, rather than 16 vectors for every mesh using any uniform.
 	int32_t required_slots = 0;
-	for (const KeyValue<StringName, Item> &entry : _parameters) {
-		if (entry.value.is_valid()) {
-			required_slots = MAX(required_slots, entry.value.index + 1);
+	const Vector<WInstanceShaderParameters::Item> items = parameters.is_valid() ? parameters->snapshot() : Vector<WInstanceShaderParameters::Item>();
+	for (const auto &item : items) {
+		if (item.gpu_index >= 0) {
+			required_slots = MAX(required_slots, item.gpu_index + 1);
 		}
 	}
 
@@ -36,10 +37,9 @@ bool InstanceUniforms::_wgodot_finish_materials(RID p_self) {
 		_allocated_slots = required_slots;
 	}
 
-	for (const KeyValue<StringName, Item> &entry : _parameters) {
-		const Item &item = entry.value;
-		if (item.is_valid()) {
-			RSG::material_storage->global_shader_parameters_instance_update(p_self, item.index, item.value, item.flags);
+	for (const auto &item : items) {
+		if (item.gpu_index >= 0) {
+			RSG::material_storage->global_shader_parameters_instance_update(p_self, item.gpu_index, item.value);
 		}
 	}
 	return previous_location != _location;

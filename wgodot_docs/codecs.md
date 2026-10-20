@@ -30,7 +30,7 @@ The prefix is textual path compression, not a scene root: `.Root` above expands 
 
 | Type | Payload components / key type |
 | --- | --- |
-| 0: value | Declared property type; `ValueKey` holds a genuine Godot `Variant` |
+| 0: value | Concrete values plus shared key timing; native factories use `TypedValueKey<T>` |
 | 1: position_3d | x, y, z; `VectorKey` |
 | 2: rotation_3d | x, y, z, w; `RotationKey` |
 | 3: scale_3d | x, y, z; `VectorKey` |
@@ -52,7 +52,11 @@ Scalar declarations use `{c_1 = -0.7071068, ...}` with base36 IDs. Writers alias
 
 In an editor build, WGodot's existing text-resource cache stores a disposable compressed binary representation under `.godot/resource_cache/`. Valid cache hits bypass text decoding. Source changes, cache revision changes or a missing cache require text decoding again. This happens on resource loading, not only during the editor's import command. Authored `.tres`/`.tscn` files remain plaintext.
 
-gd2cpp resolves scalar aliases during export. Its animation codec emits `LocalVector<WAnimation::RotationKey>` (and the other actual key types), direct `.time` / `.value` / `.transition` assignments, `append_track()` and `set_keyframes(..., std::move(keys))`. No text parsing, scalar-ID lookup, per-key reflection or intermediate numeric Variant arrays are needed to construct these tracks. Genuine property/method argument Variants remain as required by Godot's own key types.
+gd2cpp resolves scalar aliases during export. Numeric keys use typed constexpr tables and bulk setters; other keys use concrete buffers. Property tracks keep one concrete value store, with typed sampling, blend accumulators and generated property accessors. Mixed integer/float keys preserve integer-span rounding. Timing, reverse/loop playback, capture, reset and discrete dispatch share the Animation APIs. Native export rejects heterogeneous nonnumeric keys and unresolved property bindings instead of falling back to reflection.
+
+Editor/VM serialization and explicit generic postprocessing hooks convert at their API boundaries. Ordinary skeletal postprocessing stays typed. The GDScript editor still needs its final script-property boundary; compiled script and engine properties use generated typed bindings. Generic official Animation data remains available to editor/VM callers. Method-track arguments retain their public Variant API.
+
+Shader tracks use the same typed mixer with cached material indices and uniform slots. Material/shader replacement refreshes the slot binding. Instance uniforms use one shared typed parameter bank per instance, stable CPU slots and owned render-command payloads; renderer declarations remap GPU slots when materials change. Script reads use `get_instance_shader_parameter_as(Type, name)` (or `get_shader_parameter_as` for materials); setters lower to typed native methods.
 
 ## Opt-in diagnostics
 

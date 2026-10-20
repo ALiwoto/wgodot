@@ -3536,7 +3536,8 @@ void GDScriptAnalyzer::reduce_call(GDScriptParser::CallNode *p_call, bool p_is_a
 	HashMap<int, GDScriptParser::DictionaryNode *> dictionaries; // Same, but for dictionaries.
 	for (uint32_t i = 0; i < p_call->arguments.size(); i++) {
 		// wgodot-changes::begin
-		if (i == 0 && p_call->function_name == SNAME("get_shader_parameter_as") && p_call->arguments[i]->type == GDScriptParser::Node::IDENTIFIER) {
+		if (i == 0 && p_call->arguments[i]->type == GDScriptParser::Node::IDENTIFIER &&
+				(p_call->function_name == SNAME("get_shader_parameter_as") || p_call->function_name == SNAME("get_instance_shader_parameter_as"))) {
 			reduce_identifier(static_cast<GDScriptParser::IdentifierNode *>(p_call->arguments[i]), true);
 		} else {
 			reduce_expression(p_call->arguments[i]);
@@ -4762,6 +4763,10 @@ void GDScriptAnalyzer::reduce_identifier_from_base(GDScriptParser::IdentifierNod
 			if (ClassDB::is_parent_class(native, SNAME("ShaderMaterial")) &&
 					(name == SNAME("get_shader_parameter") || name == SNAME("set_shader_parameter"))) {
 				push_error("Shader parameter methods require a statically typed call. Use get_shader_parameter_as(Type, name), or a typed wrapper function for a Callable.", p_identifier);
+			}
+			if (ClassDB::is_parent_class(native, SNAME("GeometryInstance3D")) &&
+					(name == SNAME("get_instance_shader_parameter") || name == SNAME("set_instance_shader_parameter"))) {
+				push_error("Instance shader parameter methods require a statically typed call. Use get_instance_shader_parameter_as(Type, name), or a typed wrapper function for a Callable.", p_identifier);
 			}
 			if (wgodot_strict_type_checking_enabled() && ClassDB::is_parent_class(native, SNAME("SceneTree")) &&
 					(name == SNAME("call_group") || name == SNAME("call_group_flags") || name == SNAME("call_group_as"))) {

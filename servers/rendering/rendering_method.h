@@ -34,6 +34,9 @@
 #include "core/variant/variant.h"
 #include "servers/rendering/rendering_server_enums.h"
 #include "servers/rendering/rendering_server_types.h"
+// wgodot-changes::begin
+#include "servers/rendering/storage/wgodot_instance_shader_parameters.h"
+// wgodot-changes::end
 
 #ifdef XR_DISABLED
 // RendererSceneCull::render_camera is empty when XR is disabled, but
@@ -119,6 +122,10 @@ public:
 	virtual void instance_geometry_set_lightmap(RID p_instance, RID p_lightmap, const Rect2 &p_lightmap_uv_scale, int p_slice_index) = 0;
 	virtual void instance_geometry_set_lod_bias(RID p_instance, float p_lod_bias) = 0;
 	virtual void instance_geometry_set_shader_parameter(RID p_instance, const StringName &p_parameter, const Variant &p_value) = 0;
+	// wgodot-changes::begin
+	virtual Ref<WInstanceShaderParameters> instance_geometry_get_shader_parameters(RID p_instance) = 0;
+	virtual void instance_geometry_update_shader_parameter(RID p_instance, int p_slot, const WInstanceShaderValue &p_value) = 0;
+	// wgodot-changes::end
 	virtual void instance_geometry_get_shader_parameter_list(RID p_instance, List<PropertyInfo> *p_parameters) const = 0;
 	virtual Variant instance_geometry_get_shader_parameter(RID p_instance, const StringName &p_parameter) const = 0;
 	virtual Variant instance_geometry_get_shader_parameter_default_value(RID p_instance, const StringName &p_parameter) const = 0;

@@ -4,6 +4,8 @@
 #include "core/io/resource.h"
 #include "core/variant/variant_parser.h"
 
+enum class WAnimationValueKind;
+
 // Resource codecs own their grammar and native construction. The text loader
 // and C++ emitter dispatch through this interface, without class/field cases.
 class WResourceCodec {
@@ -16,7 +18,7 @@ public:
 		virtual void line(const String &p_line) = 0;
 		// Literal animated property paths, collected during the existing resource
 		// pass. Native bindings are emitted once after all workers have joined.
-		virtual void animation_property(const NodePath &p_path) = 0;
+		virtual void animation_property(const NodePath &p_path, WAnimationValueKind p_kind) = 0;
 		virtual ~NativeWriter() = default;
 	};
 

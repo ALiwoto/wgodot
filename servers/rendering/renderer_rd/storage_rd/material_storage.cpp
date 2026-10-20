@@ -649,7 +649,9 @@ void MaterialStorage::ShaderData::get_instance_param_list(List<RendererMaterialS
 		p.info = ShaderLanguage::uniform_to_property_info(E.value);
 		p.info.name = E.key; //supply name
 		p.index = E.value.instance_index;
-		p.default_value = ShaderLanguage::constant_value_to_variant(E.value.default_value, E.value.type, E.value.array_size, E.value.hint);
+		// wgodot-changes::begin
+		p.default_value = WInstanceShaderValue::from_uniform(E.value);
+		// wgodot-changes::end
 		p_param_list->push_back(p);
 	}
 }
@@ -2124,67 +2126,19 @@ void MaterialStorage::global_shader_parameters_instance_free(RID p_instance) {
 	global_shader_uniforms.instance_buffer_pos.erase(p_instance);
 }
 
-void MaterialStorage::global_shader_parameters_instance_update(RID p_instance, int p_index, const Variant &p_value, int p_flags_count) {
-	if (!global_shader_uniforms.instance_buffer_pos.has(p_instance)) {
-		return; //just not allocated, ignore
-	}
-	int32_t pos = global_shader_uniforms.instance_buffer_pos[p_instance];
-
-	if (pos < 0) {
-		return; //again, not allocated, ignore
+// wgodot-changes::begin
+void MaterialStorage::global_shader_parameters_instance_update(RID p_instance, int p_index, const WInstanceShaderValue &p_value) {
+	const int32_t *base = global_shader_uniforms.instance_buffer_pos.getptr(p_instance);
+	if (!base || *base < 0) {
+		return;
 	}
 	ERR_FAIL_INDEX(p_index, ShaderLanguage::MAX_INSTANCE_UNIFORM_INDICES);
-
-	Variant::Type value_type = p_value.get_type();
-	ERR_FAIL_COND_MSG(p_value.get_type() > Variant::COLOR, "Unsupported variant type for instance parameter: " + Variant::get_type_name(value_type)); //anything greater not supported
-
-	const ShaderLanguage::DataType datatype_from_value[Variant::COLOR + 1] = {
-		ShaderLanguage::TYPE_MAX, //nil
-		ShaderLanguage::TYPE_BOOL, //bool
-		ShaderLanguage::TYPE_INT, //int
-		ShaderLanguage::TYPE_FLOAT, //float
-		ShaderLanguage::TYPE_MAX, //string
-		ShaderLanguage::TYPE_VEC2, //vec2
-		ShaderLanguage::TYPE_IVEC2, //vec2i
-		ShaderLanguage::TYPE_VEC4, //rect2
-		ShaderLanguage::TYPE_IVEC4, //rect2i
-		ShaderLanguage::TYPE_VEC3, // vec3
-		ShaderLanguage::TYPE_IVEC3, //vec3i
-		ShaderLanguage::TYPE_MAX, //xform2d not supported here
-		ShaderLanguage::TYPE_VEC4, //vec4
-		ShaderLanguage::TYPE_IVEC4, //vec4i
-		ShaderLanguage::TYPE_VEC4, //plane
-		ShaderLanguage::TYPE_VEC4, //quat
-		ShaderLanguage::TYPE_MAX, //aabb not supported here
-		ShaderLanguage::TYPE_MAX, //basis not supported here
-		ShaderLanguage::TYPE_MAX, //xform not supported here
-		ShaderLanguage::TYPE_MAX, //projection not supported here
-		ShaderLanguage::TYPE_VEC4 //color
-	};
-
-	ShaderLanguage::DataType datatype = ShaderLanguage::TYPE_MAX;
-	if (value_type == Variant::INT && p_flags_count > 0) {
-		switch (p_flags_count) {
-			case 1:
-				datatype = ShaderLanguage::TYPE_BVEC2;
-				break;
-			case 2:
-				datatype = ShaderLanguage::TYPE_BVEC3;
-				break;
-			case 3:
-				datatype = ShaderLanguage::TYPE_BVEC4;
-				break;
-		}
-	} else {
-		datatype = datatype_from_value[value_type];
-	}
-	ERR_FAIL_COND_MSG(datatype == ShaderLanguage::TYPE_MAX, "Unsupported variant type for instance parameter: " + Variant::get_type_name(value_type)); //anything greater not supported
-
-	pos += p_index;
-
-	_fill_std140_variant_ubo_value(datatype, 0, p_value, (uint8_t *)&global_shader_uniforms.buffer_values[pos], true); //instances always use linear color in this renderer
-	_global_shader_uniform_mark_buffer_dirty(pos, 1);
+	const int32_t position = *base + p_index;
+	static_assert(sizeof(GlobalShaderUniforms::Value) == sizeof(p_value.words));
+	memcpy(&global_shader_uniforms.buffer_values[position], p_value.linear_words, sizeof(p_value.linear_words));
+	_global_shader_uniform_mark_buffer_dirty(position, 1);
 }
+// wgodot-changes::end
 
 void MaterialStorage::_update_global_shader_uniforms() {
 	MaterialStorage *material_storage = MaterialStorage::get_singleton();

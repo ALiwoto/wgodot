@@ -32,6 +32,7 @@
 
 // wgodot-changes::begin
 #include "servers/rendering/storage/wgodot_shader_parameters.h"
+#include "servers/rendering/storage/wgodot_instance_shader_parameters.h"
 // wgodot-changes::end
 
 #include "core/io/image.h"
@@ -789,6 +790,10 @@ public:
 	virtual void instance_geometry_set_transparency(RID p_instance, float p_transparency) = 0;
 
 	virtual void instance_geometry_set_shader_parameter(RID p_instance, const StringName &, const Variant &p_value) = 0;
+	// wgodot-changes::begin
+	virtual Ref<WInstanceShaderParameters> instance_geometry_get_shader_parameters(RID p_instance) = 0;
+	virtual void instance_geometry_update_shader_parameter(RID p_instance, int p_slot, const WInstanceShaderValue &p_value) = 0;
+	// wgodot-changes::end
 	virtual Variant instance_geometry_get_shader_parameter(RID p_instance, const StringName &) const = 0;
 	virtual Variant instance_geometry_get_shader_parameter_default_value(RID p_instance, const StringName &) const = 0;
 	virtual void instance_geometry_get_shader_parameter_list(RID p_instance, List<PropertyInfo> *p_parameters) const = 0;

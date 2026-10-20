@@ -58,18 +58,12 @@
 // `Variant::OBJECT` - `Object` should be treated as a class, not as a built-in type.
 static HashMap<StringName, Variant::Type> builtin_types;
 Variant::Type GDScriptParser::get_builtin_type(const StringName &p_type) {
-	if (unlikely(builtin_types.is_empty())) {
-		for (int i = 0; i < Variant::VARIANT_MAX; i++) {
-			Variant::Type type = (Variant::Type)i;
-			if (type != Variant::NIL && type != Variant::OBJECT) {
-				builtin_types[Variant::get_type_name(type)] = type;
-			}
-		}
+	// wgodot-changes::begin
+	// Shared metadata is populated before parser workers are started.
+	if (const Variant::Type *type = builtin_types.getptr(p_type)) {
+		return *type;
 	}
-
-	if (builtin_types.has(p_type)) {
-		return builtin_types[p_type];
-	}
+	// wgodot-changes::end
 	return Variant::VARIANT_MAX;
 }
 
@@ -88,6 +82,11 @@ HashMap<StringName, GDScriptParser::AnnotationInfo> GDScriptParser::valid_annota
 void GDScriptParser::cleanup() {
 	builtin_types.clear();
 	valid_annotations.clear();
+	// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+	theme_color_names.clear();
+#endif
+	// wgodot-changes::end
 }
 
 void GDScriptParser::get_annotation_list(List<MethodInfo> *r_annotations) const {
@@ -147,7 +146,16 @@ void GDScriptParser::update_project_settings() {
 }
 #endif // DEBUG_ENABLED
 
-GDScriptParser::GDScriptParser() {
+// wgodot-changes::begin
+void GDScriptParser::initialize() {
+	// Module startup owns these tables; concurrent parsers only read them.
+	for (int i = 0; i < Variant::VARIANT_MAX; i++) {
+		const Variant::Type type = (Variant::Type)i;
+		if (type != Variant::NIL && type != Variant::OBJECT) {
+			builtin_types[Variant::get_type_name(type)] = type;
+		}
+	}
+	// wgodot-changes::end
 	// Register valid annotations.
 	if (unlikely(valid_annotations.is_empty())) {
 		// Script annotations.
@@ -198,12 +206,6 @@ GDScriptParser::GDScriptParser() {
 		// wgodot-changes::end
 	}
 
-#ifdef DEBUG_ENABLED
-	for (int i = 0; i < GDScriptWarning::WARNING_MAX; i++) {
-		warning_ignore_start_lines[i] = INT_MAX;
-	}
-#endif // DEBUG_ENABLED
-
 #ifdef TOOLS_ENABLED
 	if (unlikely(theme_color_names.is_empty())) {
 		// Vectors.
@@ -224,6 +226,16 @@ GDScriptParser::GDScriptParser() {
 	}
 #endif // TOOLS_ENABLED
 }
+
+// wgodot-changes::begin
+GDScriptParser::GDScriptParser() {
+#ifdef DEBUG_ENABLED
+	for (int i = 0; i < GDScriptWarning::WARNING_MAX; i++) {
+		warning_ignore_start_lines[i] = INT_MAX;
+	}
+#endif // DEBUG_ENABLED
+}
+// wgodot-changes::end
 
 GDScriptParser::~GDScriptParser() {
 	while (list != nullptr) {

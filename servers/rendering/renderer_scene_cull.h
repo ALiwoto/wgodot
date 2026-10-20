@@ -1066,6 +1066,10 @@ public:
 	virtual void instance_geometry_set_lod_bias(RID p_instance, float p_lod_bias);
 
 	virtual void instance_geometry_set_shader_parameter(RID p_instance, const StringName &p_parameter, const Variant &p_value);
+	// wgodot-changes::begin
+	Ref<WInstanceShaderParameters> instance_geometry_get_shader_parameters(RID p_instance) override;
+	void instance_geometry_update_shader_parameter(RID p_instance, int p_slot, const WInstanceShaderValue &p_value) override;
+	// wgodot-changes::end
 	virtual void instance_geometry_get_shader_parameter_list(RID p_instance, List<PropertyInfo> *p_parameters) const;
 	virtual Variant instance_geometry_get_shader_parameter(RID p_instance, const StringName &p_parameter) const;
 	virtual Variant instance_geometry_get_shader_parameter_default_value(RID p_instance, const StringName &p_parameter) const;

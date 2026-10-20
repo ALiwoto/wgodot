@@ -88,37 +88,40 @@ void rename_call(GDScriptParser::CallNode *p_call, const StringName &p_name) {
 } // namespace
 
 bool GDScriptAnalyzer::wgodot_lower_shader_parameter_call(const GDScriptParser::DataType &p_base, GDScriptParser::CallNode *p_call) {
-	if (!ClassDB::is_parent_class(p_base.native_type, SNAME("ShaderMaterial"))) {
+	const bool instance = ClassDB::is_parent_class(p_base.native_type, SNAME("GeometryInstance3D"));
+	if (!instance && !ClassDB::is_parent_class(p_base.native_type, SNAME("ShaderMaterial"))) {
 		return true;
 	}
-	if (p_call->function_name == SNAME("get_shader_parameter")) {
-		push_error("get_shader_parameter() is prohibited. Use get_shader_parameter_as(Type, name), for example get_shader_parameter_as(float, &\"strength\"). Its result already has the requested type.", p_call);
+	const String parameter = instance ? "instance_shader_parameter" : "shader_parameter";
+	if (p_call->function_name == StringName("get_" + parameter)) {
+		push_error("get_" + parameter + "() is prohibited. Use get_" + parameter + "_as(Type, name); its result already has the requested type.", p_call);
 		return false;
 	}
-	const bool getter = p_call->function_name == SNAME("get_shader_parameter_as");
-	const bool setter = p_call->function_name == SNAME("set_shader_parameter");
+	const bool getter = p_call->function_name == StringName("get_" + parameter + "_as");
+	const bool setter = p_call->function_name == StringName("set_" + parameter);
 	if (!getter && !setter) {
 		return true;
 	}
 	if (p_call->arguments.size() != 2) {
-		push_error(getter ? "get_shader_parameter_as() requires a type and a parameter name." : "set_shader_parameter() requires a parameter name and a typed value.", p_call);
+		push_error(getter ? "get_" + parameter + "_as() requires a type and a parameter name." : "set_" + parameter + "() requires a parameter name and a typed value.", p_call);
 		return false;
 	}
 	const auto *value = p_call->arguments[getter ? 0 : 1];
 	auto type = value->type_constraint;
 	if (getter) {
 		if (!type.is_meta_type || !type.is_constant) {
-			push_error("get_shader_parameter_as() requires a statically known type as its first argument.", value);
+			push_error("get_" + parameter + "_as() requires a statically known type as its first argument.", value);
 			return false;
 		}
 		type = type_from_metatype(type);
 	} else if (value->is_constant && value->reduced_value.get_type() == Variant::NIL) {
 		p_call->arguments.remove_at(1);
-		rename_call(p_call, SNAME("clear_shader_parameter"));
+		rename_call(p_call, "clear_" + parameter);
 		return true;
 	}
 	const String suffix = shader_parameter_suffix(type, setter);
-	if (suffix.is_empty()) {
+	const String method = String(getter ? "get_" : "set_") + parameter + "_" + suffix;
+	if (suffix.is_empty() || !ClassDB::get_method(p_base.native_type, method)) {
 		push_error(vformat("Shader parameter access requires a concrete supported shader value type, got '%s'. Use a scalar, vector, Color, matrix, packed numeric array or Texture type; convert dynamic values at their input boundary.", type.to_string()), value);
 		return false;
 	}
@@ -127,6 +130,6 @@ bool GDScriptAnalyzer::wgodot_lower_shader_parameter_call(const GDScriptParser::
 	}
 	// Normal ClassDB signature resolution now handles both the VM and gd2cpp.
 	// The type token is compile-time syntax, not a runtime Variant argument.
-	rename_call(p_call, String(getter ? "get_shader_parameter_" : "set_shader_parameter_") + suffix);
+	rename_call(p_call, method);
 	return true;
 }

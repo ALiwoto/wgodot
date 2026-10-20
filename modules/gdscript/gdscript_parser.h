@@ -1862,5 +1862,8 @@ public:
 		void print_tree(const GDScriptParser &p_parser);
 	};
 #endif // DEBUG_ENABLED
+	// wgodot-changes::begin
+	static void initialize();
+	// wgodot-changes::end
 	static void cleanup();
 };
