@@ -112,6 +112,29 @@ public:
 	};
 
 public:
+	// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+	struct NativePropertyPattern {
+		String prefix;
+		String suffix;
+		StringName setter;
+		StringName getter;
+		Variant::Type index_type = Variant::INT;
+		Variant::Type value_type = Variant::NIL;
+		StringName collection;
+		StringName clear_collection;
+	};
+	struct NativeProperty {
+		const MethodBind *setter = nullptr;
+		const MethodBind *getter = nullptr;
+		Variant index;
+		bool indexed = false;
+		String collection_prefix;
+	};
+	static void add_native_property_pattern(const StringName &p_class, const NativePropertyPattern &p_pattern);
+	static NativeProperty get_native_property(const StringName &p_class, const StringName &p_property, Variant::Type p_value_type);
+#endif
+	// wgodot-changes::end
 	struct ClassInfo {
 		// wgodot-changes::begin
 		HashSet<String> wgodot_interfaces;
@@ -132,6 +155,9 @@ public:
 
 #ifdef TOOLS_ENABLED
 		List<StringName> dependency_list;
+		// wgodot-changes::begin
+		Vector<NativePropertyPattern> native_property_patterns;
+		// wgodot-changes::end
 #endif
 
 		HashMap<StringName, Vector<uint32_t>> virtual_methods_compat;

@@ -422,6 +422,24 @@ WCallable<R(Args...)> method_callable(Instance *p_owner, R (Owner::*p_method)(Ar
 			.with_retarget([p_method, p_slot](Object *p_target) { return method_callable(Object::cast_to<Owner>(p_target), p_method, p_slot); });
 }
 
+// A generated access thunk can reach a bound private/protected engine method
+// without a MethodBind invocation or a named Callable.
+template <class Owner, class R, class... Args>
+WCallable<R(Args...)> native_method_callable(Owner *p_owner, R (*p_method)(Owner *, Args...), uint64_t p_slot) {
+	if (!p_owner) {
+		return WCallable<R(Args...)>();
+	}
+	const ObjectID id = p_owner->get_instance_id();
+	return WCallable<R(Args...)>::make(
+			[id, p_method](Args... p_args) -> R {
+				return p_method(static_cast<Owner *>(ObjectDB::get_instance(id)), p_args...);
+			},
+			[id]() { return ObjectDB::get_instance(id) != nullptr; }, id, std::make_shared<MethodIdentity>(id, p_slot))
+			.with_retarget([p_method, p_slot](Object *p_target) {
+				return native_method_callable(Object::cast_to<Owner>(p_target), p_method, p_slot);
+			});
+}
+
 template <class R, class... Args>
 auto method_callable(R (*p_method)(Args...), uint64_t p_slot) {
 	return WCallable<R(Args...)>::make(p_method, {}, ObjectID(), std::make_shared<MethodIdentity>(ObjectID(), p_slot));

@@ -137,6 +137,10 @@ public:
 
 	Array get_data() const;
 	void set_data(Array p_input);
+	// wgodot-changes::begin
+	void set_native_limits(real_t p_min_value, real_t p_max_value, real_t p_min_domain, real_t p_max_domain);
+	void set_native_points(LocalVector<Point> p_points);
+	// wgodot-changes::end
 
 	void bake();
 	void _bake() const;

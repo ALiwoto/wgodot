@@ -85,10 +85,12 @@ bool Skeleton3D::_set(const StringName &p_path, const Variant &p_value) {
 	uint32_t which = path.get_slicec('/', 1).to_int();
 	String what = path.get_slicec('/', 2);
 
-	if (which == bones.size() && what == "name") {
-		add_bone(p_value);
+	// wgodot-changes::begin
+	if (what == "name") {
+		set_serialized_bone_name(which, p_value);
 		return true;
 	}
+	// wgodot-changes::end
 
 	ERR_FAIL_UNSIGNED_INDEX_V(which, bones.size(), false);
 
@@ -1299,6 +1301,9 @@ void Skeleton3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("find_bone", "name"), &Skeleton3D::find_bone);
 	ClassDB::bind_method(D_METHOD("get_bone_name", "bone_idx"), &Skeleton3D::get_bone_name);
 	ClassDB::bind_method(D_METHOD("set_bone_name", "bone_idx", "name"), &Skeleton3D::set_bone_name);
+	// wgodot-changes::begin
+	ClassDB::bind_method(D_METHOD("set_serialized_bone_name", "bone_idx", "name"), &Skeleton3D::set_serialized_bone_name);
+	// wgodot-changes::end
 
 	ClassDB::bind_method(D_METHOD("get_bone_meta", "bone_idx", "key"), &Skeleton3D::get_bone_meta);
 	ClassDB::bind_method(D_METHOD("get_bone_meta_list", "bone_idx"), &Skeleton3D::_get_bone_meta_list_bind);
@@ -1402,6 +1407,19 @@ void Skeleton3D::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "animate_physical_bones"), "set_animate_physical_bones", "get_animate_physical_bones");
 #endif // PHYSICS_3D_DISABLED
 #endif // _DISABLE_DEPRECATED
+
+	// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+	ClassDB::add_native_property_pattern(get_class_static(), { "bones/", "/name", "set_serialized_bone_name", "get_bone_name", Variant::INT });
+	ClassDB::add_native_property_pattern(get_class_static(), { "bones/", "/parent", "set_bone_parent", "get_bone_parent", Variant::INT });
+	ClassDB::add_native_property_pattern(get_class_static(), { "bones/", "/rest", "set_bone_rest", "get_bone_rest", Variant::INT });
+	ClassDB::add_native_property_pattern(get_class_static(), { "bones/", "/enabled", "set_bone_enabled", "is_bone_enabled", Variant::INT });
+	ClassDB::add_native_property_pattern(get_class_static(), { "bones/", "/position", "set_bone_pose_position", "get_bone_pose_position", Variant::INT });
+	ClassDB::add_native_property_pattern(get_class_static(), { "bones/", "/rotation", "set_bone_pose_rotation", "get_bone_pose_rotation", Variant::INT });
+	ClassDB::add_native_property_pattern(get_class_static(), { "bones/", "/scale", "set_bone_pose_scale", "get_bone_pose_scale", Variant::INT });
+	ClassDB::add_native_property_pattern(get_class_static(), { "bones/", "/skin_scale", "set_bone_skin_scale", "get_bone_skin_scale", Variant::INT });
+#endif
+	// wgodot-changes::end
 }
 
 #ifndef DISABLE_DEPRECATED

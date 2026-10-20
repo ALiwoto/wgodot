@@ -5309,6 +5309,17 @@ void Control::_bind_methods() {
 	GDVIRTUAL_BIND(_get_accessibility_container_name, "node");
 
 	GDVIRTUAL_BIND(_gui_input, "event");
+
+	// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+	ClassDB::add_native_property_pattern(get_class_static(), { "theme_override_colors/", "", "add_theme_color_override", "get_theme_color", Variant::STRING_NAME });
+	ClassDB::add_native_property_pattern(get_class_static(), { "theme_override_constants/", "", "add_theme_constant_override", "get_theme_constant", Variant::STRING_NAME });
+	ClassDB::add_native_property_pattern(get_class_static(), { "theme_override_font_sizes/", "", "add_theme_font_size_override", "get_theme_font_size", Variant::STRING_NAME });
+	ClassDB::add_native_property_pattern(get_class_static(), { "theme_override_fonts/", "", "add_theme_font_override", "get_theme_font", Variant::STRING_NAME });
+	ClassDB::add_native_property_pattern(get_class_static(), { "theme_override_icons/", "", "add_theme_icon_override", "get_theme_icon", Variant::STRING_NAME });
+	ClassDB::add_native_property_pattern(get_class_static(), { "theme_override_styles/", "", "add_theme_stylebox_override", "get_theme_stylebox", Variant::STRING_NAME });
+#endif
+	// wgodot-changes::end
 }
 
 Control::Control() {

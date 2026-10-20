@@ -33,7 +33,7 @@
 #include "core/io/resource.h"
 #include "scene/main/node.h"
 // wgodot-changes::begin
-#include "wgodot_scene_property.h"
+#include "wgodot_scene_construction.h"
 // wgodot-changes::end
 
 class PackedScene;
@@ -51,6 +51,16 @@ class SceneState : public RefCounted {
 	mutable HashMap<int, int> base_scene_node_remap;
 
 	int base_scene_idx = -1;
+	// wgodot-changes::begin
+	Ref<WGodotSceneConstruction> native_construction;
+	struct NativeInstance {
+		Ref<PackedScene> scene;
+		String placeholder;
+	};
+	Vector<NativeInstance> native_instances;
+	Ref<PackedScene> instance_scene(int p_index) const;
+	String instance_placeholder(int p_index) const;
+	// wgodot-changes::end
 
 	enum {
 		NO_PARENT_SAVED = 0x7FFFFFFF,
@@ -69,9 +79,6 @@ class SceneState : public RefCounted {
 		struct Property {
 			int name = 0;
 			int value = 0;
-			// wgodot-changes::begin
-			const WGodotSceneProperty *native = nullptr;
-			// wgodot-changes::end
 		};
 
 		Vector<Property> properties;
@@ -85,9 +92,6 @@ class SceneState : public RefCounted {
 		ObjectID base;
 		StringName property;
 		Variant value;
-		// wgodot-changes::begin
-		const WGodotSceneProperty *native = nullptr;
-		// wgodot-changes::end
 	};
 
 	Vector<NodeData> nodes;
@@ -100,9 +104,6 @@ class SceneState : public RefCounted {
 		int flags = 0;
 		int unbinds = 0;
 		Vector<int> binds;
-		// wgodot-changes::begin
-		const WGodotSceneConnection *native = nullptr;
-		// wgodot-changes::end
 	};
 
 	Vector<ConnectionData> connections;
@@ -180,9 +181,9 @@ public:
 	Node *instantiate(GenEditState p_edit_state) const;
 
 	// wgodot-changes::begin
-	Array setup_resources_in_array(Array &array_to_scan, const SceneState::NodeData &n, HashMap<Node *, HashMap<Ref<Resource>, Ref<Resource>>> &p_resources_local_to_scenes, Node *node, const StringName sname, int i, Node **ret_nodes, SceneState::GenEditState p_edit_state, const WGodotSceneProperty *p_native = nullptr) const;
-	Dictionary setup_resources_in_dictionary(Dictionary &p_dictionary_to_scan, const SceneState::NodeData &p_n, HashMap<Node *, HashMap<Ref<Resource>, Ref<Resource>>> &p_resources_local_to_scenes, Node *p_node, const StringName p_sname, int p_i, Node **p_ret_nodes, SceneState::GenEditState p_edit_state, const WGodotSceneProperty *p_native = nullptr) const;
-	Variant make_local_resource(Variant &value, const SceneState::NodeData &p_node_data, HashMap<Node *, HashMap<Ref<Resource>, Ref<Resource>>> &p_resources_local_to_scenes, Node *p_node, const StringName p_sname, int p_i, Node **p_ret_nodes, SceneState::GenEditState p_edit_state, const WGodotSceneProperty *p_native = nullptr) const;
+	Array setup_resources_in_array(Array &array_to_scan, const SceneState::NodeData &n, HashMap<Node *, HashMap<Ref<Resource>, Ref<Resource>>> &p_resources_local_to_scenes, Node *node, const StringName sname, int i, Node **ret_nodes, SceneState::GenEditState p_edit_state) const;
+	Dictionary setup_resources_in_dictionary(Dictionary &p_dictionary_to_scan, const SceneState::NodeData &p_n, HashMap<Node *, HashMap<Ref<Resource>, Ref<Resource>>> &p_resources_local_to_scenes, Node *p_node, const StringName p_sname, int p_i, Node **p_ret_nodes, SceneState::GenEditState p_edit_state) const;
+	Variant make_local_resource(Variant &value, const SceneState::NodeData &p_node_data, HashMap<Node *, HashMap<Ref<Resource>, Ref<Resource>>> &p_resources_local_to_scenes, Node *p_node, const StringName p_sname, int p_i, Node **p_ret_nodes, SceneState::GenEditState p_edit_state) const;
 	// wgodot-changes::end
 	bool has_local_resource(const Array &p_array) const;
 
@@ -244,9 +245,11 @@ public:
 	void add_editable_instance(const NodePath &p_path);
 	// wgodot-changes::begin
 	void set_native_node(int p_node, Node *(*p_constructor)());
-	void set_native_property(int p_node, int p_property, const WGodotSceneProperty *p_accessor);
-	void set_native_connection(int p_connection, const WGodotSceneConnection *p_connection_data);
-	void copy_native_accessors_from(const Ref<SceneState> &p_source);
+	bool has_native_construction() const { return native_construction.is_valid(); }
+	void set_native_construction(const Ref<WGodotSceneConstruction> &p_construction);
+	void duplicate_native_storage(const Resource::NativeCopyContext &p_context);
+	int add_native_instance(const Ref<PackedScene> &p_scene, const String &p_placeholder = String());
+	void set_native_base_scene(int p_index);
 	void compact_storage();
 	// wgodot-changes::end
 
@@ -284,6 +287,7 @@ protected:
 	virtual void reset_state() override;
 	// wgodot-changes::begin
 	void _wgodot_native_copy(Resource *p_copy, const DuplicateParams &p_params) const override;
+	bool _wgodot_native_storage(const StringName &p_property) const override;
 	// wgodot-changes::end
 
 public:

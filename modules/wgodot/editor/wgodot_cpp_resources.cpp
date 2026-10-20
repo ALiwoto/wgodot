@@ -44,11 +44,25 @@ class WGodotCppResources {
 	HashMap<int, Vector<int>> resource_dependencies;
 	int collecting_resource = -1;
 	HashMap<String, String> dependencies;
-	HashMap<String, HashMap<StringName, String>> property_descriptors;
 	WGodotCppSource declarations;
 	WGodotCppSource body;
 	String source_path;
 	int temporary = 0;
+	bool emitting_scene = false;
+	bool resolving_nodes = false;
+	bool remapping_resources = true;
+	String scene_data;
+	StringBuilder scene_fields;
+	HashMap<const Resource *, String> scene_resources;
+	Vector<String> scene_resource_fields;
+
+	void emit(const String &p_line) {
+		if (emitting_scene) {
+			declarations += p_line;
+		} else {
+			body += p_line;
+		}
+	}
 
 	class CodecWriter : public WResourceCodec::NativeWriter {
 		WGodotCppResources &owner;
@@ -58,7 +72,7 @@ class WGodotCppResources {
 		String value(const Variant &p_value) override { return owner.value(p_value).code; }
 		String symbol() override { return "codec_" + itos(owner.temporary++); }
 		void include(const String &p_header) override { owner.emitter->class_native_headers.insert(p_header); }
-		void line(const String &p_line) override { owner.body += "\t" + p_line + "\n"; }
+		void line(const String &p_line) override { owner.emit("\t" + p_line + "\n"); }
 		void animation_property(const NodePath &p_path, WAnimationValueKind p_kind) override {
 			if (p_path.get_subname_count() > 0) {
 				owner.emitter->animation_property_paths[NodePath(Vector<StringName>(), p_path.get_subnames(), false)] |= uint64_t(1) << int(p_kind);
@@ -101,9 +115,12 @@ class WGodotCppResources {
 		return emitter->native_headers.has(p_resource->get_class()) ? native_class(p_resource->get_class()) : "Resource";
 	}
 
-	const WGodotCppProject::Class *node_class(const Ref<SceneState> &p_state, const NodePath &p_path) {
+	const WGodotCppProject::Class *node_class(const Ref<SceneState> &p_state, const NodePath &p_path, StringName *r_native_type = nullptr) {
+		// SceneState paths may start with "./", while rebasing an instance path
+		// produces "Child". Compare their node identity, not their spelling.
+		const NodePath node_path = p_path.simplified();
 		for (int i = 0; i < p_state->get_node_count(); i++) {
-			if (p_state->get_node_path(i) != p_path) {
+			if (p_state->get_node_path(i).simplified() != node_path) {
 				continue;
 			}
 			for (int j = 0; j < p_state->get_node_property_count(i); j++) {
@@ -113,18 +130,21 @@ class WGodotCppResources {
 				}
 			}
 			if (!p_state->get_node_type(i).is_empty()) {
+				if (r_native_type) {
+					*r_native_type = p_state->get_node_type(i);
+				}
 				return nullptr;
 			}
 		}
 		int closest = -1;
 		String prefix;
-		const String path = path_text(p_path);
+		const String path = path_text(node_path);
 		for (int i = 0; i < p_state->get_node_count(); i++) {
 			const Ref<PackedScene> instance = p_state->get_node_instance(i);
 			if (instance.is_null()) {
 				continue;
 			}
-			const String candidate = path_text(p_state->get_node_path(i));
+			const String candidate = path_text(p_state->get_node_path(i).simplified());
 			if ((candidate == "." || candidate == path || path.begins_with(candidate + "/")) && (closest < 0 || candidate.length() > prefix.length())) {
 				closest = i;
 				prefix = candidate;
@@ -134,10 +154,10 @@ class WGodotCppResources {
 			const Ref<PackedScene> instance = p_state->get_node_instance(closest);
 			const String relative = prefix == "." ? path : path == prefix ? "."
 																		  : path.substr(prefix.length() + 1);
-			return node_class(instance->get_state(), NodePath(relative));
+			return node_class(instance->get_state(), NodePath(relative), r_native_type);
 		}
 		const Ref<SceneState> base = p_state->get_base_scene_state();
-		return base.is_valid() ? node_class(base, p_path) : nullptr;
+		return base.is_valid() ? node_class(base, p_path, r_native_type) : nullptr;
 	}
 
 	const Parser::VariableNode *field(const WGodotCppProject::Class *p_class, const StringName &p_name) {
@@ -210,6 +230,22 @@ class WGodotCppResources {
 		declarations += "};\n";
 	}
 
+	Value scene_resource(const Ref<Resource> &p_resource) {
+		if (const String *field_name = scene_resources.getptr(p_resource.ptr())) {
+			return Value(*field_name, "Ref<" + resource_type(p_resource) + ">");
+		}
+		const String type = "Ref<" + resource_type(p_resource) + ">";
+		const String field_name = "resource_" + itos(scene_resources.size());
+		scene_resources.insert(p_resource.ptr(), field_name);
+		scene_resource_fields.push_back(field_name);
+		scene_fields += "\t" + type + " " + field_name + ";\n";
+		emitting_scene = false;
+		const Value source = value(p_resource);
+		body += "\t" + scene_data + "->" + field_name + " = " + emitter->convert_value(source, type) + ";\n";
+		emitting_scene = true;
+		return Value(field_name, type);
+	}
+
 	Value value(const Variant &p_value) {
 		if (p_value.get_type() == Variant::STRING || p_value.get_type() == Variant::STRING_NAME) {
 			const String rewritten = rewritten_string(p_value);
@@ -248,6 +284,10 @@ class WGodotCppResources {
 		}
 		if (p_value.get_type() == Variant::OBJECT) {
 			const Ref<Resource> resource = p_value;
+			if (emitting_scene && resource.is_valid()) {
+				const Value reference = scene_resource(resource);
+				return Value(remapping_resources ? "p_context.resource(" + reference.code + ")" : reference.code, reference.cpp_type);
+			}
 			if (resource.is_null()) {
 				return Value("Variant()", "Variant");
 			}
@@ -264,7 +304,7 @@ class WGodotCppResources {
 			}
 			const String name = "dependency_" + itos(dependencies.size());
 			dependencies.insert(path, name);
-			body += "\tRef<Resource> " + name + " = ResourceLoader::load(WGodotResourcePaths::to_path(" + itos(emitter->resource_id(path)) + "), String(), dependency_cache);\n\tERR_FAIL_COND_V(" + name + ".is_null(), Ref<Resource>());\n";
+			emit("\tRef<Resource> " + name + " = ResourceLoader::load(WGodotResourcePaths::to_path(" + itos(emitter->resource_id(path)) + "), String(), dependency_cache);\n\tERR_FAIL_COND_V(" + name + ".is_null(), Ref<Resource>());\n");
 			return Value(name, "Ref<Resource>");
 		}
 		if (p_value.get_type() == Variant::ARRAY) {
@@ -287,19 +327,19 @@ class WGodotCppResources {
 			if (array.is_empty()) {
 				return Value(array_type + "()", array_type);
 			}
-			body += "\t" + array_type + " " + name + ";\n";
-			body += "\t" + name + ".resize(" + itos(array.size()) + ");\n";
+			emit("\t" + array_type + " " + name + ";\n");
+			emit("\t" + name + ".resize(" + itos(array.size()) + ");\n");
 			int index = 0;
 			for (const Variant &element : array) {
 				const String item = value(element).code;
-				body += "\t" + name + "[" + itos(index++) + "] = " + item + ";\n";
+				emit("\t" + name + "[" + itos(index++) + "] = " + item + ";\n");
 			}
 			return Value(name, array_type);
 		}
 		if (p_value.get_type() == Variant::DICTIONARY) {
 			const Dictionary dictionary = p_value;
 			const String name = "dictionary_" + itos(temporary++);
-			body += "\tDictionary " + name + ";\n";
+			emit("\tDictionary " + name + ";\n");
 			if (dictionary.is_typed()) {
 				StringName key = dictionary.get_typed_key_class_name();
 				StringName item = dictionary.get_typed_value_class_name();
@@ -309,12 +349,12 @@ class WGodotCppResources {
 				if (const auto *game = script_class(dictionary.get_typed_value_script())) {
 					item = game->cpp_name;
 				}
-				body += "\t" + name + ".set_typed(Variant::Type(" + itos(dictionary.get_typed_key_builtin()) + "), StringName(" + quoted(key) + "), Variant(), Variant::Type(" + itos(dictionary.get_typed_value_builtin()) + "), StringName(" + quoted(item) + "), Variant());\n";
+				emit("\t" + name + ".set_typed(Variant::Type(" + itos(dictionary.get_typed_key_builtin()) + "), StringName(" + quoted(key) + "), Variant(), Variant::Type(" + itos(dictionary.get_typed_value_builtin()) + "), StringName(" + quoted(item) + "), Variant());\n");
 			}
 			for (const KeyValue<Variant, Variant> &entry : dictionary) {
 				const String key = value(entry.key).code;
 				const String item = value(entry.value).code;
-				body += "\t" + name + ".set(" + key + ", " + item + ");\n";
+				emit("\t" + name + ".set(" + key + ", " + item + ");\n");
 			}
 			return Value(name, "Dictionary");
 		}
@@ -344,18 +384,43 @@ class WGodotCppResources {
 		return p_value;
 	}
 
-	String typed_value(const Variant &p_value, const Parser::DataType &p_type) {
+	String typed_value(const Variant &p_value, const Parser::DataType &p_type, const String &p_existing = String()) {
 		const String type = emitter->type(p_type, &origin);
+		if (type == "Variant") {
+			error("Native construction requires a concrete type, not Variant.");
+			return "{}";
+		}
+		if (p_value.get_type() == Variant::NIL || (p_value.get_type() == Variant::OBJECT && Ref<Resource>(p_value).is_null())) {
+			return type + "()";
+		}
+		if (emitting_scene && p_value.get_type() == Variant::OBJECT && type.begins_with("Ref<")) {
+			const Value reference = scene_resource(Ref<Resource>(p_value));
+			String expression = reference.code;
+			if (remapping_resources) {
+				expression = "p_context.resource(" + expression;
+				if (!p_existing.is_empty()) {
+					expression += ", [&]() { return " + p_existing + "; }";
+				}
+				expression += ")";
+			}
+			return emitter->convert_value(Value(expression, reference.cpp_type), type);
+		}
+		if (resolving_nodes && p_type.builtin_type == Variant::OBJECT && p_value.get_type() == Variant::NODE_PATH) {
+			const String path = value(p_value).code;
+			return emitter->convert_value(Value("p_node->get_node_or_null(" + path + ")", "Node *"), type);
+		}
 		if (emitter->is_warray(p_type)) {
 			const Array array = p_value;
 			if (array.is_empty()) {
 				return type + "()";
 			}
 			const String name = "array_" + itos(temporary++);
-			body += "\t" + type + " " + name + ";\n\t" + name + ".resize(" + itos(array.size()) + ");\n";
+			emit("\t" + type + " " + name + ";\n\t" + name + ".resize(" + itos(array.size()) + ");\n");
 			for (int i = 0; i < array.size(); i++) {
-				const String item = typed_value(array[i], p_type.get_container_element_type(0));
-				body += "\t" + name + ".set(" + itos(i) + ", " + item + ");\n";
+				const Parser::DataType element_type = p_type.get_container_element_type(0);
+				const String existing = p_existing.is_empty() ? String() : "(" + p_existing + ").size() > " + itos(i) + " ? (" + p_existing + ").get(" + itos(i) + ") : " + emitter->type(element_type, &origin) + "()";
+				const String item = typed_value(array[i], element_type, existing);
+				emit("\t" + name + ".set(" + itos(i) + ", " + item + ");\n");
 			}
 			return name;
 		}
@@ -365,106 +430,114 @@ class WGodotCppResources {
 				return type + "()";
 			}
 			const String name = "dictionary_" + itos(temporary++);
-			body += "\t" + type + " " + name + ";\n";
+			emit("\t" + type + " " + name + ";\n");
 			for (const KeyValue<Variant, Variant> &entry : dictionary) {
 				const String key = typed_value(entry.key, p_type.get_container_element_type(0));
-				const String item = typed_value(entry.value, p_type.get_container_element_type(1));
-				body += "\t" + name + ".set(" + key + ", " + item + ");\n";
+				const String existing = p_existing.is_empty() ? String() : "(" + p_existing + ").get(" + key + ")";
+				const String item = typed_value(entry.value, p_type.get_container_element_type(1), existing);
+				emit("\t" + name + ".set(" + key + ", " + item + ");\n");
 			}
 			return name;
 		}
 		return emitter->convert_value(value(encode(p_value, p_type)), type);
 	}
 
-	void assign(const String &p_target, const StringName &p_native_type, const WGodotCppProject::Class *p_class, const StringName &p_name, const Variant &p_value) {
+	void assign(const String &p_target, const StringName &p_native_type, const WGodotCppProject::Class *p_class, const StringName &p_name, const Variant &p_value, bool p_node = false) {
 		if (const auto *variable = field(p_class, p_name)) {
 			const Parser::DataType type = emitter->variable_type(variable);
-			const String argument = typed_value(p_value, type);
-			body += "\t" + p_target + "->write_" + symbol(p_name) + "(" + argument + ");\n";
+			const String argument = typed_value(p_value, type, emitting_scene ? p_target + "->read_" + symbol(p_name) + "()" : String());
+			emit("\t" + p_target + "->write_" + symbol(p_name) + "(" + argument + ");\n");
 			return;
 		}
-		const Value argument = value(p_value);
-		const StringName setter = ClassDB::get_property_setter(p_native_type, p_name);
-		const MethodBind *method = ClassDB::get_method(p_native_type, setter);
+		const ClassDB::NativeProperty property = ClassDB::get_native_property(p_native_type, p_name, p_value.get_type());
+		if (!property.collection_prefix.is_empty()) {
+			const MethodBind *clear = property.setter;
+			const String key = String(clear->get_instance_class()) + "::" + String(clear->get_name());
+			if (p_value.get_type() != Variant::DICTIONARY || !emitter->native_methods.has(key) || clear->get_argument_count() != 0) {
+				error("Invalid native property collection: " + String(p_native_type) + ":" + String(p_name));
+				return;
+			}
+			emit("\t" + emitter->native_access(clear, &origin) + "(" + p_target + (p_node ? String() : ".ptr()") + ");\n");
+			for (const KeyValue<Variant, Variant> &entry : Dictionary(p_value)) {
+				if (entry.key.get_type() != Variant::STRING && entry.key.get_type() != Variant::STRING_NAME) {
+					error("Native property collection keys must be names: " + String(p_name));
+					return;
+				}
+				assign(p_target, p_native_type, p_class, property.collection_prefix + String(entry.key), entry.value, p_node);
+			}
+			return;
+		}
+		const MethodBind *method = property.setter;
 		const String key = method ? String(method->get_instance_class()) + "::" + String(method->get_name()) : String();
-		const int property_index = ClassDB::get_property_index(p_native_type, p_name);
-		if (method && !method->is_vararg() && method->get_argument_count() == (property_index >= 0 ? 2 : 1) && emitter->native_methods.has(key)) {
+		const int index_args = property.indexed ? 1 : 0;
+		if (method && !method->is_vararg() && method->get_argument_count() == index_args + 1 && emitter->native_methods.has(key)) {
 			Vector<String> arguments;
-			const String pointer = p_target + ".ptr()";
+			const String pointer = p_node ? p_target : p_target + ".ptr()";
 			// Concrete handles already convert to the accessor's base pointer.
 			// Only the generic Ref<Resource> fallback needs a downcast.
 			arguments.push_back(p_class || emitter->native_headers.has(p_native_type) ? pointer : "static_cast<" + native_class(method->get_instance_class()) + " *>(" + pointer + ")");
-			const int index = property_index;
-			if (index >= 0) {
-				arguments.push_back(emitter->convert_value(emitter->lower_literal(index, &origin), emitter->native_argument_type(method->get_argument_info(0), &origin)));
+			if (property.indexed) {
+				arguments.push_back(emitter->convert_value(value(property.index), emitter->native_argument_type(method->get_argument_info(0), &origin)));
 			}
-			const PropertyInfo parameter = method->get_argument_info(index >= 0 ? 1 : 0);
+			const PropertyInfo parameter = method->get_argument_info(index_args);
+			const String argument_type = emitter->native_argument_type(parameter, &origin);
+			if (emitting_scene && argument_type == "Variant") {
+				error("Scene property requires a typed native setter: " + String(p_native_type) + ":" + String(p_name));
+				return;
+			}
+			Value argument;
+			if (p_value.get_type() == Variant::NIL || (p_value.get_type() == Variant::OBJECT && Ref<Resource>(p_value).is_null())) {
+				argument = Value(argument_type + "()", argument_type);
+			} else if (resolving_nodes && parameter.type == Variant::OBJECT && p_value.get_type() == Variant::NODE_PATH) {
+				argument = Value("p_node->get_node_or_null(" + value(p_value).code + ")", "Node *");
+			} else if (emitting_scene && p_value.get_type() == Variant::OBJECT) {
+				const Value reference = scene_resource(Ref<Resource>(p_value));
+				const MethodBind *getter = property.getter;
+				if (!getter || !emitter->native_methods.has(String(getter->get_instance_class()) + "::" + String(getter->get_name()))) {
+					error("Local resource binding requires a typed getter: " + String(p_native_type) + ":" + String(p_name));
+					return;
+				}
+				String getter_args = pointer;
+				if (property.indexed) {
+					getter_args += ", " + emitter->convert_value(value(property.index), emitter->native_argument_type(getter->get_argument_info(0), &origin));
+				}
+				for (int argument = index_args; argument < getter->get_argument_count(); argument++) {
+					if (!getter->has_default_argument(argument)) {
+						error("Native property getter requires an explicit argument: " + String(p_native_type) + ":" + String(p_name));
+						return;
+					}
+					getter_args += ", " + emitter->convert_value(value(getter->get_default_argument(argument)), emitter->native_argument_type(getter->get_argument_info(argument), &origin));
+				}
+				const String existing = emitter->native_access(getter, &origin) + "(" + getter_args + ")";
+				argument = Value("p_context.resource(" + reference.code + ", [&]() { return " + existing + "; })", reference.cpp_type);
+			} else {
+				argument = value(p_value);
+			}
 			// Preserve a concrete TypedArray at its native boundary; erasing it to
 			// Array here would force the engine's typed setter to validate it again.
 			arguments.push_back(parameter.type == Variant::ARRAY ? argument.code : emitter->convert_value(argument, emitter->native_argument_type(parameter, &origin)));
-			body += "\t" + emitter->native_access(method, &origin) + "(" + String(", ").join(arguments) + ");\n";
+			emit("\t" + emitter->native_access(method, &origin) + "(" + String(", ").join(arguments) + ");\n");
+		} else if (emitting_scene) {
+			error("No typed native setter for " + String(p_native_type) + ":" + String(p_name));
 		} else {
-			body += "\t" + p_target + "->set(StringName(" + quoted(p_name) + "), " + argument.code + ");\n";
+			const String argument = value(p_value).code;
+			emit("\t" + p_target + "->set(StringName(" + quoted(p_name) + "), " + argument + ");\n");
 		}
 	}
 
-	String property(const StringName &p_native_type, const WGodotCppProject::Class *p_class, const StringName &p_name) {
-		const String owner = p_class ? p_class->cpp_name : String(p_native_type);
-		auto &descriptors = property_descriptors[owner];
-		if (const String *existing = descriptors.getptr(p_name)) {
-			return *existing;
-		}
-		String read;
-		String write;
-		if (const auto *variable = field(p_class, p_name)) {
-			emitter->class_dependencies.insert(p_class->cpp_name);
-			const String receiver = "static_cast<" + p_class->cpp_name + " *>(p_node)";
-			read = "WGodotNative::serialized_value(" + receiver + "->read_" + symbol(p_name) + "())";
-			write = receiver + "->write_" + symbol(p_name) + "(WGodotNative::deserialize_value<" + emitter->type(emitter->variable_type(variable), variable) + ">(p_value))";
-		} else {
-			const MethodBind *getter = ClassDB::get_method(p_native_type, ClassDB::get_property_getter(p_native_type, p_name));
-			const MethodBind *setter = ClassDB::get_method(p_native_type, ClassDB::get_property_setter(p_native_type, p_name));
-			auto mapped = [&](const MethodBind *p_method) {
-				return p_method && !p_method->is_vararg() && emitter->native_methods.has(String(p_method->get_instance_class()) + "::" + String(p_method->get_name()));
-			};
-			if (!mapped(getter) || !mapped(setter)) {
-				return String();
-			}
-			const int index = ClassDB::get_property_index(p_native_type, p_name);
-			const int index_args = index >= 0 ? 1 : 0;
-			if (getter->get_argument_count() != index_args || setter->get_argument_count() != index_args + 1) {
-				return String();
-			}
-			const String receiver = "static_cast<" + native_class(p_native_type) + " *>(p_node)";
-			String getter_args = receiver;
-			String setter_args = receiver;
-			if (index >= 0) {
-				const Value argument = emitter->lower_literal(index, &origin);
-				getter_args += ", " + emitter->convert_value(argument, emitter->native_argument_type(getter->get_argument_info(0), &origin));
-				setter_args += ", " + emitter->convert_value(argument, emitter->native_argument_type(setter->get_argument_info(0), &origin));
-			}
-			setter_args += ", " + emitter->convert_value(Value("p_value", "Variant"), emitter->native_argument_type(setter->get_argument_info(index_args), &origin));
-			read = "Variant(" + emitter->native_access(getter, &origin) + "(" + getter_args + "))";
-			write = emitter->native_access(setter, &origin) + "(" + setter_args + ")";
-		}
-		const String descriptor = "property_" + itos(temporary++);
-		declarations += "static constexpr WGodotSceneProperty " + descriptor + " = {\n\t[](const Node *p_source) -> Variant { Node *p_node = const_cast<Node *>(p_source); return " + read + "; },\n\t[](Node *p_node, const Variant &p_value) { " + write + "; }\n};\n";
-		descriptors.insert(p_name, descriptor);
-		return descriptor;
-	}
-
-	bool connection(const Ref<SceneState> &p_state, int p_index, const String &p_state_name, StringBuilder &r_attachments) {
+	bool connection(const Ref<SceneState> &p_state, int p_index) {
 		const auto *source = node_class(p_state, p_state->get_connection_source(p_index));
-		const auto *target = node_class(p_state, p_state->get_connection_target(p_index));
+		StringName native_target;
+		const auto *target = node_class(p_state, p_state->get_connection_target(p_index), &native_target);
+		if (target) {
+			native_target = emitter->native_base(target->node->self_type);
+		}
 		const StringName method_name = p_state->get_connection_method(p_index);
 		const StringName signal_name = p_state->get_connection_signal(p_index);
 		const auto *method_owner = target ? emitter->member_owner(target->node, method_name) : nullptr;
 		const auto *signal_owner = source ? emitter->member_owner(source->node, signal_name) : nullptr;
 		const Parser::FunctionNode *method = method_owner && method_owner->node->get_member(method_name).type == Parser::ClassNode::Member::FUNCTION ? method_owner->node->get_member(method_name).function : nullptr;
 		const Parser::SignalNode *signal = signal_owner && signal_owner->node->get_member(signal_name).type == Parser::ClassNode::Member::SIGNAL ? signal_owner->node->get_member(signal_name).signal : nullptr;
-		if (!method && !signal) {
-			return false;
-		}
 		String callback;
 		if (method) {
 			emitter->class_dependencies.insert(method_owner->cpp_name);
@@ -504,13 +577,54 @@ class WGodotCppResources {
 			Vector<String> arguments;
 			for (int i = 0; i < binds.size(); i++) {
 				const auto *parameter = method->parameters[method->parameters.size() - binds.size() + i];
-				arguments.push_back("WGodotNative::deserialize_value<" + emitter->type(parameter->type_constraint, parameter) + ">(p_binds[" + itos(i) + "])");
+				arguments.push_back(typed_value(binds[i], parameter->type_constraint));
 			}
 			if (!arguments.is_empty()) {
 				callback += ".bind(" + String(", ").join(arguments) + ")";
 			}
 		} else {
-			callback = "Callable(p_target, StringName(" + quoted(method_name) + ")).bindv(p_binds)";
+			const MethodBind *native_method = ClassDB::get_method(native_target, method_name);
+			const String key = native_method ? String(native_method->get_instance_class()) + "::" + String(method_name) : String();
+			if (!native_method || native_method->is_vararg() || native_method->is_static() || !emitter->native_methods.has(key)) {
+				error("Scene connection requires a mapped typed method: " + String(native_target) + ":" + String(method_name));
+				return false;
+			}
+			const String owner = native_class(native_method->get_instance_class());
+			Vector<String> parameters;
+			Vector<String> arguments;
+			arguments.push_back("target");
+			for (int i = 0; i < native_method->get_argument_count(); i++) {
+				const String type = emitter->native_argument_type(native_method->get_argument_info(i), &origin);
+				if (type == "Variant") {
+					error("Scene connection has a dynamic native argument: " + key);
+					return false;
+				}
+				parameters.push_back(type + " argument_" + itos(i));
+				arguments.push_back("argument_" + itos(i));
+			}
+			const String tail = parameters.is_empty() ? String() : ", " + String(", ").join(parameters);
+			const String slot = key.sha256_text().substr(0, 16);
+			callback = "WGodotNative::native_method_callable(static_cast<" + owner + " *>(p_target), +[](" + owner + " *target" + tail + ") { " + emitter->native_access(native_method, &origin) + "(" + String(", ").join(arguments) + "); }, UINT64_C(0x" + slot + "))";
+			Vector<String> defaults;
+			for (int i = native_method->get_argument_count() - native_method->get_default_argument_count(); i < native_method->get_argument_count(); i++) {
+				defaults.push_back(emitter->convert_value(value(native_method->get_default_argument(i)), emitter->native_argument_type(native_method->get_argument_info(i), &origin)));
+			}
+			if (!defaults.is_empty()) {
+				callback += ".with_defaults(std::make_tuple(" + String(", ").join(defaults) + "))";
+			}
+			const Array binds = p_state->get_connection_binds(p_index);
+			if (binds.size() > native_method->get_argument_count()) {
+				error("Scene connection has too many native bound arguments: " + key);
+				return false;
+			}
+			Vector<String> bound;
+			for (int i = 0; i < binds.size(); i++) {
+				const int argument = native_method->get_argument_count() - binds.size() + i;
+				bound.push_back(emitter->convert_value(value(binds[i]), emitter->native_argument_type(native_method->get_argument_info(argument), &origin)));
+			}
+			if (!bound.is_empty()) {
+				callback += ".bind(" + String(", ").join(bound) + ")";
+			}
 		}
 		const int unbinds = p_state->get_connection_unbinds(p_index);
 		String connect;
@@ -521,13 +635,10 @@ class WGodotCppResources {
 				arguments.push_back(emitter->type(parameter->type_constraint, parameter));
 			}
 			const String signature = "WGodotNative::WCallable<void(" + String(", ").join(arguments) + ")>";
-			if (!method) {
-				if (unbinds > 0) {
-					callback += ".unbind(" + itos(unbinds) + ")";
-				}
-				callback = signature + "::from_callable(" + callback + ")";
-			} else if (unbinds > 0) {
+			if (unbinds > 0) {
 				callback = signature + "::unbind<" + itos(unbinds) + ">(" + callback + ")";
+			} else {
+				callback = signature + "::adapt(" + callback + ")";
 			}
 			connect = "auto signal = static_cast<" + signal_owner->cpp_name + " *>(p_source)->s_" + symbol(signal_name) + ".signal();\n\t\tauto callback = " + callback + ";\n\t\tif (!signal.is_connected(callback)) { signal.connect(callback, p_flags); }";
 		} else {
@@ -537,108 +648,160 @@ class WGodotCppResources {
 			}
 			connect = "auto callback = " + callback + ";\n\t\tconst StringName signal(" + quoted(signal_name) + ");\n\t\tif (!p_source->is_connected(signal, callback)) { p_source->connect(signal, callback, p_flags); }";
 		}
-		const String descriptor = "connection_" + itos(temporary++);
-		declarations += "static const WGodotSceneConnection " + descriptor + " = {\n\t[](Node *p_source, Node *p_target, const Array &p_binds, int p_flags) {\n\t\t" + connect + "\n\t}\n};\n";
-		r_attachments += "\t" + p_state_name + "->set_native_connection(" + itos(p_index) + ", &" + descriptor + ");\n";
+		emit("\t" + connect + "\n");
 		return true;
 	}
 
 	void scene(const Ref<PackedScene> &p_scene, const String &p_target) {
 		const Ref<SceneState> state = prepared_scenes[p_scene.ptr()];
-		Dictionary bundled = state->get_bundled_scene();
-		PackedStringArray names = bundled["names"];
+		state->compact_storage();
+		const String suffix = itos(temporary++);
+		const String data_type = "SceneConstruction_" + suffix;
+		scene_data = "construction_" + suffix;
+		const String state_name = "state_" + suffix;
+		scene_resources.clear();
+		scene_resource_fields.clear();
+		scene_fields = StringBuilder();
+		body += "\tRef<" + data_type + "> " + scene_data + ";\n\t" + scene_data + ".instantiate();\n";
+		declarations += "struct " + data_type + " final : WGodotSceneConstruction {\n";
+		emitting_scene = true;
+		for (int phase = 0; phase < 2; phase++) {
+			resolving_nodes = phase == 1;
+			const String method_name = resolving_nodes ? "resolve" : "apply";
+			declarations += "\tvoid " + method_name + "(int p_index, Node *p_node, WGodotSceneContext &p_context) const override {\n\t\tswitch (p_index) {\n";
+			for (int i = 0; i < state->get_node_count(); i++) {
+				const Vector<String> deferred = state->get_node_deferred_nodepath_properties(i);
+				StringName native_type;
+				const auto *game = node_class(state, state->get_node_path(i), &native_type);
+				if (game) {
+					native_type = emitter->native_base(game->node->self_type);
+					emitter->class_dependencies.insert(game->cpp_name);
+				}
+				bool opened = false;
+				for (int j = 0; j < state->get_node_property_count(i); j++) {
+					const StringName name = state->get_node_property_name(i, j);
+					if (name == SNAME("script")) {
+						if (state->get_node_type(i).is_empty() || state->get_node_instance(i).is_valid()) {
+							error("Replacing a script on an inherited/instanced node is unsupported: " + path_text(state->get_node_path(i)));
+						}
+						continue;
+					}
+					if (deferred.has(name) != resolving_nodes) {
+						continue;
+					}
+					if (native_type.is_empty() || state->is_node_instance_placeholder(i)) {
+						error("Native scene properties require a resolved node type: " + path_text(state->get_node_path(i)));
+						continue;
+					}
+					if (!opened) {
+						const String type = game ? game->cpp_name : native_class(native_type);
+						declarations += "\t\t\tcase " + itos(i) + ": {\n\t\t\t\tauto *node = static_cast<" + type + " *>(p_node);\n";
+						opened = true;
+					}
+					assign("node", native_type, game, name, state->get_node_property_value(i, j), true);
+				}
+				if (opened) {
+					declarations += "\t\t\t} break;\n";
+				}
+			}
+			declarations += "\t\t\tdefault: break;\n\t\t}\n\t}\n";
+		}
+		resolving_nodes = false;
+		remapping_resources = false;
+		declarations += "\tvoid connect(int p_index, Node *p_source, Node *p_target, int p_flags) const override {\n\t\tswitch (p_index) {\n";
+		for (int i = 0; i < state->get_connection_count(); i++) {
+			declarations += "\t\t\tcase " + itos(i) + ": {\n";
+			connection(state, i);
+			declarations += "\t\t\t} break;\n";
+		}
+		declarations += "\t\t\tdefault: break;\n\t\t}\n\t}\n";
+		declarations += "\tRef<WGodotSceneConstruction> duplicate(const Resource::NativeCopyContext &p_context) const override {\n\t\tRef<" + data_type + "> result;\n\t\tresult.instantiate();\n";
+		for (const String &field : scene_resource_fields) {
+			declarations += "\t\tresult->" + field + " = p_context.resource(" + field + ");\n";
+		}
+		declarations += "\t\treturn result;\n\t}\n" + scene_fields.as_string() + "};\n";
+		remapping_resources = true;
+		emitting_scene = false;
+		body += "\tRef<SceneState> " + state_name + " = " + p_target + "->get_state();\n\t" + state_name + "->set_native_construction(" + scene_data + ");\n";
+
+		// Serialized tables are read only by the exporter. Runtime metadata is
+		// constructed through typed SceneState calls, without a Dictionary/Array.
+		const Dictionary bundled = state->get_bundled_scene();
 		const PackedInt32Array nodes = bundled["nodes"];
-		PackedInt32Array output;
-		Array variants = bundled["variants"];
-		const int blank = names.size();
-		names.push_back(String());
-		const String state_name = "state_" + itos(temporary++);
-		StringBuilder attachments;
+		const Array node_paths = bundled["node_paths"];
+		const Array id_paths = bundled.get("id_paths", Array());
+		for (int i = 0; i < node_paths.size(); i++) {
+			const String path = value(node_paths[i]).code;
+			const String ids = value(i < id_paths.size() ? id_paths[i] : Variant(PackedInt32Array())).code;
+			body += "\t" + state_name + "->add_node_path(" + path + ", " + ids + ");\n";
+		}
+		HashMap<StringName, int> names;
+		auto name_index = [&](const StringName &p_name) {
+			if (const int *index = names.getptr(p_name)) {
+				return *index;
+			}
+			const int index = names.size();
+			names.insert(p_name, index);
+			body += "\t" + state_name + "->add_name(StringName(" + quoted(p_name) + "));\n";
+			return index;
+		};
+		int next_instance = 0;
+		if (state->get_base_scene_state().is_valid()) {
+			const String base = value(state->get_node_instance(0)).code;
+			body += "\t" + state_name + "->add_native_instance(" + base + ");\n\t" + state_name + "->set_native_base_scene(" + itos(next_instance++) + ");\n";
+		}
 		int offset = 0;
 		for (int i = 0; i < state->get_node_count(); i++) {
-			const int start = offset;
 			const int parent = nodes[offset++];
 			const int owner = nodes[offset++];
-			int type = nodes[offset++];
-			const int name = nodes[offset++];
-			const int instance = nodes[offset++];
-			const int count = nodes[offset++];
-			const auto *game = node_class(state, state->get_node_path(i));
-			if (type != SceneState::TYPE_INSTANTIATED) {
-				String constructor;
+			const bool inherited = nodes[offset++] == SceneState::TYPE_INSTANTIATED;
+			offset++; // Packed name/index; use the typed getters below.
+			const int original_instance = nodes[offset++];
+			const int property_count = nodes[offset++];
+			offset += property_count * 2;
+			const int group_count = nodes[offset++];
+			offset += group_count;
+			int instance = -1;
+			if (original_instance >= 0) {
+				instance = next_instance++;
+				if (state->is_node_instance_placeholder(i)) {
+					const String path = rewritten_string(state->get_node_instance_placeholder(i));
+					body += "\t" + state_name + "->add_native_instance(Ref<PackedScene>(), String::utf8(" + quoted(path) + "));\n";
+					instance |= SceneState::FLAG_INSTANCE_IS_PLACEHOLDER;
+				} else {
+					const String scene = value(state->get_node_instance(i)).code;
+					body += "\t" + state_name + "->add_native_instance(" + scene + ");\n";
+				}
+			}
+			const int type = inherited ? SceneState::TYPE_INSTANTIATED : name_index(state->get_node_type(i));
+			const int name = name_index(state->get_node_name(i));
+			body += "\t" + state_name + "->add_node(" + itos(parent) + ", " + itos(owner) + ", " + itos(type) + ", " + itos(name) + ", " + itos(instance) + ", " + itos(state->get_node_index(i)) + ", " + itos(state->get_node_unique_id(i)) + ");\n";
+			if (!inherited) {
+				const auto *game = node_class(state, state->get_node_path(i));
+				const String constructor = game ? game->cpp_name : native_class(state->get_node_type(i));
 				if (game) {
 					emitter->class_dependencies.insert(game->cpp_name);
-					type = names.size();
-					names.push_back(game->cpp_name);
-					constructor = game->cpp_name;
-				} else if (emitter->native_headers.has(state->get_node_type(i))) {
-					constructor = native_class(state->get_node_type(i));
 				}
-				if (!constructor.is_empty()) {
-					attachments += "\t" + state_name + "->set_native_node(" + itos(i) + ", &WGodotNative::scene_node<" + constructor + ">);\n";
-				}
+				body += "\t" + state_name + "->set_native_node(" + itos(i) + ", &WGodotNative::scene_node<" + constructor + ">);\n";
 			}
-			PackedInt32Array properties;
-			for (int j = 0; j < count; j++) {
-				int property_name = nodes[offset++];
-				int property_value = nodes[offset++];
-				const StringName original = state->get_node_property_name(i, j);
-				if (original == SNAME("script")) {
-					if (nodes[start + 2] == SceneState::TYPE_INSTANTIATED || instance >= 0) {
-						error("Replacing the script on an inherited or instanced node is unsupported: " + path_text(state->get_node_path(i)));
-					}
-					continue;
-				}
-				const StringName native_type = game ? emitter->native_base(game->node->self_type) : state->get_node_type(i);
-				const String descriptor = property(native_type, game, original);
-				if (!descriptor.is_empty()) {
-					property_name = (property_name & ~SceneState::FLAG_PROP_NAME_MASK) | blank;
-					attachments += "\t" + state_name + "->set_native_property(" + itos(i) + ", " + itos(properties.size() / 2) + ", &" + descriptor + ");\n";
-					if (const auto *variable = field(game, original)) {
-						if (!(property_name & SceneState::FLAG_PATH_PROPERTY_IS_NODE)) {
-							property_value = variants.size();
-							variants.push_back(encode(state->get_node_property_value(i, j), emitter->variable_type(variable)));
-						}
-					}
-				}
-				properties.push_back(property_name);
-				properties.push_back(property_value);
-			}
-			output.push_back(parent);
-			output.push_back(owner);
-			output.push_back(type);
-			output.push_back(name);
-			output.push_back(instance);
-			output.push_back(properties.size() / 2);
-			output.append_array(properties);
-			const int groups = nodes[offset++];
-			output.push_back(groups);
-			for (int j = 0; j < groups; j++) {
-				const int group = nodes[offset++];
-				output.push_back(group);
+			for (const StringName &group : state->get_node_groups(i)) {
+				const int group_index = name_index(group);
+				body += "\t" + state_name + "->add_node_group(" + itos(i) + ", " + itos(group_index) + ");\n";
 			}
 		}
-		PackedInt32Array connections = bundled["conns"];
+		for (const NodePath &path : state->get_editable_instances()) {
+			body += "\t" + state_name + "->add_editable_instance(" + value(path).code + ");\n";
+		}
+		const PackedInt32Array connections = bundled["conns"];
 		offset = 0;
 		for (int i = 0; i < state->get_connection_count(); i++) {
-			if (connection(state, i, state_name, attachments)) {
-				connections.set(offset + 2, blank);
-				connections.set(offset + 3, blank);
-			}
-			const int binds = connections[offset + 5];
-			offset += 7 + binds;
+			const int from = connections[offset];
+			const int to = connections[offset + 1];
+			const int signal = name_index(state->get_connection_signal(i));
+			const int method = name_index(state->get_connection_method(i));
+			body += "\t" + state_name + "->add_connection(" + itos(from) + ", " + itos(to) + ", " + itos(signal) + ", " + itos(method) + ", " + itos(state->get_connection_flags(i)) + ", " + itos(state->get_connection_unbinds(i)) + ", Vector<int>());\n";
+			offset += 7 + connections[offset + 5];
 		}
-		bundled["names"] = names;
-		bundled["nodes"] = output;
-		bundled["conns"] = connections;
-		bundled["variants"] = variants;
-		// This filtered state belongs to this factory, not the loaded resource.
-		// Compact through SceneState so index flags and format details have one owner.
-		state->set_bundled_scene(bundled);
-		state->compact_storage();
-		const String definition = value(state->get_bundled_scene()).code;
-		body += "\tRef<SceneState> " + state_name + " = " + p_target + "->get_state();\n\t" + state_name + "->set_bundled_scene(" + definition + ");\n";
-		body += attachments.as_string();
 	}
 
 	void prepare_factory(const String &p_path, const Ref<Resource> &p_resource) {
@@ -754,9 +917,9 @@ class WGodotCppResources {
 			} else {
 				constructor = "Ref<Resource>(Object::cast_to<Resource>(ClassDB::instantiate(StringName(" + quoted(graph[i]->get_class()) + "))))";
 			}
-			body += "\tRef<" + type + "> resource_" + itos(i) + " = " + constructor + ";\n";
+			emit("\tRef<" + type + "> resource_" + itos(i) + " = " + constructor + ";\n");
 			if (!game) {
-				body += "\tERR_FAIL_COND_V(resource_" + itos(i) + ".is_null(), Ref<Resource>());\n";
+				emit("\tERR_FAIL_COND_V(resource_" + itos(i) + ".is_null(), Ref<Resource>());\n");
 			}
 		}
 		// Allocate the whole graph, then populate dependencies before their owners.
@@ -795,7 +958,7 @@ class WGodotCppResources {
 			}
 
 		}
-		body += "\treturn resource_0;\n";
+		emit("\treturn resource_0;\n");
 		String source = emitter->source_header(p_path, resource->get_class()) + "#include \"core/io/resource_loader.h\"\n#include \"core/io/wgodot_resource_paths.h\"\n#include \"scene/resources/packed_scene.h\"\n#include \"modules/wgodot/native/wgodot_native_serialization.h\"\n#include \"modules/wgodot/native/wgodot_native_callback.h\"\n";
 		HashSet<String> includes;
 		for (const String &header : emitter->class_call_headers) {

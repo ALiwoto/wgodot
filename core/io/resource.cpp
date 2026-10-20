@@ -256,6 +256,11 @@ Error Resource::copy_from(const Ref<Resource> &p_resource) {
 			continue; //do not change path
 		}
 
+		// wgodot-changes::begin
+		if (p_resource->_wgodot_native_storage(E.name)) {
+			continue;
+		}
+		// wgodot-changes::end
 		set(E.name, p_resource->get(E.name));
 	}
 
@@ -302,51 +307,10 @@ Variant Resource::_duplicate_recursive(const Variant &p_variant, const Duplicate
 
 	switch (p_variant.get_type()) {
 		case Variant::OBJECT: {
-			const Ref<Resource> &sr = p_variant;
-			bool should_duplicate = false;
-			if (sr.is_valid()) {
-				if ((p_usage & PROPERTY_USAGE_ALWAYS_DUPLICATE)) {
-					should_duplicate = true;
-				} else if ((p_usage & PROPERTY_USAGE_NEVER_DUPLICATE)) {
-					should_duplicate = false;
-				} else if (p_params.local_scene) {
-					should_duplicate = sr->is_local_to_scene();
-				} else {
-					switch (p_params.subres_mode) {
-						case RESOURCE_DEEP_DUPLICATE_NONE: {
-							should_duplicate = false;
-						} break;
-						case RESOURCE_DEEP_DUPLICATE_INTERNAL: {
-							should_duplicate = p_params.deep && sr->is_built_in();
-						} break;
-						case RESOURCE_DEEP_DUPLICATE_ALL: {
-							should_duplicate = p_params.deep;
-						} break;
-						default: {
-							DEV_ASSERT(false);
-						}
-					}
-					if (should_duplicate) {
-						Ref<Script> scr = sr;
-						if (scr.is_valid()) {
-							should_duplicate = false;
-						}
-					}
-				}
-			}
-			if (should_duplicate) {
-				if (thread_duplicate_remap_cache->has(sr)) {
-					return thread_duplicate_remap_cache->get(sr);
-				} else {
-					const Ref<Resource> &dupe = p_params.local_scene
-							? sr->duplicate_for_local_scene(p_params.local_scene, *thread_duplicate_remap_cache)
-							: sr->_duplicate(p_params);
-					thread_duplicate_remap_cache->insert(sr, dupe);
-					return dupe;
-				}
-			} else {
-				return p_variant;
-			}
+			// wgodot-changes::begin
+			const Ref<Resource> resource = p_variant;
+			return resource.is_valid() ? Variant(_duplicate_resource(resource, p_params, p_usage)) : p_variant;
+			// wgodot-changes::end
 		} break;
 		case Variant::ARRAY: {
 			const Array &src = p_variant;
@@ -431,6 +395,11 @@ Ref<Resource> Resource::_duplicate(const DuplicateParams &p_params) const {
 		if (E.name == "script") {
 			continue;
 		}
+		// wgodot-changes::begin
+		if (_wgodot_native_storage(E.name)) {
+			continue;
+		}
+		// wgodot-changes::end
 
 		BEFORE_USER_CODE
 		Variant p = get(E.name);

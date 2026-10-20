@@ -58,4 +58,17 @@ void GeometryInstance3D::_bind_typed_instance_shader_parameters() {
 	BIND_INSTANCE_PARAMETER(color)
 #undef BIND_INSTANCE_PARAMETER
 	ClassDB::bind_method(D_METHOD("clear_instance_shader_parameter", "name"), &GeometryInstance3D::clear_instance_shader_parameter);
+#ifdef TOOLS_ENABLED
+	ClassDB::add_native_property_pattern(get_class_static(), { "instance_shader_parameters/", "", "set_instance_shader_parameter_bool", "get_instance_shader_parameter_bool", Variant::STRING_NAME, Variant::BOOL });
+	ClassDB::add_native_property_pattern(get_class_static(), { "instance_shader_parameters/", "", "set_instance_shader_parameter_int", "get_instance_shader_parameter_int", Variant::STRING_NAME, Variant::INT });
+	ClassDB::add_native_property_pattern(get_class_static(), { "instance_shader_parameters/", "", "set_instance_shader_parameter_float", "get_instance_shader_parameter_float", Variant::STRING_NAME, Variant::FLOAT });
+	ClassDB::add_native_property_pattern(get_class_static(), { "instance_shader_parameters/", "", "set_instance_shader_parameter_vector2", "get_instance_shader_parameter_vector2", Variant::STRING_NAME, Variant::VECTOR2 });
+	ClassDB::add_native_property_pattern(get_class_static(), { "instance_shader_parameters/", "", "set_instance_shader_parameter_vector3", "get_instance_shader_parameter_vector3", Variant::STRING_NAME, Variant::VECTOR3 });
+	ClassDB::add_native_property_pattern(get_class_static(), { "instance_shader_parameters/", "", "set_instance_shader_parameter_vector4", "get_instance_shader_parameter_vector4", Variant::STRING_NAME, Variant::VECTOR4 });
+	ClassDB::add_native_property_pattern(get_class_static(), { "instance_shader_parameters/", "", "set_instance_shader_parameter_vector2i", "get_instance_shader_parameter_vector2i", Variant::STRING_NAME, Variant::VECTOR2I });
+	ClassDB::add_native_property_pattern(get_class_static(), { "instance_shader_parameters/", "", "set_instance_shader_parameter_vector3i", "get_instance_shader_parameter_vector3i", Variant::STRING_NAME, Variant::VECTOR3I });
+	ClassDB::add_native_property_pattern(get_class_static(), { "instance_shader_parameters/", "", "set_instance_shader_parameter_vector4i", "get_instance_shader_parameter_vector4i", Variant::STRING_NAME, Variant::VECTOR4I });
+	ClassDB::add_native_property_pattern(get_class_static(), { "instance_shader_parameters/", "", "set_instance_shader_parameter_color", "get_instance_shader_parameter_color", Variant::STRING_NAME, Variant::COLOR });
+#endif
+
 }

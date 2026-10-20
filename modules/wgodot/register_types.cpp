@@ -5,6 +5,7 @@
 
 #include "register_types.h"
 #include "codecs/animation_codec.h"
+#include "codecs/curve_codec.h"
 #include "codecs/shader_material_codec.h"
 #include "codecs/resource_load_measurement.h"
 #include "object_metadata.h"
@@ -43,6 +44,7 @@ void initialize_wgodot_module(ModuleInitializationLevel p_level) {
 	if (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {
 		GDREGISTER_CLASS(WAnimation);
 		register_animation_codec();
+		register_curve_codec();
 		register_shader_material_codec();
 #if defined(TOOLS_ENABLED) && defined(DEBUG_ENABLED)
 		GDREGISTER_CLASS(WResourceLoadMeasurement);
@@ -70,6 +72,7 @@ void initialize_wgodot_module(ModuleInitializationLevel p_level) {
 void uninitialize_wgodot_module(ModuleInitializationLevel p_level) {
 	if (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {
 		unregister_shader_material_codec();
+		unregister_curve_codec();
 		unregister_animation_codec();
 		WGodotPreloads::deinitialize();
 		WGodotGameBridge::deinitialize();

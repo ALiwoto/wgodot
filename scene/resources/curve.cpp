@@ -339,11 +339,9 @@ void Curve::set_limits(const Array &p_input) {
 		return;
 	}
 
-	// Do not use setters because we don't want to enforce their logical constraints during deserialization.
-	_min_value = p_input[0];
-	_max_value = p_input[1];
-	_min_domain = p_input[2];
-	_max_domain = p_input[3];
+	// wgodot-changes::begin
+	set_native_limits(p_input[0], p_input[1], p_input[2], p_input[3]);
+	// wgodot-changes::end
 }
 
 void Curve::set_min_value(real_t p_min) {
@@ -509,29 +507,16 @@ void Curve::set_data(const Array p_input) {
 		int right_mode = p_input[i + 4];
 		ERR_FAIL_COND(right_mode < 0 || right_mode >= TANGENT_MODE_COUNT);
 	}
-	int old_size = _points.size();
-	int new_size = p_input.size() / ELEMS;
-	if (old_size != new_size) {
-		_points.resize(new_size);
+	// wgodot-changes::begin
+	LocalVector<Point> points;
+	points.resize(p_input.size() / ELEMS);
+	for (uint32_t j = 0; j < points.size(); ++j) {
+		const int i = j * ELEMS;
+		points[j] = Point(p_input[i], p_input[i + 1], p_input[i + 2],
+				TangentMode(int(p_input[i + 3])), TangentMode(int(p_input[i + 4])));
 	}
-
-	for (uint32_t j = 0; j < _points.size(); ++j) {
-		Point &p = _points[j];
-		int i = j * ELEMS;
-
-		p.position = p_input[i];
-		p.left_tangent = p_input[i + 1];
-		p.right_tangent = p_input[i + 2];
-		int left_mode = p_input[i + 3];
-		int right_mode = p_input[i + 4];
-		p.left_mode = (TangentMode)left_mode;
-		p.right_mode = (TangentMode)right_mode;
-	}
-
-	mark_dirty();
-	if (old_size != new_size) {
-		notify_property_list_changed();
-	}
+	set_native_points(std::move(points));
+	// wgodot-changes::end
 }
 
 void Curve::bake() {

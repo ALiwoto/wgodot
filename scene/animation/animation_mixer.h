@@ -435,6 +435,10 @@ public:
 	bool has_animation_library(const StringName &p_name) const;
 	const StringName &find_animation_library(const Ref<Animation> &p_animation) const;
 	Error add_animation_library(const StringName &p_name, const Ref<AnimationLibrary> &p_animation_library);
+	// wgodot-changes::begin
+	void set_animation_library(const StringName &p_name, const Ref<AnimationLibrary> &p_library);
+	void clear_animation_libraries();
+	// wgodot-changes::end
 	void remove_animation_library(const StringName &p_name);
 	void rename_animation_library(const StringName &p_name, const StringName &p_new_name);
 

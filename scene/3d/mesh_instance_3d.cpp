@@ -949,6 +949,12 @@ void MeshInstance3D::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "skin", PROPERTY_HINT_RESOURCE_TYPE, Skin::get_class_static()), "set_skin", "get_skin");
 	ADD_PROPERTY(PropertyInfo(Variant::NODE_PATH, "skeleton", PROPERTY_HINT_NODE_PATH_VALID_TYPES, "Skeleton3D"), "set_skeleton_path", "get_skeleton_path");
 	ADD_GROUP("", "");
+
+	// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+	ClassDB::add_native_property_pattern(get_class_static(), { "surface_material_override/", "", "set_surface_override_material", "get_surface_override_material", Variant::INT });
+#endif
+	// wgodot-changes::end
 }
 
 PackedStringArray MeshInstance3D::get_configuration_warnings() const {

@@ -100,6 +100,9 @@ private:
 	static thread_local inline bool thread_duplicate_remap_cache_needs_deallocation = true;
 
 	Variant _duplicate_recursive(const Variant &p_variant, const DuplicateParams &p_params, uint32_t p_usage = 0) const;
+	// wgodot-changes::begin
+	Ref<Resource> _duplicate_resource(const Ref<Resource> &p_resource, const DuplicateParams &p_params, uint32_t p_usage) const;
+	// wgodot-changes::end
 	void _find_sub_resources(const Variant &p_variant, HashSet<Ref<Resource>> &p_resources_found);
 
 	// Only for binding the deep duplicate method, so it doesn't need actual members.
@@ -128,12 +131,30 @@ protected:
 	virtual Ref<Resource> _duplicate(const DuplicateParams &p_params) const;
 	// wgodot-changes::begin
 	virtual void _wgodot_native_copy(Resource *p_copy, const DuplicateParams &p_params) const {}
+	virtual bool _wgodot_native_storage(const StringName &p_property) const { return false; }
 	void _wgodot_copy_local_scene(Resource *p_copy, Node *p_scene, DuplicateRemapCacheT &p_cache) const;
 	Variant _wgodot_duplicate_value(const Variant &p_value, const DuplicateParams &p_params, uint32_t p_usage) const;
 	// wgodot-changes::end
 	virtual String _to_string() override;
 
 public:
+	// wgodot-changes::begin
+	// Typed resource references share the same duplication policy and identity
+	// cache as generic Resource IO, without boxing references into Variant.
+	class NativeCopyContext {
+		const Resource &owner;
+		const DuplicateParams &params;
+
+		Ref<Resource> copy_resource(const Ref<Resource> &p_resource) const;
+
+	public:
+		NativeCopyContext(const Resource &p_owner, const DuplicateParams &p_params) : owner(p_owner), params(p_params) {}
+		template <class T>
+		Ref<T> resource(const Ref<T> &p_resource) const {
+			return copy_resource(p_resource);
+		}
+	};
+	// wgodot-changes::end
 	static Node *(*_get_local_scene_func)(); // Used by the editor.
 	static void (*_update_configuration_warning)(); // Used by the editor.
 

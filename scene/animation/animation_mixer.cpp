@@ -94,22 +94,18 @@ bool AnimationMixer::_set(const StringName &p_name, const Variant &p_value) {
 		emit_signal(SNAME("animation_libraries_updated"));
 	} else if (name.begins_with("libraries/")) {
 		String which = name.get_slicec('/', 1);
-		if (has_animation_library(which)) {
-			remove_animation_library(which);
-		}
-		add_animation_library(which, p_value);
-		emit_signal(SNAME("animation_libraries_updated"));
+		// wgodot-changes::begin
+		set_animation_library(which, p_value);
+		// wgodot-changes::end
 	} else {
 		return false;
 	}
 #else
 	if (name.begins_with("libraries/")) {
 		String which = name.get_slicec('/', 1);
-		if (has_animation_library(which)) {
-			remove_animation_library(which);
-		}
-		add_animation_library(which, p_value);
-		emit_signal(SNAME("animation_libraries_updated"));
+		// wgodot-changes::begin
+		set_animation_library(which, p_value);
+		// wgodot-changes::end
 	} else {
 		return false;
 	}
@@ -2511,6 +2507,10 @@ void AnimationMixer::get_argument_options(const StringName &p_function, int p_id
 void AnimationMixer::_bind_methods() {
 	/* ---- Data lists ---- */
 	ClassDB::bind_method(D_METHOD("add_animation_library", "name", "library"), &AnimationMixer::add_animation_library);
+	// wgodot-changes::begin
+	ClassDB::bind_method(D_METHOD("set_animation_library", "name", "library"), &AnimationMixer::set_animation_library);
+	ClassDB::bind_method(D_METHOD("clear_animation_libraries"), &AnimationMixer::clear_animation_libraries);
+	// wgodot-changes::end
 	ClassDB::bind_method(D_METHOD("remove_animation_library", "name"), &AnimationMixer::remove_animation_library);
 	ClassDB::bind_method(D_METHOD("rename_animation_library", "name", "newname"), &AnimationMixer::rename_animation_library);
 	ClassDB::bind_method(D_METHOD("has_animation_library", "name"), &AnimationMixer::has_animation_library);
@@ -2613,6 +2613,12 @@ void AnimationMixer::_bind_methods() {
 	//            This should be investigated, to either move the binding or remove this comment.
 	ClassDB::bind_method(D_METHOD("find_animation", "animation"), &AnimationMixer::find_animation);
 	ClassDB::bind_method(D_METHOD("find_animation_library", "animation"), &AnimationMixer::find_animation_library);
+
+	// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+	ClassDB::add_native_property_pattern(get_class_static(), { "libraries/", "", "set_animation_library", "get_animation_library", Variant::STRING_NAME, Variant::NIL, "libraries", "clear_animation_libraries" });
+#endif
+	// wgodot-changes::end
 }
 
 AnimationMixer::AnimationMixer() {
