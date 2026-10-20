@@ -59,20 +59,7 @@ String WGodotCppEmitter::function(const Parser::FunctionNode *p_function, String
 	return String();
 }
 
-void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
-	if (files.has(p_class.cpp_name + ".h") || class_lifecycles.has(p_class.node)) {
-		return;
-	}
-	if (!required_classes.has(p_class.node) && WGodotGDScriptInlineConstants::can_omit_class(p_class.node)) {
-		return;
-	}
-	// Lifecycle requirements are inherited from already emitted base classes.
-	if (p_class.node->base_type.kind == Parser::DataType::CLASS) {
-		if (const auto *parent = project.find_class(p_class.node->base_type.class_type)) {
-			required_classes.insert(parent->node);
-			emit_class(*parent);
-		}
-	}
+void WGodotCppEmitter::emit_class_uncached(const WGodotCppProject::Class &p_class) {
 	current_class = &p_class;
 	temporary_index = 0;
 	current_function = nullptr;

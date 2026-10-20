@@ -41,6 +41,34 @@ String get_interface_id(const GDScriptParser::ClassNode *p_interface) {
 	return GDScript::canonicalize_path(p_interface->self_type.script_path) + "::" + p_interface->fqcn;
 }
 
+bool can_runtime_cast(const GDScriptParser::DataType &p_first, const GDScriptParser::DataType &p_second) {
+	using DataType = GDScriptParser::DataType;
+	if (p_first.is_meta_type || p_second.is_meta_type || p_first.builtin_type != Variant::OBJECT || p_second.builtin_type != Variant::OBJECT) {
+		return false;
+	}
+	const auto is_interface = [](const DataType &p_type) {
+		return (p_type.kind == DataType::CLASS && p_type.class_type->wgodot_is_interface) ||
+				(p_type.kind == DataType::SCRIPT && p_type.script_type->wgodot_is_interface_type()) ||
+				(p_type.kind == DataType::NATIVE && WGodotNativeInterfaces::get_descriptor(p_type.native_type));
+	};
+	if (!is_interface(p_first) && !is_interface(p_second)) {
+		return false;
+	}
+	const auto native_base = [](const DataType &p_type) -> StringName {
+		if (p_type.kind == DataType::NATIVE) {
+			if (const auto *contract = WGodotNativeInterfaces::get_descriptor(p_type.native_type)) {
+				return contract->native_base;
+			}
+		}
+		return p_type.native_type;
+	};
+	const StringName first_base = native_base(p_first);
+	const StringName second_base = native_base(p_second);
+	// Interfaces do not add concrete inheritance. A possible implementing object
+	// must still fit both native bases (for example, Node and Resource cannot mix).
+	return ClassDB::is_parent_class(first_base, second_base) || ClassDB::is_parent_class(second_base, first_base);
+}
+
 const WGodotNativeInterfaces::Descriptor *native_interface_for_member(const GDScriptParser::DataType &p_type, const StringName &p_member) {
 	if (p_type.kind == GDScriptParser::DataType::NATIVE) {
 		return WGodotNativeInterfaces::get_descriptor(p_type.native_type);

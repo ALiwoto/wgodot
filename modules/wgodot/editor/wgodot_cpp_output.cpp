@@ -15,6 +15,8 @@ WGodotCppEmitter::WGodotCppEmitter(const WGodotCppEmitter &p_parent) :
 		inherited_classes(p_parent.inherited_classes), preload_indices(p_parent.preload_indices), preloads(p_parent.preloads),
 		container_constant_owners(p_parent.container_constant_owners), class_container_constants(p_parent.class_container_constants),
 		class_lifecycles(p_parent.class_lifecycles) {
+	classes_by_name = p_parent.classes_by_name;
+	used_container_constants = p_parent.used_container_constants;
 }
 
 WGodotCppEmitter::~WGodotCppEmitter() {
@@ -72,37 +74,4 @@ void WGodotCppEmitter::store_source(const String &p_name, const String &p_header
 		return;
 	}
 	files.insert(p_name, String::hex_encode_buffer(hash, 32));
-}
-
-void WGodotCppEmitter::merge_resource_worker(WGodotCppEmitter &p_worker) {
-	for (const auto &entry : p_worker.animation_property_paths) {
-		animation_property_paths[entry.key] |= entry.value;
-	}
-	diagnostics.append_array(p_worker.diagnostics);
-	if (output_error == OK) {
-		output_error = p_worker.output_error;
-	}
-	for (const auto &file : p_worker.files) {
-		files.insert(file.key, file.value);
-	}
-	for (const auto &owner : p_worker.native_access_methods) {
-		for (const auto &method : owner.value) {
-			native_access_methods[owner.key].insert(method.key, method.value);
-		}
-	}
-	for (const auto &name : p_worker.used_native_interfaces) {
-		used_native_interfaces.insert(name);
-	}
-	for (const auto &name : p_worker.used_native_headers) {
-		used_native_headers.insert(name);
-	}
-	for (const auto *required : p_worker.required_classes) {
-		required_classes.insert(required);
-	}
-	for (const KeyValue<Variant, Variant> &entry : p_worker.compiled_resources) {
-		compiled_resources[entry.key] = entry.value;
-	}
-	for (const KeyValue<Variant, Variant> &entry : p_worker.compiled_resource_aliases) {
-		compiled_resource_aliases[entry.key] = entry.value;
-	}
 }

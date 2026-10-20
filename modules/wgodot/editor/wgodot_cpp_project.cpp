@@ -3,6 +3,7 @@
 
 #include "wgodot_cpp_ast.h"
 #include "wgodot_cpp_memory_profile.h"
+#include "wgodot_cpp_cache.h"
 
 #include "core/config/project_settings.h"
 #include "core/io/dir_access.h"
@@ -229,6 +230,22 @@ Error WGodotCppProject::analyze(const String &p_target, int p_jobs) {
 const WGodotCppProject::Class *WGodotCppProject::find_class(const GDScriptParser::ClassNode *p_node) const {
 	const int *index = class_indices.getptr(p_node);
 	return index ? &classes[*index] : nullptr;
+}
+
+void WGodotCppProject::cache_dependencies(WGodotCppCache &p_cache) const {
+	for (const auto &parser : parsers) {
+		PackedStringArray paths;
+		for (const auto &dependency : parser->get_parser()->get_depended_parsers()) {
+			paths.push_back(dependency.key);
+		}
+		ResourceDependencies resources;
+		resources.walk(parser->get_parser()->get_tree());
+		for (const auto &resource : resources.paths) {
+			paths.push_back(resource.key);
+		}
+		paths.sort();
+		p_cache.set_dependencies(parser->get_path(), paths);
+	}
 }
 
 GDScriptParser *WGodotCppProject::find_parser(const String &p_script_path) const {

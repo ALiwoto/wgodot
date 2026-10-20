@@ -488,3 +488,27 @@ void WGodotCppSignatures::analyze() {
 const WGodotCppSignatures::Signature *WGodotCppSignatures::get(const Parser::Node *p_node) const {
 	return known.getptr(p_node);
 }
+
+HashMap<String, String> WGodotCppSignatures::fingerprints() const {
+	HashMap<String, Vector<String>> rows;
+	for (const auto &entry : known) {
+		const Scope *scope = scopes.getptr(entry.key);
+		if (!scope || !scope->owner) {
+			continue;
+		}
+		const Signature &signature = entry.value;
+		String row = itos(entry.key->start_line) + ":" + itos(entry.key->start_column) + ":" + itos(entry.key->type) + ":" +
+				itos(signature.defaults) + ":" + itos(signature.signal) + ":" + itos(signature.result.type.is_coroutine) + ":" +
+				signature.result.type.to_string() + ":" + signature.result.type.script_path;
+		for (const Value &argument : signature.arguments) {
+			row += "\n" + argument.type.to_string() + ":" + argument.type.script_path;
+		}
+		rows[scope->owner->script_path].push_back(row);
+	}
+	HashMap<String, String> result;
+	for (auto &entry : rows) {
+		entry.value.sort();
+		result.insert(entry.key, String("\n").join(entry.value).sha256_text());
+	}
+	return result;
+}

@@ -5,6 +5,7 @@
 #include "wgodot_cpp_emitter.h"
 #include "wgodot_cpp_memory_profile.h"
 #include "wgodot_cpp_project.h"
+#include "wgodot_cpp_cache.h"
 
 #include "core/config/project_settings.h"
 #include "core/io/dir_access.h"
@@ -166,6 +167,20 @@ Dictionary WGodotCppExporter::execute(const Dictionary &p_options) {
 	}
 	const int available_jobs = WorkerThreadPool::get_singleton()->get_thread_count();
 	const int jobs = int64_t(requested_jobs) == 0 ? available_jobs : MIN(int64_t(requested_jobs), available_jobs);
+	WGodotCppCache cache;
+	if (!analyze_only) {
+		print_line("Checking native generation cache...");
+		const Error cache_error = cache.open(output, p_options.get("target", "client"), trace_enabled);
+		if (cache_error != OK) {
+			return failure("Cannot inspect native generation inputs: " + String(error_names[cache_error]));
+		}
+		if (cache.up_to_date()) {
+			Dictionary response;
+			response["ok"] = true;
+			response["message"] = vformat("C++ export up to date: %d classes; analysis and generation skipped. Output: %s", cache.class_count(), output);
+			return response;
+		}
+	}
 	WGodotEditorActivity activity("Exporting native C++", output);
 	const bool profile_memory = p_options.get("profile_memory", false);
 	WGodotCppMemoryProfile memory_profile(profile_memory ? output : String());
@@ -182,10 +197,11 @@ Dictionary WGodotCppExporter::execute(const Dictionary &p_options) {
 	Dictionary report = project.describe();
 	Vector<String> diagnostics = project.get_diagnostics();
 	if (result == OK && !analyze_only) {
+		project.cache_dependencies(cache);
 		WGodotCppEmitter emitter(project, trace_enabled);
 		started = OS::get_singleton()->get_ticks_msec();
 		print_line(vformat("Generating native scripts and authored scene/resource factories (up to %d workers)...", jobs));
-		result = emitter.generate(output, jobs);
+		result = emitter.generate(output, jobs, &cache);
 		WGodotCppMemoryProfile::sample("generation-complete");
 		print_line(vformat("Native generation: %d ms", OS::get_singleton()->get_ticks_msec() - started));
 		diagnostics = emitter.get_diagnostics();

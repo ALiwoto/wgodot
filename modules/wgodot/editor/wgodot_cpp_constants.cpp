@@ -154,15 +154,15 @@ void WGodotCppEmitter::emit_container_constants(const WGodotCppProject::Class &p
 		}
 		class_call_headers.insert("modules/wgodot/native/wgodot_native_static.h");
 		const String name = constant_name(constant);
-		HashSet<int> resources;
-		collect_resource_indices(constant->initializer->reduced_value, resources);
-		Vector<int> sorted_resources;
-		for (int index : resources) {
+		HashSet<int64_t> resources;
+		collect_preload_ids(constant->initializer->reduced_value, resources);
+		Vector<int64_t> sorted_resources;
+		for (int64_t index : resources) {
 			sorted_resources.push_back(index);
 		}
 		sorted_resources.sort();
 		Vector<String> indices;
-		for (int index : sorted_resources) {
+		for (int64_t index : sorted_resources) {
 			indices.push_back(itos(index));
 		}
 		String readiness;

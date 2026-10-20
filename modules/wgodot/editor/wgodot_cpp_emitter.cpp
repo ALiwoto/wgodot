@@ -1,6 +1,7 @@
 // wgodot-changes::file
 #include "wgodot_cpp_emitter.h"
 #include "wgodot_cpp_memory_profile.h"
+#include "wgodot_cpp_cache.h"
 
 #include "wgodot_cpp_names.h"
 #include "wgodot_cpp_native_headers.gen.h"
@@ -386,7 +387,7 @@ String WGodotCppEmitter::literal(const Variant &p_value, const Parser::Node *p_o
 			resource_type.kind = Parser::DataType::NATIVE;
 			resource_type.native_type = resource->get_class_name();
 			class_call_headers.insert("modules/wgodot/wgodot_preloads.h");
-			return type(resource_type, p_origin) + "(WGodotPreloads::get_singleton()->get_resource(" + itos(resource_index(resource)) + "))";
+			return type(resource_type, p_origin) + "(WGodotPreloads::get_singleton()->get_resource(" + itos(preload_id(resource)) + "))";
 		}
 		case Variant::CALLABLE:
 			if (Callable(p_value).is_null()) {
@@ -589,8 +590,9 @@ String WGodotCppEmitter::leaf_expression(const Parser::ExpressionNode *p_express
 	}
 }
 
-Error WGodotCppEmitter::generate(const String &p_directory, int p_jobs) {
+Error WGodotCppEmitter::generate(const String &p_directory, int p_jobs, WGodotCppCache *p_cache) {
 	jobs = p_jobs;
+	cache = p_cache;
 	staging_directory = p_directory.path_join(".wgodot-cpp-" + itos(OS::get_singleton()->get_process_id()) + "-" + itos(OS::get_singleton()->get_ticks_usec()));
 	RETURN_IF_ERROR(DirAccess::make_dir_recursive_absolute(staging_directory));
 	owns_staging_directory = true;
@@ -599,6 +601,7 @@ Error WGodotCppEmitter::generate(const String &p_directory, int p_jobs) {
 	animation_property_paths.clear();
 	reflection_default_classes.clear();
 	resource_ids.clear();
+	resource_id_owners.clear();
 	preload_indices.clear();
 	preloads = project.get_preloads();
 	for (int i = 0; i < preloads.size(); ++i) {
@@ -612,22 +615,32 @@ Error WGodotCppEmitter::generate(const String &p_directory, int p_jobs) {
 	required_classes.clear();
 	inherited_classes.clear();
 	for (const auto &entry : project.get_classes()) {
+		classes_by_name.insert(entry.cpp_name, &entry);
 		if (entry.node->base_type.kind == Parser::DataType::CLASS) {
 			inherited_classes.insert(entry.node->base_type.class_type);
 		}
 	}
 	signatures.analyze();
+	signature_fingerprints = signatures.fingerprints();
 	collect_interface_property_accessors();
 	collect_container_constants();
 	// Lowering may discover runtime type uses of an otherwise inlined class
 	// after its position in the project list. Emit those on the next pass.
-	uint32_t required_count;
-	do {
-		required_count = required_classes.size();
-		for (const WGodotCppProject::Class &entry : project.get_classes()) {
-			emit_class(entry);
-		}
-	} while (required_classes.size() != required_count);
+	{
+		// Reuse the immutable lowering tables; do not copy the whole semantic
+		// project once per class just to isolate output contributions.
+		WGodotCppEmitter worker(*this);
+		script_worker = &worker;
+		uint32_t required_count;
+		do {
+			required_count = required_classes.size();
+			for (const WGodotCppProject::Class &entry : project.get_classes()) {
+				emit_class(entry);
+			}
+		} while (required_classes.size() != required_count);
+		script_worker = nullptr;
+	}
+	print_line(vformat("Native classes: %d reused from cache", reused_classes));
 	if (!diagnostics.is_empty() || output_error != OK) {
 		return output_error != OK ? output_error : ERR_UNAVAILABLE;
 	}
@@ -729,10 +742,11 @@ Error WGodotCppEmitter::write(const String &p_directory) const {
 		const String &digest = files[name];
 		fingerprint += name + "\n" + digest + "\n";
 		const String path = p_directory.path_join(name);
-		if (FileAccess::exists(path) && FileAccess::get_sha256(path) == digest) {
+		if (cache ? cache->output_matches(name, digest) : (FileAccess::exists(path) && FileAccess::get_sha256(path) == digest)) {
 			continue;
 		}
-		error = DirAccess::copy_absolute(staging_directory.path_join(name), path);
+		// Staging is inside the output directory: publish by rename, without copying file contents.
+		error = DirAccess::rename_absolute(staging_directory.path_join(name), path);
 		ERR_FAIL_COND_V(error != OK, error);
 	}
 	for (const String &name : previous_files) {
@@ -782,5 +796,6 @@ Error WGodotCppEmitter::write(const String &p_directory) const {
 	manifest_file->store_string(JSON::stringify(manifest, "\t", true) + "\n");
 	manifest_file->flush();
 	ERR_FAIL_COND_V(manifest_file->get_error() != OK, manifest_file->get_error());
-	return OK;
+	manifest_file.unref();
+	return cache ? cache->commit(files, project.get_classes().size()) : OK;
 }

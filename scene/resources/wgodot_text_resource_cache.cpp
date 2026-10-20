@@ -31,7 +31,7 @@ WGodotTextResourceCache::WGodotTextResourceCache(const String &p_source_path) {
 	// Store authored assignments, not resolved defaults. Ordinary editor rebuilds
 	// and edits to external dependencies must retain the cache. Bump this revision
 	// only when the cached representation or its interpretation changes.
-	static const String version = String(GODOT_VERSION_FULL_CONFIG) + "-authored-text-v4-real" + itos(sizeof(real_t) * 8);
+	static const String version = String(GODOT_VERSION_FULL_CONFIG) + "-authored-text-v5-named-real" + itos(sizeof(real_t) * 8);
 	cache_path = data_path.path_join("resource_cache").path_join(version).path_join(source_path.get_file() + "-" + source_path.md5_text() + "-" + source_hash + ".res");
 #endif
 }

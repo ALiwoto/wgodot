@@ -13,6 +13,7 @@
 #include "modules/gdscript/wgodot_gd/editor/export/export_context.h"
 
 // Editor-only semantic input for native export. Parser references own all AST nodes.
+class WGodotCppCache;
 class WGodotCppProject {
 	friend class WGodotCppEmitter;
 	friend class WGodotCppSignatures;
@@ -64,4 +65,5 @@ public:
 	GDScriptAnalyzer *find_analyzer(const String &p_script_path) const;
 	const Vector<String> &get_diagnostics() const { return diagnostics; }
 	Dictionary describe() const;
+	void cache_dependencies(WGodotCppCache &p_cache) const;
 };

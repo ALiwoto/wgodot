@@ -29,6 +29,10 @@
 /**************************************************************************/
 
 #include "gdscript_analyzer.h"
+
+// wgodot-changes::begin
+#include "core/io/wgodot_named_types.h"
+// wgodot-changes::end
 // wgodot-changes::begin
 #include "wgodot_gd/script_resolution.h"
 
@@ -4206,6 +4210,9 @@ void GDScriptAnalyzer::reduce_cast(GDScriptParser::CastNode *p_cast) {
 				valid = Variant::can_convert(op_type.builtin_type, cast_type.builtin_type);
 			} else if (op_type.kind != GDScriptParser::DataType::BUILTIN && cast_type.kind != GDScriptParser::DataType::BUILTIN) {
 				valid = is_type_compatible(cast_type, op_type) || is_type_compatible(op_type, cast_type);
+				// wgodot-changes::begin
+				valid = valid || WGodotGDScriptInterfaceHelpers::can_runtime_cast(cast_type, op_type);
+				// wgodot-changes::end
 			}
 
 			if (!valid) {
@@ -5182,6 +5189,10 @@ void GDScriptAnalyzer::reduce_preload(GDScriptParser::PreloadNode *p_preload) {
 		}
 		p_preload->resolved_path = p_preload->resolved_path.simplify_path();
 		// wgodot-changes::begin
+		if (!wgodot_is_ignored_script() && WGodotNamedTypes::is_script_reference(String(), p_preload->resolved_path)) {
+			push_error("Script file preloading is forbidden. Refer to its class_name directly.", p_preload->path);
+			return;
+		}
 		if (!WGodotGDScriptResolution::resource_exists(p_preload->resolved_path)) {
 		// wgodot-changes::end
 			Ref<FileAccess> file_check = FileAccess::create(FileAccess::ACCESS_RESOURCES);
@@ -5756,6 +5767,14 @@ void GDScriptAnalyzer::reduce_type_test(GDScriptParser::TypeTestNode *p_type_tes
 	if (!operand_type.is_set() || !test_type.is_set()) {
 		return;
 	}
+
+	// wgodot-changes::begin
+	if (WGodotGDScriptInterfaceHelpers::can_runtime_cast(test_type, operand_type)) {
+		// The declared concrete base need not implement the interface itself.
+		// Test the actual object, including for constant object expressions.
+		return;
+	}
+	// wgodot-changes::end
 
 	if (p_type_test->operand->is_constant) {
 		p_type_test->is_constant = true;

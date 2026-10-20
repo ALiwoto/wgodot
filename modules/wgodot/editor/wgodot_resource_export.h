@@ -17,12 +17,12 @@ class WGodotResourceExport {
 		HashMap<String, int64_t> variants;
 	};
 	HashMap<String, int64_t> ids;
+	HashMap<int64_t, String> id_owners;
 	HashMap<int64_t, Entry> entries;
 	HashSet<int64_t> payloads;
 	HashSet<int64_t> native_resources;
 	HashSet<int64_t> required;
 	HashMap<uint32_t, String> formats;
-	int64_t next_id = 1;
 	Error error = OK;
 	const WGodotExportTarget *target = nullptr;
 

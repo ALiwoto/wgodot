@@ -30,6 +30,10 @@
 
 #include "variant_parser.h"
 
+// wgodot-changes::begin
+#include "core/io/wgodot_named_types.h"
+// wgodot-changes::end
+
 #include "core/crypto/crypto_core.h"
 #include "core/io/resource_loader.h"
 #include "core/io/resource_uid.h"
@@ -1162,9 +1166,28 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 						key_script = script;
 					}
 				}
+			// wgodot-changes::begin
+			} else if (p_res_parser && p_res_parser->skip_class_loading && ScriptServer::is_global_class(r_token.value)) {
+				key_type = Variant::OBJECT;
+				key_class_name = WGodotNamedTypes::native_type(r_token.value);
+			} else if (ScriptServer::is_global_class(r_token.value)) {
+				const Ref<Script> script = p_res_parser && p_res_parser->named_types ? p_res_parser->named_types->script(r_token.value) : WGodotNamedTypes::script(r_token.value);
+				if (script.is_null()) {
+					r_err_str = "Cannot resolve container class_name '" + String(r_token.value) + "'.";
+					return ERR_PARSE_ERROR;
+				}
+				key_type = Variant::OBJECT;
+				key_class_name = script->get_instance_base_type();
+				key_script = script;
+			// wgodot-changes::end
 			} else if (ClassDB::class_exists(r_token.value)) {
 				key_type = Variant::OBJECT;
 				key_class_name = r_token.value;
+			// wgodot-changes::begin
+			} else if (r_token.value != "Variant") {
+				r_err_str = "Unknown container type '" + String(r_token.value) + "'. Use a native type or class_name.";
+				return ERR_PARSE_ERROR;
+			// wgodot-changes::end
 			}
 
 			if (!got_comma_token) {
@@ -1208,9 +1231,28 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 						value_script = script;
 					}
 				}
+			// wgodot-changes::begin
+			} else if (p_res_parser && p_res_parser->skip_class_loading && ScriptServer::is_global_class(r_token.value)) {
+				value_type = Variant::OBJECT;
+				value_class_name = WGodotNamedTypes::native_type(r_token.value);
+			} else if (ScriptServer::is_global_class(r_token.value)) {
+				const Ref<Script> script = p_res_parser && p_res_parser->named_types ? p_res_parser->named_types->script(r_token.value) : WGodotNamedTypes::script(r_token.value);
+				if (script.is_null()) {
+					r_err_str = "Cannot resolve container class_name '" + String(r_token.value) + "'.";
+					return ERR_PARSE_ERROR;
+				}
+				value_type = Variant::OBJECT;
+				value_class_name = script->get_instance_base_type();
+				value_script = script;
+			// wgodot-changes::end
 			} else if (ClassDB::class_exists(r_token.value)) {
 				value_type = Variant::OBJECT;
 				value_class_name = r_token.value;
+			// wgodot-changes::begin
+			} else if (r_token.value != "Variant") {
+				r_err_str = "Unknown container type '" + String(r_token.value) + "'. Use a native type or class_name.";
+				return ERR_PARSE_ERROR;
+			// wgodot-changes::end
 			}
 
 			if (key_type != Variant::NIL || value_type != Variant::NIL) {
@@ -1296,8 +1338,24 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 						array.set_typed(Variant::OBJECT, script->get_instance_base_type(), script);
 					}
 				}
+			// wgodot-changes::begin
+			} else if (p_res_parser && p_res_parser->skip_class_loading && ScriptServer::is_global_class(r_token.value)) {
+				array.set_typed(Variant::OBJECT, WGodotNamedTypes::native_type(r_token.value), Variant());
+			} else if (ScriptServer::is_global_class(r_token.value)) {
+				const Ref<Script> script = p_res_parser && p_res_parser->named_types ? p_res_parser->named_types->script(r_token.value) : WGodotNamedTypes::script(r_token.value);
+				if (script.is_null()) {
+					r_err_str = "Cannot resolve container class_name '" + String(r_token.value) + "'.";
+					return ERR_PARSE_ERROR;
+				}
+				array.set_typed(Variant::OBJECT, script->get_instance_base_type(), script);
+			// wgodot-changes::end
 			} else if (ClassDB::class_exists(r_token.value)) {
 				array.set_typed(Variant::OBJECT, r_token.value, Variant());
+			// wgodot-changes::begin
+			} else if (r_token.value != "Variant") {
+				r_err_str = "Unknown container type '" + String(r_token.value) + "'. Use a native type or class_name.";
+				return ERR_PARSE_ERROR;
+			// wgodot-changes::end
 			}
 
 			if (!got_bracket_token) {

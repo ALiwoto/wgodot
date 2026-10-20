@@ -1,6 +1,8 @@
 // wgodot-changes::file
 #include "gdscript_analyzer.h"
 
+#include "core/io/wgodot_named_types.h"
+
 using Parser = GDScriptParser;
 
 Parser::DataType GDScriptAnalyzer::wgodot_resource_path_runtime_type(const Parser::DataType &p_type) {
@@ -96,6 +98,10 @@ bool GDScriptAnalyzer::wgodot_validate_resource_path_argument(Parser::Expression
 		return true;
 	}
 	if (p_expression->is_constant && p_expression->reduced_value.get_type() == Variant::STRING) {
+		if (WGodotNamedTypes::is_script_reference(String(), p_expression->reduced_value)) {
+			push_error("Script file loading is forbidden. Refer to its class_name directly.", p_expression);
+			return false;
+		}
 		p_expression->type_constraint = wgodot_resource_path_type();
 		p_expression->type_constraint.is_constant = true;
 		return true;

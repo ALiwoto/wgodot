@@ -55,6 +55,7 @@ Error WGodotPreloads::start() {
 	for (int i = 0; i < definition_count; ++i) {
 		Entry &entry = entries.write[i];
 		entry.path = WGodotResourcePaths::to_path(definitions[i].resource_id);
+		resource_indices.insert(definitions[i].resource_id, i);
 		entry.type = String::utf8(definitions[i].type);
 		entry.asynchronous = definitions[i].asynchronous;
 		if (entry.asynchronous) {
@@ -134,9 +135,11 @@ void WGodotPreloads::finish() {
 	}
 }
 
-Ref<Resource> WGodotPreloads::get_resource(int p_index) {
+Ref<Resource> WGodotPreloads::get_resource(int64_t p_resource_id) {
 	MutexLock lock(mutex);
-	ERR_FAIL_INDEX_V(p_index, entries.size(), Ref<Resource>());
+	const int *index = resource_indices.getptr(p_resource_id);
+	ERR_FAIL_NULL_V_MSG(index, Ref<Resource>(), "Unknown native preload identity.");
+	const int p_index = *index;
 	// A custom resource constructor may refer to another synchronous preload.
 	if (loading_synchronous && Thread::is_main_thread() && !entries[p_index].asynchronous && entries[p_index].state == PENDING) {
 		lock.temp_unlock();
@@ -151,9 +154,9 @@ Ref<Resource> WGodotPreloads::get_resource(int p_index) {
 	return entry.resource;
 }
 
-bool WGodotPreloads::require_resources(std::initializer_list<int> p_indices) {
-	for (int index : p_indices) {
-		if (get_resource(index).is_null()) {
+bool WGodotPreloads::require_resources(std::initializer_list<int64_t> p_resource_ids) {
+	for (int64_t id : p_resource_ids) {
+		if (get_resource(id).is_null()) {
 			return false;
 		}
 	}

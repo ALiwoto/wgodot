@@ -34,6 +34,12 @@
 #include "core/io/resource.h"
 #include "core/variant/variant.h"
 
+// wgodot-changes::begin
+namespace WGodotNamedTypes {
+class Resolver;
+}
+// wgodot-changes::end
+
 class VariantParser {
 public:
 	struct Stream {
@@ -94,6 +100,10 @@ public:
 		ParseResourceFunc func = nullptr;
 		ParseResourceFunc ext_func = nullptr;
 		ParseResourceFunc sub_func = nullptr;
+		// wgodot-changes::begin
+		bool skip_class_loading = false;
+		WGodotNamedTypes::Resolver *named_types = nullptr;
+		// wgodot-changes::end
 	};
 
 	enum TokenType {

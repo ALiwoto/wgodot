@@ -4,6 +4,7 @@
 #include "wgodot_export_target.h"
 #include "wgodot_native_resource_policy.h"
 #include "wgodot_resource_rewrite.h"
+#include "wgodot_resource_identity.h"
 
 #include "core/config/project_settings.h"
 #include "core/io/config_file.h"
@@ -21,20 +22,25 @@
 void WGodotResourceExport::initialize(const Dictionary &p_paths, const WGodotExportTarget *p_target) {
 	target = p_target;
 	ids.clear();
+	id_owners.clear();
 	entries.clear();
 	payloads.clear();
 	native_resources.clear();
 	required.clear();
 	formats.clear();
-	next_id = 1;
 	error = OK;
 	for (const KeyValue<Variant, Variant> &entry : p_paths) {
 		const int64_t id = entry.value;
+		if (id != WGodotResourceIdentity::from_path(entry.key) || id == 0 || id_owners.has(id)) {
+			error = ERR_INVALID_DATA;
+			ERR_PRINT("Invalid or colliding native resource identity. Regenerate C++ before packaging: " + String(entry.key));
+			return;
+		}
 		ids.insert(entry.key, id);
+		id_owners.insert(id, entry.key);
 		if (String(entry.key).get_extension() != "gd") {
 			required.insert(id);
 		}
-		next_id = MAX(next_id, id + 1);
 	}
 }
 
@@ -69,7 +75,13 @@ int64_t WGodotResourceExport::identify(const String &p_path) {
 	if (const int64_t *id = ids.getptr(source)) {
 		return *id;
 	}
-	const int64_t id = next_id++;
+	const int64_t id = WGodotResourceIdentity::from_path(source);
+	if (id == 0 || id_owners.has(id)) {
+		error = ERR_INVALID_DATA;
+		ERR_PRINT("Native resource identity collision while packaging: " + source);
+		return 0;
+	}
+	id_owners.insert(id, source);
 	ids.insert(source, id);
 	return id;
 }

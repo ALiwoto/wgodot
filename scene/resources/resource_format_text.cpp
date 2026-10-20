@@ -55,6 +55,10 @@
 #include "core/io/missing_resource.h"
 #include "core/object/class_db.h"
 #include "core/object/script_language.h"
+// wgodot-changes::begin
+#include "core/io/wgodot_named_types.h"
+#include "wgodot_scene_types.h"
+// wgodot-changes::end
 #include "scene/property_utils.h"
 #include "scene/resources/packed_scene.h"
 
@@ -217,6 +221,9 @@ Error ResourceLoaderText::_parse_ext_resource(VariantParser::Stream *p_stream, R
 }
 
 Ref<PackedScene> ResourceLoaderText::_parse_node_tag(const Ref<PackedScene> &p_current_scene, VariantParser::ResourceParser &p_parser) {
+	// wgodot-changes::begin
+	WGodotSceneTypes::InheritedTypes inherited_types;
+	// wgodot-changes::end
 	while (true) {
 		if (next_tag.name == "node") {
 			int parent = -1;
@@ -249,7 +256,9 @@ Ref<PackedScene> ResourceLoaderText::_parse_node_tag(const Ref<PackedScene> &p_c
 			}
 
 			if (next_tag.fields.has("type")) {
-				type = p_current_scene->get_state()->add_name(next_tag.fields["type"]);
+				// wgodot-changes::begin
+				type = p_current_scene->get_state()->add_name(WGodotNamedTypes::native_type(next_tag.fields["type"]));
+				// wgodot-changes::end
 			} else {
 				type = SceneState::TYPE_INSTANTIATED; //no type? assume this was instantiated
 			}
@@ -302,7 +311,48 @@ Ref<PackedScene> ResourceLoaderText::_parse_node_tag(const Ref<PackedScene> &p_c
 				index = next_tag.fields["index"];
 			}
 
+			// wgodot-changes::begin
+			const String node_path = parent < 0 ? String(".") : String(next_tag.fields["parent"]).path_join(next_tag.fields["name"]).simplify_path();
+			const Ref<PackedScene> instance_scene = next_tag.fields.has("instance") ? next_tag.fields["instance"] : Variant();
+			if (instance_scene.is_valid()) {
+				inherited_types.add(node_path, instance_scene->get_state());
+			}
+			Ref<Script> named_script;
+			const StringName declared_type = next_tag.fields.has("type") ? StringName(next_tag.fields["type"]) : StringName();
+			if (!declared_type.is_empty() && !ScriptServer::is_global_class(declared_type) && !ClassDB::class_exists(declared_type)) {
+				error = ERR_PARSE_ERROR;
+				error_text = "Unknown node type '" + String(declared_type) + "'. Use a native type or class_name.";
+				ERR_FAIL_V_MSG(Ref<PackedScene>(), _get_error_string());
+			}
+			if (ScriptServer::is_global_class(declared_type)) {
+				named_script = named_types.script(declared_type);
+				if (named_script.is_null() || named_script->is_abstract() || named_script->wgodot_is_interface_type() || !ClassDB::is_parent_class(named_script->get_instance_base_type(), SNAME("Node"))) {
+					error = ERR_PARSE_ERROR;
+					error_text = "type must name a concrete Node class: " + String(declared_type);
+					ERR_FAIL_V_MSG(Ref<PackedScene>(), _get_error_string());
+				}
+				const WGodotSceneTypes::Type existing = inherited_types.resolve(node_path);
+				if (instance >= 0 || !existing.native.is_empty()) {
+					if (!existing.native.is_empty() && existing.native != named_script->get_instance_base_type()) {
+						error = ERR_PARSE_ERROR;
+						error_text = "Named node type changes an instanced node's native base: " + String(declared_type);
+						ERR_FAIL_V_MSG(Ref<PackedScene>(), _get_error_string());
+					}
+					type = SceneState::TYPE_INSTANTIATED;
+					if (!next_tag.fields.has("owner") && instance == -1) {
+						owner = -1;
+					}
+				} else {
+					type = p_current_scene->get_state()->add_name(named_script->get_instance_base_type());
+				}
+			}
+			// wgodot-changes::end
 			int node_id = p_current_scene->get_state()->add_node(parent, owner, type, name, instance, index, unique_id);
+			// wgodot-changes::begin
+			if (named_script.is_valid()) {
+				p_current_scene->get_state()->add_node_property(node_id, p_current_scene->get_state()->add_name(SNAME("script")), p_current_scene->get_state()->add_value(named_script));
+			}
+			// wgodot-changes::end
 
 			if (next_tag.fields.has("groups")) {
 				Array groups = next_tag.fields["groups"];
@@ -329,6 +379,13 @@ Ref<PackedScene> ResourceLoaderText::_parse_node_tag(const Ref<PackedScene> &p_c
 				}
 
 				if (!assign.is_empty()) {
+					// wgodot-changes::begin
+					if (assign == "script") {
+						error = ERR_PARSE_ERROR;
+						error_text = "Script assignments are forbidden. Directly use the class_name name on the type attribute.";
+						ERR_FAIL_V_MSG(Ref<PackedScene>(), _get_error_string());
+					}
+					// wgodot-changes::end
 					StringName assign_name = assign;
 					int nameidx = p_current_scene->get_state()->add_name(assign_name);
 					int valueidx = p_current_scene->get_state()->add_value(value);
@@ -518,7 +575,14 @@ Error ResourceLoaderText::load() {
 
 		ext_resources[id].path = path;
 		ext_resources[id].type = type;
-		ext_resources[id].load_token = ResourceLoader::_load_start(path, type, use_sub_threads ? ResourceLoader::LOAD_THREAD_DISTRIBUTE : ResourceLoader::LOAD_THREAD_FROM_CURRENT, cache_mode_for_external);
+		// wgodot-changes::begin
+		if (WGodotNamedTypes::is_script_reference(type, path)) {
+			error = ERR_PARSE_ERROR;
+			error_text = "Script ext_resource declarations are forbidden. Directly use the class_name name on the type attribute.";
+			ERR_FAIL_V_MSG(error, _get_error_string());
+		}
+		ext_resources[id].load_token = ResourceLoader::_load_start(path, WGodotNamedTypes::native_type(type), use_sub_threads ? ResourceLoader::LOAD_THREAD_DISTRIBUTE : ResourceLoader::LOAD_THREAD_FROM_CURRENT, cache_mode_for_external);
+		// wgodot-changes::end
 		if (ext_resources[id].load_token.is_null()) {
 			if (ResourceLoader::get_abort_on_missing_resources()) {
 				error = ERR_FILE_CORRUPT;
@@ -569,7 +633,9 @@ Error ResourceLoaderText::load() {
 		if (cache_mode == ResourceFormatLoader::CACHE_MODE_REPLACE && ResourceCache::has(path)) {
 			//reuse existing
 			Ref<Resource> cache = ResourceCache::get_ref(path);
-			if (cache.is_valid() && cache->get_class() == type) {
+			// wgodot-changes::begin
+			if (cache.is_valid() && WGodotNamedTypes::type_name(cache.ptr()) == type) {
+			// wgodot-changes::end
 				res = cache;
 				res->reset_state();
 				do_assign = true;
@@ -586,7 +652,9 @@ Error ResourceLoaderText::load() {
 			} else {
 				//create
 
-				Object *obj = ClassDB::instantiate(type);
+				// wgodot-changes::begin
+				Object *obj = ClassDB::instantiate(WGodotNamedTypes::native_type(type));
+				// wgodot-changes::end
 				if (!obj) {
 					if (ResourceLoader::is_creating_missing_resources_if_class_unavailable_enabled()) {
 						missing_resource = memnew(MissingResource);
@@ -621,6 +689,12 @@ Error ResourceLoaderText::load() {
 		}
 
 		if (do_assign) {
+			// wgodot-changes::begin
+			if (missing_resource.is_null()) {
+				error = named_types.initialize_resource(res, type);
+				ERR_FAIL_COND_V_MSG(error != OK, error, vformat("Cannot initialize resource type '%s' in %s", type, path));
+			}
+			// wgodot-changes::end
 			if (cache_mode != ResourceFormatLoader::CACHE_MODE_IGNORE) {
 				// wgodot-changes::begin
 				if (cache_mode == ResourceFormatLoader::CACHE_MODE_REPLACE) {
@@ -644,6 +718,11 @@ Error ResourceLoaderText::load() {
 		reused_subresource |= !do_assign;
 		// wgodot-changes::end
 
+		// wgodot-changes::begin
+		if (do_assign && wgodot_source_properties && ScriptServer::is_global_class(type)) {
+			(*wgodot_source_properties)[res].push_back({ SNAME("script"), res->get_script() });
+		}
+		// wgodot-changes::end
 		Dictionary missing_resource_properties;
 
 		while (true) {
@@ -665,6 +744,13 @@ Error ResourceLoaderText::load() {
 			ERR_FAIL_COND_V_MSG(error, error, _get_error_string());
 
 			if (!assign.is_empty()) {
+				// wgodot-changes::begin
+				if (assign == "script") {
+					error = ERR_PARSE_ERROR;
+					error_text = "Script assignments are forbidden. Directly use the class_name name on the type attribute.";
+					ERR_FAIL_V_MSG(error, _get_error_string());
+				}
+				// wgodot-changes::end
 				if (do_assign) {
 					bool set_valid = true;
 
@@ -716,7 +802,7 @@ Error ResourceLoaderText::load() {
 				}
 				//it's assignment
 			} else if (!next_tag.name.is_empty()) {
-				if (type == "PackedScene" && next_tag.name == "node") {
+				if (WGodotNamedTypes::native_type(type) == SNAME("PackedScene") && next_tag.name == "node") {
 					// wgodot-changes::begin
 					// A surviving nested scene can be reused after its owning file
 					// has been released. Consume its text without appending nodes
@@ -783,13 +869,17 @@ Error ResourceLoaderText::load() {
 			resource = ResourceLoader::get_resource_ref_override(local_path);
 			if (resource.is_null()) {
 				Ref<Resource> cache = ResourceCache::get_ref(local_path);
-				if (cache_mode == ResourceFormatLoader::CACHE_MODE_REPLACE && cache.is_valid() && cache->get_class() == res_type) {
+				// wgodot-changes::begin
+				if (cache_mode == ResourceFormatLoader::CACHE_MODE_REPLACE && cache.is_valid() && WGodotNamedTypes::type_name(cache.ptr()) == res_type) {
+				// wgodot-changes::end
 					cache->reset_state();
 					resource = cache;
 				}
 
 				if (resource.is_null()) {
-					Object *obj = ClassDB::instantiate(res_type);
+					// wgodot-changes::begin
+					Object *obj = ClassDB::instantiate(WGodotNamedTypes::native_type(res_type));
+					// wgodot-changes::end
 					if (!obj) {
 						if (ResourceLoader::is_creating_missing_resources_if_class_unavailable_enabled()) {
 							missing_resource = memnew(MissingResource);
@@ -817,6 +907,15 @@ Error ResourceLoaderText::load() {
 			}
 		}
 
+		// wgodot-changes::begin
+		if (!is_scene && missing_resource.is_null()) {
+			error = named_types.initialize_resource(resource, res_type);
+			ERR_FAIL_COND_V_MSG(error != OK, error, vformat("Cannot initialize resource type '%s' in %s", res_type, local_path));
+		}
+		if (!is_scene && wgodot_source_properties && ScriptServer::is_global_class(res_type)) {
+			(*wgodot_source_properties)[resource].push_back({ SNAME("script"), resource->get_script() });
+		}
+		// wgodot-changes::end
 		Dictionary missing_resource_properties;
 
 		while (true) {
@@ -863,6 +962,13 @@ Error ResourceLoaderText::load() {
 			}
 
 			if (!empty_assign) {
+				// wgodot-changes::begin
+				if (assign == "script") {
+					error = ERR_PARSE_ERROR;
+					error_text = "Script assignments are forbidden. Directly use the class_name name on the type attribute.";
+					ERR_FAIL_V_MSG(error, _get_error_string());
+				}
+				// wgodot-changes::end
 				bool set_valid = true;
 
 				if (value.get_type() == Variant::OBJECT && missing_resource.is_null() && ResourceLoader::is_creating_missing_resources_if_class_unavailable_enabled()) {
@@ -1065,6 +1171,9 @@ void ResourceLoaderText::get_dependencies(Ref<FileAccess> p_f, List<String> *p_d
 			return;
 		}
 	}
+	// wgodot-changes::begin
+	WGodotNamedTypes::dependencies(p_f, p_dependencies, p_add_types);
+	// wgodot-changes::end
 }
 
 Error ResourceLoaderText::rename_dependencies(Ref<FileAccess> p_f, const String &p_path, const HashMap<String, String> &p_map) {
@@ -1279,6 +1388,9 @@ void ResourceLoaderText::open(Ref<FileAccess> p_f, bool p_skip_first_tag) {
 	rp.ext_func = _parse_ext_resources;
 	rp.sub_func = _parse_sub_resources;
 	rp.userdata = this;
+	// wgodot-changes::begin
+	rp.named_types = &named_types;
+	// wgodot-changes::end
 }
 
 Error ResourceLoaderText::get_classes_used(HashSet<StringName> *r_classes) {
@@ -1294,6 +1406,9 @@ Error ResourceLoaderText::get_classes_used(HashSet<StringName> *r_classes) {
 	rp_new.ext_func = _parse_ext_resource_dummys;
 	rp_new.sub_func = _parse_sub_resource_dummys;
 	rp_new.userdata = &dummy_read;
+	// wgodot-changes::begin
+	rp_new.skip_class_loading = true;
+	// wgodot-changes::end
 
 	while (next_tag.name == "ext_resource") {
 		error = VariantParser::parse_tag(&stream, lines, error_text, next_tag, &rp_new);
@@ -1314,11 +1429,11 @@ Error ResourceLoaderText::get_classes_used(HashSet<StringName> *r_classes) {
 				ERR_FAIL_V_MSG(error, _get_error_string());
 			}
 
-			r_classes->insert(next_tag.fields["type"]);
+			r_classes->insert(WGodotNamedTypes::native_type(next_tag.fields["type"]));
 
 		} else {
 			// wgodot-changes::begin
-			r_classes->insert(res_type);
+			r_classes->insert(WGodotNamedTypes::native_type(res_type));
 			// wgodot-changes::end
 		}
 
@@ -1364,7 +1479,7 @@ Error ResourceLoaderText::get_classes_used(HashSet<StringName> *r_classes) {
 		}
 
 		if (next_tag.fields.has("type")) {
-			r_classes->insert(next_tag.fields["type"]);
+			r_classes->insert(WGodotNamedTypes::native_type(next_tag.fields["type"]));
 		}
 
 		while (true) {
@@ -1423,9 +1538,11 @@ String ResourceLoaderText::recognize_script_class(Ref<FileAccess> p_f) {
 		return "";
 	}
 
-	if (tag.fields.has("script_class")) {
-		return tag.fields["script_class"];
+	// wgodot-changes::begin
+	if (tag.fields.has("type") && ScriptServer::is_global_class(tag.fields["type"])) {
+		return tag.fields["type"];
 	}
+	// wgodot-changes::end
 
 	return "";
 }
@@ -1667,7 +1784,9 @@ String ResourceFormatLoaderText::get_resource_type(const String &p_path) const {
 	loader.local_path = ProjectSettings::get_singleton()->localize_path(p_path);
 	loader.res_path = loader.local_path;
 	String r = loader.recognize(f);
-	return ClassDB::get_compatibility_remapped_class(r);
+	// wgodot-changes::begin
+	return ClassDB::get_compatibility_remapped_class(WGodotNamedTypes::native_type(r));
+	// wgodot-changes::end
 }
 
 String ResourceFormatLoaderText::get_resource_script_class(const String &p_path) const {
@@ -1754,6 +1873,12 @@ String ResourceFormatSaverTextInstance::_write_resources(void *ud, const Ref<Res
 }
 
 String ResourceFormatSaverTextInstance::_write_resource(const Ref<Resource> &res) {
+	// wgodot-changes::begin
+	const Ref<Script> script = res;
+	if (script.is_valid()) {
+		return script->get_global_name(); // Typed container element, not a resource reference.
+	}
+	// wgodot-changes::end
 	if (res->get_meta(SNAME("_skip_save_"), false)) {
 		return "null";
 	}
@@ -1785,6 +1910,26 @@ void ResourceFormatSaverTextInstance::_find_resources(const Variant &p_variant, 
 			if (res.is_null() || external_resources.has(res) || res->get_meta(SNAME("_skip_save_"), false)) {
 				return;
 			}
+			// wgodot-changes::begin
+			const Ref<Script> script = res;
+			if (script.is_valid()) {
+				if (script->get_global_name().is_empty()) {
+					wgodot_type_error = "Stored script types require class_name. Directly use that name on the type attribute.";
+				}
+				return;
+			}
+			const Ref<Script> attached = res->get_script();
+			if (attached.is_valid() && res->get_class_name() != attached->get_instance_base_type()) {
+				wgodot_type_error = "Resource class_name must extend its exact native type: " + res->get_class();
+			}
+			const Ref<PackedScene> scene = res;
+			if (scene.is_valid()) {
+				const String invalid = WGodotSceneTypes::validate(scene->get_state());
+				if (!invalid.is_empty()) {
+					wgodot_type_error = invalid;
+				}
+			}
+			// wgodot-changes::end
 
 			if (!p_main && (!bundle_resources) && !res->is_built_in()) {
 				if (res->get_path() == local_path) {
@@ -1880,7 +2025,9 @@ static String _resource_get_class(Ref<Resource> p_resource) {
 	if (missing_resource.is_valid()) {
 		return missing_resource->get_original_class();
 	} else {
-		return p_resource->get_class();
+		// wgodot-changes::begin
+		return WGodotNamedTypes::type_name(p_resource.ptr());
+		// wgodot-changes::end
 	}
 }
 
@@ -1889,6 +2036,15 @@ void ResourceFormatSaverTextInstance::_parse_nodes(const Ref<PackedScene> &curr_
 	Ref<SceneState> state = curr_scene->get_state();
 	for (int i = 0; i < state->get_node_count(); i++) {
 		StringName type = state->get_node_type(i);
+		// wgodot-changes::begin
+		for (int property = 0; property < state->get_node_property_count(i); property++) {
+			if (state->get_node_property_name(i, property) == SNAME("script")) {
+				const Ref<Script> script = state->get_node_property_value(i, property);
+				type = script->get_global_name();
+				break;
+			}
+		}
+		// wgodot-changes::end
 		StringName name = state->get_node_name(i);
 		int index = state->get_node_index(i);
 		int unique_id = state->get_node_unique_id(i);
@@ -1966,6 +2122,11 @@ void ResourceFormatSaverTextInstance::_parse_nodes(const Ref<PackedScene> &curr_
 		p_file->store_line("]");
 
 		for (int j = 0; j < state->get_node_property_count(i); j++) {
+			// wgodot-changes::begin
+			if (state->get_node_property_name(i, j) == SNAME("script")) {
+				continue; // Encoded by the node's type attribute.
+			}
+			// wgodot-changes::end
 			String vars;
 			VariantWriter::write_to_string(state->get_node_property_value(i, j), vars, true, _write_resources, this, use_compat);
 
@@ -2052,18 +2213,21 @@ Error ResourceFormatSaverTextInstance::save(const String &p_path, const Ref<Reso
 	if (wgodot_embedded_gdscript_save_guard_enabled()) {
 		HashSet<Ref<Resource>> wgodot_seen_resources;
 		ERR_FAIL_COND_V_MSG(wgodot_variant_contains_embedded_gdscript(p_resource, wgodot_seen_resources, true), ERR_FILE_CANT_WRITE,
-				"Cannot save resource '" + p_path + "' because it contains an embedded GDScript. WGodot disables embedded GDScript by default. Save the script as an external .gd file and reference it with ExtResource instead.");
+				"Cannot save resource '" + p_path + "' because it contains an embedded GDScript. WGodot disables embedded GDScript by default. Declare class_name in an external .gd file and use that name in the type attribute.");
 	}
+	// wgodot-changes::end
+
+	// wgodot-changes::begin
+	// Validate types before opening the destination, so an invalid scene cannot truncate it.
+	use_compat = true;
+	_find_resources(p_resource, true);
+	ERR_FAIL_COND_V_MSG(!wgodot_type_error.is_empty(), ERR_INVALID_DATA, wgodot_type_error);
 	// wgodot-changes::end
 
 	Error err;
 	Ref<FileAccess> f = FileAccess::open(p_path, FileAccess::WRITE, &err);
 	ERR_FAIL_COND_V_MSG(err, ERR_CANT_OPEN, "Cannot save file '" + p_path + "'.");
 	Ref<FileAccess> _fref(f);
-
-	// Save resources.
-	use_compat = true; // _find_resources() changes this.
-	_find_resources(p_resource, true);
 
 	if (packed_scene.is_valid()) {
 		// Add instances to external resources if saving a packed scene.
@@ -2084,10 +2248,7 @@ Error ResourceFormatSaverTextInstance::save(const String &p_path, const Ref<Reso
 		String title = packed_scene.is_valid() ? "[gd_scene " : "[gd_resource ";
 		if (packed_scene.is_null()) {
 			title += "type=\"" + _resource_get_class(p_resource) + "\" ";
-			Ref<Script> script = p_resource->get_script();
-			if (script.is_valid() && script->get_global_name()) {
-				title += "script_class=\"" + String(script->get_global_name()) + "\" ";
-			}
+
 		}
 
 		title += "format=" + itos(use_compat ? ResourceLoaderText::FORMAT_VERSION_COMPAT : ResourceLoaderText::FORMAT_VERSION) + "";
@@ -2248,6 +2409,11 @@ Error ResourceFormatSaverTextInstance::save(const String &p_path, const Ref<Reso
 #endif
 			// wgodot-changes::end
 			String name = pi.name;
+			// wgodot-changes::begin
+			if (name == "script") {
+				continue; // Encoded by the resource's type attribute.
+			}
+			// wgodot-changes::end
 			if (skip_editor && name.begins_with("__editor")) {
 				continue;
 			}
@@ -2281,8 +2447,7 @@ Error ResourceFormatSaverTextInstance::save(const String &p_path, const Ref<Reso
 					}
 				}
 
-				bool is_script = name == CoreStringName(script);
-				Variant default_value = is_script ? Variant() : PropertyUtils::get_property_default_value(res.ptr(), name);
+				Variant default_value = PropertyUtils::get_property_default_value(res.ptr(), name);
 
 				if (default_value.get_type() != Variant::NIL && bool(Variant::evaluate(Variant::OP_EQUAL, value, default_value))) {
 					continue;

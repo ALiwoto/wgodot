@@ -11,6 +11,7 @@ class MethodBind;
 class WGodotCppAsync;
 class WGodotCppResources;
 class WGodotCppSource;
+class WGodotCppCache;
 struct WGodotGDScriptPropertyPath;
 
 class WGodotCppEmitter {
@@ -28,10 +29,20 @@ class WGodotCppEmitter {
 	bool owns_staging_directory = false;
 	Error output_error = OK;
 	int jobs = 1;
+	WGodotCppCache *cache = nullptr;
+	WGodotCppEmitter *script_worker = nullptr;
+	HashMap<String, const WGodotCppProject::Class *> classes_by_name;
+	HashSet<String> unit_resource_paths;
+	HashSet<String> unit_preloads;
+	HashMap<String, String> signature_fingerprints;
+	Dictionary capture_contribution(const WGodotCppProject::Class *p_class = nullptr) const;
+	bool restore_contribution(const Dictionary &p_payload);
+	void clear_contribution();
+	void emit_class_uncached(const WGodotCppProject::Class &p_class);
+	uint64_t reused_classes = 0;
 	const HashMap<String, int64_t> *prepared_resource_ids = nullptr;
 	void store_file(const String &p_name, const String &p_contents);
 	void store_source(const String &p_name, const String &p_header, WGodotCppSource &p_declarations, const String &p_middle, WGodotCppSource &p_body, const String &p_footer);
-	void merge_resource_worker(WGodotCppEmitter &p_worker);
 	WGodotCppEmitter(const WGodotCppEmitter &p_parent);
 	Vector<String> diagnostics;
 	HashMap<StringName, String> native_headers;
@@ -117,6 +128,7 @@ class WGodotCppEmitter {
 
 	void unsupported(const GDScriptParser::Node *p_node, const String &p_feature);
 	HashMap<String, int64_t> resource_ids;
+	HashMap<int64_t, String> resource_id_owners;
 	Dictionary compiled_resources;
 	Dictionary compiled_resource_aliases;
 	Dictionary resource_sources;
@@ -158,8 +170,8 @@ class WGodotCppEmitter {
 	String engine_argument(const GDScriptParser::ExpressionNode *p_value, Variant::Type p_target);
 	bool is_array_duplicate(const GDScriptParser::ExpressionNode *p_value) const;
 	String literal(const Variant &p_value, const GDScriptParser::Node *p_origin);
-	int resource_index(const Resource *p_resource);
-	void collect_resource_indices(const Variant &p_value, HashSet<int> &r_indices);
+	int64_t preload_id(const Resource *p_resource);
+	void collect_preload_ids(const Variant &p_value, HashSet<int64_t> &r_ids);
 	void emit_preloads();
 	void collect_container_constants();
 	const GDScriptParser::ConstantNode *container_constant_source(const GDScriptParser::ExpressionNode *p_expression) const;
@@ -250,7 +262,7 @@ class WGodotCppEmitter {
 public:
 	explicit WGodotCppEmitter(const WGodotCppProject &p_project, bool p_trace_enabled = false);
 	~WGodotCppEmitter();
-	Error generate(const String &p_directory, int p_jobs = 1);
+	Error generate(const String &p_directory, int p_jobs = 1, WGodotCppCache *p_cache = nullptr);
 	Error write(const String &p_directory) const;
 	const Vector<String> &get_diagnostics() const { return diagnostics; }
 };

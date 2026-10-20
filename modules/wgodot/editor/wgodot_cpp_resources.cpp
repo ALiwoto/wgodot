@@ -1,6 +1,7 @@
 // wgodot-changes::file
 #include "wgodot_cpp_emitter.h"
 #include "wgodot_cpp_memory_profile.h"
+#include "wgodot_cpp_cache.h"
 #include "modules/wgodot/codecs/native_literals.h"
 #include "wgodot_cpp_source.h"
 #include "modules/wgodot/codecs/resource_codec.h"
@@ -21,6 +22,7 @@
 #include "core/os/os.h"
 #include "core/string/string_builder.h"
 #include "scene/resources/packed_scene.h"
+#include "scene/resources/wgodot_scene_types.h"
 #include "scene/property_utils.h"
 
 using Parser = GDScriptParser;
@@ -47,6 +49,8 @@ class WGodotCppResources {
 	WGodotCppSource declarations;
 	WGodotCppSource body;
 	String source_path;
+	HashSet<String> preparation_paths;
+	Dictionary contribution;
 	int temporary = 0;
 	bool emitting_scene = false;
 	bool resolving_nodes = false;
@@ -116,48 +120,11 @@ class WGodotCppResources {
 	}
 
 	const WGodotCppProject::Class *node_class(const Ref<SceneState> &p_state, const NodePath &p_path, StringName *r_native_type = nullptr) {
-		// SceneState paths may start with "./", while rebasing an instance path
-		// produces "Child". Compare their node identity, not their spelling.
-		const NodePath node_path = p_path.simplified();
-		for (int i = 0; i < p_state->get_node_count(); i++) {
-			if (p_state->get_node_path(i).simplified() != node_path) {
-				continue;
-			}
-			for (int j = 0; j < p_state->get_node_property_count(i); j++) {
-				if (p_state->get_node_property_name(i, j) == SNAME("script")) {
-					const Ref<Script> script = p_state->get_node_property_value(i, j);
-					return script_class(script);
-				}
-			}
-			if (!p_state->get_node_type(i).is_empty()) {
-				if (r_native_type) {
-					*r_native_type = p_state->get_node_type(i);
-				}
-				return nullptr;
-			}
+		const WGodotSceneTypes::Type type = WGodotSceneTypes::resolve(p_state, p_path);
+		if (r_native_type) {
+			*r_native_type = type.native;
 		}
-		int closest = -1;
-		String prefix;
-		const String path = path_text(node_path);
-		for (int i = 0; i < p_state->get_node_count(); i++) {
-			const Ref<PackedScene> instance = p_state->get_node_instance(i);
-			if (instance.is_null()) {
-				continue;
-			}
-			const String candidate = path_text(p_state->get_node_path(i).simplified());
-			if ((candidate == "." || candidate == path || path.begins_with(candidate + "/")) && (closest < 0 || candidate.length() > prefix.length())) {
-				closest = i;
-				prefix = candidate;
-			}
-		}
-		if (closest >= 0) {
-			const Ref<PackedScene> instance = p_state->get_node_instance(closest);
-			const String relative = prefix == "." ? path : path == prefix ? "."
-																		  : path.substr(prefix.length() + 1);
-			return node_class(instance->get_state(), NodePath(relative), r_native_type);
-		}
-		const Ref<SceneState> base = p_state->get_base_scene_state();
-		return base.is_valid() ? node_class(base, p_path, r_native_type) : nullptr;
+		return script_class(type.script);
 	}
 
 	const Parser::VariableNode *field(const WGodotCppProject::Class *p_class, const StringName &p_name) {
@@ -821,6 +788,11 @@ class WGodotCppResources {
 			const Ref<PackedScene> packed = graph[i];
 			if (packed.is_valid()) {
 				const Ref<SceneState> state = scenes.filter(packed);
+				const String type_error = WGodotSceneTypes::validate(state);
+				if (!type_error.is_empty()) {
+					error(type_error);
+				}
+
 				prepared_scenes.insert(packed.ptr(), state);
 				const Dictionary bundled = state->get_bundled_scene();
 				collect(bundled["variants"]);
@@ -875,6 +847,8 @@ class WGodotCppResources {
 
 	void emit_factory(WGodotCppEmitter &p_worker) {
 		emitter = &p_worker;
+		emitter->clear_contribution();
+		emitter->unit_resource_paths = preparation_paths;
 		const String &p_path = source_path;
 		const int64_t id = emitter->resource_id(p_path);
 		const String name = "resource_" + itos(id);
@@ -984,6 +958,7 @@ class WGodotCppResources {
 		const auto *game = resource_class(resource);
 		emitter->compiled_resources[p_path] = game ? game->cpp_name : String(resource->get_class());
 		emitter->current_class = nullptr;
+		contribution = emitter->capture_contribution();
 	}
 
 	void scan(const String &p_path) {
@@ -1115,6 +1090,7 @@ class WGodotCppResources {
 		} batch;
 		batch.workers = workers.ptr();
 		uint64_t completed = 0;
+		uint64_t reused = 0;
 		uint64_t preparation_msec = 0;
 		uint64_t generation_msec = 0;
 		uint64_t last_progress = OS::get_singleton()->get_ticks_msec();
@@ -1134,6 +1110,14 @@ class WGodotCppResources {
 				failed |= !worker->diagnostics.is_empty() || worker->output_error != OK;
 			}
 			for (WGodotCppResources *factory : batch.factories) {
+				if (!failed && !factory->contribution.is_empty()) {
+					emitter->restore_contribution(factory->contribution);
+					if (emitter->cache) {
+						PackedStringArray dependencies = factory->contribution["resource_paths"];
+						dependencies.push_back(factory->source_path);
+						emitter->cache->record("resource:" + factory->source_path, "", dependencies, factory->contribution);
+					}
+				}
 				memdelete(factory); // Release resource graphs on the preparing thread.
 			}
 			completed += batch.factories.size();
@@ -1148,7 +1132,11 @@ class WGodotCppResources {
 		auto queue = [&](const String &p_path, const Ref<Resource> &p_resource) {
 			const uint64_t started = OS::get_singleton()->get_ticks_msec();
 			WGodotCppResources *factory = memnew(WGodotCppResources(*emitter));
+			HashSet<String> previous_paths;
+			SWAP(emitter->unit_resource_paths, previous_paths);
 			factory->prepare_factory(p_path, p_resource);
+			factory->preparation_paths = emitter->unit_resource_paths;
+			SWAP(emitter->unit_resource_paths, previous_paths);
 			WGodotCppMemoryProfile::sample("factory-prepared", p_path, factory->graph.size());
 			preparation_msec += OS::get_singleton()->get_ticks_msec() - started;
 			batch.factories.push_back(factory);
@@ -1157,6 +1145,21 @@ class WGodotCppResources {
 			}
 		};
 		HashSet<String> visited;
+		auto remember_dependencies = [&](const String &p_path) {
+			if (!emitter->cache) {
+				return;
+			}
+			PackedStringArray dependencies;
+			for (const String &dependency : emitter->unit_resource_paths) {
+				dependencies.push_back(dependency);
+			}
+			dependencies.sort();
+			Dictionary payload;
+			payload["files"] = Dictionary();
+			payload["paths"] = dependencies;
+			dependencies.push_back(p_path);
+			emitter->cache->record("dependencies:" + p_path, "", dependencies, payload);
+		};
 		for (const auto &preload : emitter->preloads) {
 			emitter->resource_id(preload.path);
 		}
@@ -1190,6 +1193,26 @@ class WGodotCppResources {
 					emitter->diagnostics.push_back("Required export resource does not exist: " + path);
 					continue;
 				}
+				if (emitter->cache) {
+					const Dictionary cached = emitter->cache->reuse("resource:" + path, "");
+					if (!cached.is_empty() && emitter->restore_contribution(cached)) {
+						const Dictionary compiled = cached["compiled"];
+						if (compiled.has(path)) {
+							paths.push_back(path);
+							emitter->resource_sources[path] = emitter->cache->digest(path);
+						}
+						++reused;
+						continue;
+					}
+					const Dictionary cached_dependencies = emitter->cache->reuse("dependencies:" + path, "");
+					if (!cached_dependencies.is_empty()) {
+						for (const String &dependency : PackedStringArray(cached_dependencies["paths"])) {
+							emitter->resource_id(dependency);
+						}
+						continue;
+					}
+				}
+				emitter->unit_resource_paths.clear();
 				const bool authored = WGodotNativeResourcePolicy::is_authored(path);
 				if (authored || ResourceLoader::get_resource_type(path) == "PackedScene") {
 					WGodotCppMemoryProfile::sample("resource-load-begin", path);
@@ -1201,7 +1224,7 @@ class WGodotCppResources {
 					}
 					if (authored && WGodotNativeResourcePolicy::needs_factory(resource)) {
 						paths.push_back(path);
-						emitter->resource_sources[path] = FileAccess::get_sha256(path);
+						emitter->resource_sources[path] = emitter->cache ? emitter->cache->digest(path) : FileAccess::get_sha256(path);
 						queue(path, resource);
 						continue;
 					}
@@ -1209,19 +1232,24 @@ class WGodotCppResources {
 					if (scene.is_valid()) {
 						HashSet<const Resource *> seen;
 						scene_dependencies(scene, path, seen);
+						remember_dependencies(path);
 						continue;
 					}
 				}
 				file_dependencies(path);
+				remember_dependencies(path);
 			}
 			flush();
 		}
 		flush();
 		for (auto *worker : workers) {
-			emitter->merge_resource_worker(*worker);
+			emitter->diagnostics.append_array(worker->diagnostics);
+			if (emitter->output_error == OK) {
+				emitter->output_error = worker->output_error;
+			}
 			memdelete(worker);
 		}
-		print_line(vformat("Native factories: %d generated (%d workers)", completed, concurrency));
+		print_line(vformat("Native factories: %d generated, %d reused (%d workers)", completed, reused, concurrency));
 		print_line(vformat("Native factory preparation: %d ms; parallel generation/write: %d ms", preparation_msec, generation_msec));
 	}
 

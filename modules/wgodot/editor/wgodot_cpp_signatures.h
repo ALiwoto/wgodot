@@ -53,4 +53,5 @@ public:
 	void analyze();
 	const Signature *get(const Parser::Node *p_node) const;
 	static bool contains_signature(const Parser::DataType &p_type);
+	HashMap<String, String> fingerprints() const;
 };

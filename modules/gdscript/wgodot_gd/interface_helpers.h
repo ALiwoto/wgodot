@@ -16,6 +16,10 @@ String get_interface_id(const GDScriptParser::ClassNode *p_interface);
 
 bool same_type(const GDScriptParser::DataType &p_first, const GDScriptParser::DataType &p_second);
 
+// Runtime tests/casts may discover an implementation on a derived object.
+// This does not make the types compatible for unchecked assignment.
+bool can_runtime_cast(const GDScriptParser::DataType &p_first, const GDScriptParser::DataType &p_second);
+
 const WGodotNativeInterfaces::Descriptor *native_interface_for_member(const GDScriptParser::DataType &p_type, const StringName &p_member);
 bool class_implements_native_interface(const GDScriptParser::ClassNode *p_class, const StringName &p_interface);
 

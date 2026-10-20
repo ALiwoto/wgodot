@@ -35,6 +35,7 @@
 #include "core/io/resource_saver.h"
 // wgodot-changes::begin
 #include "core/io/wgodot_resource_properties.h"
+#include "core/io/wgodot_named_types.h"
 // wgodot-changes::end
 #include "core/templates/rb_map.h"
 #include "core/variant/variant_parser.h"
@@ -76,6 +77,7 @@ private:
 
 	bool ignore_resource_parsing = false;
 	// wgodot-changes::begin
+	WGodotNamedTypes::Resolver named_types;
 	bool reused_subresource = false;
 	bool wgodot_cache_incomplete = false;
 	WGodotResourceProperties *wgodot_source_properties = nullptr;
@@ -202,6 +204,9 @@ class ResourceFormatSaverTextInstance {
 	HashMap<Ref<Resource>, String> external_resources;
 	HashMap<Ref<Resource>, String> internal_resources;
 	bool use_compat = true;
+	// wgodot-changes::begin
+	String wgodot_type_error;
+	// wgodot-changes::end
 
 	struct ResourceSort {
 		Ref<Resource> resource;

@@ -4,6 +4,7 @@
 #include "core/io/resource.h"
 #include "core/object/object.h"
 #include "core/os/mutex.h"
+#include "core/templates/hash_map.h"
 #include "core/variant/typed_array.h"
 
 #include <initializer_list>
@@ -33,6 +34,7 @@ private:
 	static const Definition *definitions;
 	static int definition_count;
 	Vector<Entry> entries;
+	HashMap<int64_t, int> resource_indices;
 	mutable Mutex mutex;
 	bool loading_synchronous = false;
 	int total_count = 0;
@@ -53,8 +55,8 @@ public:
 	Error start();
 	void poll();
 	void finish();
-	Ref<Resource> get_resource(int p_index);
-	bool require_resources(std::initializer_list<int> p_indices);
+	Ref<Resource> get_resource(int64_t p_resource_id);
+	bool require_resources(std::initializer_list<int64_t> p_resource_ids);
 
 	bool is_finished() const;
 	bool has_failed() const;
