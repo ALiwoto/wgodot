@@ -221,6 +221,7 @@ bool ParticleInstance3D::sample_playback(double p_seconds, double p_delta, const
 		state_position.y += state_emitter_ground_offset;
 		state_color = initial_color;
 		accelerations.clear();
+		Node3D *projector = decal ? static_cast<Node3D *>(decal) : geometry;
 		for (int index = 0; index < p_initial_values.size(); ++index) {
 			const Ref<ParticleBirthRule3D> initial = p_initial_values[index];
 			Ref<RandomStream32> birth_random = p_random;
@@ -230,14 +231,14 @@ bool ParticleInstance3D::sample_playback(double p_seconds, double p_delta, const
 			using Target = ParticleBirthRule3D::Target;
 			switch (Target(initial->get_target())) {
 				case Target::GeometryPosition:
-					geometry->set_position(initial->sample_vector(orientation_random, p_emitter_seconds));
+					projector->set_position(initial->sample_vector(orientation_random, p_emitter_seconds));
 					break;
 				case Target::GeometryRotation: {
 					const Basis rotation(initial->get_rotation_axis(), initial->sample_scalar(orientation_random, p_emitter_seconds));
-					geometry->set_basis(rotation.scaled_local(geometry->get_scale()));
+					projector->set_basis(rotation.scaled_local(projector->get_scale()));
 				} break;
 				case Target::GeometryScale:
-					geometry->set_scale(initial->sample_vector(orientation_random, p_emitter_seconds));
+					projector->set_scale(initial->sample_vector(orientation_random, p_emitter_seconds));
 					break;
 				case Target::Ground:
 					if (!p_ground->get_targets_emitter()) {
@@ -467,6 +468,9 @@ bool ParticleInstance3D::sample_playback(double p_seconds, double p_delta, const
 			tint *= color_scale->sample(relative_age, color_random, p_parameter_ratio);
 		}
 		state_render_color = tint;
+		if (decal) {
+			decal->set_modulate(tint * decal_modulate);
+		}
 		uniform(bindings()->age, age);
 		uniform(bindings()->tint, Vector4(tint.r, tint.g, tint.b, tint.a));
 		if (material_parameters.is_valid() && !source_material_clock) {

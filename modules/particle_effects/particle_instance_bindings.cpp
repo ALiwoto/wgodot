@@ -92,6 +92,12 @@ void ParticleInstance3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_geometry", "value"), &ParticleInstance3D::set_geometry);
 	ClassDB::bind_method(D_METHOD("get_geometry"), &ParticleInstance3D::get_geometry);
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "geometry", PROPERTY_HINT_NODE_TYPE, "GeometryInstance3D"), "set_geometry", "get_geometry");
+	ClassDB::bind_method(D_METHOD("set_decal", "value"), &ParticleInstance3D::set_decal);
+	ClassDB::bind_method(D_METHOD("get_decal"), &ParticleInstance3D::get_decal);
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "decal", PROPERTY_HINT_NODE_TYPE, "Decal"), "set_decal", "get_decal");
+	ClassDB::bind_method(D_METHOD("set_decal_modulate", "value"), &ParticleInstance3D::set_decal_modulate);
+	ClassDB::bind_method(D_METHOD("get_decal_modulate"), &ParticleInstance3D::get_decal_modulate);
+	ADD_PROPERTY(PropertyInfo(Variant::COLOR, "decal_modulate"), "set_decal_modulate", "get_decal_modulate");
 	ClassDB::bind_method(D_METHOD("set_initial_color", "value"), &ParticleInstance3D::set_initial_color);
 	ClassDB::bind_method(D_METHOD("get_initial_color"), &ParticleInstance3D::get_initial_color);
 	ADD_PROPERTY(PropertyInfo(Variant::COLOR, "initial_color"), "set_initial_color", "get_initial_color");

@@ -4,6 +4,7 @@
 #include "particle_motion.h"
 #include "particle_environment.h"
 #include "scene/3d/mesh_instance_3d.h"
+#include "scene/3d/decal.h"
 
 class ParticleShaderBindings : public Resource {
 	GDCLASS(ParticleShaderBindings, Resource);
@@ -110,6 +111,8 @@ class ParticleInstance3D : public Node3D {
 	bool source_material_clock = false;
 	double lifetime = 0.0;
 	GeometryInstance3D * geometry = nullptr;
+	Decal *decal = nullptr;
+	Color decal_modulate = Color(1, 1, 1, 1);
 	Color initial_color = Color(1, 1, 1, 1);
 	Ref<Gradient> color_over_life;
 	Ref<ParticleColorCurve> color_over_life_variation;
@@ -224,6 +227,10 @@ public:
 	double get_lifetime() const { return lifetime; }
 	void set_geometry(GeometryInstance3D * p_value) { geometry = p_value; }
 	GeometryInstance3D * get_geometry() const { return geometry; }
+	void set_decal(Decal *p_value) { decal = p_value; }
+	Decal *get_decal() const { return decal; }
+	void set_decal_modulate(const Color &p_value) { decal_modulate = p_value; }
+	Color get_decal_modulate() const { return decal_modulate; }
 	void set_initial_color(const Color & p_value) { initial_color = p_value; }
 	Color get_initial_color() const { return initial_color; }
 	void set_color_over_life(const Ref<Gradient> & p_value) { color_over_life = p_value; }
