@@ -47,6 +47,41 @@ String WGodotCppEmitter::native_argument_type(const PropertyInfo &p_info, const 
 	}
 }
 
+WGodotCppEmitter::Value WGodotCppEmitter::native_literal(const Variant &p_value, const PropertyInfo &p_info, const Parser::Node *p_origin) {
+	if (p_value.get_type() == Variant::INT && (p_info.usage & PROPERTY_USAGE_CLASS_IS_ENUM)) {
+		const String qualified = p_info.class_name;
+		const int separator = qualified.find(".");
+		if (separator >= 0) {
+			const StringName owner = qualified.substr(0, separator);
+			const StringName enum_name = qualified.substr(separator + 1);
+			if (!ClassDB::class_exists(owner) || !ClassDB::has_enum(owner, enum_name)) {
+				return lower_literal(p_value, p_origin);
+			}
+			List<StringName> constants;
+			ClassDB::get_enum_constants(owner, enum_name, &constants);
+			String matching_name;
+			for (const StringName &constant : constants) {
+				// Equal-valued aliases must produce deterministic output, independent
+				// of the registration/hash-table order.
+				const String name = constant;
+				if (ClassDB::get_integer_constant(owner, constant) == int64_t(p_value) &&
+						(matching_name.is_empty() || name < matching_name)) {
+					matching_name = name;
+				}
+			}
+			if (!matching_name.is_empty()) {
+				const String target = native_argument_type(p_info, p_origin);
+				// Enum qualification works for both scoped and unscoped C++ enums.
+				Value result(target + "::" + matching_name, target);
+				result.effects = false;
+				result.invariant = true;
+				return result;
+			}
+		}
+	}
+	return lower_literal(p_value, p_origin);
+}
+
 WGodotCppEmitter::Value WGodotCppEmitter::native_result_value(const String &p_code, const PropertyInfo &p_info, int p_metadata, const Parser::Node *p_origin) {
 	Value result(p_code, native_argument_type(p_info, p_origin));
 	// Binding types alone lose C++ wrappers and numeric widths. Normalize these
@@ -148,7 +183,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::native_invoke(const MethodBind *p_meth
 			unsupported(p_origin, "missing native argument " + String(p_method->get_name()));
 			return Value();
 		}
-		p_arguments.push_back(lower_literal(p_method->get_default_argument(i), p_origin));
+		p_arguments.push_back(native_literal(p_method->get_default_argument(i), p_method->get_argument_info(i), p_origin));
 	}
 	const bool instance_call = !call.is_static;
 	Vector<Value> operands(p_arguments);

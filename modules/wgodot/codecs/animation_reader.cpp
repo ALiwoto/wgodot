@@ -379,6 +379,14 @@ class Reader {
 				return fail("track options must be a dictionary");
 			}
 			Dictionary options = value;
+			int subdivisions = 0;
+			if (options.has("curve_subdivisions")) {
+				Variant count = options["curve_subdivisions"];
+				if (settings.type != Animation::TYPE_VALUE || !options.has("curves") || count.get_type() != Variant::INT || int64_t(count) < 0 || int64_t(count) > INT32_MAX) {
+					return fail("curve_subdivisions requires property curves and a nonnegative int32");
+				}
+				subdivisions = count;
+			}
 			for (const KeyValue<Variant, Variant> &option : options) {
 				String name = option.key;
 				if (name == "flags") {
@@ -408,6 +416,16 @@ class Reader {
 					for (uint32_t i = 0; i < keys.size(); i++) {
 						keys[i].transition = transitions[i];
 					}
+				} else if (name == "curves") {
+					if constexpr (std::is_same_v<T, WAnimation::ValueKey>) {
+						if (option.value.get_type() != Variant::PACKED_VECTOR4_ARRAY || property_values.set_timing_curves(option.value, subdivisions) != OK) {
+							return fail("invalid property timing curves");
+						}
+					} else {
+						return fail("timing curves require a property track");
+					}
+				} else if (name == "curve_subdivisions") {
+					// Validated together with curves, independent of option order.
 				} else if (name == "handles") {
 					RETURN_IF_ERROR(handle_modes(keys, option.value));
 				} else {

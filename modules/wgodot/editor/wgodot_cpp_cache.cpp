@@ -7,12 +7,23 @@
 #include "core/io/file_access.h"
 #include "core/io/resource_loader.h"
 #include "core/io/resource_uid.h"
-#include "core/os/os.h"
+#include "core/io/wgodot_build_fingerprint.h"
 #include "wgodot_resource_rewrite.h"
 
 namespace {
-constexpr int CACHE_VERSION = 1;
 constexpr const char *CACHE_FILE = ".gd2cpp-cache.bin";
+
+String input_digest(const String &p_path) {
+	if (p_path.begins_with("uid://")) {
+		ResourceUID *uids = ResourceUID::get_singleton();
+		const ResourceUID::ID id = uids->text_to_id(p_path);
+		// Import settings can retain UIDs for save destinations that no longer
+		// exist. Record the mapping itself, including its unresolved state, so a
+		// later resolution/remap invalidates consumers without logging a load error.
+		return uids->has_id(id) ? uids->get_id_path(id) : String("<unresolved-uid>");
+	}
+	return FileAccess::exists(p_path) ? FileAccess::get_sha256(p_path) : String("<missing>");
+}
 
 Dictionary file_stamp(const String &p_path, const String &p_digest) {
 	Dictionary stamp;
@@ -56,9 +67,9 @@ Error WGodotCppCache::open(const String &p_directory, const String &p_target, bo
 	directory = p_directory;
 	// Fingerprint the running compiler, including parsers, codecs, native API
 	// metadata and build options. No manual version bump or source checkout needed.
-	const String compiler = FileAccess::get_sha256(OS::get_singleton()->get_executable_path());
+	const String &compiler = WGodotBuildFingerprint::get();
 	ERR_FAIL_COND_V_MSG(compiler.is_empty(), ERR_CANT_OPEN, "Cannot fingerprint the running gd2cpp compiler.");
-	identity = (itos(CACHE_VERSION) + "\n" + compiler + "\n" + p_target + "\n" + itos(p_trace) + "\n" +
+	identity = (compiler + "\n" + p_target + "\n" + itos(p_trace) + "\n" +
 			ProjectSettings::get_singleton()->get_resource_path() + "\n" + digest("res://project.godot") + "\n" +
 			digest("res://override.cfg") + "\n" + digest("res://wgodot_targets.cfg") + "\n" + digest("res://export_presets.cfg")).sha256_text();
 	const String path = directory.path_join(CACHE_FILE);
@@ -82,13 +93,13 @@ String WGodotCppCache::digest(const String &p_path) {
 		return *cached;
 	}
 	// Source content is always checked, including same-size/same-timestamp edits.
-	const String result = FileAccess::exists(p_path) ? FileAccess::get_sha256(p_path) : String("<missing>");
+	const String result = input_digest(p_path);
 	digests.insert(p_path, result);
 	return result;
 }
 
 void WGodotCppCache::track(const String &p_path) {
-	const String path = ResourceUID::ensure_path(p_path).get_slice("::", 0);
+	const String path = p_path.get_slice("::", 0);
 	if (inspected.has(path)) {
 		return;
 	}
@@ -100,38 +111,45 @@ void WGodotCppCache::track(const String &p_path) {
 	if (!compatible || String(entry.get("digest", "")) != current) {
 		dependencies.clear();
 		const String ext = path.get_extension();
-		if (current != "<missing>" && ext != "gd" && ext != "import" && ResourceLoader::get_resource_type(path) != String()) {
+		const bool uid = path.begins_with("uid://");
+		if (uid && current != "<unresolved-uid>") {
+			dependencies.push_back(current);
+		}
+		if (!uid && current != "<missing>" && ext != "gd" && ext != "import" && ResourceLoader::get_resource_type(path) != String()) {
 			List<String> paths;
 			ResourceLoader::get_dependencies(path, &paths);
 			for (const String &dependency : paths) {
 				String resolved = dependency.get_slice("::", 0);
 				if (resolved.begins_with("uid://")) {
-					resolved = ResourceUID::ensure_path(resolved);
-					if (resolved.begins_with("uid://")) {
-						resolved = dependency.get_slice("::", 2);
-					}
+					dependencies.push_back(resolved);
+					// ResourceLoader supplies uid::type::fallback_path (the type may
+					// be empty). Keep the fallback as well as the UID mapping.
+					resolved = dependency.get_slice("::", 2);
 				}
 				if (!resolved.is_empty()) {
 					dependencies.push_back(resolved.is_relative_path() ? path.get_base_dir().path_join(resolved).simplify_path() : resolved);
 				}
 			}
 		}
-		if (current != "<missing>" && ext == "import") {
+		if (!uid && current != "<missing>" && ext == "import") {
 			Ref<ConfigFile> config;
 			config.instantiate();
-			if (config->load(path) == OK) {
+			const Error error = config->load(path);
+			if (error == OK) {
 				// Track cooked payloads, import scripts and source-side dependencies.
 				for (const String &section : config->get_sections()) {
 					for (const String &key : config->get_section_keys(section)) {
 						WGodotResourceRewrite::value(config->get_value(section, key), PropertyInfo(), [&](const String &p_dependency) {
-							dependencies.push_back(ResourceUID::ensure_path(p_dependency));
+							dependencies.push_back(p_dependency);
 							return p_dependency;
 						});
 					}
 				}
+			} else {
+				ERR_PRINT("Cannot read native export dependency settings " + path + ": " + error_names[error]);
 			}
 		}
-		if (FileAccess::exists(path + ".import")) {
+		if (!uid && FileAccess::exists(path + ".import")) {
 			dependencies.push_back(path + ".import");
 		}
 	}
@@ -154,7 +172,7 @@ void WGodotCppCache::set_dependencies(const String &p_path, const PackedStringAr
 }
 
 bool WGodotCppCache::unchanged(const String &p_path, HashSet<String> &r_seen) {
-	const String path = ResourceUID::ensure_path(p_path).get_slice("::", 0);
+	const String path = p_path.get_slice("::", 0);
 	if (r_seen.has(path)) {
 		return true;
 	}
@@ -270,7 +288,7 @@ Error WGodotCppCache::commit(const HashMap<String, String> &p_files, int p_class
 	for (const KeyValue<Variant, Variant> &input : inputs) {
 		const String path = input.key;
 		const Dictionary entry = input.value;
-		const String actual = FileAccess::exists(path) ? FileAccess::get_sha256(path) : String("<missing>");
+		const String actual = input_digest(path);
 		if (actual.is_empty() || actual != String(entry["digest"])) {
 			DirAccess::remove_absolute(directory.path_join("main_game.json"));
 			ERR_FAIL_V_MSG(ERR_BUSY, "Native export input changed during generation; run export again: " + path);

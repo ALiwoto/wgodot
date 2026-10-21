@@ -305,6 +305,9 @@ bool Animation::_set(const StringName &p_name, const Variant &p_value) {
 					}
 				}
 
+				// wgodot-changes::begin
+				ERR_FAIL_COND_V(vt->values.set_timing_curves(d.get("curves", PackedVector4Array()), d.get("curve_subdivisions", 0)) != OK, false);
+				// wgodot-changes::end
 				return true;
 
 			} else if (track_get_type(track) == TYPE_METHOD) {
@@ -719,6 +722,14 @@ bool Animation::_get(const StringName &p_name, Variant &r_ret) const {
 				d["values"] = key_values;
 				if (track_get_type(track) == TYPE_VALUE) {
 					d["update"] = value_track_get_update_mode(track);
+					// wgodot-changes::begin
+					if (!vt->values.get_timing_curves().is_empty()) {
+						d["curves"] = vt->values.get_timing_curves();
+						if (vt->values.get_timing_curve_subdivisions() != 0) {
+							d["curve_subdivisions"] = vt->values.get_timing_curve_subdivisions();
+						}
+					}
+					// wgodot-changes::end
 				}
 
 				r_ret = d;
@@ -2194,8 +2205,17 @@ void Animation::track_set_key_time(int p_track, int p_key_idx, double p_time) {
 			// wgodot-changes::begin
 			Variant value = vt->values.get(p_key_idx);
 			real_t transition = vt->values.keys[p_key_idx].transition;
+			PackedVector4Array curves = vt->values.get_timing_curves();
+			const int subdivisions = vt->values.get_timing_curve_subdivisions();
+			Vector4 curve = curves.is_empty() ? Vector4(0, 0, 1, 1) : curves[p_key_idx];
 			vt->values.remove_at(p_key_idx);
-			track_insert_key(p_track, p_time, value, transition);
+			int index = track_insert_key(p_track, p_time, value, transition);
+			if (!curves.is_empty()) {
+				curves = vt->values.get_timing_curves();
+				curves.resize(vt->values.size());
+				curves.write[index] = curve;
+				vt->values.set_timing_curves(curves, subdivisions);
+			}
 			// wgodot-changes::end
 			return;
 		}
@@ -2839,7 +2859,26 @@ WAnimationValues &Animation::value_track_storage(int p_track) {
 WAnimationSample Animation::value_track_sample(int p_track, double p_time, bool p_backward) const {
 	DEV_ASSERT(uint32_t(p_track) < tracks.size() && tracks[p_track]->type == TYPE_VALUE);
 	const ValueTrack *track = static_cast<const ValueTrack *>(tracks[p_track]);
-	return _interpolation_sample(track->values.keys, p_time, track->update_mode == UPDATE_DISCRETE ? INTERPOLATION_NEAREST : track->interpolation, track->loop_wrap, p_backward);
+	return track->values.ease_sample(_interpolation_sample(track->values.keys, p_time, track->update_mode == UPDATE_DISCRETE ? INTERPOLATION_NEAREST : track->interpolation, track->loop_wrap, p_backward), p_backward);
+}
+
+void Animation::value_track_set_timing_curves(int p_track, const PackedVector4Array &p_curves, int p_subdivisions) {
+	ERR_FAIL_UNSIGNED_INDEX(uint32_t(p_track), tracks.size());
+	ERR_FAIL_COND(tracks[p_track]->type != TYPE_VALUE);
+	ERR_FAIL_COND(value_track_storage(p_track).set_timing_curves(p_curves, p_subdivisions) != OK);
+	emit_changed();
+}
+
+PackedVector4Array Animation::value_track_get_timing_curves(int p_track) const {
+	ERR_FAIL_UNSIGNED_INDEX_V(uint32_t(p_track), tracks.size(), PackedVector4Array());
+	ERR_FAIL_COND_V(tracks[p_track]->type != TYPE_VALUE, PackedVector4Array());
+	return value_track_storage(p_track).get_timing_curves();
+}
+
+int Animation::value_track_get_timing_curve_subdivisions(int p_track) const {
+	ERR_FAIL_UNSIGNED_INDEX_V(uint32_t(p_track), tracks.size(), 0);
+	ERR_FAIL_COND_V(tracks[p_track]->type != TYPE_VALUE, 0);
+	return value_track_storage(p_track).get_timing_curve_subdivisions();
 }
 
 Variant Animation::value_track_interpolate(int p_track, double p_time, bool p_backward) const {
@@ -4076,9 +4115,19 @@ void Animation::copy_track(int p_track, Ref<Animation> p_to_animation) {
 	for (int i = 0; i < track_get_key_count(p_track); i++) {
 		p_to_animation->track_insert_key(dst_track, track_get_key_time(p_track, i), track_get_key_value(p_track, i), track_get_key_transition(p_track, i));
 	}
+	// wgodot-changes::begin
+	if (track_get_type(p_track) == TYPE_VALUE) {
+		p_to_animation->value_track_set_timing_curves(dst_track, value_track_get_timing_curves(p_track), value_track_get_timing_curve_subdivisions(p_track));
+	}
+	// wgodot-changes::end
 }
 
 void Animation::_bind_methods() {
+	// wgodot-changes::begin
+	ClassDB::bind_method(D_METHOD("value_track_set_timing_curves", "track", "curves", "subdivisions"), &Animation::value_track_set_timing_curves, DEFVAL(0));
+	ClassDB::bind_method(D_METHOD("value_track_get_timing_curves", "track"), &Animation::value_track_get_timing_curves);
+	ClassDB::bind_method(D_METHOD("value_track_get_timing_curve_subdivisions", "track"), &Animation::value_track_get_timing_curve_subdivisions);
+	// wgodot-changes::end
 	ClassDB::bind_method(D_METHOD("add_track", "type", "at_position"), &Animation::add_track, DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("remove_track", "track_idx"), &Animation::remove_track);
 	ClassDB::bind_method(D_METHOD("get_track_count"), &Animation::get_track_count);

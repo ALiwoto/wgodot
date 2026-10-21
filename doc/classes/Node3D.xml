@@ -197,6 +197,15 @@
 				Scales this node's [member basis] by the given [param scale] factor. This operation is calculated in local space (relative to this node) and preserves the [member position].
 			</description>
 		</method>
+		<!-- wgodot-changes::begin -->
+		<method name="set_as_top_level_keep_local">
+			<return type="void" />
+			<param index="0" name="enable" type="bool" />
+			<description>
+				Changes [member top_level] while keeping [member transform] unchanged. Use this when restoring a saved local placement: it avoids converting the previous global transform through the parent, including parents with zero scale. The node's global placement can change.
+			</description>
+		</method>
+		<!-- wgodot-changes::end -->
 		<method name="set_disable_scale">
 			<return type="void" />
 			<param index="0" name="disable" type="bool" />

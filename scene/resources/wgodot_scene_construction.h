@@ -2,8 +2,7 @@
 #pragma once
 
 #include "core/io/resource.h"
-
-class Node;
+#include "scene/main/node.h"
 
 // Per-instantiation resource identity. Generated code supplies typed values and
 // existing property values; no property names or serialized value tables enter here.
@@ -12,12 +11,25 @@ class WGodotSceneContext {
 	Node *base;
 	bool inherited;
 	bool main_edit;
+	Node *const *nodes;
+	int node_count;
 
 	Ref<Resource> local_resource(const Ref<Resource> &p_resource, const Ref<Resource> &p_existing);
 
 public:
-	WGodotSceneContext(HashMap<Node *, HashMap<Ref<Resource>, Ref<Resource>>> &p_resources, Node *p_base, bool p_inherited, bool p_main_edit) :
-			resources(p_resources), base(p_base), inherited(p_inherited), main_edit(p_main_edit) {}
+	WGodotSceneContext(HashMap<Node *, HashMap<Ref<Resource>, Ref<Resource>>> &p_resources, Node *p_base, bool p_inherited, bool p_main_edit, Node *const *p_nodes = nullptr, int p_node_count = 0) :
+			resources(p_resources), base(p_base), inherited(p_inherited), main_edit(p_main_edit), nodes(p_nodes), node_count(p_node_count) {}
+
+	// Borrow the completed SceneState node table during resolve(). Missing inherited
+	// nodes remain null. No node pointers survive in the shared construction resource.
+	template <class T>
+	T *node(int p_index) const {
+		if (p_index == -1) {
+			return nullptr;
+		}
+		ERR_FAIL_INDEX_V(p_index, node_count, nullptr);
+		return Object::cast_to<T>(nodes[p_index]);
+	}
 
 	template <class T>
 	Ref<T> resource(const Ref<T> &p_resource, const Ref<Resource> &p_existing = Ref<Resource>()) {

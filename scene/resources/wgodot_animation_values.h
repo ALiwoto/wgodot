@@ -141,6 +141,12 @@ class WAnimationValues {
 		}
 	};
 	Data *data = nullptr;
+	// Optional outgoing segment timing. Empty for ordinary Animation tracks.
+	// (x1,y1,x2,y2) is a normalized Bezier; (-1,0,0,0) is stepped.
+	PackedVector4Array timing_curves;
+	int timing_curve_subdivisions = 0;
+	PackedVector2Array timing_samples;
+	void rebuild_timing_samples();
 	void ensure_type(const Variant &p_value);
 	void change_type(Data *p_data);
 
@@ -162,6 +168,10 @@ public:
 	Variant get(uint32_t p_index) const { return data ? data->get(p_index) : Variant(); }
 	void set(uint32_t p_index, const Variant &p_value);
 	Variant sample_variant(const WAnimationSample &p_sample) const;
+	Error set_timing_curves(const PackedVector4Array &p_curves, int p_subdivisions = 0);
+	const PackedVector4Array &get_timing_curves() const { return timing_curves; }
+	int get_timing_curve_subdivisions() const { return timing_curve_subdivisions; }
+	WAnimationSample ease_sample(WAnimationSample p_sample, bool p_backward) const;
 
 	template <typename T> const LocalVector<T> &typed() const {
 		DEV_ASSERT(kind() == WAnimationValueType<T>::kind);
@@ -176,6 +186,9 @@ public:
 		}
 		data = replacement;
 		keys = std::move(p_keys);
+		timing_curves.clear();
+		timing_curve_subdivisions = 0;
+		timing_samples.clear();
 	}
 
 	// Dispatch once per track operation, never once per component/key.

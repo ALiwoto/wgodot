@@ -2,6 +2,7 @@
 #pragma once
 
 #include "particle_curves.h"
+#include "core/templates/vector.h"
 #include "core/variant/typed_array.h"
 #include "scene/resources/gradient.h"
 #include "scene/resources/mesh.h"
@@ -23,7 +24,8 @@ private:
 	int alpha_sampling = 0;
 	int axis_lock = 1;
 	Vector3i color_order = Vector3i(0, 1, 2);
-	TypedArray<ParticleFloatCurve> channels;
+	Vector<Ref<ParticleFloatCurve>> channels;
+	bool channels_complete = false;
 
 protected:
 	static void _bind_methods();
@@ -43,9 +45,21 @@ public:
 	Vector3i get_color_order() const { return color_order; }
 	void set_channels(const TypedArray<ParticleFloatCurve> &p_value) {
 		ERR_FAIL_COND_MSG(p_value.size() > 4, "Color curves have at most four channels.");
-		channels = p_value;
+		channels.resize(p_value.size());
+		channels_complete = p_value.size() == 4;
+		for (int index = 0; index < p_value.size(); ++index) {
+			channels.write[index] = p_value[index];
+			channels_complete = channels_complete && channels[index].is_valid();
+		}
 	}
-	TypedArray<ParticleFloatCurve> get_channels() const { return channels; }
+	TypedArray<ParticleFloatCurve> get_channels() const {
+		TypedArray<ParticleFloatCurve> result;
+		result.resize(channels.size());
+		for (int index = 0; index < channels.size(); ++index) {
+			result[index] = channels[index];
+		}
+		return result;
+	}
 	Color sample(double p_relative_age, const Ref<RandomStream32> &p_random, double p_task_ratio = 0.0) const;
 };
 

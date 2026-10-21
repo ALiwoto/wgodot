@@ -43,6 +43,9 @@ String WResourceLoadMeasurement::compare_animations(const Ref<Animation> &p_expe
 		if (p_expected->track_get_type(track) != p_actual->track_get_type(track) || p_expected->track_get_path(track) != p_actual->track_get_path(track) || p_expected->track_get_interpolation_type(track) != p_actual->track_get_interpolation_type(track) || p_expected->track_get_interpolation_loop_wrap(track) != p_actual->track_get_interpolation_loop_wrap(track) || p_expected->track_is_enabled(track) != p_actual->track_is_enabled(track) || p_expected->track_is_imported(track) != p_actual->track_is_imported(track) || p_expected->track_get_key_count(track) != p_actual->track_get_key_count(track)) {
 			return "Track settings differ at " + itos(track);
 		}
+		if (p_expected->track_get_type(track) == Animation::TYPE_VALUE && (p_expected->value_track_get_timing_curves(track) != p_actual->value_track_get_timing_curves(track) || p_expected->value_track_get_timing_curve_subdivisions(track) != p_actual->value_track_get_timing_curve_subdivisions(track))) {
+			return "Timing curves differ at track " + itos(track);
+		}
 		for (int key = 0; key < p_expected->track_get_key_count(track); key++) {
 			if (p_expected->track_get_key_time(track, key) != p_actual->track_get_key_time(track, key) || p_expected->track_get_key_transition(track, key) != p_actual->track_get_key_transition(track, key) || p_expected->track_get_key_value(track, key) != p_actual->track_get_key_value(track, key)) {
 				return "Key differs at track " + itos(track) + ", key " + itos(key);

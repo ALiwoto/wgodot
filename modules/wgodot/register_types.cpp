@@ -4,6 +4,8 @@
 /**************************************************************************/
 
 #include "register_types.h"
+#include "animation/affine_skeleton_2d.h"
+#include "animation/skinned_mesh_2d.h"
 #include "codecs/animation_codec.h"
 #include "codecs/curve_codec.h"
 #include "codecs/shader_material_codec.h"
@@ -42,6 +44,10 @@ static void _native_export_editor_init() {
 
 void initialize_wgodot_module(ModuleInitializationLevel p_level) {
 	if (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {
+		GDREGISTER_CLASS(AffineBone2D);
+		GDREGISTER_CLASS(AffineSkeleton2D);
+		GDREGISTER_CLASS(Skin2D);
+		GDREGISTER_CLASS(SkinnedMesh2D);
 		GDREGISTER_CLASS(WAnimation);
 		register_animation_codec();
 		register_curve_codec();

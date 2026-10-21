@@ -42,6 +42,8 @@ The prefix is textual path compression, not a scene root: `.Root` above expands 
 
 Type/interpolation numbers are Godot's enums; interpolation 5 is WGodot's normalized linear rotation interpolation. Options preserve `flags` (disabled=1, imported=2, no loop wrap=4), `update`, `audio_blend`, `transitions` and Bezier `handles`.
 
+Value tracks may supply `curves: PackedVector4Array(...)`, one outgoing normalized Bézier `(x1, y1, x2, y2)` per key; `(-1, 0, 0, 0)` means stepped. Optional `curve_subdivisions` preserves sampled easing: zero evaluates the Bézier, a positive count interpolates that many linear segments. Sample points are cached on load/edit, never rebuilt during playback. Text, binary caches, track copies and typed C++ factories preserve both controls and subdivisions.
+
 `c(value)` repeats one value at every time in the selected clock. `d` uses the transform/blend-shape default: zero position/weight, identity quaternion or unit scale. Neither removes keys or changes timing. Other payloads are arrays of scalars or component tuples. Property tracks declare `bool`, `int`, `float`, `string`, `vec2`, `vec3`, `vec4`, `quat`, `color`, `transform3d`, `vector2_array`, `resource` or `variant` once; for example `float[0.0, 1.0]` or `vec3(1, 2, 3)`.
 
 Numeric clocks and transform components default to float32. `f64[...]` clocks and `f64` transform payloads preserve wider native data. Property values retain their Variant precision/type; audio offsets retain double precision. Non-finite components are rejected. Compressed Animation tracks must be decompressed before writing WTracks. V1 remains readable; writers emit v2.

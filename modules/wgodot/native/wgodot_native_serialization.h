@@ -3,6 +3,7 @@
 
 #include "wgodot_native_calls.h"
 #include "scene/main/node.h"
+#include "scene/resources/wgodot_scene_construction.h"
 #include "core/variant/typed_array.h"
 #include <algorithm>
 #include <limits>
@@ -11,6 +12,16 @@ namespace WGodotNative {
 template <class T>
 Node *scene_node() {
 	return memnew(T);
+}
+
+template <class T, size_t Count>
+WArray<ObjectValue<T>> scene_nodes(const WGodotSceneContext &p_context, const int (&p_indices)[Count]) {
+	WArray<ObjectValue<T>> result;
+	ERR_FAIL_COND_V(result.resize(Count) != OK, result);
+	for (size_t i = 0; i < Count; i++) {
+		result.set(i, p_context.node<T>(p_indices[i]));
+	}
+	return result;
 }
 
 template <size_t Count>

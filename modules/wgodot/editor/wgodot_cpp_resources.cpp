@@ -4,6 +4,7 @@
 #include "wgodot_cpp_cache.h"
 #include "modules/wgodot/codecs/native_literals.h"
 #include "wgodot_cpp_source.h"
+#include "wgodot_cpp_scene_references.h"
 #include "modules/wgodot/codecs/resource_codec.h"
 #include "wgodot_cpp_names.h"
 #include "wgodot_export_scene.h"
@@ -59,6 +60,8 @@ class WGodotCppResources {
 	StringBuilder scene_fields;
 	HashMap<const Resource *, String> scene_resources;
 	Vector<String> scene_resource_fields;
+	WGodotCppSceneReferences scene_references;
+	int scene_node_index = -1;
 
 	void emit(const String &p_line) {
 		if (emitting_scene) {
@@ -328,6 +331,13 @@ class WGodotCppResources {
 		return emitter->lower_literal(p_value, &origin);
 	}
 
+	Value native_value(const Variant &p_value, const PropertyInfo &p_info) {
+		if (p_value.get_type() == Variant::INT && (p_info.usage & PROPERTY_USAGE_CLASS_IS_ENUM)) {
+			return emitter->native_literal(p_value, p_info, &origin);
+		}
+		return value(p_value);
+	}
+
 	Variant encode(const Variant &p_value, const Parser::DataType &p_type) {
 		if (p_type.wgodot_resource_path) {
 			return emitter->resource_id(p_value);
@@ -349,6 +359,51 @@ class WGodotCppResources {
 			return result;
 		}
 		return p_value;
+	}
+
+	Value node_reference(const NodePath &p_path, const String &p_class = "Node") {
+		const int index = scene_references.find(scene_node_index, p_path);
+		if (index != WGodotCppSceneReferences::RUNTIME_PATH) {
+			return Value("p_context.node<" + p_class + ">(" + itos(index) + ")", p_class + " *");
+		}
+		String lookup = "p_node->get_node_or_null(" + value(p_path).code + ")";
+		if (p_class != "Node") {
+			lookup = "Object::cast_to<" + p_class + ">(" + lookup + ")";
+		}
+		return Value(lookup, p_class + " *");
+	}
+
+	bool object_handle(const Parser::DataType &p_type) const {
+		return p_type.builtin_type == Variant::OBJECT && !emitter->is_interface_type(p_type) &&
+				!ClassDB::is_parent_class(emitter->native_base(p_type), "RefCounted");
+	}
+
+	String node_array(const Array &p_values, const Parser::DataType &p_element) {
+		Vector<int> indices;
+		for (const Variant &item : p_values) {
+			int index = WGodotCppSceneReferences::NULL_NODE;
+			if (item.get_type() == Variant::NODE_PATH) {
+				index = scene_references.find(scene_node_index, item);
+			} else if (item.get_type() != Variant::NIL && !(item.get_type() == Variant::OBJECT && item.is_zero())) {
+				return String();
+			}
+			if (index == WGodotCppSceneReferences::RUNTIME_PATH) {
+				return String();
+			}
+			indices.push_back(index);
+		}
+		const String name = "node_indices_" + itos(temporary++);
+		const String element_class = emitter->class_name(p_element, &origin);
+		emit("\tstatic constexpr int " + name + "[] = {\n");
+		for (int first = 0; first < indices.size(); first += 16) {
+			Vector<String> row;
+			for (int i = first; i < MIN(first + 16, indices.size()); i++) {
+				row.push_back(itos(indices[i]));
+			}
+			emit("\t\t" + String(", ").join(row) + ",\n");
+		}
+		emit("\t};\n");
+		return "WGodotNative::scene_nodes<" + element_class + ">(p_context, " + name + ")";
 	}
 
 	String typed_value(const Variant &p_value, const Parser::DataType &p_type, const String &p_existing = String()) {
@@ -373,18 +428,26 @@ class WGodotCppResources {
 			return emitter->convert_value(Value(expression, reference.cpp_type), type);
 		}
 		if (resolving_nodes && p_type.builtin_type == Variant::OBJECT && p_value.get_type() == Variant::NODE_PATH) {
-			const String path = value(p_value).code;
-			return emitter->convert_value(Value("p_node->get_node_or_null(" + path + ")", "Node *"), type);
+			if (object_handle(p_type)) {
+				return type + "(" + node_reference(p_value, emitter->class_name(p_type, &origin)).code + ")";
+			}
+			return emitter->convert_value(node_reference(p_value), type);
 		}
 		if (emitter->is_warray(p_type)) {
 			const Array array = p_value;
 			if (array.is_empty()) {
 				return type + "()";
 			}
+			const Parser::DataType element_type = p_type.get_container_element_type(0);
+			if (resolving_nodes && object_handle(element_type)) {
+				const String indexed = node_array(array, element_type);
+				if (!indexed.is_empty()) {
+					return indexed;
+				}
+			}
 			const String name = "array_" + itos(temporary++);
 			emit("\t" + type + " " + name + ";\n\t" + name + ".resize(" + itos(array.size()) + ");\n");
 			for (int i = 0; i < array.size(); i++) {
-				const Parser::DataType element_type = p_type.get_container_element_type(0);
 				const String existing = p_existing.is_empty() ? String() : "(" + p_existing + ").size() > " + itos(i) + " ? (" + p_existing + ").get(" + itos(i) + ") : " + emitter->type(element_type, &origin) + "()";
 				const String item = typed_value(array[i], element_type, existing);
 				emit("\t" + name + ".set(" + itos(i) + ", " + item + ");\n");
@@ -444,7 +507,7 @@ class WGodotCppResources {
 			// Only the generic Ref<Resource> fallback needs a downcast.
 			arguments.push_back(p_class || emitter->native_headers.has(p_native_type) ? pointer : "static_cast<" + native_class(method->get_instance_class()) + " *>(" + pointer + ")");
 			if (property.indexed) {
-				arguments.push_back(emitter->convert_value(value(property.index), emitter->native_argument_type(method->get_argument_info(0), &origin)));
+				arguments.push_back(emitter->convert_value(native_value(property.index, method->get_argument_info(0)), emitter->native_argument_type(method->get_argument_info(0), &origin)));
 			}
 			const PropertyInfo parameter = method->get_argument_info(index_args);
 			const String argument_type = emitter->native_argument_type(parameter, &origin);
@@ -456,7 +519,7 @@ class WGodotCppResources {
 			if (p_value.get_type() == Variant::NIL || (p_value.get_type() == Variant::OBJECT && Ref<Resource>(p_value).is_null())) {
 				argument = Value(argument_type + "()", argument_type);
 			} else if (resolving_nodes && parameter.type == Variant::OBJECT && p_value.get_type() == Variant::NODE_PATH) {
-				argument = Value("p_node->get_node_or_null(" + value(p_value).code + ")", "Node *");
+				argument = node_reference(p_value, argument_type.ends_with(" *") ? argument_type.trim_suffix(" *") : String("Node"));
 			} else if (emitting_scene && p_value.get_type() == Variant::OBJECT) {
 				const Value reference = scene_resource(Ref<Resource>(p_value));
 				const MethodBind *getter = property.getter;
@@ -466,19 +529,19 @@ class WGodotCppResources {
 				}
 				String getter_args = pointer;
 				if (property.indexed) {
-					getter_args += ", " + emitter->convert_value(value(property.index), emitter->native_argument_type(getter->get_argument_info(0), &origin));
+					getter_args += ", " + emitter->convert_value(native_value(property.index, getter->get_argument_info(0)), emitter->native_argument_type(getter->get_argument_info(0), &origin));
 				}
 				for (int argument = index_args; argument < getter->get_argument_count(); argument++) {
 					if (!getter->has_default_argument(argument)) {
 						error("Native property getter requires an explicit argument: " + String(p_native_type) + ":" + String(p_name));
 						return;
 					}
-					getter_args += ", " + emitter->convert_value(value(getter->get_default_argument(argument)), emitter->native_argument_type(getter->get_argument_info(argument), &origin));
+					getter_args += ", " + emitter->convert_value(native_value(getter->get_default_argument(argument), getter->get_argument_info(argument)), emitter->native_argument_type(getter->get_argument_info(argument), &origin));
 				}
 				const String existing = emitter->native_access(getter, &origin) + "(" + getter_args + ")";
 				argument = Value("p_context.resource(" + reference.code + ", [&]() { return " + existing + "; })", reference.cpp_type);
 			} else {
-				argument = value(p_value);
+				argument = native_value(p_value, parameter);
 			}
 			// Preserve a concrete TypedArray at its native boundary; erasing it to
 			// Array here would force the engine's typed setter to validate it again.
@@ -574,7 +637,7 @@ class WGodotCppResources {
 			callback = "WGodotNative::native_method_callable(static_cast<" + owner + " *>(p_target), +[](" + owner + " *target" + tail + ") { " + emitter->native_access(native_method, &origin) + "(" + String(", ").join(arguments) + "); }, UINT64_C(0x" + slot + "))";
 			Vector<String> defaults;
 			for (int i = native_method->get_argument_count() - native_method->get_default_argument_count(); i < native_method->get_argument_count(); i++) {
-				defaults.push_back(emitter->convert_value(value(native_method->get_default_argument(i)), emitter->native_argument_type(native_method->get_argument_info(i), &origin)));
+				defaults.push_back(emitter->convert_value(native_value(native_method->get_default_argument(i), native_method->get_argument_info(i)), emitter->native_argument_type(native_method->get_argument_info(i), &origin)));
 			}
 			if (!defaults.is_empty()) {
 				callback += ".with_defaults(std::make_tuple(" + String(", ").join(defaults) + "))";
@@ -587,7 +650,7 @@ class WGodotCppResources {
 			Vector<String> bound;
 			for (int i = 0; i < binds.size(); i++) {
 				const int argument = native_method->get_argument_count() - binds.size() + i;
-				bound.push_back(emitter->convert_value(value(binds[i]), emitter->native_argument_type(native_method->get_argument_info(argument), &origin)));
+				bound.push_back(emitter->convert_value(native_value(binds[i], native_method->get_argument_info(argument)), emitter->native_argument_type(native_method->get_argument_info(argument), &origin)));
 			}
 			if (!bound.is_empty()) {
 				callback += ".bind(" + String(", ").join(bound) + ")";
@@ -622,6 +685,7 @@ class WGodotCppResources {
 	void scene(const Ref<PackedScene> &p_scene, const String &p_target) {
 		const Ref<SceneState> state = prepared_scenes[p_scene.ptr()];
 		state->compact_storage();
+		scene_references.prepare(state);
 		const String suffix = itos(temporary++);
 		const String data_type = "SceneConstruction_" + suffix;
 		scene_data = "construction_" + suffix;
@@ -637,6 +701,7 @@ class WGodotCppResources {
 			const String method_name = resolving_nodes ? "resolve" : "apply";
 			declarations += "\tvoid " + method_name + "(int p_index, Node *p_node, WGodotSceneContext &p_context) const override {\n\t\tswitch (p_index) {\n";
 			for (int i = 0; i < state->get_node_count(); i++) {
+				scene_node_index = i;
 				const Vector<String> deferred = state->get_node_deferred_nodepath_properties(i);
 				StringName native_type;
 				const auto *game = node_class(state, state->get_node_path(i), &native_type);
@@ -674,6 +739,7 @@ class WGodotCppResources {
 			declarations += "\t\t\tdefault: break;\n\t\t}\n\t}\n";
 		}
 		resolving_nodes = false;
+		scene_node_index = -1;
 		remapping_resources = false;
 		declarations += "\tvoid connect(int p_index, Node *p_source, Node *p_target, int p_flags) const override {\n\t\tswitch (p_index) {\n";
 		for (int i = 0; i < state->get_connection_count(); i++) {

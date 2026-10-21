@@ -536,6 +536,9 @@ public:
 	// wgodot-changes::begin
 	const WAnimationValues &value_track_storage(int p_track) const;
 	WAnimationValues &value_track_storage(int p_track);
+	void value_track_set_timing_curves(int p_track, const PackedVector4Array &p_curves, int p_subdivisions = 0);
+	PackedVector4Array value_track_get_timing_curves(int p_track) const;
+	int value_track_get_timing_curve_subdivisions(int p_track) const;
 	WAnimationSample value_track_sample(int p_track, double p_time, bool p_backward = false) const;
 	// wgodot-changes::end
 	void value_track_set_update_mode(int p_track, UpdateMode p_mode);

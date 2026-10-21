@@ -421,7 +421,20 @@ void GodotBoxShape3D::get_supports(const Vector3 &p_normal, int p_max, Vector3 *
 bool GodotBoxShape3D::intersect_segment(const Vector3 &p_begin, const Vector3 &p_end, Vector3 &r_result, Vector3 &r_normal, int &r_face_index, bool p_hit_back_faces) const {
 	AABB aabb_ext(-half_extents, half_extents * 2.0);
 
-	return aabb_ext.intersects_segment(p_begin, p_end, &r_result, &r_normal);
+	// wgodot-changes::begin
+	// Segment/AABB overlap includes a boundary point when the segment leaves
+	// the box, producing a zero normal and a spurious physics ray hit. Use the
+	// entry surface instead; intersect_ray handles hit_from_inside separately.
+	const Vector3 direction = p_end - p_begin;
+	if (direction == Vector3()) {
+		return false;
+	}
+	bool inside = false;
+	if (!aabb_ext.find_intersects_ray(p_begin, direction, inside, &r_result, &r_normal) || inside) {
+		return false;
+	}
+	return (r_result - p_begin).dot(direction) <= direction.length_squared();
+	// wgodot-changes::end
 }
 
 bool GodotBoxShape3D::intersect_point(const Vector3 &p_point) const {

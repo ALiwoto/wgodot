@@ -2,9 +2,13 @@
 #include "particle_appearance.h"
 
 Color ParticleColorCurve::sample(double p_relative_age, const Ref<RandomStream32> &p_random, double p_task_ratio) const {
-	Color result = value->get_color_at_offset(p_relative_age);
+	Color result;
+	if (!channels_complete) {
+		ERR_FAIL_COND_V_MSG(value.is_null(), result, "A color curve requires a gradient or all four channels.");
+		result = value->get_color_at_offset(p_relative_age);
+	}
 	for (int index = 0; index < channels.size(); ++index) {
-		const Ref<ParticleFloatCurve> channel = channels[index];
+		const Ref<ParticleFloatCurve> &channel = channels[index];
 		if (channel.is_valid()) {
 			result[index] = channel->sample(p_relative_age, p_task_ratio);
 		}

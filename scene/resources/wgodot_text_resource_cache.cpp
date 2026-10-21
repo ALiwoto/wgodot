@@ -4,11 +4,11 @@
 #include "core/config/project_settings.h"
 #include "core/io/dir_access.h"
 #include "core/io/resource_format_binary.h"
+#include "core/io/wgodot_build_fingerprint.h"
 #include "core/io/wgodot_resource_serialization.h"
 #include "core/io/wgodot_resource_trace.h"
 #include "core/os/os.h"
 #include "core/os/thread.h"
-#include "core/version.h"
 
 WGodotTextResourceCache::WGodotTextResourceCache(const String &p_source_path) {
 #ifdef TOOLS_ENABLED
@@ -28,10 +28,11 @@ WGodotTextResourceCache::WGodotTextResourceCache(const String &p_source_path) {
 	if (source_hash.is_empty()) {
 		return;
 	}
-	// Store authored assignments, not resolved defaults. Ordinary editor rebuilds
-	// and edits to external dependencies must retain the cache. Bump this revision
-	// only when the cached representation or its interpretation changes.
-	static const String version = String(GODOT_VERSION_FULL_CONFIG) + "-authored-text-v5-named-real" + itos(sizeof(real_t) * 8);
+	// Loader, codec, scene-type and build-option changes invalidate automatically.
+	const String &version = WGodotBuildFingerprint::get();
+	if (version.is_empty()) {
+		return; // Without a build identity, load the authored text without caching.
+	}
 	cache_path = data_path.path_join("resource_cache").path_join(version).path_join(source_path.get_file() + "-" + source_path.md5_text() + "-" + source_hash + ".res");
 #endif
 }

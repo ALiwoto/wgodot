@@ -8,10 +8,12 @@
 #include "wgodot_cpp_cache.h"
 
 #include "core/config/project_settings.h"
+#include "core/error/error_macros.h"
 #include "core/io/dir_access.h"
 #include "core/io/file_access.h"
 #include "core/io/json.h"
 #include "core/object/worker_thread_pool.h"
+#include "core/os/mutex.h"
 #include "core/os/os.h"
 #include "core/string/print_string.h"
 #include "editor/editor_interface.h"
@@ -31,6 +33,60 @@ Dictionary failure(const String &p_message) {
 	result["message"] = p_message;
 	return result;
 }
+
+// Resource loaders and engine checks can log an error while returning a usable
+// value. Such an export must not be published or reported as successful. The
+// handler also observes errors from the export's worker threads.
+class ExportErrors {
+	ErrorHandlerList handler;
+	Mutex mutex;
+	Vector<String> messages;
+	uint64_t count = 0;
+
+	static void capture(void *p_data, const char *p_function, const char *p_file, int p_line, const char *p_error, const char *p_message, bool p_editor_notify, ErrorHandlerType p_type) {
+		if (p_type == ERR_HANDLER_WARNING) {
+			return;
+		}
+		auto &self = *static_cast<ExportErrors *>(p_data);
+		MutexLock lock(self.mutex);
+		self.count++;
+		if (self.messages.size() < 30) {
+			const String message = String::utf8(p_message && *p_message ? p_message : p_error);
+			self.messages.push_back(message + " (" + String::utf8(p_file) + ":" + itos(p_line) + ")");
+		}
+	}
+
+public:
+	ExportErrors() {
+		handler.errfunc = capture;
+		handler.userdata = this;
+		add_error_handler(&handler);
+	}
+
+	~ExportErrors() {
+		remove_error_handler(&handler);
+	}
+
+	bool any() const {
+		MutexLock lock(mutex);
+		return count != 0;
+	}
+
+	Vector<String> diagnostics() const {
+		MutexLock lock(mutex);
+		Vector<String> result = messages;
+		if (count > uint64_t(messages.size())) {
+			result.push_back(uitos(count - messages.size()) + " additional engine errors; see the export error log.");
+		}
+		return result;
+	}
+
+	Dictionary failure_response(const String &p_message) const {
+		Dictionary response = failure(p_message);
+		response["diagnostics"] = diagnostics();
+		return response;
+	}
+};
 
 } // namespace
 
@@ -167,14 +223,19 @@ Dictionary WGodotCppExporter::execute(const Dictionary &p_options) {
 	}
 	const int available_jobs = WorkerThreadPool::get_singleton()->get_thread_count();
 	const int jobs = int64_t(requested_jobs) == 0 ? available_jobs : MIN(int64_t(requested_jobs), available_jobs);
+	ExportErrors engine_errors;
 	WGodotCppCache cache;
 	if (!analyze_only) {
 		print_line("Checking native generation cache...");
 		const Error cache_error = cache.open(output, p_options.get("target", "client"), trace_enabled);
 		if (cache_error != OK) {
-			return failure("Cannot inspect native generation inputs: " + String(error_names[cache_error]));
+			return engine_errors.failure_response("Cannot inspect native generation inputs: " + String(error_names[cache_error]));
 		}
-		if (cache.up_to_date()) {
+		const bool up_to_date = cache.up_to_date();
+		if (engine_errors.any()) {
+			return engine_errors.failure_response("Engine errors while inspecting native generation inputs.");
+		}
+		if (up_to_date) {
 			Dictionary response;
 			response["ok"] = true;
 			response["message"] = vformat("C++ export up to date: %d classes; analysis and generation skipped. Output: %s", cache.class_count(), output);
@@ -191,29 +252,52 @@ Dictionary WGodotCppExporter::execute(const Dictionary &p_options) {
 	uint64_t started = OS::get_singleton()->get_ticks_msec();
 	print_line("Analyzing native scripts...");
 	Error result = project.analyze(p_options.get("target", "client"), jobs);
+	if (result == OK && engine_errors.any()) {
+		result = ERR_COMPILATION_FAILED;
+	}
 	WGodotCppMemoryProfile::sample("analysis-complete");
 	WGodotCppMemoryProfile::snapshot_resources("analysis-complete");
 	print_line(vformat("Native analysis: %d ms", OS::get_singleton()->get_ticks_msec() - started));
 	Dictionary report = project.describe();
 	Vector<String> diagnostics = project.get_diagnostics();
+	bool output_started = false;
 	if (result == OK && !analyze_only) {
 		project.cache_dependencies(cache);
+		if (engine_errors.any()) {
+			return engine_errors.failure_response("Engine errors while collecting native script dependencies.");
+		}
 		WGodotCppEmitter emitter(project, trace_enabled);
 		started = OS::get_singleton()->get_ticks_msec();
 		print_line(vformat("Generating native scripts and authored scene/resource factories (up to %d workers)...", jobs));
 		result = emitter.generate(output, jobs, &cache);
+		if (result == OK && engine_errors.any()) {
+			result = ERR_COMPILATION_FAILED;
+		}
 		WGodotCppMemoryProfile::sample("generation-complete");
 		print_line(vformat("Native generation: %d ms", OS::get_singleton()->get_ticks_msec() - started));
 		diagnostics = emitter.get_diagnostics();
 		if (result == OK) {
 			started = OS::get_singleton()->get_ticks_msec();
 			print_line("Writing native output...");
+			output_started = true;
 			result = emitter.write(output);
 			WGodotCppMemoryProfile::sample("output-complete");
 			print_line(vformat("Native output: %d ms", OS::get_singleton()->get_ticks_msec() - started));
 		}
 	}
 	WGodotCppMemoryProfile::sample("emitter-released");
+	if (engine_errors.any()) {
+		diagnostics.append_array(engine_errors.diagnostics());
+		if (result == OK) {
+			result = ERR_COMPILATION_FAILED;
+		}
+		if (output_started) {
+			const String manifest = output.path_join("main_game.json");
+			if (FileAccess::exists(manifest)) {
+				DirAccess::remove_absolute(manifest);
+			}
+		}
+	}
 	report["diagnostics"] = diagnostics;
 	report["success"] = result == OK;
 	report["analysis_only"] = analyze_only;

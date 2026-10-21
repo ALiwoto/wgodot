@@ -220,6 +220,16 @@ class Writer {
 			options.push_back(String("\"transitions\": PackedFloat") + (sizeof(real_t) == 8 ? "64" : "32") + "Array(" + encoded + ")");
 		}
 		handles(p_keys, options);
+		if (settings.type == Animation::TYPE_VALUE) {
+			const PackedVector4Array &curves = animation.value_track_storage(p_track).get_timing_curves();
+			if (!curves.is_empty()) {
+				options.push_back("\"curves\": " + variant(curves));
+				const int subdivisions = animation.value_track_storage(p_track).get_timing_curve_subdivisions();
+				if (subdivisions != 0) {
+					options.push_back("\"curve_subdivisions\": " + itos(subdivisions));
+				}
+			}
+		}
 		if (!options.is_empty()) {
 			record.options = ", {" + String(", ").join(options) + "}";
 		}

@@ -731,7 +731,7 @@ Node *SceneState::instantiate(GenEditState p_edit_state) const {
 				continue;
 			}
 			Node *base = (i == 0 || node->is_instance()) ? node : (node->get_owner() ? node->get_owner() : ret_nodes[0]);
-			WGodotSceneContext context(resources_local_to_scenes, base, nd[i].type == TYPE_INSTANTIATED, p_edit_state == GEN_EDIT_STATE_MAIN);
+			WGodotSceneContext context(resources_local_to_scenes, base, nd[i].type == TYPE_INSTANTIATED, p_edit_state == GEN_EDIT_STATE_MAIN, ret_nodes, nc);
 			native_construction->resolve(i, node, context);
 		}
 	}

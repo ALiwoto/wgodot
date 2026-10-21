@@ -59,7 +59,7 @@ Error ParticleInstancePool3D::prepare(const Ref<PackedScene> &p_scene, int p_cap
 }
 
 ParticleInstance3D *ParticleInstancePool3D::acquire() {
-	ERR_FAIL_COND_V_MSG(available.is_empty(), nullptr, "Prepared particle pool exhausted; increase the authored concurrency bound before publishing the scene.");
+	ERR_FAIL_COND_V_MSG(available.is_empty(), nullptr, vformat("Prepared particle pool '%s' exhausted its %d instances. Check the emitter's lifetime and emission bounds before publishing the scene.", get_path(), instances.size()));
 	const int index = available[available.size() - 1];
 	available.resize(available.size() - 1);
 	acquired.write[index] = 1;

@@ -135,6 +135,11 @@ Error property_keys(NativeWriter &p_writer, const String &p_target, const String
 				p_writer.line("};");
 			}
 			p_writer.line("ERR_FAIL_COND_V(" + p_target + "->set_value_keyframes<" + cpp_type + ">(" + p_index + ", " + keys + (numeric ? "" : ".ptr()") + ", " + itos(values.size()) + ") != OK, Ref<Resource>());");
+			if (!p_values.get_timing_curves().is_empty()) {
+				const String curves = p_writer.value(p_values.get_timing_curves());
+				const int subdivisions = p_values.get_timing_curve_subdivisions();
+				p_writer.line(p_target + "->value_track_set_timing_curves(" + p_index + ", " + curves + (subdivisions == 0 ? String() : ", " + itos(subdivisions)) + ");");
+			}
 			return OK;
 		}
 		return ERR_INVALID_DATA;
