@@ -211,6 +211,7 @@ public:
 	// wgodot-changes::begin
 	const Ref<WInstanceShaderParameters> &get_instance_shader_parameters() const;
 	int get_instance_shader_parameter_slot(const StringName &p_name) const;
+	Vector<String> get_instance_shader_parameter_names() const;
 	void clear_instance_shader_parameter(const StringName &p_name);
 	template <typename T> void set_instance_shader_parameter_at(int p_slot, const T &p_value) {
 		WInstanceShaderValue value = WInstanceShaderValue::pack(p_value);

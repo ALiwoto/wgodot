@@ -59,6 +59,10 @@ public:
 
 	RID get_skeleton() const;
 	Ref<Skin> get_skin() const;
+	// wgodot-changes::begin
+	uint32_t get_resolved_bind_count() const;
+	Transform3D get_bind_transform(uint32_t p_bind) const;
+	// wgodot-changes::end
 	~SkinReference();
 };
 

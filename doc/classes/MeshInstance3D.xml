@@ -13,6 +13,14 @@
 		<link title="Third Person Shooter (TPS) Demo">https://godotengine.org/asset-library/asset/2710</link>
 	</tutorials>
 	<methods>
+		<!-- wgodot-changes::begin -->
+		<method name="get_pose_aabb" qualifiers="const">
+			<return type="AABB" />
+			<description>
+				Returns local-space bounds for the current skeleton pose using the mesh's retained per-bone bounds. Meshes without a resolved skin use their static bounds. This conservative bound ignores custom culling AABBs and does not evaluate blend shapes or shader vertex displacement. No vertex scan or rendering-thread readback is performed.
+			</description>
+		</method>
+		<!-- wgodot-changes::end -->
 		<method name="bake_mesh_from_current_blend_shape_mix">
 			<return type="ArrayMesh" />
 			<param index="0" name="existing" type="ArrayMesh" default="null" />

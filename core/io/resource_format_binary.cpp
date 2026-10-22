@@ -1185,6 +1185,12 @@ Ref<Resource> ResourceFormatLoaderBinary::load(const String &p_path, const Strin
 
 	ERR_FAIL_COND_V_MSG(err != OK, Ref<Resource>(), vformat("Cannot open file '%s'.", p_path));
 
+	// wgodot-changes::begin
+	return load_from_file(f, p_original_path.is_empty() ? p_path : p_original_path, r_error, p_use_sub_threads, r_progress, p_cache_mode);
+}
+
+Ref<Resource> ResourceFormatLoaderBinary::load_from_file(const Ref<FileAccess> &p_file, const String &p_resource_path, Error *r_error, bool p_use_sub_threads, float *r_progress, CacheMode p_cache_mode) {
+	// wgodot-changes::end
 	ResourceLoaderBinary loader;
 	switch (p_cache_mode) {
 		case CACHE_MODE_IGNORE:
@@ -1204,12 +1210,15 @@ Ref<Resource> ResourceFormatLoaderBinary::load(const String &p_path, const Strin
 	}
 	loader.use_sub_threads = p_use_sub_threads;
 	loader.progress = r_progress;
-	String path = !p_original_path.is_empty() ? p_original_path : p_path;
-	loader.local_path = ProjectSettings::get_singleton()->localize_path(path);
+	// wgodot-changes::begin
+	loader.local_path = ProjectSettings::get_singleton()->localize_path(p_resource_path);
+	// wgodot-changes::end
 	loader.res_path = loader.local_path;
-	loader.open(f);
+	// wgodot-changes::begin
+	loader.open(p_file);
 
-	err = loader.load();
+	Error err = loader.load();
+	// wgodot-changes::end
 
 	if (r_error) {
 		*r_error = err;

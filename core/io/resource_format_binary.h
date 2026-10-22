@@ -114,6 +114,10 @@ class ResourceFormatLoaderBinary : public ResourceFormatLoader {
 
 public:
 	virtual Ref<Resource> load(const String &p_path, const String &p_original_path = "", Error *r_error = nullptr, bool p_use_sub_threads = false, float *r_progress = nullptr, CacheMode p_cache_mode = CACHE_MODE_REUSE) override;
+	// wgodot-changes::begin
+	// Optional caches open once and retain that file while it is decoded.
+	Ref<Resource> load_from_file(const Ref<FileAccess> &p_file, const String &p_resource_path, Error *r_error, bool p_use_sub_threads, float *r_progress, CacheMode p_cache_mode);
+	// wgodot-changes::end
 	virtual void get_recognized_extensions_for_type(const String &p_type, List<String> *p_extensions) const override;
 	virtual void get_recognized_extensions(List<String> *p_extensions) const override;
 	virtual bool handles_type(const String &p_type) const override;

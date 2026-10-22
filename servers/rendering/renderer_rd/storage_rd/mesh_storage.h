@@ -650,6 +650,17 @@ public:
 	virtual RID mesh_instance_create(RID p_base) override;
 	virtual void mesh_instance_free(RID p_rid) override;
 	virtual void mesh_instance_set_skeleton(RID p_mesh_instance, RID p_skeleton) override;
+// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+	RID mesh_instance_get_render_vertex_buffer(RID p_mesh_instance, uint32_t p_surface) const {
+		const MeshInstance *instance = mesh_instance_owner.get_or_null(p_mesh_instance);
+		ERR_FAIL_NULL_V(instance, RID());
+		ERR_FAIL_UNSIGNED_INDEX_V(p_surface, instance->surfaces.size(), RID());
+		const MeshInstance::Surface &surface = instance->surfaces[p_surface];
+		return surface.vertex_buffer[surface.current_buffer];
+	}
+#endif
+// wgodot-changes::end
 	virtual void mesh_instance_set_blend_shape_weight(RID p_mesh_instance, int p_shape, float p_weight) override;
 	virtual void mesh_instance_check_for_update(RID p_mesh_instance) override;
 	virtual void mesh_instance_set_canvas_item_transform(RID p_mesh_instance, const Transform2D &p_transform) override;

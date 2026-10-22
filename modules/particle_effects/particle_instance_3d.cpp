@@ -229,7 +229,10 @@ bool ParticleInstance3D::sample_playback(double p_seconds, double p_delta, const
 				birth_random = p_initial_random[index];
 			}
 			using Target = ParticleBirthRule3D::Target;
-			switch (Target(initial->get_target())) {
+			const Target target = Target(initial->get_target());
+			ERR_FAIL_COND_V_MSG(!projector && (target == Target::GeometryPosition || target == Target::GeometryRotation || target == Target::GeometryScale), false,
+					vformat("Particle '%s' has a geometry birth rule but no geometry or decal binding.", get_name()));
+			switch (target) {
 				case Target::GeometryPosition:
 					projector->set_position(initial->sample_vector(orientation_random, p_emitter_seconds));
 					break;

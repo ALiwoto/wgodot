@@ -320,6 +320,10 @@ private:
 		AABB aabb;
 		Ref<Material> material;
 		bool is_2d = false;
+		// wgodot-changes::begin
+		Vector<AABB> bone_aabbs;
+		Transform3D mesh_to_skeleton_xform;
+		// wgodot-changes::end
 	};
 	Vector<Surface> surfaces;
 	mutable RID mesh;
@@ -371,6 +375,12 @@ public:
 	void clear_surfaces();
 
 	void surface_set_custom_aabb(int p_idx, const AABB &p_aabb); //only recognized by driver
+	// wgodot-changes::begin
+	// CPU-side bounds, retained from the same surface data used by rendering.
+	AABB surface_get_aabb(int p_idx) const;
+	Vector<AABB> surface_get_bone_aabbs(int p_idx) const;
+	Transform3D surface_get_mesh_to_skeleton_transform(int p_idx) const;
+	// wgodot-changes::end
 
 	int surface_get_array_len(int p_idx) const override;
 	int surface_get_array_index_len(int p_idx) const override;

@@ -344,13 +344,12 @@ Error DirAccessWindows::rename(String p_path, String p_new_path) {
 		return MoveFileW((LPCWSTR)tmpfile_utf16.get_data(), (LPCWSTR)(new_path.utf16().get_data())) != 0 ? OK : FAILED;
 
 	} else {
-		if (file_exists(new_path)) {
-			if (remove(new_path) != OK) {
-				return FAILED;
-			}
-		}
-
-		return MoveFileW((LPCWSTR)(path.utf16().get_data()), (LPCWSTR)(new_path.utf16().get_data())) != 0 ? OK : FAILED;
+		// wgodot-changes::begin
+		// Replace same-volume files in one operation. Deleting the destination
+		// first leaves readers without a file and loses it if the move fails.
+		// Preserve MoveFile's cross-volume file-move support as well.
+		return MoveFileExW((LPCWSTR)(path.utf16().get_data()), (LPCWSTR)(new_path.utf16().get_data()), MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED) != 0 ? OK : FAILED;
+		// wgodot-changes::end
 	}
 }
 

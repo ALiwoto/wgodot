@@ -38,14 +38,20 @@ WGodotTextResourceCache::WGodotTextResourceCache(const String &p_source_path) {
 }
 
 Ref<Resource> WGodotTextResourceCache::load(const String &p_original_path, bool p_use_sub_threads, float *r_progress, ResourceFormatLoader::CacheMode p_cache_mode) const {
-	if (cache_path.is_empty() || !FileAccess::exists(cache_path)) {
+	if (cache_path.is_empty()) {
+		return Ref<Resource>();
+	}
+	// Do not check existence and then reopen through the binary loader. Another
+	// process can publish/remove this disposable cache between those operations.
+	Ref<FileAccess> file = FileAccess::open(cache_path, FileAccess::READ);
+	if (file.is_null()) {
 		return Ref<Resource>();
 	}
 	WGodotResourceTrace trace("cache.load", source_path);
 	ResourceFormatLoaderBinary loader;
 	Error error = OK;
 	// All resource and subresource identities remain anchored to the text source.
-	return loader.load(cache_path, p_original_path, &error, p_use_sub_threads, r_progress, p_cache_mode);
+	return loader.load_from_file(file, p_original_path, &error, p_use_sub_threads, r_progress, p_cache_mode);
 }
 
 void WGodotTextResourceCache::store(const Ref<Resource> &p_resource, const WGodotResourceProperties &p_source_properties, const WGodotResourceUIDs &p_source_uids) const {
@@ -59,9 +65,14 @@ void WGodotTextResourceCache::store(const Ref<Resource> &p_resource, const WGodo
 	const String temporary = cache_path + "." + itos(OS::get_singleton()->get_process_id()) + "." + uitos(Thread::get_caller_id()) + ".tmp";
 	ResourceFormatSaverBinaryInstance saver;
 	if (saver.save(temporary, p_resource, ResourceSaver::FLAG_COMPRESS, &p_source_properties, &p_source_uids) != OK) {
+		if (FileAccess::exists(temporary)) {
+			DirAccess::remove_absolute(temporary);
+		}
 		return;
 	}
 	// Publish only complete payloads. Concurrent editor/game readers never see a
 	// partially written cache, and interrupted writes cannot replace the source.
-	DirAccess::rename_absolute(temporary, cache_path);
+	if (DirAccess::rename_absolute(temporary, cache_path) != OK) {
+		DirAccess::remove_absolute(temporary);
+	}
 }

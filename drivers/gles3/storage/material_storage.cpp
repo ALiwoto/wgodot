@@ -3139,7 +3139,18 @@ void SceneShaderData::set_code(const String &p_code) {
 
 	actions.uniforms = &uniforms;
 
+	// wgodot-changes::begin
+	bool screen_distortion = false;
+	bool screen_read_current = false;
+	actions.render_mode_flags["screen_distortion"] = &screen_distortion;
+	actions.render_mode_flags["screen_read_current"] = &screen_read_current;
+	actions.usage_flag_pointers["SCREEN_DISTORTION"] = &screen_distortion;
+	// wgodot-changes::end
 	Error err = MaterialStorage::get_singleton()->shaders.compiler_scene.compile(RSE::SHADER_SPATIAL, code, &actions, path, gen_code);
+	// wgodot-changes::begin
+	ERR_FAIL_COND_MSG(screen_distortion, "Screen distortion materials require the Forward+ renderer.");
+	ERR_FAIL_COND_MSG(screen_read_current, "Current screen reads require the Forward+ renderer.");
+	// wgodot-changes::end
 	ERR_FAIL_COND_MSG(err != OK, "Shader compilation failed.");
 
 	if (version.is_null()) {

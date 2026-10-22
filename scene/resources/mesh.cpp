@@ -1709,6 +1709,10 @@ void ArrayMesh::_set_surfaces(const Array &p_surfaces) {
 	for (int i = 0; i < surface_data.size(); i++) {
 		Surface s;
 		s.aabb = surface_data[i].aabb;
+		// wgodot-changes::begin
+		s.bone_aabbs = surface_data[i].bone_aabbs;
+		s.mesh_to_skeleton_xform = surface_data[i].mesh_to_skeleton_xform;
+		// wgodot-changes::end
 		if (i == 0) {
 			aabb = s.aabb;
 		} else {
@@ -1796,6 +1800,9 @@ void ArrayMesh::add_surface(BitField<ArrayFormat> p_format, PrimitiveType p_prim
 
 	Surface s;
 	s.aabb = p_aabb;
+	// wgodot-changes::begin
+	s.bone_aabbs = p_bone_aabbs;
+	// wgodot-changes::end
 	s.is_2d = p_format & ARRAY_FLAG_USE_2D_VERTICES;
 	s.primitive = p_primitive;
 	s.array_length = p_vertex_count;

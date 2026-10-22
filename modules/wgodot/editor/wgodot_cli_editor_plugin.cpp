@@ -346,6 +346,16 @@ void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
 	}
 	if (command == "run") {
 		const String mode = options.get("mode", "main");
+		Vector<String> play_args;
+		if (options.has("fixed_fps")) {
+			int fps = options["fixed_fps"];
+			if (fps < 1 || fps > 120) {
+				finish_connection(p_connection, make_error_response("invalid_fixed_fps", "Fixed simulation FPS must be between 1 and 120."));
+				return;
+			}
+			play_args.push_back("--fixed-fps");
+			play_args.push_back(itos(fps));
+		}
 		if (mode != "main" && mode != "current" && mode != "custom") {
 			finish_connection(p_connection, make_error_response("invalid_run_mode", "Unknown run mode: " + mode));
 			return;
@@ -353,11 +363,11 @@ void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
 		game_session_states.clear();
 		p_connection.wait_kind = PendingConnection::WAIT_GAME_START;
 		if (mode == "main") {
-			EditorRunBar::get_singleton()->play_main_scene(false);
+			EditorRunBar::get_singleton()->play_main_scene(false, play_args);
 		} else if (mode == "current") {
-			EditorRunBar::get_singleton()->play_current_scene(false);
+			EditorRunBar::get_singleton()->play_current_scene(false, play_args);
 		} else {
-			EditorRunBar::get_singleton()->play_custom_scene(options.get("scene", String()));
+			EditorRunBar::get_singleton()->play_custom_scene(options.get("scene", String()), play_args);
 		}
 		if (!EditorRunBar::get_singleton()->is_playing()) {
 			finish_connection(p_connection, make_error_response("game_start_failed", "The editor did not start the game."));

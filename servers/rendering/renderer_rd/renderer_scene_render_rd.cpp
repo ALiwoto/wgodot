@@ -30,6 +30,13 @@
 
 #include "renderer_scene_render_rd.h"
 
+// wgodot-changes::begin
+#include "modules/modules_enabled.gen.h"
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+#include "modules/wgodot/rendering/render_capture.h"
+#endif
+// wgodot-changes::end
+
 #include "core/config/project_settings.h"
 #include "core/io/image.h"
 #include "servers/rendering/renderer_rd/environment/fog.h"
@@ -317,7 +324,9 @@ void RendererSceneRenderRD::_process_compositor_effects(RSE::CompositorEffectCal
 	}
 }
 
-void RendererSceneRenderRD::_render_buffers_ensure_screen_texture(const RenderDataRD *p_render_data) {
+// wgodot-changes::begin
+void RendererSceneRenderRD::_render_buffers_ensure_screen_texture(const RenderDataRD *p_render_data, const StringName &p_destination) {
+// wgodot-changes::end
 	Ref<RenderSceneBuffersRD> rb = p_render_data->render_buffers;
 	ERR_FAIL_COND(rb.is_null());
 
@@ -334,20 +343,29 @@ void RendererSceneRenderRD::_render_buffers_ensure_screen_texture(const RenderDa
 	Size2i target_size = rb->get_target_size();
 	bool internal_size_matches = (size.width == target_size.width) && (size.height == target_size.height);
 	bool reuse_blur_texture = !rb->has_upscaled_texture() || internal_size_matches;
-	if (reuse_blur_texture) {
+// wgodot-changes::begin
+	const StringName destination = p_destination == StringName() ? RB_TEX_BACK_COLOR : p_destination;
+	if (reuse_blur_texture && p_destination == StringName()) {
+// wgodot-changes::end
 		rb->allocate_blur_textures();
 	} else {
-		if (!rb->has_texture(RB_SCOPE_BUFFERS, RB_TEX_BACK_COLOR)) {
+// wgodot-changes::begin
+		if (!rb->has_texture(RB_SCOPE_BUFFERS, destination)) {
+// wgodot-changes::end
 			uint32_t usage_bits = RD::TEXTURE_USAGE_SAMPLING_BIT | RD::TEXTURE_USAGE_CAN_COPY_TO_BIT;
 			usage_bits |= can_use_storage ? RD::TEXTURE_USAGE_STORAGE_BIT : RD::TEXTURE_USAGE_COLOR_ATTACHMENT_BIT;
 			// This needs to have mipmaps if any shader needs textureLod to work on screen_texture
 			uint32_t mipmaps_required = Image::get_image_required_mipmaps(size.x, size.y, Image::FORMAT_RGBAH);
-			rb->create_texture(RB_SCOPE_BUFFERS, RB_TEX_BACK_COLOR, rb->get_base_data_format(), usage_bits, RenderingDeviceCommons::TEXTURE_SAMPLES_1, { 0, 0 }, 0U, mipmaps_required);
+// wgodot-changes::begin
+			rb->create_texture(RB_SCOPE_BUFFERS, destination, rb->get_base_data_format(), usage_bits, RenderingDeviceCommons::TEXTURE_SAMPLES_1, { 0, 0 }, 0U, mipmaps_required);
+// wgodot-changes::end
 		}
 	}
 }
 
-void RendererSceneRenderRD::_render_buffers_copy_screen_texture(const RenderDataRD *p_render_data) {
+// wgodot-changes::begin
+void RendererSceneRenderRD::_render_buffers_copy_screen_texture(const RenderDataRD *p_render_data, const StringName &p_destination, bool p_mipmaps) {
+// wgodot-changes::end
 	Ref<RenderSceneBuffersRD> rb = p_render_data->render_buffers;
 	ERR_FAIL_COND(rb.is_null());
 
@@ -372,10 +390,17 @@ void RendererSceneRenderRD::_render_buffers_copy_screen_texture(const RenderData
 	} else {
 		texture_name = RB_TEX_BACK_COLOR;
 	}
+// wgodot-changes::begin
+	if (p_destination != StringName()) {
+		texture_name = p_destination;
+	}
+// wgodot-changes::end
 
 	for (uint32_t v = 0; v < rb->get_view_count(); v++) {
 		RID texture = rb->get_internal_texture(v);
-		int mipmaps = int(rb->get_texture_format(RB_SCOPE_BUFFERS, texture_name).mipmaps);
+// wgodot-changes::begin
+		int mipmaps = p_mipmaps ? int(rb->get_texture_format(RB_SCOPE_BUFFERS, texture_name).mipmaps) : 1;
+// wgodot-changes::end
 		RID dest = rb->get_texture_slice(RB_SCOPE_BUFFERS, texture_name, v, 0);
 
 		if (can_use_storage) {
@@ -1508,8 +1533,27 @@ void RendererSceneRenderRD::render_scene(const Ref<RenderSceneBuffers> &p_render
 		clear_color = RSG::texture_storage->get_default_clear_color();
 	}
 
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	const double uncaptured_time = time;
+	const double uncaptured_time_step = time_step;
+	if (WRenderCapture::prepare_frame(&render_data)) {
+		// Sky/environment passes use the renderer clock directly. Keep them
+		// on the same recorded clock as spatial shaders for this viewport.
+		time = scene_data.time;
+		time_step = scene_data.time_step;
+	}
+#endif
+	// wgodot-changes::end
 	//calls _pre_opaque_render between depth pre-pass and opaque pass
 	_render_scene(&render_data, clear_color);
+// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WRenderCapture::finish_frame(&render_data);
+	time = uncaptured_time;
+	time_step = uncaptured_time_step;
+#endif
+// wgodot-changes::end
 }
 
 void RendererSceneRenderRD::render_material(const Transform3D &p_cam_transform, const Projection &p_cam_projection, bool p_cam_orthogonal, const PagedArray<RenderGeometryInstance *> &p_instances, RID p_framebuffer, const Rect2i &p_region) {

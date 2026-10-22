@@ -256,6 +256,10 @@ public:
 		bool uses_bent_normal_map = false;
 		bool wireframe = false;
 
+// wgodot-changes::begin
+		bool screen_distortion = false;
+		bool screen_read_current = false;
+// wgodot-changes::end
 		bool unshaded = false;
 		bool uses_vertex = false;
 		bool uses_position = false;

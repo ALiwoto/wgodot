@@ -213,7 +213,7 @@ void print_cli_help() {
 	print_line("  import                            Refresh/import assets and reload changed scenes in the running editor.");
 	print_line("  move <source> <destination> [...] [--dry-run] [--json]  Move project files/folders and update resource references.");
 	print_line("  status [--json] [--session <id>]  Show the matching editor and running game sessions.");
-	print_line("  run [--current|<scene>] [--timeout <seconds>] [--json]  Run the main, current, or specified scene.");
+	print_line("  run [--current|<scene>] [--fixed-fps <fps>] [--timeout <seconds>] [--json]  Run the main, current, or specified scene.");
 	print_line("    run, check and import: --timeout 1..3600 seconds (default 300), including waiting for editor asset work.");
 	print_line("  stop [--json]                     Stop the running game.");
 	print_line("  tree [options]                    Print the running game's scene tree.");
@@ -1274,6 +1274,12 @@ int run_run_command(const Vector<String> &p_arguments) {
 				return 2;
 			}
 			mode = "current";
+		} else if (argument == "--fixed-fps") {
+			if (++index >= p_arguments.size() || !p_arguments[index].is_valid_int() || p_arguments[index].to_int() < 1 || p_arguments[index].to_int() > 120) {
+				print_line("wgodot: --fixed-fps requires 1..120 simulation frames per second.");
+				return 2;
+			}
+			options["fixed_fps"] = p_arguments[index].to_int();
 		} else if (!argument.begins_with("-") && scene.is_empty() && mode == "main") {
 			scene = argument;
 			mode = "custom";

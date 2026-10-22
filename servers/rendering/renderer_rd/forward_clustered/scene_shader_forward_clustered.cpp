@@ -73,6 +73,11 @@ void SceneShaderForwardClustered::ShaderData::set_code(const String &p_code) {
 	uses_bent_normal_map = false;
 	wireframe = false;
 
+// wgodot-changes::begin
+	screen_distortion = false;
+	screen_read_current = false;
+	bool uses_distortion_output = false;
+// wgodot-changes::end
 	unshaded = false;
 	uses_vertex = false;
 	uses_position = false;
@@ -118,6 +123,11 @@ void SceneShaderForwardClustered::ShaderData::set_code(const String &p_code) {
 	actions.render_mode_values["cull_back"] = Pair<int *, int>(&cull_modei, RSE::CULL_MODE_BACK);
 
 	actions.render_mode_flags["unshaded"] = &unshaded;
+// wgodot-changes::begin
+	actions.render_mode_flags["screen_distortion"] = &screen_distortion;
+	actions.render_mode_flags["screen_read_current"] = &screen_read_current;
+	actions.usage_flag_pointers["SCREEN_DISTORTION"] = &uses_distortion_output;
+// wgodot-changes::end
 	actions.render_mode_flags["wireframe"] = &wireframe;
 	actions.render_mode_flags["particle_trails"] = &uses_particle_trails;
 	actions.render_mode_flags["world_vertex_coords"] = &uses_world_coordinates;
@@ -187,6 +197,16 @@ void SceneShaderForwardClustered::ShaderData::set_code(const String &p_code) {
 		version = SceneShaderForwardClustered::singleton->shader.version_create(false);
 	}
 
+// wgodot-changes::begin
+	ERR_FAIL_COND_MSG(uses_distortion_output && !screen_distortion, "SCREEN_DISTORTION requires render_mode screen_distortion.");
+	ERR_FAIL_COND_MSG(screen_read_current && (screen_distortion || !gen_code.uses_screen_texture), "screen_read_current requires a screen texture and cannot be combined with screen_distortion.");
+	if (screen_distortion) {
+		depth_drawi = DEPTH_DRAW_DISABLED;
+		unshaded = true;
+		uses_depth_prepass_alpha = false;
+		alpha_antialiasing_mode = ALPHA_ANTIALIASING_OFF;
+	}
+// wgodot-changes::end
 	depth_draw = DepthDraw(depth_drawi);
 	if (depth_test_disabledi) {
 		depth_test = DEPTH_TEST_DISABLED;
@@ -253,6 +273,11 @@ bool SceneShaderForwardClustered::ShaderData::is_animated() const {
 }
 
 bool SceneShaderForwardClustered::ShaderData::casts_shadows() const {
+// wgodot-changes::begin
+	if (screen_distortion) {
+		return false;
+	}
+// wgodot-changes::end
 	bool has_read_screen_alpha = uses_screen_texture || uses_depth_texture || uses_normal_texture;
 	bool has_base_alpha = (uses_alpha && (!uses_alpha_clip || uses_alpha_antialiasing)) || has_read_screen_alpha;
 	bool has_alpha = has_base_alpha || uses_blend_alpha;
@@ -346,8 +371,24 @@ void SceneShaderForwardClustered::ShaderData::_create_pipeline(PipelineKey p_pip
 
 	// Color pass -> attachment 0: Color/Diffuse, attachment 1: Separate Specular, attachment 2: Motion Vectors
 	RD::PipelineColorBlendState::Attachment blend_attachment = blend_mode_to_blend_attachment(BlendMode(blend_mode));
+// wgodot-changes::begin
+	if (screen_distortion) {
+		blend_attachment.enable_blend = true;
+		blend_attachment.src_color_blend_factor = RD::BLEND_FACTOR_ONE;
+		blend_attachment.dst_color_blend_factor = RD::BLEND_FACTOR_ONE;
+		blend_attachment.color_blend_op = RD::BLEND_OP_ADD;
+		blend_attachment.src_alpha_blend_factor = RD::BLEND_FACTOR_ONE;
+		blend_attachment.dst_alpha_blend_factor = RD::BLEND_FACTOR_ONE;
+		blend_attachment.alpha_blend_op = RD::BLEND_OP_ADD;
+	}
+// wgodot-changes::end
 	RD::PipelineColorBlendState blend_state_color_blend;
 	blend_state_color_blend.attachments = { blend_attachment, RD::PipelineColorBlendState::Attachment(), RD::PipelineColorBlendState::Attachment() };
+// wgodot-changes::begin
+	if (screen_distortion) {
+		blend_state_color_blend.attachments.resize(1);
+	}
+// wgodot-changes::end
 	RD::PipelineColorBlendState blend_state_color_opaque = RD::PipelineColorBlendState::create_disabled(3);
 	RD::PipelineColorBlendState blend_state_depth_normal_roughness = RD::PipelineColorBlendState::create_disabled(1);
 	RD::PipelineColorBlendState blend_state_depth_normal_roughness_giprobe = RD::PipelineColorBlendState::create_disabled(2);
@@ -778,6 +819,9 @@ void SceneShaderForwardClustered::init(const String p_defines) {
 		actions.renames["POINT_COORD"] = "point_coord";
 		actions.renames["INSTANCE_CUSTOM"] = "instance_custom";
 		actions.renames["SCREEN_UV"] = "screen_uv";
+// wgodot-changes::begin
+		actions.renames["SCREEN_DISTORTION"] = "distortion_offset";
+// wgodot-changes::end
 		actions.renames["DEPTH"] = "gl_FragDepth";
 		actions.renames["FOG"] = "fog";
 		actions.renames["RADIANCE"] = "custom_radiance";
@@ -903,6 +947,9 @@ void SceneShaderForwardClustered::init(const String p_defines) {
 		actions.render_mode_defines["ambient_light_disabled"] = "#define AMBIENT_LIGHT_DISABLED\n";
 		actions.render_mode_defines["shadow_to_opacity"] = "#define USE_SHADOW_TO_OPACITY\n";
 		actions.render_mode_defines["unshaded"] = "#define MODE_UNSHADED\n";
+// wgodot-changes::begin
+		actions.render_mode_defines["screen_distortion"] = "#define MODE_SCREEN_DISTORTION\n#define MODE_UNSHADED\n#define FOG_DISABLED\n";
+// wgodot-changes::end
 
 		bool force_vertex_shading = GLOBAL_GET("rendering/shading/overrides/force_vertex_shading");
 		if (!force_vertex_shading) {

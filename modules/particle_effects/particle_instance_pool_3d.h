@@ -14,6 +14,9 @@ class ParticleInstancePool3D : public Node3D {
 	Vector<int> available;
 	Vector<uint8_t> acquired;
 	HashMap<ParticleInstance3D *, int> indices;
+#ifdef TOOLS_ENABLED
+	bool capture_lifecycle = false;
+#endif
 
 protected:
 	static void _bind_methods();
@@ -26,6 +29,9 @@ public:
 	ParticleInstance3D *acquire();
 	void release(ParticleInstance3D *p_instance);
 	TypedArray<ParticleInstance3D> get_instances() const;
+#ifdef TOOLS_ENABLED
+	void set_capture_lifecycle(bool p_enabled);
+#endif
 	void set_instance_shader_parameter(const StringName &p_name, const Variant &p_value);
 	int get_capacity() const { return instances.size(); }
 	int get_available_count() const { return available.size(); }

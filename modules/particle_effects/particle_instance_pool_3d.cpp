@@ -13,7 +13,28 @@ void ParticleInstancePool3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_instance_shader_parameter", "name", "value"), &ParticleInstancePool3D::set_instance_shader_parameter);
 	ClassDB::bind_method(D_METHOD("get_capacity"), &ParticleInstancePool3D::get_capacity);
 	ClassDB::bind_method(D_METHOD("get_available_count"), &ParticleInstancePool3D::get_available_count);
+#ifdef TOOLS_ENABLED
+	ClassDB::bind_method(D_METHOD("set_capture_lifecycle", "enabled"), &ParticleInstancePool3D::set_capture_lifecycle);
+	ADD_SIGNAL(MethodInfo("instance_acquired", PropertyInfo(Variant::OBJECT, "instance", PROPERTY_HINT_RESOURCE_TYPE, "ParticleInstance3D")));
+	ADD_SIGNAL(MethodInfo("instance_released", PropertyInfo(Variant::OBJECT, "instance", PROPERTY_HINT_RESOURCE_TYPE, "ParticleInstance3D")));
+#endif
 }
+
+#ifdef TOOLS_ENABLED
+void ParticleInstancePool3D::set_capture_lifecycle(bool p_enabled) {
+	if (capture_lifecycle == p_enabled) {
+		return;
+	}
+	capture_lifecycle = p_enabled;
+	if (p_enabled) {
+		for (int i = 0; i < instances.size(); i++) {
+			if (acquired[i]) {
+				emit_signal(SNAME("instance_acquired"), instances[i]);
+			}
+		}
+	}
+}
+#endif
 
 ParticleInstancePool3D::ParticleInstancePool3D() {
 	set_notify_transform(true);
@@ -63,6 +84,11 @@ ParticleInstance3D *ParticleInstancePool3D::acquire() {
 	const int index = available[available.size() - 1];
 	available.resize(available.size() - 1);
 	acquired.write[index] = 1;
+#ifdef TOOLS_ENABLED
+	if (capture_lifecycle) {
+		emit_signal(SNAME("instance_acquired"), instances[index]);
+	}
+#endif
 	return instances[index];
 }
 
@@ -74,6 +100,11 @@ void ParticleInstancePool3D::release(ParticleInstance3D *p_instance) {
 	p_instance->publish_render_instances();
 	acquired.write[*index] = 0;
 	available.push_back(*index);
+#ifdef TOOLS_ENABLED
+	if (capture_lifecycle) {
+		emit_signal(SNAME("instance_released"), p_instance);
+	}
+#endif
 }
 
 TypedArray<ParticleInstance3D> ParticleInstancePool3D::get_instances() const {

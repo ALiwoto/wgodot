@@ -10,6 +10,12 @@
 		<link title="Visibility ranges (HLOD)">$DOCS_URL/tutorials/3d/visibility_ranges.html</link>
 	</tutorials>
 	<methods>
+		<method name="get_instance_shader_parameter_names" qualifiers="const">
+			<return type="PackedStringArray" />
+			<description>
+				Returns the compiled instance uniform names merged from this geometry's active materials, including parameters still using their defaults. Does not build property dictionaries. Query after material changes have reached the renderer.
+			</description>
+		</method>
 		<method name="get_instance_shader_parameter" qualifiers="const">
 			<return type="Variant" />
 			<param index="0" name="name" type="StringName" />

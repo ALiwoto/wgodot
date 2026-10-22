@@ -15,6 +15,18 @@ int GeometryInstance3D::get_instance_shader_parameter_slot(const StringName &p_n
 	return get_instance_shader_parameters()->find_or_add(p_name);
 }
 
+Vector<String> GeometryInstance3D::get_instance_shader_parameter_names() const {
+	// The renderer merges declarations across active surface materials. Stored
+	// overrides alone also contain stale names and omit untouched defaults.
+	List<PropertyInfo> properties;
+	RS::get_singleton()->instance_geometry_get_shader_parameter_list(get_instance(), &properties);
+	Vector<String> names;
+	for (const PropertyInfo &property : properties) {
+		names.push_back(property.name);
+	}
+	return names;
+}
+
 void GeometryInstance3D::_send_instance_shader_parameter(int p_slot, const WInstanceShaderValue &p_value) {
 	RS::get_singleton()->instance_geometry_update_shader_parameter(get_instance(), p_slot, p_value);
 }
@@ -58,6 +70,7 @@ void GeometryInstance3D::_bind_typed_instance_shader_parameters() {
 	BIND_INSTANCE_PARAMETER(color)
 #undef BIND_INSTANCE_PARAMETER
 	ClassDB::bind_method(D_METHOD("clear_instance_shader_parameter", "name"), &GeometryInstance3D::clear_instance_shader_parameter);
+	ClassDB::bind_method(D_METHOD("get_instance_shader_parameter_names"), &GeometryInstance3D::get_instance_shader_parameter_names);
 #ifdef TOOLS_ENABLED
 	ClassDB::add_native_property_pattern(get_class_static(), { "instance_shader_parameters/", "", "set_instance_shader_parameter_bool", "get_instance_shader_parameter_bool", Variant::STRING_NAME, Variant::BOOL });
 	ClassDB::add_native_property_pattern(get_class_static(), { "instance_shader_parameters/", "", "set_instance_shader_parameter_int", "get_instance_shader_parameter_int", Variant::STRING_NAME, Variant::INT });

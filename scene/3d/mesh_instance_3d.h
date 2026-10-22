@@ -114,6 +114,9 @@ public:
 	void create_debug_tangents();
 
 	virtual AABB get_aabb() const override;
+	// wgodot-changes::begin
+	AABB get_pose_aabb() const;
+	// wgodot-changes::end
 
 	Ref<ArrayMesh> bake_mesh_from_current_blend_shape_mix(Ref<ArrayMesh> p_existing = Ref<ArrayMesh>());
 	Ref<ArrayMesh> bake_mesh_from_current_skeleton_pose(Ref<ArrayMesh> p_existing = Ref<ArrayMesh>());

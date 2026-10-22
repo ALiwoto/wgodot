@@ -9,6 +9,7 @@ param(
 	[switch]$KeepGoing,
 	[string]$BuildProfilePath,
 	[string]$PostgreSQLPath,
+	[string]$PythonExecutable,
 	[ValidatePattern('^([a-z][a-z0-9_]*)?$')]
 	[string]$GameName = '',
 	[ValidateSet('client', 'server')]
@@ -148,6 +149,23 @@ try {
 	Import-Module "$vs\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
 	Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments "-arch=x64"
 
+	# Run SCons in the selected interpreter. A pip-generated scons.exe can
+	# still point at an uninstalled Python after an interpreter upgrade.
+	$pythonArguments = @()
+	if (!$PythonExecutable) {
+		$pythonLauncher = Get-Command py -ErrorAction SilentlyContinue
+		if ($pythonLauncher) {
+			$PythonExecutable = $pythonLauncher.Source
+			$pythonArguments = @('-3')
+		} else {
+			$PythonExecutable = (Get-Command python -ErrorAction Stop).Source
+		}
+	}
+	& $PythonExecutable @pythonArguments -c 'import SCons'
+	if ($LASTEXITCODE -ne 0) {
+		throw "The selected Python cannot import SCons. Install SCons in that interpreter, or pass -PythonExecutable with an existing build interpreter. No dependencies were installed."
+	}
+
 	# Only the executable being rebuilt needs to close; keep other editors/games open.
 	$processName = [IO.Path]::GetFileNameWithoutExtension($binaryPath)
 	Get-Process -Name $processName -ErrorAction SilentlyContinue |
@@ -156,7 +174,7 @@ try {
 
 	Push-Location $PSScriptRoot
 	try {
-		& scons @sconsArgs
+		& $PythonExecutable @pythonArguments -m SCons @sconsArgs
 		if ($LASTEXITCODE -ne 0) {
 			$buildExitCode = $LASTEXITCODE
 			exit $buildExitCode

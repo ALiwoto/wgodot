@@ -10,6 +10,7 @@ env_wgodot = env_modules.Clone()
 env_wgodot.add_source_files(env.modules_sources, "*.cpp")
 env_wgodot.add_source_files(env.modules_sources, "codecs/*.cpp")
 env_wgodot.add_source_files(env.modules_sources, "animation/*.cpp")
+env_wgodot.add_source_files(env.modules_sources, "rendering/*.cpp")
 
 if env.editor_build:
     import pathlib

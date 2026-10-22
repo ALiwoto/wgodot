@@ -38,6 +38,9 @@
 #include "servers/rendering/renderer_rd/effects/ss_effects.h"
 #include "servers/rendering/renderer_rd/effects/taa.h"
 #include "servers/rendering/renderer_rd/forward_clustered/scene_shader_forward_clustered.h"
+// wgodot-changes::begin
+#include "servers/rendering/renderer_rd/effects/screen_distortion.h"
+// wgodot-changes::end
 #include "servers/rendering/renderer_rd/renderer_scene_render_rd.h"
 #include "servers/rendering/renderer_rd/shaders/forward_clustered/best_fit_normal.glsl.gen.h"
 #include "servers/rendering/renderer_rd/shaders/forward_clustered/integrate_dfg.glsl.gen.h"
@@ -79,6 +82,9 @@ class RenderForwardClustered : public RendererSceneRenderRD {
 		RENDER_LIST_OPAQUE, //used for opaque objects
 		RENDER_LIST_MOTION, //used for opaque objects with motion
 		RENDER_LIST_ALPHA, //used for transparent objects
+// wgodot-changes::begin
+		RENDER_LIST_DISTORTION,
+// wgodot-changes::end
 		RENDER_LIST_SECONDARY, //used for shadows and other objects
 		RENDER_LIST_MAX
 	};
@@ -86,6 +92,9 @@ class RenderForwardClustered : public RendererSceneRenderRD {
 	/* Scene Shader */
 
 	SceneShaderForwardClustered scene_shader;
+// wgodot-changes::begin
+	RendererRD::ScreenDistortion *screen_distortion = nullptr;
+// wgodot-changes::end
 
 public:
 	/* Framebuffer */
@@ -177,7 +186,9 @@ private:
 
 	void _update_render_base_uniform_set();
 	RID _setup_sdfgi_render_pass_uniform_set(RID p_albedo_texture, RID p_emission_texture, RID p_emission_aniso_texture, RID p_geom_facing_texture, const RendererRD::MaterialStorage::Samplers &p_samplers, uint32_t p_uniform_buffer_index);
-	RID _setup_render_pass_uniform_set(RenderListType p_render_list, const RenderDataRD *p_render_data, bool p_is_multiview, RID p_radiance_texture, const RendererRD::MaterialStorage::Samplers &p_samplers, uint32_t p_uniform_buffer_index, bool p_use_directional_shadow_atlas = false);
+// wgodot-changes::begin
+	RID _setup_render_pass_uniform_set(RenderListType p_render_list, const RenderDataRD *p_render_data, bool p_is_multiview, RID p_radiance_texture, const RendererRD::MaterialStorage::Samplers &p_samplers, uint32_t p_uniform_buffer_index, bool p_use_directional_shadow_atlas = false, RID p_screen_texture = RID());
+// wgodot-changes::end
 
 	struct BestFitNormal {
 		BestFitNormalShaderRD shader;
@@ -420,7 +431,15 @@ private:
 		uint32_t max_lightmaps;
 		RID lightmap_buffer;
 
-		MultiUmaBuffer<1u> instance_buffer[RENDER_LIST_MAX] = { MultiUmaBuffer<1u>("RENDER_LIST_OPAQUE"), MultiUmaBuffer<1u>("RENDER_LIST_MOTION"), MultiUmaBuffer<1u>("RENDER_LIST_ALPHA"), MultiUmaBuffer<1u>("RENDER_LIST_SECONDARY") };
+// wgodot-changes::begin
+		MultiUmaBuffer<1u> instance_buffer[RENDER_LIST_MAX] = {
+			MultiUmaBuffer<1u>("RENDER_LIST_OPAQUE"),
+			MultiUmaBuffer<1u>("RENDER_LIST_MOTION"),
+			MultiUmaBuffer<1u>("RENDER_LIST_ALPHA"),
+			MultiUmaBuffer<1u>("RENDER_LIST_DISTORTION"),
+			MultiUmaBuffer<1u>("RENDER_LIST_SECONDARY"),
+		};
+// wgodot-changes::end
 		InstanceData *curr_gpu_ptr[RENDER_LIST_MAX] = {};
 
 		LightmapCaptureData *lightmap_captures = nullptr;
@@ -431,6 +450,9 @@ private:
 		uint32_t voxelgis_used = 0;
 
 		bool used_screen_texture = false;
+// wgodot-changes::begin
+		bool used_current_screen_texture = false;
+// wgodot-changes::end
 		bool used_normal_texture = false;
 		bool used_depth_texture = false;
 		bool used_sss = false;
@@ -490,6 +512,9 @@ private:
 	_FORCE_INLINE_ void _render_list_template(RenderingDevice::DrawListID p_draw_list, RenderingDevice::FramebufferFormatID p_framebuffer_Format, RenderListParameters *p_params, uint32_t p_from_element, uint32_t p_to_element);
 	void _render_list(RenderingDevice::DrawListID p_draw_list, RenderingDevice::FramebufferFormatID p_framebuffer_Format, RenderListParameters *p_params, uint32_t p_from_element, uint32_t p_to_element);
 	void _render_list_with_draw_list(RenderListParameters *p_params, RID p_framebuffer, BitField<RD::DrawFlags> p_draw_flags = RD::DRAW_DEFAULT_ALL, const Vector<Color> &p_clear_color_values = Vector<Color>(), float p_clear_depth_value = 0.0, uint32_t p_clear_stencil_value = 0, const Rect2 &p_region = Rect2());
+// wgodot-changes::begin
+	void _render_list_with_current_screen(RenderListParameters *p_params, RID p_framebuffer, const RenderDataRD *p_render_data, RID p_current_uniform_set);
+// wgodot-changes::end
 
 	void _fill_instance_data(RenderListType p_render_list, int *p_render_info = nullptr, uint32_t p_offset = 0, int32_t p_max_elements = -1, bool p_update_buffer = true);
 	void _fill_render_list(RenderListType p_render_list, const RenderDataRD *p_render_data, PassMode p_pass_mode, bool p_using_sdfgi = false, bool p_using_opaque_gi = false, bool p_using_motion_pass = false, bool p_append = false);
@@ -510,6 +535,9 @@ private:
 			FLAG_PASS_OPAQUE = 2,
 			FLAG_PASS_ALPHA = 4,
 			FLAG_PASS_SHADOW = 8,
+// wgodot-changes::begin
+			FLAG_PASS_DISTORTION = 16,
+// wgodot-changes::end
 			FLAG_USES_SHARED_SHADOW_MATERIAL = 128,
 			FLAG_USES_SUBSURFACE_SCATTERING = 2048,
 			FLAG_USES_SCREEN_TEXTURE = 4096,

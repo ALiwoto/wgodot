@@ -118,6 +118,13 @@ void SceneShaderForwardMobile::ShaderData::set_code(const String &p_code) {
 	actions.render_mode_values["cull_back"] = Pair<int *, int>(&cull_mode, RSE::CULL_MODE_BACK);
 
 	actions.render_mode_flags["unshaded"] = &unshaded;
+	// wgodot-changes::begin
+	bool screen_distortion = false;
+	bool screen_read_current = false;
+	actions.render_mode_flags["screen_distortion"] = &screen_distortion;
+	actions.render_mode_flags["screen_read_current"] = &screen_read_current;
+	actions.usage_flag_pointers["SCREEN_DISTORTION"] = &screen_distortion;
+	// wgodot-changes::end
 	actions.render_mode_flags["wireframe"] = &wireframe;
 	actions.render_mode_flags["particle_trails"] = &uses_particle_trails;
 	actions.render_mode_flags["world_vertex_coords"] = &uses_world_coordinates;
@@ -171,6 +178,8 @@ void SceneShaderForwardMobile::ShaderData::set_code(const String &p_code) {
 
 	// wgodot-changes::begin
 	Error err = SceneShaderForwardMobile::singleton->compiler.compile_concurrent(RSE::SHADER_SPATIAL, code, &actions, path, gen_code);
+	ERR_FAIL_COND_MSG(screen_distortion, "Screen distortion materials require the Forward+ renderer.");
+	ERR_FAIL_COND_MSG(screen_read_current, "Current screen reads require the Forward+ renderer.");
 	// wgodot-changes::end
 	MutexLock lock(SceneShaderForwardMobile::singleton_mutex);
 

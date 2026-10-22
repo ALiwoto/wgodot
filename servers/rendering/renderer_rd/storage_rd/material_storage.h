@@ -121,6 +121,13 @@ public:
 		void free_parameters_uniform_set(RID p_uniform_set);
 		RID material_feedback_rid;
 
+		// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+		RID get_capture_uniform_buffer(bool p_srgb = false) const { return uniform_buffer[p_srgb ? 1 : 0]; }
+		const Vector<RID> &get_capture_textures() const { return texture_cache; }
+#endif
+		// wgodot-changes::end
+
 	private:
 		friend class MaterialStorage;
 

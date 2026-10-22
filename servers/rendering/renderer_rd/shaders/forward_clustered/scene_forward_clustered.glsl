@@ -1310,6 +1310,11 @@ void fragment_shader(in SceneData scene_data) {
 #endif
 #endif
 
+// wgodot-changes::begin
+#ifdef MODE_SCREEN_DISTORTION
+	vec2 distortion_offset = vec2(0.0);
+#endif
+// wgodot-changes::end
 	{
 #CODE : FRAGMENT
 	}
@@ -3191,6 +3196,12 @@ void fragment_shader(in SceneData scene_data) {
 #if defined(PREMUL_ALPHA_USED) && !defined(MODE_RENDER_DEPTH)
 	frag_color.rgb *= premul_alpha;
 #endif //PREMUL_ALPHA_USED
+
+// wgodot-changes::begin
+#ifdef MODE_SCREEN_DISTORTION
+	frag_color = vec4(distortion_offset * alpha, 0.0, 0.0);
+#endif
+// wgodot-changes::end
 
 #endif //MODE_SEPARATE_SPECULAR
 

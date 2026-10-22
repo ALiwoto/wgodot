@@ -136,6 +136,7 @@ public:
 	// wgodot-changes::begin
 	int get_shader_parameter_slot(const StringName &p_name) const;
 	Variant::Type get_shader_parameter_type(const StringName &p_name) const;
+	Vector<String> get_shader_parameter_names(Variant::Type p_type = Variant::VARIANT_MAX) const;
 	void clear_shader_parameter(const StringName &p_name);
 	const WShaderParameters &get_shader_parameters() const;
 	void mark_shader_parameter_overrides(std::initializer_list<int> p_slots);

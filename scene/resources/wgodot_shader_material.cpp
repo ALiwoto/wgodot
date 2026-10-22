@@ -37,6 +37,7 @@ void ShaderMaterial::_bind_typed_parameters() {
 	ClassDB::bind_method(D_METHOD("get_shader_parameter_texture3d", "name"), &ShaderMaterial::get_shader_parameter_texture3d);
 	ClassDB::bind_method(D_METHOD("get_shader_parameter_texture_layered", "name"), &ShaderMaterial::get_shader_parameter_texture_layered);
 	ClassDB::bind_method(D_METHOD("get_shader_parameter_type", "name"), &ShaderMaterial::get_shader_parameter_type);
+	ClassDB::bind_method(D_METHOD("get_shader_parameter_names", "type"), &ShaderMaterial::get_shader_parameter_names, DEFVAL(Variant::VARIANT_MAX));
 	ClassDB::bind_method(D_METHOD("clear_shader_parameter", "name"), &ShaderMaterial::clear_shader_parameter);
 }
 
@@ -97,6 +98,19 @@ Variant::Type ShaderMaterial::get_shader_parameter_type(const StringName &p_name
 	_ensure_parameters();
 	const int slot = parameters.layout.is_valid() ? parameters.layout->find(p_name) : -1;
 	return slot >= 0 ? parameters.layout->entries[slot].value_type : Variant::NIL;
+}
+
+Vector<String> ShaderMaterial::get_shader_parameter_names(Variant::Type p_type) const {
+	_ensure_parameters();
+	Vector<String> names;
+	if (parameters.layout.is_valid()) {
+		for (const WShaderParameterLayout::Entry &entry : parameters.layout->entries) {
+			if (entry.valid() && (p_type == Variant::VARIANT_MAX || entry.value_type == p_type)) {
+				names.push_back(entry.name);
+			}
+		}
+	}
+	return names;
 }
 
 const WShaderParameters &ShaderMaterial::get_shader_parameters() const {

@@ -5,6 +5,7 @@
 
 #include "register_types.h"
 #include "animation/affine_skeleton_2d.h"
+#include "animation/gradient_noise_1d.h"
 #include "animation/skinned_mesh_2d.h"
 #include "codecs/animation_codec.h"
 #include "codecs/curve_codec.h"
@@ -29,6 +30,7 @@
 #ifdef TOOLS_ENABLED
 #include "core/object/class_db.h"
 #include "wgodot_particle_snapshot.h"
+#include "rendering/render_capture.h"
 #include "editor/editor_node.h"
 #include "editor/export/editor_export.h"
 #include "editor/plugins/editor_plugin.h"
@@ -45,6 +47,7 @@ static void _native_export_editor_init() {
 void initialize_wgodot_module(ModuleInitializationLevel p_level) {
 	if (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {
 		GDREGISTER_CLASS(AffineBone2D);
+		GDREGISTER_CLASS(GradientNoise1D);
 		GDREGISTER_CLASS(AffineSkeleton2D);
 		GDREGISTER_CLASS(Skin2D);
 		GDREGISTER_CLASS(SkinnedMesh2D);
@@ -58,6 +61,7 @@ void initialize_wgodot_module(ModuleInitializationLevel p_level) {
 		GDREGISTER_ABSTRACT_CLASS(ObjectMetadata);
 #ifdef TOOLS_ENABLED
 		GDREGISTER_CLASS(WGPUParticleSnapshot);
+		GDREGISTER_CLASS(WRenderCapture);
 #endif
 		WGodotPreloads::initialize();
 #ifdef MODULE_GDSCRIPT_ENABLED

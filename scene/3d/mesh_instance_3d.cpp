@@ -916,6 +916,9 @@ void MeshInstance3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_skin", "skin"), &MeshInstance3D::set_skin);
 	ClassDB::bind_method(D_METHOD("get_skin"), &MeshInstance3D::get_skin);
 	ClassDB::bind_method(D_METHOD("get_skin_reference"), &MeshInstance3D::get_skin_reference);
+	// wgodot-changes::begin
+	ClassDB::bind_method(D_METHOD("get_pose_aabb"), &MeshInstance3D::get_pose_aabb);
+	// wgodot-changes::end
 
 	ClassDB::bind_method(D_METHOD("get_surface_override_material_count"), &MeshInstance3D::get_surface_override_material_count);
 	ClassDB::bind_method(D_METHOD("set_surface_override_material", "surface", "material"), &MeshInstance3D::set_surface_override_material);

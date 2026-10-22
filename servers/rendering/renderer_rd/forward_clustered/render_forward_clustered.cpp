@@ -30,6 +30,13 @@
 
 #include "render_forward_clustered.h"
 
+// wgodot-changes::begin
+#include "modules/modules_enabled.gen.h"
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+#include "modules/wgodot/rendering/render_capture.h"
+#endif
+// wgodot-changes::end
+
 #include "core/config/project_settings.h"
 #include "servers/rendering/renderer_rd/environment/fog.h"
 #include "servers/rendering/renderer_rd/framebuffer_cache_rd.h"
@@ -795,6 +802,19 @@ uint32_t RenderForwardClustered::_setup_environment(const RenderDataRD *p_render
 
 	RD::get_singleton()->buffer_update(scene_state.implementation_uniform_buffers[uniform_buffer_index], 0, sizeof(SceneState::UBO), &scene_state.ubo);
 
+// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	Ref<ConfigFile> captured_uniforms = WRenderCapture::inputs(p_render_data);
+	if (captured_uniforms.is_valid()) {
+		String section = "environment:" + uitos(uniform_buffer_index);
+		captured_uniforms->set_value(section, "scene_buffer", WRenderCapture::buffer(p_render_data, scene_state.uniform_buffers[uniform_buffer_index]));
+		captured_uniforms->set_value(section, "implementation_buffer", WRenderCapture::buffer(p_render_data, scene_state.implementation_uniform_buffers[uniform_buffer_index]));
+		captured_uniforms->set_value(section, "opaque", p_opaque_render_buffers);
+		captured_uniforms->set_value(section, "no_fog", p_no_fog);
+	}
+#endif
+// wgodot-changes::end
+
 	return uniform_buffer_index;
 }
 
@@ -893,7 +913,11 @@ void RenderForwardClustered::_fill_instance_data(RenderListType p_render_list, i
 
 		scene_state.curr_gpu_ptr[p_render_list][i + p_offset] = instance_data;
 
-		const bool cant_repeat = instance_data.flags & INSTANCE_DATA_FLAG_MULTIMESH || inst->mesh_instance.is_valid();
+// wgodot-changes::begin
+		// A current-screen read observes earlier draws, including an otherwise
+		// identical surface. Do not merge those surfaces into one draw.
+		const bool cant_repeat = instance_data.flags & INSTANCE_DATA_FLAG_MULTIMESH || inst->mesh_instance.is_valid() || surface->shader->screen_read_current;
+// wgodot-changes::end
 
 		if (prev_surface != nullptr && !cant_repeat && prev_surface->sort.sort_key1 == surface->sort.sort_key1 && prev_surface->sort.sort_key2 == surface->sort.sort_key2 && prev_surface->uses_lightmap_specular == surface->uses_lightmap_specular && inst->mirror == prev_surface->owner->mirror && repeats < RenderElementInfo::MAX_REPEATS) {
 			//this element is the same as the previous one, count repeats to draw it using instancing
@@ -945,6 +969,9 @@ void RenderForwardClustered::_fill_render_list(RenderListType p_render_list, con
 	if (p_render_list == RENDER_LIST_OPAQUE) {
 		scene_state.used_sss = false;
 		scene_state.used_screen_texture = false;
+// wgodot-changes::begin
+		scene_state.used_current_screen_texture = false;
+// wgodot-changes::end
 		scene_state.used_normal_texture = false;
 		scene_state.used_depth_texture = false;
 		scene_state.used_lightmap = false;
@@ -965,6 +992,9 @@ void RenderForwardClustered::_fill_render_list(RenderListType p_render_list, con
 			// Opaque fills motion and alpha lists.
 			render_list[RENDER_LIST_MOTION].clear();
 			render_list[RENDER_LIST_ALPHA].clear();
+// wgodot-changes::begin
+			render_list[RENDER_LIST_DISTORTION].clear();
+// wgodot-changes::end
 		}
 	}
 
@@ -1168,6 +1198,12 @@ void RenderForwardClustered::_fill_render_list(RenderListType p_render_list, con
 					rl->add_element(surf);
 				}
 
+// wgodot-changes::begin
+				if (surf->flags & GeometryInstanceSurfaceDataCache::FLAG_PASS_DISTORTION) {
+					surf->color_pass_inclusion_mask = COLOR_PASS_FLAG_TRANSPARENT;
+					render_list[RENDER_LIST_DISTORTION].add_element(surf);
+				} else
+// wgodot-changes::end
 				if (force_alpha || (surf->flags & GeometryInstanceSurfaceDataCache::FLAG_PASS_ALPHA)) {
 					surf->color_pass_inclusion_mask = COLOR_PASS_FLAG_TRANSPARENT;
 					render_list[RENDER_LIST_ALPHA].add_element(surf);
@@ -1191,7 +1227,13 @@ void RenderForwardClustered::_fill_render_list(RenderListType p_render_list, con
 					scene_state.used_sss = true;
 				}
 				if (surf->flags & GeometryInstanceSurfaceDataCache::FLAG_USES_SCREEN_TEXTURE) {
-					scene_state.used_screen_texture = true;
+// wgodot-changes::begin
+					if (surf->shader->screen_read_current) {
+						scene_state.used_current_screen_texture = true;
+					} else {
+						scene_state.used_screen_texture = true;
+					}
+// wgodot-changes::end
 				}
 				if (surf->flags & GeometryInstanceSurfaceDataCache::FLAG_USES_NORMAL_TEXTURE) {
 					scene_state.used_normal_texture = true;
@@ -2004,6 +2046,83 @@ void RenderForwardClustered::_render_scene(RenderDataRD *p_render_data, const Co
 	_fill_instance_data(RENDER_LIST_OPAQUE, render_info);
 	_fill_instance_data(RENDER_LIST_MOTION, render_info);
 	_fill_instance_data(RENDER_LIST_ALPHA, render_info);
+// wgodot-changes::begin
+	render_list[RENDER_LIST_DISTORTION].sort_by_key();
+	_fill_instance_data(RENDER_LIST_DISTORTION, render_info);
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	Ref<ConfigFile> captured_inputs = WRenderCapture::inputs(p_render_data);
+	if (captured_inputs.is_valid()) {
+		RendererRD::MeshStorage *mesh_storage = RendererRD::MeshStorage::get_singleton();
+		RendererRD::LightStorage *light_storage = RendererRD::LightStorage::get_singleton();
+		captured_inputs->set_value("world", "omni_light_buffer", WRenderCapture::buffer(p_render_data, light_storage->get_omni_light_buffer()));
+		captured_inputs->set_value("world", "spot_light_buffer", WRenderCapture::buffer(p_render_data, light_storage->get_spot_light_buffer()));
+		captured_inputs->set_value("world", "directional_light_buffer", WRenderCapture::buffer(p_render_data, light_storage->get_directional_light_buffer()));
+		captured_inputs->set_value("world", "reflection_probe_buffer", WRenderCapture::buffer(p_render_data, light_storage->get_reflection_probe_buffer()));
+		captured_inputs->set_value("world", "decal_buffer", WRenderCapture::buffer(p_render_data, RendererRD::TextureStorage::get_singleton()->get_decal_buffer()));
+		captured_inputs->set_value("world", "global_parameters_buffer", WRenderCapture::buffer(p_render_data, RendererRD::MaterialStorage::get_singleton()->global_shader_uniforms_get_storage_buffer()));
+		for (RenderListType list_type : { RENDER_LIST_OPAQUE, RENDER_LIST_MOTION, RENDER_LIST_ALPHA, RENDER_LIST_DISTORTION }) {
+			const RenderList &list = render_list[list_type];
+			if (!list.elements.is_empty()) {
+				captured_inputs->set_value("list:" + itos(list_type), "instances_buffer", WRenderCapture::buffer(p_render_data, scene_state.instance_buffer[list_type]._get(0u)));
+			}
+			for (uint32_t index = 0; index < list.elements.size(); index++) {
+				const GeometryInstanceSurfaceDataCache *surface = list.elements[index];
+				const GeometryInstanceForwardClustered *owner = surface->owner;
+				const String section = "surface:" + itos(list_type) + ":" + itos(index);
+				captured_inputs->set_value(section, "base", int64_t(owner->data->base.get_id()));
+				captured_inputs->set_value(section, "base_type", int(owner->data->base_type));
+				captured_inputs->set_value(section, "surface", int(surface->surface_index));
+				captured_inputs->set_value(section, "flags", int64_t(surface->flags));
+				captured_inputs->set_value(section, "transform", owner->transform);
+				captured_inputs->set_value(section, "aabb", owner->transformed_aabb);
+				captured_inputs->set_value(section, "layers", int64_t(owner->layer_mask));
+				captured_inputs->set_value(section, "instances", int64_t(owner->instance_count));
+				captured_inputs->set_value(section, "lod", int(surface->sort.lod_index));
+				captured_inputs->set_value(section, "depth", owner->depth);
+				captured_inputs->set_value(section, "fade", owner->parent_fade_alpha);
+				captured_inputs->set_value(section, "alpha", owner->force_alpha);
+				captured_inputs->set_value(section, "skeleton", int64_t(owner->data->skeleton.get_id()));
+				captured_inputs->set_value(section, "mesh_instance", int64_t(owner->mesh_instance.get_id()));
+				if (owner->data->base_type == RSE::INSTANCE_MESH) {
+					RID mesh = owner->data->base;
+					captured_inputs->set_value(section, "vertex_buffer", WRenderCapture::buffer(p_render_data, mesh_storage->mesh_surface_get_vertex_buffer_rd_rid(mesh, surface->surface_index)));
+					captured_inputs->set_value(section, "attribute_buffer", WRenderCapture::buffer(p_render_data, mesh_storage->mesh_surface_get_attribute_buffer_rd_rid(mesh, surface->surface_index)));
+					captured_inputs->set_value(section, "skin_buffer", WRenderCapture::buffer(p_render_data, mesh_storage->mesh_surface_get_skin_buffer_rd_rid(mesh, surface->surface_index)));
+					captured_inputs->set_value(section, "index_buffer", WRenderCapture::buffer(p_render_data, mesh_storage->mesh_surface_get_index_buffer_rd_rid(mesh, surface->surface_index)));
+					if (owner->mesh_instance.is_valid()) {
+						captured_inputs->set_value(section, "deformed_vertex_buffer", WRenderCapture::buffer(p_render_data, mesh_storage->mesh_instance_get_render_vertex_buffer(owner->mesh_instance, surface->surface_index)));
+					}
+				}
+				if (surface->material) {
+					captured_inputs->set_value(section, "material_buffer", WRenderCapture::buffer(p_render_data, surface->material->get_capture_uniform_buffer()));
+					PackedInt64Array textures;
+					for (RID texture : surface->material->get_capture_textures()) {
+						textures.push_back(texture.get_id());
+					}
+					captured_inputs->set_value(section, "textures", textures);
+				}
+				if (surface->shader) {
+					String shader_section = "shader:" + uitos(surface->shader->version.get_id());
+					captured_inputs->set_value(section, "shader", shader_section);
+					if (!captured_inputs->has_section(shader_section)) {
+						captured_inputs->set_value(shader_section, "path", surface->shader->path);
+						captured_inputs->set_value(shader_section, "code", surface->shader->code);
+						captured_inputs->set_value(shader_section, "blend", surface->shader->blend_mode);
+						captured_inputs->set_value(shader_section, "depth_draw", int(surface->shader->depth_draw));
+						captured_inputs->set_value(shader_section, "depth_test", int(surface->shader->depth_test));
+						captured_inputs->set_value(shader_section, "cull", int(surface->shader->cull_mode));
+						PackedInt32Array offsets;
+						for (uint32_t offset : surface->shader->ubo_offsets) {
+							offsets.push_back(offset);
+						}
+						captured_inputs->set_value(shader_section, "uniform_offsets", offsets);
+					}
+				}
+			}
+		}
+	}
+#endif
+// wgodot-changes::end
 
 	RD::get_singleton()->draw_command_end_label();
 
@@ -2353,6 +2472,11 @@ void RenderForwardClustered::_render_scene(RenderDataRD *p_render_data, const Co
 
 		RENDER_TIMESTAMP("Process Post Opaque Compositor Effects");
 		_process_compositor_effects(RSE::COMPOSITOR_EFFECT_CALLBACK_TYPE_POST_OPAQUE, p_render_data);
+// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+		WRenderCapture::stage(p_render_data, "opaque", true);
+#endif
+// wgodot-changes::end
 	}
 
 	if (debug_voxelgis) {
@@ -2415,6 +2539,11 @@ void RenderForwardClustered::_render_scene(RenderDataRD *p_render_data, const Co
 		RENDER_TIMESTAMP("Process Post Sky Compositor Effects");
 		// Don't need to check for depth or color resolve here, we've already triggered it.
 		_process_compositor_effects(RSE::COMPOSITOR_EFFECT_CALLBACK_TYPE_POST_SKY, p_render_data);
+// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+		WRenderCapture::stage(p_render_data, "sky", true);
+#endif
+// wgodot-changes::end
 	}
 
 	if (using_separate_specular) {
@@ -2508,11 +2637,34 @@ void RenderForwardClustered::_render_scene(RenderDataRD *p_render_data, const Co
 
 		RID alpha_framebuffer = rb_data.is_valid() ? rb_data->get_color_pass_fb(transparent_color_pass_flags) : color_only_framebuffer;
 		RenderListParameters render_list_params(render_list[RENDER_LIST_ALPHA].elements.ptr(), render_list[RENDER_LIST_ALPHA].element_info.ptr(), render_list[RENDER_LIST_ALPHA].elements.size(), reverse_cull, PASS_MODE_COLOR, transparent_color_pass_flags, rb_data.is_null(), p_render_data->directional_light_soft_shadows, rp_uniform_set, get_debug_draw_mode() == RSE::VIEWPORT_DEBUG_DRAW_WIREFRAME, Vector2(), p_render_data->scene_data->lod_distance_multiplier, p_render_data->scene_data->screen_mesh_lod_threshold, p_render_data->scene_data->view_count, 0, base_specialization, !is_reflection_probe);
-		_render_list_with_draw_list(&render_list_params, alpha_framebuffer, RD::DRAW_DEFAULT_ALL, Vector<Color>(), 0.0f, 0u, p_render_data->render_region);
+// wgodot-changes::begin
+		if (scene_state.used_current_screen_texture && rb_data.is_valid()) {
+			const StringName destination = SNAME("screen_read_current");
+			_render_buffers_ensure_screen_texture(p_render_data, destination);
+			RID current_uniform_set = _setup_render_pass_uniform_set(RENDER_LIST_ALPHA, p_render_data, is_multiview, radiance_texture, samplers, transparent_pass_uniform_buffer_index, true, rb->get_texture(RB_SCOPE_BUFFERS, destination));
+			_render_list_with_current_screen(&render_list_params, alpha_framebuffer, p_render_data, current_uniform_set);
+		} else {
+			_render_list_with_draw_list(&render_list_params, alpha_framebuffer, RD::DRAW_DEFAULT_ALL, Vector<Color>(), 0.0f, 0u, p_render_data->render_region);
+		}
+// wgodot-changes::end
 	}
 
 	RD::get_singleton()->draw_command_end_label();
 
+// wgodot-changes::begin
+	const bool has_distortion = rb_data.is_valid() && !render_list[RENDER_LIST_DISTORTION].elements.is_empty();
+	if (has_distortion) {
+		RENDER_TIMESTAMP("Accumulate Screen Distortion");
+		if (!screen_distortion) {
+			screen_distortion = memnew(RendererRD::ScreenDistortion);
+		}
+		RID distortion_uniform_set = _setup_render_pass_uniform_set(RENDER_LIST_DISTORTION, p_render_data, is_multiview, radiance_texture, samplers, transparent_pass_uniform_buffer_index, true);
+		uint32_t flags = COLOR_PASS_FLAG_TRANSPARENT | (is_multiview ? COLOR_PASS_FLAG_MULTIVIEW : 0);
+		RenderListParameters params(render_list[RENDER_LIST_DISTORTION].elements.ptr(), render_list[RENDER_LIST_DISTORTION].element_info.ptr(), render_list[RENDER_LIST_DISTORTION].elements.size(), reverse_cull, PASS_MODE_COLOR, flags, false, p_render_data->directional_light_soft_shadows, distortion_uniform_set, false, Vector2(), p_render_data->scene_data->lod_distance_multiplier, p_render_data->scene_data->screen_mesh_lod_threshold, p_render_data->scene_data->view_count, 0, base_specialization, false);
+		_render_list_with_draw_list(&params, screen_distortion->framebuffer(rb), RD::DRAW_CLEAR_COLOR_0, { Color(0, 0, 0, 0) }, 0.0f, 0u, p_render_data->render_region);
+	}
+
+// wgodot-changes::end
 	RENDER_TIMESTAMP("Resolve");
 
 	RD::get_singleton()->draw_command_begin_label("Resolve");
@@ -2531,6 +2683,22 @@ void RenderForwardClustered::_render_scene(RenderDataRD *p_render_data, const Co
 
 	RD::get_singleton()->draw_command_end_label();
 
+// wgodot-changes::begin
+	if (has_distortion) {
+		RENDER_TIMESTAMP("Composite Screen Distortion");
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+		WRenderCapture::stage(p_render_data, "before_distortion");
+#endif
+		screen_distortion->composite(rb, p_render_data->render_region);
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+		for (uint32_t view = 0; view < rb->get_view_count(); view++) {
+			WRenderCapture::texture(p_render_data, "distortion_offsets_" + itos(view), rb->get_texture_slice(SNAME("ScreenDistortion"), SNAME("offsets"), view, 0));
+		}
+		WRenderCapture::stage(p_render_data, "after_distortion");
+#endif
+	}
+
+// wgodot-changes::end
 	RD::get_singleton()->draw_command_begin_label("Copy Framebuffer for SSIL/SSR");
 	if (using_ssil || using_ssr) {
 		RENDER_TIMESTAMP("Copy Final Framebuffer (SSIL/SSR)");
@@ -2541,6 +2709,11 @@ void RenderForwardClustered::_render_scene(RenderDataRD *p_render_data, const Co
 	{
 		RENDER_TIMESTAMP("Process Post Transparent Compositor Effects");
 		_process_compositor_effects(RSE::COMPOSITOR_EFFECT_CALLBACK_TYPE_POST_TRANSPARENT, p_render_data);
+// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+		WRenderCapture::stage(p_render_data, "transparent");
+#endif
+// wgodot-changes::end
 	}
 
 	if (rb_data.is_valid() && (using_upscaling || using_taa)) {
@@ -3462,7 +3635,9 @@ void RenderForwardClustered::_update_render_base_uniform_set() {
 	}
 }
 
-RID RenderForwardClustered::_setup_render_pass_uniform_set(RenderListType p_render_list, const RenderDataRD *p_render_data, bool p_is_multiview, RID p_radiance_texture, const RendererRD::MaterialStorage::Samplers &p_samplers, uint32_t p_uniform_buffer_index, bool p_use_directional_shadow_atlas) {
+// wgodot-changes::begin
+RID RenderForwardClustered::_setup_render_pass_uniform_set(RenderListType p_render_list, const RenderDataRD *p_render_data, bool p_is_multiview, RID p_radiance_texture, const RendererRD::MaterialStorage::Samplers &p_samplers, uint32_t p_uniform_buffer_index, bool p_use_directional_shadow_atlas, RID p_screen_texture) {
+// wgodot-changes::end
 	RendererRD::TextureStorage *texture_storage = RendererRD::TextureStorage::get_singleton();
 	RendererRD::LightStorage *light_storage = RendererRD::LightStorage::get_singleton();
 
@@ -3703,6 +3878,11 @@ RID RenderForwardClustered::_setup_render_pass_uniform_set(RenderListType p_rend
 		u.binding = 25;
 		u.uniform_type = RD::UNIFORM_TYPE_TEXTURE;
 		RID bbt = rb_data.is_valid() ? rb->get_back_buffer_texture() : RID();
+// wgodot-changes::begin
+		if (p_screen_texture.is_valid()) {
+			bbt = p_screen_texture;
+		}
+// wgodot-changes::end
 		RID texture = bbt.is_valid() ? bbt : texture_storage->texture_rd_get_default(is_multiview ? RendererRD::TextureStorage::DEFAULT_RD_TEXTURE_2D_ARRAY_BLACK : RendererRD::TextureStorage::DEFAULT_RD_TEXTURE_BLACK);
 		u.append_id(texture);
 		uniforms.push_back(u);
@@ -4308,6 +4488,11 @@ void RenderForwardClustered::_geometry_instance_add_surface_with_material(Geomet
 		flags |= GeometryInstanceSurfaceDataCache::FLAG_USES_STENCIL;
 	}
 
+// wgodot-changes::begin
+	if (p_material->shader_data->screen_distortion) {
+		flags |= GeometryInstanceSurfaceDataCache::FLAG_PASS_DISTORTION;
+	} else
+// wgodot-changes::end
 	if (p_material->shader_data->uses_alpha_pass()) {
 		flags |= GeometryInstanceSurfaceDataCache::FLAG_PASS_ALPHA;
 		if (p_material->shader_data->uses_depth_in_alpha_pass()) {
@@ -4804,6 +4989,21 @@ void RenderForwardClustered::_mesh_compile_pipelines_for_surface(const SurfacePi
 	pipeline_key.primitive_type = mesh_storage->mesh_surface_get_primitive(p_surface.mesh_surface);
 	pipeline_key.wireframe = false;
 
+// wgodot-changes::begin
+	if (p_surface.shader->screen_distortion) {
+		for (uint32_t view_count = 1; view_count <= (multiview_enabled ? 2u : 1u); view_count++) {
+			pipeline_key.version = SceneShaderForwardClustered::PIPELINE_VERSION_COLOR_PASS;
+			pipeline_key.color_pass_flags = SceneShaderForwardClustered::PIPELINE_COLOR_PASS_FLAG_TRANSPARENT;
+			if (view_count > 1) {
+				pipeline_key.color_pass_flags |= SceneShaderForwardClustered::PIPELINE_COLOR_PASS_FLAG_MULTIVIEW;
+			}
+			pipeline_key.framebuffer_format_id = RendererRD::ScreenDistortion::framebuffer_format(RD::TextureSamples(p_global.texture_samples), view_count, buffers_can_be_storage);
+			_mesh_compile_pipeline_for_surface(p_surface.shader, p_surface.mesh_surface, true, p_surface.instanced, p_source, pipeline_key, r_pipeline_pairs);
+		}
+		return;
+	}
+
+// wgodot-changes::end
 	// Grab the shader and surface used for most passes.
 	const uint32_t multiview_iterations = multiview_enabled ? 2 : 1;
 	const uint32_t lightmap_iterations = p_global.use_lightmaps && p_surface.can_use_lightmap ? 2 : 1;
@@ -5383,6 +5583,11 @@ RenderForwardClustered::RenderForwardClustered() {
 }
 
 RenderForwardClustered::~RenderForwardClustered() {
+// wgodot-changes::begin
+	if (screen_distortion) {
+		memdelete(screen_distortion);
+	}
+// wgodot-changes::end
 	if (ss_effects != nullptr) {
 		memdelete(ss_effects);
 		ss_effects = nullptr;

@@ -797,6 +797,12 @@ uint32_t RenderSceneBuffersRD::get_color_usage_bits(bool p_resolve, bool p_msaa,
 	DEV_ASSERT((!p_resolve && !p_msaa) || (p_resolve != p_msaa));
 
 	uint32_t usage_bits = RD::TEXTURE_USAGE_SAMPLING_BIT | RD::TEXTURE_USAGE_COLOR_ATTACHMENT_BIT | RD::TEXTURE_USAGE_INPUT_ATTACHMENT_BIT;
+// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+	// Capability only; no copy/allocation unless a render capture requests it.
+	usage_bits |= RD::TEXTURE_USAGE_CAN_COPY_FROM_BIT;
+#endif
+// wgodot-changes::end
 	if (p_msaa) {
 		usage_bits |= RD::TEXTURE_USAGE_CAN_COPY_FROM_BIT;
 	} else if (p_resolve) {
@@ -826,6 +832,15 @@ uint32_t RenderSceneBuffersRD::get_depth_usage_bits(bool p_resolve, bool p_msaa,
 	DEV_ASSERT((!p_resolve && !p_msaa) || (p_resolve != p_msaa));
 
 	uint32_t usage_bits = RD::TEXTURE_USAGE_SAMPLING_BIT;
+	// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+	// Forward+ resolves MSAA depth into R32F. Unlike a depth/stencil image,
+	// the recorder can read that resolved color-format buffer directly.
+	if (p_resolve) {
+		usage_bits |= RD::TEXTURE_USAGE_CAN_COPY_FROM_BIT;
+	}
+#endif
+	// wgodot-changes::end
 	if (p_msaa) {
 		usage_bits |= RD::TEXTURE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | RD::TEXTURE_USAGE_CAN_COPY_FROM_BIT;
 	} else if (p_resolve) {

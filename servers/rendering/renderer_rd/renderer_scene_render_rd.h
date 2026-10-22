@@ -108,8 +108,10 @@ protected:
 	bool _compositor_effects_has_flag(const RenderDataRD *p_render_data, RSE::CompositorEffectFlags p_flag, RSE::CompositorEffectCallbackType p_callback_type = RSE::COMPOSITOR_EFFECT_CALLBACK_TYPE_ANY);
 	bool _has_compositor_effect(RSE::CompositorEffectCallbackType p_callback_type, const RenderDataRD *p_render_data);
 	void _process_compositor_effects(RSE::CompositorEffectCallbackType p_callback_type, const RenderDataRD *p_render_data);
-	void _render_buffers_ensure_screen_texture(const RenderDataRD *p_render_data);
-	void _render_buffers_copy_screen_texture(const RenderDataRD *p_render_data);
+// wgodot-changes::begin
+	void _render_buffers_ensure_screen_texture(const RenderDataRD *p_render_data, const StringName &p_destination = StringName());
+	void _render_buffers_copy_screen_texture(const RenderDataRD *p_render_data, const StringName &p_destination = StringName(), bool p_mipmaps = true);
+// wgodot-changes::end
 	void _render_buffers_ensure_depth_texture(const RenderDataRD *p_render_data);
 	void _render_buffers_copy_depth_texture(const RenderDataRD *p_render_data, bool p_use_msaa = false);
 	void _render_buffers_post_process_and_tonemap(const RenderDataRD *p_render_data, bool p_use_msaa = false);
