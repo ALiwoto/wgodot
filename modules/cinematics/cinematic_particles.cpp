@@ -7,6 +7,11 @@ void CinematicParticles::prepare() {
 	for (int i = 0; i < emitters.size(); i++) {
 		GPUParticles3D *emitter = Object::cast_to<GPUParticles3D>(emitters[i]);
 		ERR_CONTINUE(!emitter);
+		// Keep seeks within this playback reproducible, but choose a fresh
+		// sequence for each playback unless the author explicitly fixed it.
+		if (!emitter->get_use_fixed_seed()) {
+			emitter->set_seed(Math::rand());
+		}
 		emitter->set_speed_scale(0.0);
 		emitter->set_emitting(false);
 	}

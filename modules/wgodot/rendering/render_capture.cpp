@@ -222,6 +222,8 @@ void WRenderCapture::_read_particles(const Ref<ConfigFile> &p_frame) {
 		p_frame->set_value(section, "buffer", plane.name);
 		const int index = readback_frame->planes.size();
 		readback_frame->planes.push_back(plane);
+		readback_frame->readback_bytes += plane.byte_count;
+		pending_readback_bytes.add(plane.byte_count);
 		readback_frame->pending++;
 		error = RenderingDevice::get_singleton()->buffer_get_data_async(layout.buffer, callable_mp(this, &WRenderCapture::_texture_readback).bind(readback_frame, index));
 		if (error != OK) {
@@ -343,6 +345,8 @@ void WRenderCapture::_read_texture(const String &p_name, RID p_texture) {
 	plane.byte_count = RD::get_image_format_required_size(format.format, format.width, format.height, format.depth, format.mipmaps);
 	const int index = readback_frame->planes.size();
 	readback_frame->planes.push_back(plane);
+	readback_frame->readback_bytes += plane.byte_count;
+	pending_readback_bytes.add(plane.byte_count);
 	const uint64_t started = OS::get_singleton()->get_ticks_usec();
 	// Enqueue the copy at this exact pass boundary. Waiting until finish_frame
 	// to enqueue would read overwritten attachments instead of intermediate data.
@@ -385,10 +389,6 @@ void WRenderCapture::_pump_frames(bool p_wait) {
 	while (!writers.is_empty() && writers.front()->get()->written.is_set()) {
 		_drain_write(false);
 	}
-	while (p_wait && spool_pending_bytes.get() > spool_budget_bytes && !writers.is_empty()) {
-		// Retire an existing CPU job before forcing newer GPU copies to finish.
-		_drain_write(false);
-	}
 	while (planning_frame.is_valid() || !readback_frames.is_empty()) {
 		if (planning_frame.is_valid()) {
 			if (!p_wait && !WorkerThreadPool::get_singleton()->is_task_completed(planning_task)) {
@@ -402,9 +402,6 @@ void WRenderCapture::_pump_frames(bool p_wait) {
 			Ref<ReadbackFrame> planned = planning_frame;
 			planning_frame.unref();
 			writers.push_back(planned);
-			while (p_wait && spool_pending_bytes.get() > spool_budget_bytes && !writers.is_empty()) {
-				_drain_write(false);
-			}
 		}
 		if (readback_frames.is_empty()) {
 			return;
@@ -417,12 +414,10 @@ void WRenderCapture::_pump_frames(bool p_wait) {
 			_collect_readbacks();
 			if (frame->pending) {
 				failure.set(ERR_CANT_ACQUIRE_RESOURCE);
+				pending_readback_bytes.sub(frame->readback_bytes);
 				readback_frames.pop_front();
 				return;
 			}
-		}
-		if (spool_pending_bytes.get() > spool_budget_bytes) {
-			return;
 		}
 		frame->metadata->set_value("frame", "readback_ticks_usec", int64_t(frame->readbacks_finished_usec));
 		frame->owner = this;
@@ -435,6 +430,41 @@ void WRenderCapture::_pump_frames(bool p_wait) {
 		if (p_wait) {
 			return;
 		}
+	}
+}
+
+uint64_t WRenderCapture::_queued_bytes() const {
+	// Reserve readbacks from submission through packet preparation, including
+	// GPU copies that have not reached their callbacks yet. The last frame's
+	// immutable comparison data remains resident after its disk packet retires.
+	return pending_readback_bytes.get() + spool_pending_bytes.get() + retained_payload_bytes.get();
+}
+
+void WRenderCapture::_limit_queued_bytes() {
+	queue_peak_bytes.exchange_if_greater(_queued_bytes());
+	if (_queued_bytes() <= spool_budget_bytes) {
+		return;
+	}
+	WGodotGPUProfile::Scope waiting("capture.wait_capacity", directory, frame_index - 1);
+	const uint64_t started = OS::get_singleton()->get_ticks_usec();
+	while (_queued_bytes() > spool_budget_bytes) {
+		if (!writers.is_empty()) {
+			_drain_write(false);
+		} else if (planning_frame.is_valid() || !readback_frames.is_empty()) {
+			_pump_frames(true);
+		} else {
+			// One frame can itself exceed the budget. Its immutable comparison
+			// data cannot be retired until the next frame replaces it.
+			break;
+		}
+	}
+	if (!ending) {
+		// Finalization also drains this queue, but that wait is on its own I/O
+		// thread. Report only backpressure that actually held a sampled frame.
+		const uint64_t elapsed = OS::get_singleton()->get_ticks_usec() - started;
+		sampling_wait_usec += elapsed;
+		sampling_wait_max_usec = MAX(sampling_wait_max_usec, elapsed);
+		sampling_wait_count++;
 	}
 }
 
@@ -543,12 +573,10 @@ void WRenderCapture::finish_frame(const RenderDataRD *p_data) {
 	capture->sample_frame = -1;
 	capture->frame_index++;
 	capture->_pump_frames(false);
-	// GPU readbacks follow device latency. Raw disk packets have a separate
-	// physical-memory budget, so brief write bursts do not stop rendering.
-	if (capture->readback_frames.size() + int(capture->planning_frame.is_valid()) > int(RenderingDevice::get_singleton()->get_frame_delay()) + 1 ||
-			capture->spool_pending_bytes.get() > capture->spool_budget_bytes) {
-		capture->_pump_frames(true);
-	}
+	// Completed CPU readbacks are not GPU frames in flight. A frame-count cap
+	// incorrectly joined the planner after a brief CPU scheduling delay. Bound
+	// the entire queue by bytes instead, letting normal draws retire GPU copies.
+	capture->_limit_queued_bytes();
 	capture->submitted_frame_count.set(capture->frame_index);
 }
 
@@ -577,68 +605,124 @@ void WRenderCapture::_drain_write(bool p_all) {
 	}
 }
 
+void WRenderCapture::_compare_plane(uint32_t p_index, Plane *p_planes) const {
+	Plane &plane = p_planes[p_index];
+	if (!plane.buffer && !plane.texture_input && plane.byte_count % 8 == 0 &&
+			(plane.format == RD::DATA_FORMAT_R16G16B16A16_SFLOAT || plane.format == RD::DATA_FORMAT_R32_SFLOAT ||
+					plane.format == RD::DATA_FORMAT_R8G8B8A8_UNORM || plane.format == RD::DATA_FORMAT_R8G8B8A8_SRGB ||
+					plane.format == RD::DATA_FORMAT_B8G8R8A8_UNORM || plane.format == RD::DATA_FORMAT_B8G8R8A8_SRGB)) {
+		plane.shuffle_stride = 8;
+	}
+	if (!plane.file.is_empty() || plane.error != OK) {
+		return;
+	}
+	for (uint32_t i = 0; i < p_index; i++) {
+		const Plane &other = p_planes[i];
+		if (!plane.buffer && !plane.texture_input && !other.buffer && !other.texture_input &&
+				other.error == OK && other.width == plane.width && other.height == plane.height &&
+				other.format == plane.format && other.bytes == plane.bytes) {
+			// Read only immutable descriptor/pixel fields from other planes.
+			// Their assigned IDs and shared byte ownership are resolved after join.
+			plane.alias = i;
+			return;
+		}
+	}
+	const OutputPayload *previous = output_payloads.getptr(plane.name);
+	if (previous && previous->shuffle_stride == plane.shuffle_stride &&
+			(previous->tiles.entries.is_empty() || (previous->tiles.width == uint32_t(plane.width) && previous->tiles.height == uint32_t(plane.height))) &&
+			previous->bytes == plane.bytes) {
+		plane.file = previous->file;
+		plane.entry = previous->entry;
+		plane.tiles = previous->tiles;
+		plane.reused = true;
+		return;
+	}
+	plane.needs_write = true;
+	if (!plane.buffer && !plane.texture_input) {
+		plane.tiles = WCapturePayload::compare_tiles(plane.bytes, plane.width, plane.height,
+				RD::get_image_format_pixel_size(RD::DataFormat(plane.format)),
+				previous ? previous->bytes : PackedByteArray(),
+				previous ? previous->tiles : WCapturePayload::Tiles());
+	}
+}
+
 void WRenderCapture::_plan_write(ReadbackFrame *p_frame) {
 	WGodotGPUProfile::Scope profile_scope("capture.plan_write", directory, p_frame->index);
-	HashMap<String, OutputPayload> next_payloads;
-	for (int i = 0; i < p_frame->planes.size(); i++) {
-		Plane &plane = p_frame->planes.write[i];
-		if (!plane.buffer && !plane.texture_input && plane.byte_count % 8 == 0 &&
-				(plane.format == RD::DATA_FORMAT_R16G16B16A16_SFLOAT || plane.format == RD::DATA_FORMAT_R32_SFLOAT ||
-						plane.format == RD::DATA_FORMAT_R8G8B8A8_UNORM || plane.format == RD::DATA_FORMAT_R8G8B8A8_SRGB ||
-						plane.format == RD::DATA_FORMAT_B8G8R8A8_UNORM || plane.format == RD::DATA_FORMAT_B8G8R8A8_SRGB)) {
-			plane.shuffle_stride = 8;
+	Plane *planes = p_frame->planes.ptrw();
+	{
+		WGodotGPUProfile::Scope comparing("capture.compare_planes", directory, p_frame->index);
+		if (p_frame->planes.size() > 1) {
+			WorkerThreadPool *pool = WorkerThreadPool::get_singleton();
+			WorkerThreadPool::GroupID group = pool->add_template_group_task(
+					this, &WRenderCapture::_compare_plane, planes, p_frame->planes.size(), -1, true, "Compare capture planes");
+			pool->wait_for_group_task_completion(group);
+		} else if (p_frame->planes.size() == 1) {
+			_compare_plane(0, planes);
 		}
-		if (plane.file.is_empty() && plane.error == OK) {
-			for (int j = 0; j < i; j++) {
-				const Plane &other = p_frame->planes[j];
-				if (!plane.buffer && !plane.texture_input && !other.buffer && !other.texture_input &&
-						other.error == OK && other.width == plane.width && other.height == plane.height &&
-						other.format == plane.format && other.bytes == plane.bytes) {
-					plane.alias = j;
-					plane.file = other.file;
-					plane.entry = other.entry;
-					plane.tiles = other.tiles;
-					plane.reused = true;
-					break;
-				}
+	}
+	HashMap<String, OutputPayload> next_payloads;
+	uint64_t retained_bytes = 0;
+	int packets = 0;
+	for (int i = 0; i < p_frame->planes.size(); i++) {
+		Plane &plane = planes[i];
+		if (plane.alias >= 0) {
+			const Plane &other = planes[plane.alias];
+			plane.file = other.file;
+			plane.entry = other.entry;
+			plane.tiles = other.tiles;
+			plane.bytes = other.bytes;
+			plane.reused = true;
+		} else if (plane.needs_write) {
+			plane.file = "payloads.wgp";
+			plane.entry = next_payload_entry++;
+			uint64_t *entries = plane.tiles.entries.ptrw();
+			for (uint32_t tile : plane.tiles.changed) {
+				entries[tile] = next_payload_entry++;
 			}
-			const OutputPayload *previous = output_payloads.getptr(plane.name);
-			if (plane.file.is_empty() && previous && previous->shuffle_stride == plane.shuffle_stride &&
-					(previous->tiles.entries.is_empty() || (previous->tiles.width == uint32_t(plane.width) && previous->tiles.height == uint32_t(plane.height))) &&
-					previous->bytes == plane.bytes) {
-				plane.file = previous->file;
-				plane.entry = previous->entry;
-				plane.tiles = previous->tiles;
-				plane.reused = true;
-			}
-			if (plane.file.is_empty()) {
-				plane.file = "payloads.wgp";
-				plane.entry = next_payload_entry++;
-				plane.needs_write = true;
-				if (!plane.buffer && !plane.texture_input) {
-					plane.tiles = WCapturePayload::plan(plane.bytes, plane.width, plane.height,
-							RD::get_image_format_pixel_size(RD::DataFormat(plane.format)),
-							previous ? previous->bytes : PackedByteArray(),
-							previous ? previous->tiles : WCapturePayload::Tiles(), next_payload_entry);
-				}
-			}
+			packets++;
+		} else if (plane.reused) {
+			plane.bytes = output_payloads[plane.name].bytes;
 		}
 		if (!plane.texture_input && plane.error == OK && !plane.bytes.is_empty()) {
 			next_payloads.insert(plane.name, { plane.bytes, plane.file, plane.shuffle_stride, plane.entry, plane.tiles });
+			if (plane.alias < 0) {
+				retained_bytes += plane.bytes.size();
+			}
 		}
 	}
 	// References name the owning job's deterministic output, even if it is
 	// still being written. end() joins every job before publishing success.
 	output_payloads = std::move(next_payloads);
-	for (Plane &plane : p_frame->planes) {
-		if (plane.needs_write && plane.error == OK) {
-			plane.error = WCapturePayload::prepare(plane.entry, plane.bytes, plane.shuffle_stride, plane.tiles, plane.packet);
-			p_frame->write_bytes += plane.packet.bytes.size();
+	retained_payload_bytes.set(retained_bytes);
+	{
+		WGodotGPUProfile::Scope preparing("capture.prepare_packets", directory, p_frame->index);
+		// IDs and aliases are now fixed in frame order. Packet construction only
+		// reads immutable pixels and writes its own plane; no vector mutation or
+		// archive access crosses worker boundaries.
+		if (packets > 1) {
+			WorkerThreadPool *pool = WorkerThreadPool::get_singleton();
+			WorkerThreadPool::GroupID group = pool->add_native_group_task(
+					_prepare_plane_task, planes, p_frame->planes.size(), -1, true, "Prepare capture packets");
+			pool->wait_for_group_task_completion(group);
+		} else if (packets == 1) {
+			for (int i = 0; i < p_frame->planes.size(); i++) {
+				_prepare_plane_task(planes, i);
+			}
 		}
+	}
+	for (Plane &plane : p_frame->planes) {
+		p_frame->write_bytes += plane.packet.bytes.size();
 		// The next comparison owns its own reference in output_payloads. Disk
 		// work must never retain full images or an earlier frame's tile arrays.
 		plane.bytes.clear();
 		plane.tiles = WCapturePayload::Tiles();
+	}
+}
+
+void WRenderCapture::_prepare_plane_task(void *p_userdata, uint32_t p_index) {
+	Plane &plane = static_cast<Plane *>(p_userdata)[p_index];
+	if (plane.needs_write && plane.error == OK) {
+		plane.error = WCapturePayload::prepare(plane.entry, plane.bytes, plane.shuffle_stride, plane.tiles, plane.packet);
 	}
 }
 
@@ -652,7 +736,9 @@ void WRenderCapture::_plan_write_task(void *p_userdata) {
 	{
 		MutexLock lock(frame->owner->spool_mutex);
 		const uint64_t queued = frame->owner->spool_pending_bytes.add(frame->write_bytes);
+		frame->owner->pending_readback_bytes.sub(frame->readback_bytes);
 		frame->owner->spool_peak_bytes.exchange_if_greater(queued);
+		frame->owner->queue_peak_bytes.exchange_if_greater(frame->owner->_queued_bytes());
 		frame->owner->spool_pending.push_back(Ref<ReadbackFrame>(frame));
 		frame->owner->spool_changed.notify_all();
 	}
@@ -775,6 +861,7 @@ void WRenderCapture::_finish_readbacks() {
 	if (readback_frame.is_valid()) {
 		// A viewport disappeared midway through a frame. Its callbacks have
 		// drained, but incomplete semantic/frame metadata cannot be published.
+		pending_readback_bytes.sub(readback_frame->readback_bytes);
 		readback_frame.unref();
 		failure.set(ERR_CANT_ACQUIRE_RESOURCE);
 	}
@@ -815,6 +902,7 @@ void WRenderCapture::_finalize_files() {
 	WGodotGPUProfile::Scope finalizing_scope("capture.finalize_files");
 	while (planning_frame.is_valid() || !readback_frames.is_empty()) {
 		_pump_frames(true);
+		_limit_queued_bytes();
 	}
 	_drain_write();
 	if (spool_thread.is_started()) {
@@ -841,6 +929,7 @@ void WRenderCapture::_finalize_files() {
 		failure.set(payload_error);
 	}
 	output_payloads.clear();
+	retained_payload_bytes.set(0);
 	if (WGPUCapture::Recorder *journal = WGPUCapture::Recorder::get()) {
 		const Error error = journal->flush();
 		if (error != OK) {
@@ -863,11 +952,15 @@ void WRenderCapture::_finalize_files() {
 	manifest->set_value("capture", "payload_entries", int64_t(payload_writer.get_entry_count()));
 	manifest->set_value("capture", "spool_budget_bytes", int64_t(spool_budget_bytes));
 	manifest->set_value("capture", "spool_peak_bytes", int64_t(spool_peak_bytes.get()));
+	manifest->set_value("capture", "queue_peak_bytes", int64_t(queue_peak_bytes.get()));
 	manifest->set_value("capture", "compression_phase", "after_session");
 	manifest->set_value("capture", "metadata_phase", "after_sampling");
 	manifest->set_value("capture", "storage_wait_usec", int64_t(storage_wait_usec));
 	manifest->set_value("capture", "storage_wait_max_usec", int64_t(storage_wait_max_usec));
 	manifest->set_value("capture", "storage_wait_count", int64_t(storage_wait_count));
+	manifest->set_value("capture", "sampling_wait_usec", int64_t(sampling_wait_usec));
+	manifest->set_value("capture", "sampling_wait_max_usec", int64_t(sampling_wait_max_usec));
+	manifest->set_value("capture", "sampling_wait_count", int64_t(sampling_wait_count));
 	if (WGPUCapture::Recorder *journal = WGPUCapture::Recorder::get()) {
 		const WGPUCapture::Statistics statistics = journal->get_statistics();
 		manifest->set_value("capture", "device_journal", journal->get_path());

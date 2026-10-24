@@ -32,6 +32,7 @@
 
 // wgodot-changes::begin
 #include "modules/modules_enabled.gen.h"
+#include "servers/rendering/rendering_device_readback.h"
 // wgodot-changes::end
 #include "core/object/worker_thread_pool.h"
 #include "core/os/condition_variable.h"
@@ -231,6 +232,11 @@ private:
 		uint32_t frame_local_count = 0;
 		Callable callback;
 		uint32_t size = 0;
+		// wgodot-changes::begin
+		Ref<RenderingDeviceReadbackResult> accumulated;
+		uint32_t output_offset = 0;
+		bool partial = false;
+		// wgodot-changes::end
 	};
 
 	Error _buffer_update(Buffer *p_buffer, RID p_buffer_id, uint32_t p_offset, uint32_t p_size, const void *p_data);
@@ -453,6 +459,10 @@ public:
 		uint32_t depth = 0;
 		uint32_t mipmaps = 0;
 		RDD::DataFormat format = RDD::DATA_FORMAT_MAX;
+		// wgodot-changes::begin
+		Ref<RenderingDeviceReadbackResult> accumulated;
+		bool partial = false;
+		// wgodot-changes::end
 	};
 
 public:

@@ -660,7 +660,12 @@ void WorkerThreadPool::notify_yield_over(TaskID p_task_id) {
 WorkerThreadPool::GroupID WorkerThreadPool::_add_group_task(const Callable &p_callable, void (*p_func)(void *, uint32_t), void *p_userdata, BaseTemplateUserdata *p_template_userdata, int p_elements, int p_tasks, bool p_high_priority, const String &p_description) {
 	ERR_FAIL_COND_V(p_elements < 0, INVALID_TASK_ID);
 	if (p_tasks < 0) {
-		p_tasks = MAX(1u, threads.size());
+		// wgodot-changes::begin
+		// More tasks than elements can only contend for the exhausted index.
+		// Keep automatic parallelism proportional to useful work, especially
+		// for small per-frame groups on machines with many CPU cores.
+		p_tasks = MAX(1u, MIN(threads.size(), uint32_t(p_elements)));
+		// wgodot-changes::end
 	}
 
 	MutexLock<BinaryMutex> lock(task_mutex);

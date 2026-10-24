@@ -31,6 +31,7 @@
 // wgodot-changes::begin
 #include "modules/modules_enabled.gen.h"
 #if defined(MODULE_WGODOT_ENABLED) && defined(TOOLS_ENABLED) && defined(DEBUG_ENABLED)
+#include "modules/wgodot/rendering/gpu_profile.h"
 #include "modules/wgodot/wgodot_performance.h"
 #endif
 // wgodot-changes::end
@@ -1152,6 +1153,11 @@ Variant AnimationMixer::post_process_key_value(const Ref<Animation> &p_anim, int
 }
 
 void AnimationMixer::_blend_init() {
+	// wgodot-changes::begin
+#if defined(MODULE_WGODOT_ENABLED) && defined(TOOLS_ENABLED) && defined(DEBUG_ENABLED)
+	WGodotGPUProfile::Scope profile_scope("animation.initialize_tracks");
+#endif
+	// wgodot-changes::end
 	// Check all tracks, see if they need modification.
 	root_motion_position = Vector3(0, 0, 0);
 	root_motion_rotation = Quaternion(0, 0, 0, 1);
@@ -1255,6 +1261,11 @@ void AnimationMixer::blend_capture(double p_delta) {
 }
 
 void AnimationMixer::_blend_calc_total_weight() {
+	// wgodot-changes::begin
+#if defined(MODULE_WGODOT_ENABLED) && defined(TOOLS_ENABLED) && defined(DEBUG_ENABLED)
+	WGodotGPUProfile::Scope profile_scope("animation.calculate_weights");
+#endif
+	// wgodot-changes::end
 	for (const AnimationInstance &ai : animation_instances) {
 		const Ref<Animation> &a = ai.animation;
 		real_t weight = ai.playback_info.weight;
@@ -1317,6 +1328,9 @@ void AnimationMixer::_blend_calc_total_weight() {
 
 void AnimationMixer::_blend_process(double p_delta, bool p_update_only) {
 	// wgodot-changes::begin
+#if defined(MODULE_WGODOT_ENABLED) && defined(TOOLS_ENABLED) && defined(DEBUG_ENABLED)
+	WGodotGPUProfile::Scope profile_scope("animation.sample_tracks");
+#endif
 	is_GDVIRTUAL_CALL_post_process_key_value = GDVIRTUAL_IS_OVERRIDDEN(_post_process_key_value);
 	// wgodot-changes::end
 	// Apply value/transform/blend/bezier blends to track caches and execute method/audio/animation tracks.
@@ -1968,6 +1982,11 @@ void AnimationMixer::_blend_process(double p_delta, bool p_update_only) {
 }
 
 void AnimationMixer::_blend_apply() {
+	// wgodot-changes::begin
+#if defined(MODULE_WGODOT_ENABLED) && defined(TOOLS_ENABLED) && defined(DEBUG_ENABLED)
+	WGodotGPUProfile::Scope profile_scope("animation.apply_tracks");
+#endif
+	// wgodot-changes::end
 	// Finally, set the tracks.
 	for (const KeyValue<Animation::TrackCacheID, TrackCache *> &K : track_cache) {
 		TrackCache *track = K.value;
@@ -1993,18 +2012,21 @@ void AnimationMixer::_blend_apply() {
 						return;
 					}
 
-					// TODO: Once https://github.com/godotengine/godot/pull/113441 makes it in
-					// Use set_bone_pose_components when loc_used, rot_used, and scale_used are all true.
-
-					if (t->loc_used) {
-						t_skeleton->set_bone_pose_position(t->bone_idx, t->loc);
+					// wgodot-changes::begin
+					if (t->loc_used && t->rot_used && t->scale_used) {
+						t_skeleton->set_bone_pose_components(t->bone_idx, t->loc, t->rot, t->scale);
+					} else {
+						if (t->loc_used) {
+							t_skeleton->set_bone_pose_position(t->bone_idx, t->loc);
+						}
+						if (t->rot_used) {
+							t_skeleton->set_bone_pose_rotation(t->bone_idx, t->rot);
+						}
+						if (t->scale_used) {
+							t_skeleton->set_bone_pose_scale(t->bone_idx, t->scale);
+						}
 					}
-					if (t->rot_used) {
-						t_skeleton->set_bone_pose_rotation(t->bone_idx, t->rot);
-					}
-					if (t->scale_used) {
-						t_skeleton->set_bone_pose_scale(t->bone_idx, t->scale);
-					}
+					// wgodot-changes::end
 
 				} else if (!t->skeleton_id.is_valid()) {
 					Node3D *t_node_3d = ObjectDB::get_instance<Node3D>(t->object_id);

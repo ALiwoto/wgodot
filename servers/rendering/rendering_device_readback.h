@@ -3,7 +3,30 @@
 
 #include "core/templates/local_vector.h"
 #include "core/object/worker_thread_pool.h"
+#include "core/object/ref_counted.h"
 #include "servers/rendering/rendering_device_driver.h"
+
+// Only requests spanning a staging flush need this owner. Completed partial
+// regions stay in one allocation; the public callback receives it once, when
+// the final region has retired. A failed part invalidates the entire result.
+class RenderingDeviceReadbackResult : public RefCounted {
+	GDSOFTCLASS(RenderingDeviceReadbackResult, RefCounted);
+	bool failed = false;
+
+public:
+	PackedByteArray bytes;
+
+	void finish_part(bool p_valid, bool p_partial, PackedByteArray &r_output) {
+		failed = failed || !p_valid;
+		if (!p_partial) {
+			if (!failed) {
+				r_output = std::move(bytes);
+			} else {
+				bytes.clear();
+			}
+		}
+	}
+};
 
 // A completed download can contain many regions in the same staging buffer.
 // Keep its mapping until the CPU copy is complete, then release every mapping

@@ -1036,7 +1036,9 @@ Error RenderingDevice::_staging_buffer_allocate(StagingBuffers &p_staging_buffer
 
 			int32_t available_bytes = int32_t(p_staging_buffers.block_size) - int32_t(write_from);
 
-			if ((int32_t)p_amount < available_bytes) {
+			// wgodot-changes::begin
+			if ((int32_t)p_amount <= available_bytes) {
+			// wgodot-changes::end
 				// All is good, we should be ok, all will fit.
 				r_alloc_offset = write_from;
 			} else if (p_can_segment && available_bytes >= (int32_t)p_required_align) {
@@ -1516,14 +1518,27 @@ Error RenderingDevice::buffer_get_data_async(RID p_buffer, const Callable &p_cal
 				uint32_t local_index = get_data_request.frame_local_index + i;
 				draw_graph.add_buffer_get_data(buffer->driver_id, buffer->draw_tracker, frames[frame].download_buffer_staging_buffers[local_index], frames[frame].download_buffer_copy_regions[local_index]);
 			}
+			// wgodot-changes::begin
+			if (get_data_request.accumulated.is_null()) {
+				get_data_request.accumulated.instantiate();
+			}
+			get_data_request.partial = true;
+			frames[frame].download_buffer_get_data_requests.push_back(get_data_request);
+			// wgodot-changes::end
 		}
 
 		_staging_buffer_execute_required_action(download_staging_buffers, required_action);
 
-		if (flush_frames) {
+		// wgodot-changes::begin
+		if (required_action == STAGING_REQUIRED_ACTION_FLUSH_AND_STALL_ALL) {
+			// Other requests can be retired even before this request's first
+			// region. Always refresh the indices after the frame changes.
+			get_data_request.partial = false;
+			get_data_request.output_offset = submit_from;
 			get_data_request.frame_local_count = 0;
 			get_data_request.frame_local_index = frames[frame].download_buffer_copy_regions.size();
 		}
+		// wgodot-changes::end
 
 		RDD::BufferCopyRegion region;
 		region.src_offset = submit_from + p_offset;
@@ -2412,7 +2427,11 @@ Error RenderingDevice::_texture_initialize(RID p_texture, uint32_t p_layer, cons
 				uint32_t pitch = get_compressed_image_format_pixels_shifted(texture->format, width * pixel_size * block_w);
 				uint32_t pitch_step = driver->api_trait_get(RDD::API_TRAIT_TEXTURE_DATA_ROW_PITCH_STEP);
 				pitch = STEPIFY(pitch, pitch_step);
-				uint32_t to_allocate = get_compressed_image_format_pixels_shifted(texture->format, pitch * height);
+				// wgodot-changes::begin
+				// pitch already includes the format's block byte size and driver
+				// alignment. The remaining dimension is the number of block rows.
+				uint32_t to_allocate = pitch * (height / block_h);
+				// wgodot-changes::end
 
 				if (copy_pass) {
 					const uint8_t *read_ptr_mipmap_layer = read_ptr_mipmap + (tight_mip_size / depth) * z;
@@ -2547,7 +2566,11 @@ Error RenderingDevice::texture_update(RID p_texture, uint32_t p_layer, const Vec
 					uint32_t region_pitch = get_compressed_image_format_pixels_shifted(texture->format, region_w * pixel_size * block_w);
 					uint32_t pitch_step = driver->api_trait_get(RDD::API_TRAIT_TEXTURE_DATA_ROW_PITCH_STEP);
 					region_pitch = STEPIFY(region_pitch, pitch_step);
-					uint32_t to_allocate = region_pitch * region_h;
+					// wgodot-changes::begin
+					// Pitch is bytes per block row, not per pixel row. Reserving
+					// pixel rows wastes 4x (BC) or more staging space and forces stalls.
+					uint32_t to_allocate = region_pitch * (region_h / block_h);
+					// wgodot-changes::end
 					uint32_t alloc_offset = 0, alloc_size = 0;
 					StagingRequiredAction required_action;
 					Error err = _staging_buffer_allocate(upload_staging_buffers, to_allocate, required_align, alloc_offset, alloc_size, required_action, false);
@@ -3018,6 +3041,9 @@ Vector<uint8_t> RenderingDevice::texture_get_data(RID p_texture, uint32_t p_laye
 
 Error RenderingDevice::texture_get_data_async(RID p_texture, uint32_t p_layer, const Callable &p_callback) {
 	ERR_RENDER_THREAD_GUARD_V(ERR_UNAVAILABLE);
+	// wgodot-changes::begin
+	ERR_FAIL_COND_V_MSG(!p_callback.is_valid(), ERR_INVALID_PARAMETER, "Callback must be valid.");
+	// wgodot-changes::end
 
 	Texture *tex = texture_owner.get_or_null(p_texture);
 	ERR_FAIL_NULL_V(tex, ERR_INVALID_PARAMETER);
@@ -3050,7 +3076,11 @@ Error RenderingDevice::texture_get_data_async(RID p_texture, uint32_t p_layer, c
 
 	uint32_t w, h, d;
 	uint32_t pixel_size = get_image_format_pixel_size(tex->format);
-	uint32_t required_align = driver->api_trait_get(RDD::API_TRAIT_TEXTURE_TRANSFER_ALIGNMENT);
+	// wgodot-changes::begin
+	// Preserve both the driver's alignment and the texel/compressed-block
+	// alignment when different image formats share a staging buffer.
+	uint32_t required_align = _texture_alignment(tex);
+	// wgodot-changes::end
 	uint32_t pitch_step = driver->api_trait_get(RDD::API_TRAIT_TEXTURE_DATA_ROW_PITCH_STEP);
 	uint32_t region_size = texture_download_region_size_px;
 	uint32_t logic_w = tex->width;
@@ -3093,7 +3123,9 @@ Error RenderingDevice::texture_get_data_async(RID p_texture, uint32_t p_layer, c
 					uint32_t region_pitch = get_compressed_image_format_pixels_shifted(tex->format, region_w * pixel_size * block_w);
 					region_pitch = STEPIFY(region_pitch, pitch_step);
 
-					uint32_t to_allocate = region_pitch * region_h;
+					// wgodot-changes::begin
+					uint32_t to_allocate = region_pitch * (region_h / block_h);
+					// wgodot-changes::end
 					Error err = _staging_buffer_allocate(download_staging_buffers, to_allocate, required_align, block_write_offset, block_write_amount, required_action, false);
 					ERR_FAIL_COND_V(err, ERR_CANT_CREATE);
 
@@ -3103,14 +3135,24 @@ Error RenderingDevice::texture_get_data_async(RID p_texture, uint32_t p_layer, c
 							uint32_t local_index = get_data_request.frame_local_index + j;
 							draw_graph.add_texture_get_data(tex->driver_id, tex->draw_tracker, frames[frame].download_texture_staging_buffers[local_index], frames[frame].download_buffer_texture_copy_regions[local_index]);
 						}
+						// wgodot-changes::begin
+						if (get_data_request.accumulated.is_null()) {
+							get_data_request.accumulated.instantiate();
+						}
+						get_data_request.partial = true;
+						frames[frame].download_texture_get_data_requests.push_back(get_data_request);
+						// wgodot-changes::end
 					}
 
 					_staging_buffer_execute_required_action(download_staging_buffers, required_action);
 
-					if (flush_frames) {
+					// wgodot-changes::begin
+					if (required_action == STAGING_REQUIRED_ACTION_FLUSH_AND_STALL_ALL) {
+						get_data_request.partial = false;
 						get_data_request.frame_local_count = 0;
 						get_data_request.frame_local_index = frames[frame].download_buffer_texture_copy_regions.size();
 					}
+					// wgodot-changes::end
 
 					RDD::BufferTextureCopyRegion copy_region;
 					copy_region.buffer_offset = block_write_offset;
@@ -9064,15 +9106,15 @@ void RenderingDevice::_stall_for_frame(uint32_t p_frame) {
 #endif
 				for (uint32_t i = 0; i < request_count; i++) {
 					const BufferGetDataRequest &request = frames[p_frame].download_buffer_get_data_requests[i];
-					completed_callbacks.write[i] = request.callback;
-					PackedByteArray &packed_byte_array = completed_data.write[i];
+					completed_callbacks.write[i] = request.partial ? Callable() : request.callback;
+					PackedByteArray &packed_byte_array = request.accumulated.is_valid() ? request.accumulated->bytes : completed_data.write[i];
 					valid[i] = packed_byte_array.resize(request.size) == OK;
 					if (!valid[i]) {
 						ERR_PRINT("Cannot allocate a completed buffer readback.");
 						continue;
 					}
 					uint8_t *output = packed_byte_array.ptrw();
-					uint32_t array_offset = 0;
+					uint32_t array_offset = request.output_offset;
 					for (uint32_t j = 0; j < request.frame_local_count; j++) {
 						uint32_t local_index = request.frame_local_index + j;
 						const RDD::BufferCopyRegion &region = frames[p_frame].download_buffer_copy_regions[local_index];
@@ -9093,7 +9135,10 @@ void RenderingDevice::_stall_for_frame(uint32_t p_frame) {
 				copies.finish();
 			}
 			for (uint32_t i = 0; i < request_count; i++) {
-				if (!valid[i]) {
+				const BufferGetDataRequest &request = frames[p_frame].download_buffer_get_data_requests[i];
+				if (request.accumulated.is_valid()) {
+					request.accumulated->finish_part(valid[i], request.partial, completed_data.write[i]);
+				} else if (!valid[i]) {
 					completed_data.write[i].clear();
 				}
 			}
@@ -9131,8 +9176,8 @@ void RenderingDevice::_stall_for_frame(uint32_t p_frame) {
 					const TextureGetDataRequest &request = frames[p_frame].download_texture_get_data_requests[i];
 					uint32_t texture_size = get_image_format_required_size(request.format, request.width, request.height, request.depth, request.mipmaps);
 					// wgodot-changes::begin
-					PackedByteArray &packed_byte_array = downloaded.write[i];
-					callbacks.write[i] = request.callback;
+					PackedByteArray &packed_byte_array = request.accumulated.is_valid() ? request.accumulated->bytes : downloaded.write[i];
+					callbacks.write[i] = request.partial ? Callable() : request.callback;
 					valid[i] = true;
 					if (packed_byte_array.resize(texture_size) != OK) {
 						valid[i] = false;
@@ -9189,6 +9234,12 @@ void RenderingDevice::_stall_for_frame(uint32_t p_frame) {
 #endif
 				copies.finish();
 			} // Release mappings before callbacks can submit new device work.
+			for (uint32_t i = 0; i < request_count; i++) {
+				const TextureGetDataRequest &request = frames[p_frame].download_texture_get_data_requests[i];
+				if (request.accumulated.is_valid()) {
+					request.accumulated->finish_part(valid[i], request.partial, downloaded.write[i]);
+				}
+			}
 			// wgodot-changes::end
 
 			GodotProfileZoneGrouped(_profile_zone, "clear buffers");
@@ -9209,7 +9260,9 @@ void RenderingDevice::_stall_for_frame(uint32_t p_frame) {
 		WGodotGPUProfile::Scope callbacks_scope("device.readback_callbacks");
 #endif
 		for (int i = 0; i < completed_callbacks.size(); i++) {
-			completed_callbacks[i].call(completed_data[i]);
+			if (!completed_callbacks[i].is_null()) {
+				completed_callbacks[i].call(completed_data[i]);
+			}
 			completed_data.write[i].clear();
 		}
 		// wgodot-changes::end

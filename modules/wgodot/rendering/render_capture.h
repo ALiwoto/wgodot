@@ -86,6 +86,7 @@ class WRenderCapture : public RefCounted {
 		uint64_t readbacks_finished_usec = 0;
 		WRenderCapture *owner = nullptr;
 		SafeFlag written;
+		uint64_t readback_bytes = 0;
 		uint64_t write_bytes = 0;
 	};
 	struct OutputPayload {
@@ -113,6 +114,9 @@ class WRenderCapture : public RefCounted {
 	uint64_t spool_budget_bytes = 0;
 	SafeNumeric<uint64_t> spool_pending_bytes;
 	SafeNumeric<uint64_t> spool_peak_bytes;
+	SafeNumeric<uint64_t> pending_readback_bytes;
+	SafeNumeric<uint64_t> retained_payload_bytes;
+	SafeNumeric<uint64_t> queue_peak_bytes;
 	uint64_t next_payload_entry = 1;
 	HashMap<RID, String> particle_sources;
 	static HashMap<RID, Ref<WRenderCapture>> captures;
@@ -139,6 +143,9 @@ class WRenderCapture : public RefCounted {
 	uint64_t storage_wait_usec = 0;
 	uint64_t storage_wait_max_usec = 0;
 	uint64_t storage_wait_count = 0;
+	uint64_t sampling_wait_usec = 0;
+	uint64_t sampling_wait_max_usec = 0;
+	uint64_t sampling_wait_count = 0;
 	SafeFlag completed;
 	bool ending = false; // Render-thread owned; excludes this capture from new draws.
 	bool finalizing = false;
@@ -162,10 +169,14 @@ class WRenderCapture : public RefCounted {
 	void _read_texture(const String &p_name, RID p_texture);
 	void _texture_readback(const PackedByteArray &p_bytes, Ref<ReadbackFrame> p_frame, int p_index);
 	void _pump_frames(bool p_wait);
+	void _limit_queued_bytes();
+	uint64_t _queued_bytes() const;
 	uint64_t _collect_readbacks();
 	void _write_plane(ReadbackFrame *p_frame, uint32_t p_index);
 	void _plan_write(ReadbackFrame *p_frame);
+	void _compare_plane(uint32_t p_index, Plane *p_planes) const;
 	static void _plan_write_task(void *p_userdata);
+	static void _prepare_plane_task(void *p_userdata, uint32_t p_index);
 	void _store_plane(Plane &p_plane);
 	void _drain_write(bool p_all = true);
 	void _write_frame(ReadbackFrame *p_frame);

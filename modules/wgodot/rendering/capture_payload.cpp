@@ -5,8 +5,8 @@
 #include "core/io/marshalls.h"
 
 namespace WCapturePayload {
-Tiles plan(const Vector<uint8_t> &p_bytes, uint32_t p_width, uint32_t p_height, uint32_t p_pixel_bytes,
-		const Vector<uint8_t> &p_previous_bytes, const Tiles &p_previous, uint64_t &r_next_entry) {
+Tiles compare_tiles(const Vector<uint8_t> &p_bytes, uint32_t p_width, uint32_t p_height, uint32_t p_pixel_bytes,
+		const Vector<uint8_t> &p_previous_bytes, const Tiles &p_previous) {
 	Tiles result;
 	if (!p_pixel_bytes || uint64_t(p_width) * p_height * p_pixel_bytes != uint64_t(p_bytes.size())) {
 		return result; // Non-image/mip-chain payloads retain ordinary byte storage.
@@ -22,19 +22,23 @@ Tiles plan(const Vector<uint8_t> &p_bytes, uint32_t p_width, uint32_t p_height, 
 			p_previous.pixel_bytes == p_pixel_bytes && p_previous_bytes.size() == p_bytes.size() &&
 			p_previous.entries.size() == int64_t(columns * rows);
 	const uint64_t pitch = uint64_t(p_width) * p_pixel_bytes;
+	const uint8_t *bytes = p_bytes.ptr();
+	const uint8_t *previous_bytes = p_previous_bytes.ptr();
+	const uint64_t *previous_entries = p_previous.entries.ptr();
 	for (uint32_t y = 0, index = 0; y < p_height; y += TILE_SIZE) {
 		for (uint32_t x = 0; x < p_width; x += TILE_SIZE, index++) {
 			const uint32_t width = MIN(TILE_SIZE, p_width - x);
 			const uint32_t height = MIN(TILE_SIZE, p_height - y);
 			bool same = comparable;
+			uint64_t offset = uint64_t(y) * pitch + uint64_t(x) * p_pixel_bytes;
 			for (uint32_t row = 0; same && row < height; row++) {
-				const uint64_t offset = uint64_t(y + row) * pitch + uint64_t(x) * p_pixel_bytes;
-				same = memcmp(p_bytes.ptr() + offset, p_previous_bytes.ptr() + offset, width * p_pixel_bytes) == 0;
+				same = memcmp(bytes + offset, previous_bytes + offset, width * p_pixel_bytes) == 0;
+				offset += pitch;
 			}
 			if (same) {
-				entries[index] = p_previous.entries[index];
+				entries[index] = previous_entries[index];
 			} else {
-				entries[index] = r_next_entry++;
+				entries[index] = 0;
 				result.changed.push_back(index);
 			}
 		}
@@ -114,15 +118,19 @@ Error prepare(uint64_t p_entry, const Vector<uint8_t> &p_bytes, uint32_t p_strid
 		return allocation;
 	}
 	uint8_t *destination = r_packet.bytes.ptrw();
+	const uint8_t *bytes = p_bytes.ptr();
+	const uint64_t *entries = p_tiles.entries.ptr();
 	for (uint32_t index : p_tiles.changed) {
 		const uint32_t x = (index % columns) * TILE_SIZE;
 		const uint32_t y = (index / columns) * TILE_SIZE;
 		const uint32_t row_bytes = MIN(TILE_SIZE, p_tiles.width - x) * p_tiles.pixel_bytes;
 		const uint32_t rows = MIN(TILE_SIZE, p_tiles.height - y);
 		const uint64_t size = uint64_t(row_bytes) * rows;
-		header(destination, p_tiles.entries[index], size, size % 8 == 0 ? p_stride : 0, BYTES);
+		header(destination, entries[index], size, size % 8 == 0 ? p_stride : 0, BYTES);
+		const uint8_t *source = bytes + uint64_t(y) * pitch + uint64_t(x) * p_tiles.pixel_bytes;
 		for (uint32_t row = 0; row < rows; row++) {
-			memcpy(destination, p_bytes.ptr() + uint64_t(y + row) * pitch + uint64_t(x) * p_tiles.pixel_bytes, row_bytes);
+			memcpy(destination, source, row_bytes);
+			source += pitch;
 			destination += row_bytes;
 		}
 	}
@@ -135,7 +143,7 @@ Error prepare(uint64_t p_entry, const Vector<uint8_t> &p_bytes, uint32_t p_strid
 	encode_uint32(TILE_SIZE, data + 16);
 	encode_uint32(p_tiles.entries.size(), data + 20);
 	for (int64_t i = 0; i < p_tiles.entries.size(); i++) {
-		encode_uint64(p_tiles.entries[i], data + 24 + i * 8);
+		encode_uint64(entries[i], data + 24 + i * 8);
 	}
 	return OK;
 }

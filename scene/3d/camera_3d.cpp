@@ -355,6 +355,11 @@ void Camera3D::set_frustum(real_t p_size, Vector2 p_offset, real_t p_z_near, rea
 }
 
 void Camera3D::set_projection(ProjectionType p_mode) {
+	// wgodot-changes::begin
+	if (!force_change && mode == p_mode) {
+		return;
+	}
+	// wgodot-changes::end
 	if (p_mode == PROJECTION_PERSPECTIVE || p_mode == PROJECTION_ORTHOGONAL || p_mode == PROJECTION_FRUSTUM) {
 		mode = p_mode;
 		_update_camera_mode();
@@ -795,12 +800,22 @@ Camera3D::ProjectionType Camera3D::get_projection() const {
 
 void Camera3D::set_fov(real_t p_fov) {
 	ERR_FAIL_COND(p_fov <= CMP_EPSILON || p_fov >= 180.0 - CMP_EPSILON);
+	// wgodot-changes::begin
+	if (!force_change && fov == p_fov) {
+		return;
+	}
+	// wgodot-changes::end
 	fov = p_fov;
 	_update_camera_mode();
 }
 
 void Camera3D::set_size(real_t p_size) {
 	ERR_FAIL_COND(p_size <= CMP_EPSILON);
+	// wgodot-changes::begin
+	if (!force_change && size == p_size) {
+		return;
+	}
+	// wgodot-changes::end
 	size = p_size;
 	_update_camera_mode();
 }

@@ -290,6 +290,9 @@ public:
 	Quaternion get_bone_pose_rotation(int p_bone) const;
 	Vector3 get_bone_pose_scale(int p_bone) const;
 	void set_bone_pose(int p_bone, const Transform3D &p_pose);
+	// wgodot-changes::begin
+	void set_bone_pose_components(int p_bone, const Vector3 &p_position, const Quaternion &p_rotation, const Vector3 &p_scale);
+	// wgodot-changes::end
 	void set_bone_pose_position(int p_bone, const Vector3 &p_position);
 	void set_bone_pose_rotation(int p_bone, const Quaternion &p_rotation);
 	void set_bone_pose_scale(int p_bone, const Vector3 &p_scale);

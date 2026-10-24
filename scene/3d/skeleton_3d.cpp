@@ -889,12 +889,24 @@ void Skeleton3D::clear_bones() {
 void Skeleton3D::set_bone_pose(int p_bone, const Transform3D &p_pose) {
 	const int bone_size = bones.size();
 	ERR_FAIL_INDEX(p_bone, bone_size);
+	// wgodot-changes::begin
+	set_bone_pose_components(p_bone, p_pose.origin, p_pose.basis.get_rotation_quaternion(), p_pose.basis.get_scale());
+}
+
+void Skeleton3D::set_bone_pose_components(int p_bone, const Vector3 &p_position, const Quaternion &p_rotation, const Vector3 &p_scale) {
+	ERR_FAIL_INDEX(p_bone, int(bones.size()));
+	// Animation and pose blending already have these components. Publish them
+	// together without recomposing/decomposing a basis or dirtying three times.
+	// Keep modifier bookkeeping even when the pose components are unchanged.
+	// wgodot-changes::end
 	if (modifier_updating) {
 		bones[p_bone].make_bone_modified();
 	}
-	bones[p_bone].pose_position = p_pose.origin;
-	bones[p_bone].pose_rotation = p_pose.basis.get_rotation_quaternion();
-	bones[p_bone].pose_scale = p_pose.basis.get_scale();
+	// wgodot-changes::begin
+	bones[p_bone].pose_position = p_position;
+	bones[p_bone].pose_rotation = p_rotation;
+	bones[p_bone].pose_scale = p_scale;
+	// wgodot-changes::end
 	bones[p_bone].pose_cache_dirty = true;
 	if (is_inside_tree()) {
 		_make_dirty();
@@ -979,9 +991,10 @@ Vector3 Skeleton3D::get_bone_skin_scale(int p_bone) const {
 void Skeleton3D::reset_bone_pose(int p_bone, bool p_reset_bone_skin_scale) {
 	const int bone_size = bones.size();
 	ERR_FAIL_INDEX(p_bone, bone_size);
-	set_bone_pose_position(p_bone, bones[p_bone].rest.origin);
-	set_bone_pose_rotation(p_bone, bones[p_bone].rest.basis.get_rotation_quaternion());
-	set_bone_pose_scale(p_bone, bones[p_bone].rest.basis.get_scale());
+	// wgodot-changes::begin
+	const Transform3D &rest = bones[p_bone].rest;
+	set_bone_pose_components(p_bone, rest.origin, rest.basis.get_rotation_quaternion(), rest.basis.get_scale());
+	// wgodot-changes::end
 	if (!p_reset_bone_skin_scale) {
 		return;
 	}
@@ -1337,6 +1350,9 @@ void Skeleton3D::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("get_bone_pose", "bone_idx"), &Skeleton3D::get_bone_pose);
 	ClassDB::bind_method(D_METHOD("set_bone_pose", "bone_idx", "pose"), &Skeleton3D::set_bone_pose);
+	// wgodot-changes::begin
+	ClassDB::bind_method(D_METHOD("set_bone_pose_components", "bone_idx", "position", "rotation", "scale"), &Skeleton3D::set_bone_pose_components);
+	// wgodot-changes::end
 	ClassDB::bind_method(D_METHOD("set_bone_pose_position", "bone_idx", "position"), &Skeleton3D::set_bone_pose_position);
 	ClassDB::bind_method(D_METHOD("set_bone_pose_rotation", "bone_idx", "rotation"), &Skeleton3D::set_bone_pose_rotation);
 	ClassDB::bind_method(D_METHOD("set_bone_pose_scale", "bone_idx", "scale"), &Skeleton3D::set_bone_pose_scale);

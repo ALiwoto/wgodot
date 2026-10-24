@@ -15,8 +15,10 @@ struct Tiles {
 	Vector<uint32_t> changed;
 };
 
-Tiles plan(const Vector<uint8_t> &p_bytes, uint32_t p_width, uint32_t p_height, uint32_t p_pixel_bytes,
-		const Vector<uint8_t> &p_previous_bytes, const Tiles &p_previous, uint64_t &r_next_entry);
+// Preserve unchanged tile IDs; changed slots are assigned by the ordered
+// publisher after comparisons have completed on independent workers.
+Tiles compare_tiles(const Vector<uint8_t> &p_bytes, uint32_t p_width, uint32_t p_height, uint32_t p_pixel_bytes,
+		const Vector<uint8_t> &p_previous_bytes, const Tiles &p_previous);
 
 struct Packet {
 	Vector<uint8_t> bytes;
