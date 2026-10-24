@@ -12,7 +12,21 @@ void RandomStream32::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("next_weight", "axis_lock"), &RandomStream32::next_weight);
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "state"), "reset", "get_state");
 	ADD_PROPERTY(PropertyInfo(Variant::VECTOR3I, "vector_order"), "set_vector_order", "get_vector_order");
+#ifdef TOOLS_ENABLED
+	ClassDB::bind_method(D_METHOD("set_debug_observe_resets", "enabled"), &RandomStream32::set_debug_observe_resets);
+	ADD_SIGNAL(MethodInfo("debug_reset", PropertyInfo(Variant::INT, "initial_state")));
+#endif
 }
+
+#ifdef TOOLS_ENABLED
+void RandomStream32::_debug_reset() {
+	// Opt-in editor diagnostics run before the stream's first draw. A replay
+	// observer may restore captured input state without recursively notifying.
+	debug_notifying_reset = true;
+	emit_signal(SNAME("debug_reset"), int64_t(state));
+	debug_notifying_reset = false;
+}
+#endif
 
 void RandomStream32::set_vector_order(const Vector3i &p_order) {
 	ERR_FAIL_COND(p_order.x < 0 || p_order.x > 2 || p_order.y < 0 || p_order.y > 2 || p_order.z < 0 || p_order.z > 2);

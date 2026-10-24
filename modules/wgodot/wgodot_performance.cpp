@@ -3,8 +3,13 @@
 
 #if defined(TOOLS_ENABLED) && defined(DEBUG_ENABLED)
 
+#include "rendering/gpu_profile.h"
+#include "servers/rendering/rendering_device.h"
+
 #include "core/config/engine.h"
 #include "core/debugger/engine_debugger.h"
+#include "core/io/file_access.h"
+#include "core/io/json.h"
 #include "core/io/resource.h"
 #include "core/object/worker_thread_pool.h"
 #include "core/os/os.h"
@@ -71,6 +76,7 @@ struct Capture {
 	HashMap<String, Vector<double>> samples;
 	HashMap<RID, String> nodes;
 	Vector<FrameTiming> frame_timings;
+	WGodotGPUProfile::Result stopped_gpu;
 	FrameTiming current_timing;
 	FramePhase phase = PHYSICS;
 	uint64_t phase_started_usec = 0;
@@ -81,6 +87,7 @@ int region_depth[REGION_COUNT] = {};
 
 struct PendingReport {
 	Capture data;
+	WGodotGPUProfile::Result gpu;
 	Dictionary response;
 	uint64_t request_id = 0;
 	WorkerThreadPool::TaskID task = WorkerThreadPool::INVALID_TASK_ID;
@@ -181,8 +188,6 @@ struct TextureRow {
 Dictionary texture_report(const Dictionary &p_options, const WGodotTextureCapture::Result *p_capture, const HashMap<RID, String> &p_nodes) {
 	List<RenderingServerTypes::TextureInfo> textures;
 	RenderingServer::get_singleton()->texture_debug_usage(&textures);
-	// The inventory call is queued when rendering uses a separate thread.
-	RenderingServer::get_singleton()->sync();
 	HashMap<RID, Dictionary> resources;
 	Vector<ObjectID> texture_ids;
 	ObjectDB::debug_objects(collect_texture_object, &texture_ids);
@@ -348,6 +353,29 @@ void build_performance_report(void *p_userdata) {
 		timings.push_back(row);
 	}
 	response["frame_cpu_ms"] = timings;
+	if (bool(data.options.get("gpu", false))) {
+		response["gpu_profile"] = WGodotGPUProfile::report(report.gpu);
+	}
+	const String output = data.options.get("output", String());
+	if (!output.is_empty()) {
+		// GPU reports can exceed the debugger and CLI packet limits. Write the
+		// requested local artifact on this worker; send only its receipt back.
+		Error write_error;
+		Ref<FileAccess> file = FileAccess::open(output, FileAccess::WRITE, &write_error);
+		if (file.is_valid()) {
+			file->store_string(JSON::stringify(response, "\t", true) + "\n");
+			file->flush();
+			write_error = file->get_error();
+			file.unref();
+		}
+		if (write_error != OK) {
+			response = error("perf", "Cannot save performance report: " + output + " (" + error_names[write_error] + ")");
+		} else {
+			response = Dictionary();
+			response["ok"] = true;
+			response["report_path"] = output;
+		}
+	}
 }
 
 void poll_report() {
@@ -365,6 +393,10 @@ void poll_report() {
 void queue_performance_report(uint64_t p_request_id, bool p_timed_out, bool p_continue) {
 	pending_report = memnew(PendingReport);
 	pending_report->data = capture;
+	if (bool(capture.options.get("gpu", false))) {
+		pending_report->gpu = capture.collecting ? WGodotGPUProfile::take(!p_continue) : std::move(capture.stopped_gpu);
+		capture.stopped_gpu = WGodotGPUProfile::Result();
+	}
 	pending_report->request_id = p_request_id;
 	Dictionary &response = pending_report->response;
 	response = performance_snapshot();
@@ -452,6 +484,10 @@ void begin_phase(FramePhase p_phase) {
 Dictionary execute(uint64_t p_request_id, const String &p_command, const Dictionary &p_options, bool &r_deferred) {
 	r_deferred = false;
 	const String action = p_options.get("action", String());
+	const bool gpu = p_options.get("gpu", false);
+	if (gpu && (p_command != "perf" || action == "read" || action == "stop")) {
+		return error(p_command, "--gpu applies to perf start or a bounded perf capture.");
+	}
 	if (!action.is_empty() && (p_command != "perf" || (action != "start" && action != "read" && action != "stop"))) {
 		return error(p_command, "Performance action must be start, read, or stop.");
 	}
@@ -462,6 +498,7 @@ Dictionary execute(uint64_t p_request_id, const String &p_command, const Diction
 		if (pending_report || capture.stop_request_id != 0) {
 			return error(p_command, "A performance report is still being delivered.");
 		}
+		capture.options["output"] = p_options.get("output", String());
 		if (action == "read") {
 			queue_performance_report(p_request_id, false, true);
 		} else if (!capture.collecting) {
@@ -488,6 +525,9 @@ Dictionary execute(uint64_t p_request_id, const String &p_command, const Diction
 		return error(p_command, "--unused and sorting by savings/ratio require --frames.");
 	}
 	if (frames == 0) {
+		if (gpu) {
+			return error(p_command, "GPU timings require --frames or perf start.");
+		}
 		if (action == "start") {
 			return error(p_command, "Continuous capture requires a positive frame capacity.");
 		}
@@ -495,6 +535,9 @@ Dictionary execute(uint64_t p_request_id, const String &p_command, const Diction
 	}
 	if (!capture.command.is_empty() || pending_report) {
 		return error(p_command, "Another performance or texture capture is running.");
+	}
+	if (gpu && !RenderingDevice::get_singleton()) {
+		return error(p_command, "GPU timings require a RenderingDevice backend (Forward+ or Mobile).");
 	}
 	RenderingServer::get_singleton()->sync();
 	capture.request_id = p_request_id;
@@ -505,6 +548,9 @@ Dictionary execute(uint64_t p_request_id, const String &p_command, const Diction
 	capture.previous_usec = capture.started_usec;
 	capture.deadline_usec = capture.started_usec + uint64_t(timeout) * 1000000;
 	capture.requested_frames = frames;
+	if (gpu) {
+		WGodotGPUProfile::start();
+	}
 	if (capture.continuous) {
 		Dictionary response;
 		response["ok"] = true;
@@ -532,7 +578,6 @@ Dictionary execute(uint64_t p_request_id, const String &p_command, const Diction
 		}
 		List<RenderingServerTypes::TextureInfo> textures;
 		RenderingServer::get_singleton()->texture_debug_usage(&textures);
-		RenderingServer::get_singleton()->sync();
 		WGodotTextureCapture::begin(textures, canvas_textures, root_texture, frames);
 	}
 	r_deferred = true;
@@ -569,6 +614,9 @@ void end_frame() {
 		} else if (capture.frames >= capture.requested_frames) {
 			capture.collecting = false;
 			capture.truncated = true;
+			if (bool(capture.options.get("gpu", false))) {
+				capture.stopped_gpu = WGodotGPUProfile::take(true);
+			}
 		}
 		return;
 	}
@@ -579,6 +627,7 @@ void end_frame() {
 }
 
 void reset() {
+	WGodotGPUProfile::cancel();
 	if (pending_report) {
 		WorkerThreadPool::get_singleton()->wait_for_task_completion(pending_report->task);
 		memdelete(pending_report);

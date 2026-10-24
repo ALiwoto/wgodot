@@ -157,18 +157,24 @@ public:
 	/* TIMING */
 
 	bool capturing_timestamps = false;
+	// wgodot-changes::begin
+	// Independent of the editor Visual Profiler; perf must not disable it.
+	bool diagnostic_timestamps = false;
+	// wgodot-changes::end
 
+// wgodot-changes::begin
 #define TIMESTAMP_BEGIN() \
 	{ \
-		if (RSG::utilities->capturing_timestamps) \
+		if (RSG::utilities->capturing_timestamps || RSG::utilities->diagnostic_timestamps) \
 			RSG::utilities->capture_timestamps_begin(); \
 	}
 
 #define RENDER_TIMESTAMP(m_text) \
 	{ \
-		if (RSG::utilities->capturing_timestamps) \
+		if (RSG::utilities->capturing_timestamps || RSG::utilities->diagnostic_timestamps) \
 			RSG::utilities->capture_timestamp(m_text); \
 	}
+// wgodot-changes::end
 
 	virtual void capture_timestamps_begin() = 0;
 	virtual void capture_timestamp(const String &p_name) = 0;

@@ -30,6 +30,14 @@
 
 #include "rendering_server_default.h"
 // wgodot-changes::begin
+#include "modules/modules_enabled.gen.h"
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+#include "modules/wgodot/rendering/gpu_profile.h"
+#include "modules/wgodot/rendering/renderdoc_capture.h"
+#endif
+// wgodot-changes::end
+
+// wgodot-changes::begin
 #include "servers/rendering/wgodot_texture_capture.h"
 // wgodot-changes::end
 
@@ -77,6 +85,12 @@ void RenderingServerDefault::request_frame_drawn_callback(const Callable &p_call
 }
 
 void RenderingServerDefault::_draw(bool p_swap_buffers, double frame_step) {
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGodotGPUProfile::Scope profile_scope("render.frame");
+	WRenderDocCapture::begin_frame();
+#endif
+	// wgodot-changes::end
 	GodotProfileZoneGroupedFirst(_profile_zone, "rasterizer->begin_frame");
 	RSG::rasterizer->begin_frame(frame_step);
 
@@ -103,9 +117,15 @@ void RenderingServerDefault::_draw(bool p_swap_buffers, double frame_step) {
 	frame_setup_time = double(OS::get_singleton()->get_ticks_usec() - time_usec) / 1000.0;
 
 	GodotProfileZoneGrouped(_profile_zone, "particles_storage->update_particles");
+	// wgodot-changes::begin
+	RENDER_TIMESTAMP("Update GPU Particles");
+	// wgodot-changes::end
 	RSG::particles_storage->update_particles(); //need to be done after instances are updated (colliders and particle transforms), and colliders are rendered
 
 	GodotProfileZoneGrouped(_profile_zone, "scene->render_probes");
+	// wgodot-changes::begin
+	RENDER_TIMESTAMP("Render Probes");
+	// wgodot-changes::end
 	RSG::scene->render_probes();
 
 	GodotProfileZoneGrouped(_profile_zone, "viewport->draw_viewports");
@@ -116,6 +136,11 @@ void RenderingServerDefault::_draw(bool p_swap_buffers, double frame_step) {
 
 	GodotProfileZoneGrouped(_profile_zone, "rasterizer->end_frame");
 	RSG::rasterizer->end_frame(p_swap_buffers);
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WRenderDocCapture::end_frame();
+#endif
+	// wgodot-changes::end
 	// wgodot-changes::begin
 #if defined(TOOLS_ENABLED) && defined(DEBUG_ENABLED)
 	WGodotTextureCapture::end_render_frame();

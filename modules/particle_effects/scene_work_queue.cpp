@@ -7,6 +7,7 @@
 
 void SceneWorkItem::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("cancel"), &SceneWorkItem::cancel);
+	ClassDB::bind_method(D_METHOD("yield_until_next_frame"), &SceneWorkItem::yield_until_next_frame);
 	ClassDB::bind_method(D_METHOD("is_cancelled"), &SceneWorkItem::is_cancelled);
 	ClassDB::bind_method(D_METHOD("is_completed"), &SceneWorkItem::is_completed);
 	GDVIRTUAL_BIND(_step);
@@ -15,6 +16,10 @@ void SceneWorkItem::_bind_methods() {
 
 void SceneWorkItem::cancel() {
 	cancelled = true;
+}
+
+void SceneWorkItem::yield_until_next_frame() {
+	resume_frame = Engine::get_singleton()->get_process_frames() + 1;
 }
 
 void SceneWorkQueue::_bind_methods() {
@@ -82,12 +87,23 @@ void SceneWorkQueue::_notification(int p_what) {
 		budget_usec = MAX(budget_usec, MAX(0.0, frame_usec - spent_usec) * frame_budget_fraction);
 	}
 	const uint64_t deadline = started + uint64_t(budget_usec);
+	const uint64_t current_frame = Engine::get_singleton()->get_process_frames();
+	int waiting = 0;
 	while (!pending.is_empty()) {
 		Ref<SceneWorkItem> item = pending.front()->get();
 		pending.pop_front();
 		if (item->cancelled) {
 			item->queued = false;
+			waiting = 0;
+		} else if (item->resume_frame > current_frame) {
+			pending.push_back(item);
+			// Every pending item is waiting. Leave the remaining frame budget
+			// available to the game instead of repeatedly invoking _step.
+			if (++waiting >= pending.size()) {
+				break;
+			}
 		} else {
+			waiting = 0;
 			bool finished = true;
 			active = item;
 			item->GDVIRTUAL_CALL(_step, finished);

@@ -154,11 +154,20 @@ Error EditorRun::run(const String &p_scene, const String &p_write_movie, const V
 		args.push_back(p_scene);
 	}
 
-	if (!p_run_args.is_empty()) {
-		for (const String &run_arg : p_run_args) {
-			args.push_back(run_arg);
+	// wgodot-changes::begin
+	Vector<String> engine_args;
+	Vector<String> user_args;
+	bool user_arguments = false;
+	for (const String &run_arg : p_run_args) {
+		if (!user_arguments && (run_arg == "--" || run_arg == "++")) {
+			user_arguments = true;
+		} else if (user_arguments) {
+			user_args.push_back(run_arg);
+		} else {
+			engine_args.push_back(run_arg);
 		}
 	}
+	// wgodot-changes::end
 
 	String exec = OS::get_singleton()->get_executable_path();
 	int instance_count = RunInstancesDialog::get_singleton()->get_instance_count();
@@ -176,6 +185,31 @@ Error EditorRun::run(const String &p_scene, const String &p_write_movie, const V
 		instance_args.push_back("--run_instance");
 		instance_args.push_back(itos(i));
 #endif
+
+		// wgodot-changes::begin
+		// Keep engine switches before any user-argument separator, including
+		// arguments added by instance/debugger callbacks. Explicit run options
+		// take precedence over saved editor window placement.
+		List<String>::Element *separator = instance_args.find("--");
+		if (!separator) {
+			separator = instance_args.find("++");
+		}
+		for (const String &argument : engine_args) {
+			if (separator) {
+				instance_args.insert_before(separator, argument);
+			} else {
+				instance_args.push_back(argument);
+			}
+		}
+		if (!user_args.is_empty()) {
+			if (!separator) {
+				instance_args.push_back("--");
+			}
+			for (const String &argument : user_args) {
+				instance_args.push_back(argument);
+			}
+		}
+		// wgodot-changes::end
 
 		if (OS::get_singleton()->is_stdout_verbose()) {
 			PackedStringArray output;

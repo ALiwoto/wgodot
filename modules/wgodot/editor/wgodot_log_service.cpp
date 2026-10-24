@@ -113,9 +113,10 @@ Array get_output_entries(const HashSet<String> &p_levels, int p_tail, int &r_tot
 	return tail_entries(filtered, p_tail);
 }
 
-Array get_debugger_entries(const HashSet<String> &p_levels, int p_tail, int p_session, int &r_total, int &r_matching) {
+Array get_debugger_entries(const HashSet<String> &p_levels, int p_tail, int p_session, int64_t p_after_sequence, int &r_total, int &r_matching) {
 	Array filtered;
 	r_total = 0;
+	r_matching = 0;
 	for (const Dictionary &entry : debugger_entries) {
 		if (p_session >= 0 && (int)entry.get("session", -1) != p_session) {
 			continue;
@@ -125,10 +126,17 @@ Array get_debugger_entries(const HashSet<String> &p_levels, int p_tail, int p_se
 		if (!p_levels.is_empty() && !p_levels.has(level)) {
 			continue;
 		}
-		filtered.push_back(entry);
+		if (p_after_sequence >= 0 && int64_t(entry["sequence"]) <= p_after_sequence) {
+			continue;
+		}
+		r_matching++;
+		// Cursor reads return the oldest unread page, keeping large diagnostic
+		// batches bounded without dropping errors behind a flood of warnings.
+		if (p_after_sequence < 0 || filtered.size() < p_tail) {
+			filtered.push_back(entry);
+		}
 	}
-	r_matching = filtered.size();
-	return tail_entries(filtered, p_tail);
+	return p_after_sequence < 0 ? tail_entries(filtered, p_tail) : filtered;
 }
 
 int count_output_messages() {
@@ -205,8 +213,12 @@ Dictionary get_logs(const Dictionary &p_options) {
 	}
 	const int tail = p_options.get("tail", 100);
 	const int session = p_options.get("session", -1);
-	if (tail <= 0 || session < -1) {
+	const int64_t after_sequence = p_options.get("after_sequence", -1);
+	if (tail <= 0 || session < -1 || after_sequence < -1) {
 		return make_error("logs", "invalid_log_filter", "Log tail must be positive and the optional session must be non-negative.");
+	}
+	if (after_sequence >= 0 && (sources.size() != 1 || !sources.has("debugger"))) {
+		return make_error("logs", "invalid_log_filter", "--after requires --source debugger; --tail limits each oldest-unread page.");
 	}
 
 	Dictionary response;
@@ -229,11 +241,15 @@ Dictionary get_logs(const Dictionary &p_options) {
 	if (sources.has("debugger")) {
 		int total = 0;
 		int matching = 0;
-		const Array entries = get_debugger_entries(levels, tail, session, total, matching);
+		const Array entries = get_debugger_entries(levels, tail, session, after_sequence, total, matching);
 		response["debugger"] = entries;
 		response["debugger_total"] = total;
 		response["debugger_matching"] = matching;
 		response["debugger_returned"] = entries.size();
+		if (after_sequence >= 0) {
+			response["debugger_more"] = matching > entries.size();
+			response["debugger_next_sequence"] = entries.is_empty() ? after_sequence : int64_t(Dictionary(entries[entries.size() - 1])["sequence"]);
+		}
 	}
 	return response;
 }

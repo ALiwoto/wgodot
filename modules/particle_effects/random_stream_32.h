@@ -12,12 +12,27 @@ class RandomStream32 : public RefCounted {
 
 	uint32_t state = 0;
 	Vector3i vector_order = Vector3i(0, 1, 2);
+#ifdef TOOLS_ENABLED
+	bool debug_observe_resets = false;
+	bool debug_notifying_reset = false;
+	void _debug_reset();
+#endif
 
 protected:
 	static void _bind_methods();
 
 public:
-	void reset(int64_t p_state) { state = uint32_t(p_state); }
+	void reset(int64_t p_state) {
+		state = uint32_t(p_state);
+#ifdef TOOLS_ENABLED
+		if (debug_observe_resets && !debug_notifying_reset) {
+			_debug_reset();
+		}
+#endif
+	}
+#ifdef TOOLS_ENABLED
+	void set_debug_observe_resets(bool p_enabled) { debug_observe_resets = p_enabled; }
+#endif
 	int64_t get_state() const { return state; }
 	void set_vector_order(const Vector3i &p_order);
 	Vector3i get_vector_order() const { return vector_order; }

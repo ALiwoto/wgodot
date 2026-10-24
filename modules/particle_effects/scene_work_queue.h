@@ -15,6 +15,7 @@ class SceneWorkItem : public RefCounted {
 	bool cancelled = false;
 	bool completed = false;
 	bool queued = false;
+	uint64_t resume_frame = 0;
 
 protected:
 	static void _bind_methods();
@@ -22,6 +23,8 @@ protected:
 
 public:
 	void cancel();
+	// Waiting for rendering or another frame cannot make progress by spinning.
+	void yield_until_next_frame();
 	bool is_cancelled() const { return cancelled; }
 	bool is_completed() const { return completed; }
 };

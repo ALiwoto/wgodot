@@ -62,6 +62,9 @@ private:
 	// wgodot-changes::begin
 	mutable Ref<WShaderParameterLayout> parameter_layout;
 	uint64_t parameter_revision = 1;
+	mutable uint64_t uniform_list_revision = 0;
+	mutable List<PropertyInfo> uniform_list_cache;
+	mutable Mutex uniform_list_mutex;
 	// wgodot-changes::end
 
 	Mode mode = MODE_SPATIAL;

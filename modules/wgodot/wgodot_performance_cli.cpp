@@ -37,6 +37,13 @@ void print_performance(const Dictionary &p_response) {
 	if (!intervals.is_empty()) {
 		print_line(vformat("  Frame interval: mean %.3f ms, p95 %.3f ms, max %.3f ms", double(intervals["mean"]), double(intervals["p95"]), double(intervals["max"])));
 	}
+	if (p_response.has("gpu_profile")) {
+		const Dictionary gpu = p_response["gpu_profile"];
+		const Array batches = gpu["query_batches"];
+		const Array events = gpu["cpu_events"];
+		print_line(vformat("  GPU profile: %d resolved query batches, %d CPU events%s. Use --output for per-pass timestamps and capture/sample identities.", batches.size(), events.size(), bool(gpu["truncated"]) ? " (capacity reached)" : ""));
+		print_line(String(gpu["note"]));
+	}
 }
 
 void print_textures(const Dictionary &p_response) {
@@ -96,6 +103,10 @@ int run(const String &p_command, const Vector<String> &p_arguments) {
 		if (argument == "--json") {
 			continue;
 		}
+		if (argument == "--gpu" && p_command == "perf") {
+			options["gpu"] = true;
+			continue;
+		}
 		if (i == 0 && p_command == "perf" && (argument == "start" || argument == "read" || argument == "stop")) {
 			options["action"] = argument;
 			continue;
@@ -142,6 +153,10 @@ int run(const String &p_command, const Vector<String> &p_arguments) {
 		result = 2;
 	} else {
 		Dictionary request;
+		if (!output.is_empty() && p_command == "perf") {
+			output = WGodotCLI::make_absolute_output_path(output);
+			options["output"] = output;
+		}
 		request["protocol"] = WGodotCLI::PROTOCOL_VERSION;
 		request["command"] = p_command;
 		if (options.has("session")) {
@@ -155,7 +170,19 @@ int run(const String &p_command, const Vector<String> &p_arguments) {
 		print_line(json_output ? JSON::stringify(response, "", true) : "wgodot: " + String(response.get("message", "Performance command failed.")));
 		return result != 0 ? result : 4;
 	}
-	if (!output.is_empty()) {
+	const bool report_saved = response.has("report_path");
+	if (report_saved) {
+		Ref<JSON> report;
+		report.instantiate();
+		Error read_error;
+		String content = FileAccess::get_file_as_string(response["report_path"], &read_error);
+		if (read_error != OK || report->parse(content) != OK || report->get_data().get_type() != Variant::DICTIONARY) {
+			print_line("wgodot: Cannot read saved performance report: " + output);
+			return 4;
+		}
+		response = report->get_data();
+	}
+	if (!output.is_empty() && !report_saved) {
 		Error file_error;
 		Ref<FileAccess> file = FileAccess::open(output, FileAccess::WRITE, &file_error);
 		if (file.is_null()) {

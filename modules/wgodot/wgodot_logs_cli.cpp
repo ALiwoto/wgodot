@@ -18,6 +18,7 @@ struct LogOptions {
 	bool json_output = false;
 	int session = -1;
 	int tail = 100;
+	int64_t after_sequence = -1;
 	PackedStringArray sources;
 	PackedStringArray levels;
 };
@@ -76,6 +77,12 @@ bool parse_options(const String &p_command, const Vector<String> &p_arguments, L
 				return false;
 			}
 			r_options.tail = p_arguments[++i].to_int();
+		} else if (allow_levels && argument == "--after") {
+			if (i + 1 >= p_arguments.size() || !p_arguments[i + 1].is_valid_int() || p_arguments[i + 1].to_int() < 0) {
+				r_error = "--after requires a non-negative Debugger sequence number.";
+				return false;
+			}
+			r_options.after_sequence = p_arguments[++i].to_int();
 		} else if (argument == "--session") {
 			if (i + 1 >= p_arguments.size() || !p_arguments[i + 1].is_valid_int() || p_arguments[i + 1].to_int() < 0) {
 				r_error = "--session requires a non-negative integer session ID.";
@@ -171,6 +178,9 @@ int run(const String &p_command, const Vector<String> &p_arguments) {
 	if (p_command == "logs") {
 		request_options["levels"] = options.levels;
 		request_options["tail"] = options.tail;
+		if (options.after_sequence >= 0) {
+			request_options["after_sequence"] = options.after_sequence;
+		}
 	}
 	if (options.session >= 0) {
 		request_options["session"] = options.session;

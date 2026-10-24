@@ -2095,9 +2095,9 @@ void RenderForwardClustered::_render_scene(RenderDataRD *p_render_data, const Co
 				}
 				if (surface->material) {
 					captured_inputs->set_value(section, "material_buffer", WRenderCapture::buffer(p_render_data, surface->material->get_capture_uniform_buffer()));
-					PackedInt64Array textures;
+					PackedStringArray textures;
 					for (RID texture : surface->material->get_capture_textures()) {
-						textures.push_back(texture.get_id());
+						textures.push_back(WRenderCapture::bound_texture(p_render_data, texture));
 					}
 					captured_inputs->set_value(section, "textures", textures);
 				}

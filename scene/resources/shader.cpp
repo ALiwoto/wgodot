@@ -158,7 +158,21 @@ void Shader::get_shader_uniform_list(List<PropertyInfo> *p_params, bool p_get_gr
 	_check_shader_rid();
 
 	List<PropertyInfo> local;
-	RenderingServer::get_singleton()->get_shader_parameter_list(shader_rid, &local);
+	// wgodot-changes::begin
+	// Resource snapshots and the Inspector share the compiled declarations.
+	// Values change frequently; declarations only change with the shader.
+	{
+		MutexLock lock(uniform_list_mutex);
+		if (uniform_list_revision != parameter_revision) {
+			uniform_list_cache.clear();
+			RenderingServer::get_singleton()->get_shader_parameter_list(shader_rid, &uniform_list_cache);
+			uniform_list_revision = parameter_revision;
+		}
+		for (const PropertyInfo &info : uniform_list_cache) {
+			local.push_back(info);
+		}
+	}
+	// wgodot-changes::end
 
 #ifdef TOOLS_ENABLED
 	DocData::ClassDoc class_doc;

@@ -28,7 +28,8 @@ public:
 	Error prepare(const Ref<PackedScene> &p_scene, int p_capacity);
 	ParticleInstance3D *acquire();
 	void release(ParticleInstance3D *p_instance);
-	TypedArray<ParticleInstance3D> get_instances() const;
+	// Snapshot of pool slots, or acquired instances (including hidden ones).
+	TypedArray<ParticleInstance3D> get_instances(bool p_acquired_only = false) const;
 #ifdef TOOLS_ENABLED
 	void set_capture_lifecycle(bool p_enabled);
 #endif

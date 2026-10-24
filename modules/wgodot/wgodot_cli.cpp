@@ -35,6 +35,14 @@ uint64_t project_operation_timeout(const Dictionary &p_request) {
 	return uint64_t(CLAMP(int(options.get("timeout", PROJECT_OPERATION_TIMEOUT_MSEC / 1000)), 1, 3600)) * 1000;
 }
 
+String make_absolute_output_path(const String &p_path) {
+	if (p_path.is_empty() || p_path.is_absolute_path() || p_path.begins_with("res://") || p_path.begins_with("user://")) {
+		return p_path;
+	}
+	Ref<DirAccess> directory = DirAccess::open(OS::get_singleton()->get_cwd());
+	return directory.is_valid() ? directory->get_current_dir().path_join(p_path).simplify_path() : p_path;
+}
+
 namespace {
 
 constexpr uint64_t DISCOVERY_TIMEOUT_MSEC = 5000;
@@ -213,14 +221,14 @@ void print_cli_help() {
 	print_line("  import                            Refresh/import assets and reload changed scenes in the running editor.");
 	print_line("  move <source> <destination> [...] [--dry-run] [--json]  Move project files/folders and update resource references.");
 	print_line("  status [--json] [--session <id>]  Show the matching editor and running game sessions.");
-	print_line("  run [--current|<scene>] [--fixed-fps <fps>] [--timeout <seconds>] [--json]  Run the main, current, or specified scene.");
+	print_line("  run [--current|<scene>] [--windowed|--fullscreen] [--resolution <W>x<H>] [--fixed-fps <fps>] [--renderdoc <library>] [--timeout <seconds>] [--json] [-- <user arguments>]  Run the main, current, or specified scene.");
 	print_line("    run, check and import: --timeout 1..3600 seconds (default 300), including waiting for editor asset work.");
 	print_line("  stop [--json]                     Stop the running game.");
 	print_line("  tree [options]                    Print the running game's scene tree.");
 	print_line("  ss [-o <path>] [--json]           Capture the running game viewport.");
 	print_line("  observe [options]                 Capture a screenshot and scene tree together.");
-	print_line("  perf [--frames <n>] [--timeout <seconds>] [--json] [--output <path>]  Snapshot or sample performance counters.");
-	print_line("  perf start [--frames <capacity>] | read | stop                 Continuous sampling; read drains without gaps.");
+	print_line("  perf [--frames <n>] [--gpu] [--timeout <seconds>] [--json] [--output <path>]  Snapshot or sample performance counters.");
+	print_line("  perf start [--frames <capacity>] [--gpu] | read | stop          Continuous CPU/GPU sampling; read drains completed records.");
 	print_line("  textures [--frames <n>] [--sort bytes|savings|ratio] [--limit <n>]    Inspect texture allocations and sampled 2D use.");
 	print_line("    --filter <text> --unused --headroom <factor> --timeout <seconds> --json --output <path>");
 	print_line("    Both accept --session <id>. Frames: 0 (snapshot) to 1800; timeout: 1..30 seconds (default 10).");
@@ -257,6 +265,7 @@ void print_cli_help() {
 	print_line("    --source <source>               Select output, debugger, or all.");
 	print_line("    --level <level>                 Select standard, warning, error, or editor messages.");
 	print_line("    --tail <number>                 Return the newest entries per source (default: 100).");
+	print_line("    --after <sequence>              Page oldest unread Debugger entries; requires --source debugger. --tail sets page size.");
 	print_line("  clear_logs [options]              Clear Output and Debugger error buffers.");
 	print_line("  breakpoint|bp <action> [...]      Add, list, remove, enable, disable, or clear breakpoints.");
 	print_line("    add <file>:<line> [options]     Add a logical breakpoint; several may share one line.");
@@ -458,14 +467,6 @@ int request_editor(const Dictionary &p_request, Dictionary &r_response) {
 		r_response["message"] = project_was_resolved ? "No running WGodot editor was found for this project." : "No running WGodot editor was found.";
 	}
 	return 3;
-}
-
-String make_absolute_output_path(const String &p_path) {
-	if (p_path.is_empty() || p_path.is_absolute_path() || p_path.begins_with("res://") || p_path.begins_with("user://")) {
-		return p_path;
-	}
-	Ref<DirAccess> directory = DirAccess::open(OS::get_singleton()->get_cwd());
-	return directory.is_valid() ? directory->get_current_dir().path_join(p_path).simplify_path() : p_path;
 }
 
 struct GameCommandOptions {
@@ -1274,6 +1275,36 @@ int run_run_command(const Vector<String> &p_arguments) {
 				return 2;
 			}
 			mode = "current";
+		} else if (argument == "--renderdoc") {
+			if (++index >= p_arguments.size()) {
+				print_line("wgodot: --renderdoc requires the capture library path.");
+				return 2;
+			}
+			options["renderdoc"] = p_arguments[index];
+		} else if (argument == "--windowed" || argument == "--fullscreen") {
+			if (options.has("window_mode")) {
+				print_line("wgodot: specify only one window mode.");
+				return 2;
+			}
+			options["window_mode"] = argument;
+		} else if (argument == "--resolution") {
+			if (++index >= p_arguments.size()) {
+				print_line("wgodot: --resolution requires positive WIDTHxHEIGHT dimensions.");
+				return 2;
+			}
+			const PackedStringArray dimensions = p_arguments[index].split("x");
+			if (dimensions.size() != 2 || !dimensions[0].is_valid_int() || !dimensions[1].is_valid_int() || dimensions[0].to_int() <= 0 || dimensions[1].to_int() <= 0) {
+				print_line("wgodot: --resolution requires positive WIDTHxHEIGHT dimensions.");
+				return 2;
+			}
+			options["resolution"] = p_arguments[index];
+		} else if (argument == "--") {
+			PackedStringArray user_arguments;
+			while (++index < p_arguments.size()) {
+				user_arguments.push_back(p_arguments[index]);
+			}
+			options["user_arguments"] = user_arguments;
+			break;
 		} else if (argument == "--fixed-fps") {
 			if (++index >= p_arguments.size() || !p_arguments[index].is_valid_int() || p_arguments[index].to_int() < 1 || p_arguments[index].to_int() > 120) {
 				print_line("wgodot: --fixed-fps requires 1..120 simulation frames per second.");

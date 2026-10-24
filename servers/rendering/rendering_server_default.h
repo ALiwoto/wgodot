@@ -265,7 +265,11 @@ public:
 
 	FUNC1RC(Image::Format, texture_get_format, RID)
 
-	FUNC1(texture_debug_usage, List<RenderingServerTypes::TextureInfo> *)
+	// wgodot-changes::begin
+	// This query writes into caller-owned storage, which may live on its stack.
+	// Complete the render-thread command before returning to that caller.
+	FUNC1S(texture_debug_usage, List<RenderingServerTypes::TextureInfo> *)
+	// wgodot-changes::end
 
 	FUNC2(texture_set_force_redraw_if_visible, RID, bool)
 	FUNCRIDTEX2(texture_rd, const RID &, const RSE::TextureLayeredType)
@@ -437,7 +441,9 @@ public:
 	FUNC2RC(RID, mesh_surface_get_skin_buffer_rd_rid, RID, int)
 	FUNC2RC(RID, mesh_surface_get_index_buffer_rd_rid, RID, int)
 
-	FUNC1(mesh_debug_usage, List<RenderingServerTypes::MeshInfo> *)
+	// wgodot-changes::begin
+	FUNC1S(mesh_debug_usage, List<RenderingServerTypes::MeshInfo> *)
+	// wgodot-changes::end
 
 	/* MULTIMESH API */
 

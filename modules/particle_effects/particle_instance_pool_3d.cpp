@@ -9,7 +9,7 @@ void ParticleInstancePool3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("prepare", "scene", "capacity"), &ParticleInstancePool3D::prepare);
 	ClassDB::bind_method(D_METHOD("acquire"), &ParticleInstancePool3D::acquire);
 	ClassDB::bind_method(D_METHOD("release", "instance"), &ParticleInstancePool3D::release);
-	ClassDB::bind_method(D_METHOD("get_instances"), &ParticleInstancePool3D::get_instances);
+	ClassDB::bind_method(D_METHOD("get_instances", "acquired_only"), &ParticleInstancePool3D::get_instances, DEFVAL(false));
 	ClassDB::bind_method(D_METHOD("set_instance_shader_parameter", "name", "value"), &ParticleInstancePool3D::set_instance_shader_parameter);
 	ClassDB::bind_method(D_METHOD("get_capacity"), &ParticleInstancePool3D::get_capacity);
 	ClassDB::bind_method(D_METHOD("get_available_count"), &ParticleInstancePool3D::get_available_count);
@@ -107,11 +107,14 @@ void ParticleInstancePool3D::release(ParticleInstance3D *p_instance) {
 #endif
 }
 
-TypedArray<ParticleInstance3D> ParticleInstancePool3D::get_instances() const {
+TypedArray<ParticleInstance3D> ParticleInstancePool3D::get_instances(bool p_acquired_only) const {
 	TypedArray<ParticleInstance3D> result;
-	result.resize(instances.size());
+	result.resize(p_acquired_only ? instances.size() - available.size() : instances.size());
+	int output = 0;
 	for (int i = 0; i < instances.size(); ++i) {
-		result[i] = instances[i];
+		if (!p_acquired_only || acquired[i]) {
+			result[output++] = instances[i];
+		}
 	}
 	return result;
 }

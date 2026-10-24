@@ -347,6 +347,10 @@ void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
 	if (command == "run") {
 		const String mode = options.get("mode", "main");
 		Vector<String> play_args;
+		if (options.has("renderdoc")) {
+			play_args.push_back("--renderdoc");
+			play_args.push_back(options["renderdoc"]);
+		}
 		if (options.has("fixed_fps")) {
 			int fps = options["fixed_fps"];
 			if (fps < 1 || fps > 120) {
@@ -355,6 +359,18 @@ void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
 			}
 			play_args.push_back("--fixed-fps");
 			play_args.push_back(itos(fps));
+		}
+		if (options.has("window_mode")) {
+			play_args.push_back(options["window_mode"]);
+		}
+		if (options.has("resolution")) {
+			play_args.push_back("--resolution");
+			play_args.push_back(options["resolution"]);
+		}
+		const PackedStringArray user_arguments = options.get("user_arguments", PackedStringArray());
+		if (!user_arguments.is_empty()) {
+			play_args.push_back("--");
+			play_args.append_array(user_arguments);
 		}
 		if (mode != "main" && mode != "current" && mode != "custom") {
 			finish_connection(p_connection, make_error_response("invalid_run_mode", "Unknown run mode: " + mode));

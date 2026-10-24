@@ -31,6 +31,7 @@
 #include "core/object/class_db.h"
 #include "wgodot_particle_snapshot.h"
 #include "rendering/render_capture.h"
+#include "rendering/render_stepper.h"
 #include "editor/editor_node.h"
 #include "editor/export/editor_export.h"
 #include "editor/plugins/editor_plugin.h"
@@ -62,6 +63,7 @@ void initialize_wgodot_module(ModuleInitializationLevel p_level) {
 #ifdef TOOLS_ENABLED
 		GDREGISTER_CLASS(WGPUParticleSnapshot);
 		GDREGISTER_CLASS(WRenderCapture);
+		GDREGISTER_CLASS(WRenderStepper);
 #endif
 		WGodotPreloads::initialize();
 #ifdef MODULE_GDSCRIPT_ENABLED

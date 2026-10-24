@@ -30,13 +30,26 @@ void WGPUParticleSnapshot::_capture_on_render_thread() {
 }
 
 void WGPUParticleSnapshot::_read_buffer() {
+	Layout layout;
+	ERR_FAIL_COND(describe(particles, layout) != OK);
+	ERR_FAIL_COND_MSG(layout.buffer.is_null(), "GPU particles must render before capturing their state.");
+	userdata_count = layout.userdata_count;
+	stride = layout.stride;
+	data = RenderingDevice::get_singleton()->buffer_get_data(layout.buffer);
+}
+
+Error WGPUParticleSnapshot::describe(RID p_particles, Layout &r_layout) {
 	RendererRD::ParticlesStorage *storage = RendererRD::ParticlesStorage::get_singleton();
-	ERR_FAIL_NULL_MSG(storage, "GPU particle snapshots require a RenderingDevice renderer.");
-	const RendererRD::ParticlesStorage::Particles *state = storage->particles_owner.get_or_null(particles);
-	ERR_FAIL_NULL_MSG(state, "GPU particle snapshot requires a particle resource RID.");
-	ERR_FAIL_COND_MSG(state->particle_buffer.is_null(), "GPU particles must render before capturing their state.");
-	userdata_count = state->userdata_count;
-	stride = sizeof(RendererRD::ParticlesStorage::ParticleData) + userdata_count * sizeof(float) * 4;
-	data = RenderingDevice::get_singleton()->buffer_get_data(state->particle_buffer);
+	ERR_FAIL_NULL_V(storage, ERR_UNAVAILABLE);
+	const RendererRD::ParticlesStorage::Particles *state = storage->particles_owner.get_or_null(p_particles);
+	ERR_FAIL_NULL_V(state, ERR_INVALID_PARAMETER);
+	r_layout.buffer = state->particle_buffer;
+	r_layout.userdata_count = state->userdata_count;
+	r_layout.stride = sizeof(RendererRD::ParticlesStorage::ParticleData) + state->userdata_count * sizeof(float) * 4;
+	r_layout.count = state->amount;
+	if (state->trails_enabled && state->trail_bind_poses.size() > 1) {
+		r_layout.count *= state->trail_bind_poses.size();
+	}
+	return OK;
 }
 #endif

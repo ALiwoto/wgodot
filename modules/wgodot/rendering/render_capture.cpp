@@ -1,14 +1,24 @@
 // wgodot-changes::file
 #include "render_capture.h"
+#include "readback_codec.h"
+#include "gpu_profile.h"
+#include "renderdoc_capture.h"
+#include "../wgodot_particle_snapshot.h"
 
 #ifdef TOOLS_ENABLED
-#include "core/io/compression.h"
 #include "core/io/config_file.h"
 #include "core/io/dir_access.h"
 #include "core/io/file_access.h"
 #include "core/object/callable_mp.h"
 #include "core/object/class_db.h"
 #include "core/object/worker_thread_pool.h"
+#include "core/os/os.h"
+#include "scene/3d/visual_instance_3d.h"
+#include "scene/3d/mesh_instance_3d.h"
+#include "scene/3d/skeleton_3d.h"
+#ifdef MODULE_PARTICLE_EFFECTS_ENABLED
+#include "modules/particle_effects/particle_instance_3d.h"
+#endif
 #include "servers/rendering/renderer_rd/effects/copy_effects.h"
 #include "servers/rendering/renderer_rd/storage_rd/render_data_rd.h"
 #include "servers/rendering/renderer_rd/storage_rd/render_scene_buffers_rd.h"
@@ -17,15 +27,76 @@
 #include "servers/rendering/renderer_viewport.h"
 #include "servers/rendering/rendering_server_globals.h"
 #include "servers/rendering/rendering_server.h"
+#include "servers/rendering/storage/mesh_storage.h"
+#include "servers/rendering/storage/utilities.h"
+
 
 HashMap<RID, Ref<WRenderCapture>> WRenderCapture::captures;
 
 void WRenderCapture::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("snapshot_material", "material"), &WRenderCapture::snapshot_material);
+	ClassDB::bind_static_method(get_class_static(), D_METHOD("skeleton_palettes", "roots"), &WRenderCapture::skeleton_palettes);
+	ClassDB::bind_method(D_METHOD("queue_skeleton_palettes", "roots"), &WRenderCapture::queue_skeleton_palettes);
+	ClassDB::bind_method(D_METHOD("get_skeleton_palettes"), &WRenderCapture::get_skeleton_palettes);
+	ClassDB::bind_static_method(get_class_static(), D_METHOD("instance_uniforms", "instance", "output", "section", "prefix"), &WRenderCapture::instance_uniforms, DEFVAL(String()));
 	ClassDB::bind_static_method(get_class_static(), D_METHOD("begin", "viewport", "directory", "passes"), &WRenderCapture::begin, DEFVAL(false));
 	ClassDB::bind_method(D_METHOD("set_sample", "frame", "seconds", "render_time", "time_step", "detailed_inputs"), &WRenderCapture::set_sample, DEFVAL(-1), DEFVAL(0), DEFVAL(false));
+	ClassDB::bind_method(D_METHOD("get_submitted_frame_count"), &WRenderCapture::get_submitted_frame_count);
+	ClassDB::bind_method(D_METHOD("track_particles", "particles", "path"), &WRenderCapture::track_particles);
 	ClassDB::bind_method(D_METHOD("end"), &WRenderCapture::end);
 	ClassDB::bind_method(D_METHOD("is_completed"), &WRenderCapture::is_completed);
 	ClassDB::bind_method(D_METHOD("get_error"), &WRenderCapture::get_error);
+	ClassDB::bind_static_method(get_class_static(), D_METHOD("render_transform", "node"), &WRenderCapture::render_transform);
+	ClassDB::bind_static_method(get_class_static(), D_METHOD("render_visible", "node"), &WRenderCapture::render_visible);
+	ClassDB::bind_static_method(get_class_static(), D_METHOD("write_skeleton", "skeleton", "output", "section"), &WRenderCapture::write_skeleton);
+	ClassDB::bind_static_method(get_class_static(), D_METHOD("write_skeletons", "root", "node", "frame", "output"), &WRenderCapture::write_skeletons);
+	ClassDB::bind_static_method(get_class_static(), D_METHOD("write_spatial", "node", "output", "section"), &WRenderCapture::write_spatial);
+	ClassDB::bind_static_method(get_class_static(), D_METHOD("write_mesh", "node", "output", "section", "palettes"), &WRenderCapture::write_mesh);
+	ClassDB::bind_static_method(get_class_static(), D_METHOD("write_transforms", "nodes", "output", "section"), &WRenderCapture::write_transforms);
+#ifdef MODULE_PARTICLE_EFFECTS_ENABLED
+	ClassDB::bind_static_method(get_class_static(), D_METHOD("write_particle", "particle", "output", "section"), &WRenderCapture::write_particle);
+	ClassDB::bind_static_method(get_class_static(), D_METHOD("write_particle_transforms", "particles", "output", "section"), &WRenderCapture::write_particle_transforms);
+#endif
+}
+
+Ref<ShaderMaterial> WRenderCapture::snapshot_material(const Ref<ShaderMaterial> &p_material) {
+	ERR_FAIL_COND_V(p_material.is_null(), Ref<ShaderMaterial>());
+	const WShaderParameters &state = p_material->get_shader_parameters();
+	const Ref<Shader> shader = p_material->get_shader();
+	const uint64_t revision = shader.is_valid() ? shader->get_parameter_revision() : 0;
+	Ref<Material> next;
+	if (p_material->get_next_pass().is_valid()) {
+		Ref<ShaderMaterial> shader_pass = p_material->get_next_pass();
+		next = shader_pass.is_valid() ? Ref<Material>(snapshot_material(shader_pass)) : Ref<Material>(p_material->get_next_pass()->duplicate(true));
+	}
+	MaterialSnapshot &previous = material_snapshots[p_material->get_instance_id()];
+	const WShaderParameterBuffer &a = previous.parameters;
+	const WShaderParameterBuffer &b = state.buffer;
+	if (previous.frozen.is_valid() && previous.shader == shader && previous.revision == revision &&
+			previous.frozen->get_render_priority() == p_material->get_render_priority() && previous.frozen->get_next_pass() == next &&
+			a.words == b.words && a.linear_words == b.linear_words && a.textures == b.textures &&
+			a.texture_counts == b.texture_counts && a.overridden == b.overridden && a.colors == b.colors) {
+		return previous.frozen;
+	}
+	previous.shader = shader;
+	previous.revision = revision;
+	previous.parameters = state.buffer;
+	previous.frozen = p_material->duplicate();
+	previous.frozen->set_next_pass(next);
+	return previous.frozen;
+}
+
+void WRenderCapture::instance_uniforms(GeometryInstance3D *p_instance, const Ref<ConfigFile> &p_output, const String &p_section, const String &p_prefix) {
+	ERR_FAIL_NULL(p_instance);
+	ERR_FAIL_COND(p_output.is_null());
+	// Capture after frame publication. The node and renderer already share this
+	// typed bank; snapshot it under one lock instead of synchronizing the render
+	// thread for every value. Include defaults and exclude stale declarations.
+	for (const auto &item : p_instance->get_instance_shader_parameters()->snapshot()) {
+		if (item.gpu_index >= 0) {
+			p_output->set_value(p_section, p_prefix + String(item.info.name), item.value.to_variant());
+		}
+	}
 }
 
 Ref<WRenderCapture> WRenderCapture::begin(RID p_viewport, const String &p_directory, bool p_passes) {
@@ -70,12 +141,84 @@ void WRenderCapture::set_sample(int64_t p_frame, double p_seconds, double p_rend
 	RenderingServer::get_singleton()->call_on_render_thread(callable_mp(this, &WRenderCapture::_set_sample).bind(p_frame, p_seconds, p_render_time, p_time_step, p_detailed_inputs));
 }
 
+void WRenderCapture::track_particles(RID p_particles, const String &p_path) {
+	RenderingServer::get_singleton()->call_on_render_thread(callable_mp(this, &WRenderCapture::_track_particles).bind(p_particles, p_path));
+}
+
+void WRenderCapture::_track_particles(RID p_particles, const String &p_path) {
+	if (p_path.is_empty()) {
+		particle_sources.erase(p_particles);
+	} else {
+		particle_sources.insert(p_particles, p_path);
+	}
+}
+
+void WRenderCapture::_read_particles(const Ref<ConfigFile> &p_frame) {
+	p_frame->set_value("frame", "gpu_particle_states", true);
+	for (const KeyValue<RID, String> &entry : particle_sources) {
+		WGPUParticleSnapshot::Layout layout;
+		Error error = WGPUParticleSnapshot::describe(entry.key, layout);
+		if (error != OK) {
+			failure.set(error);
+			continue;
+		}
+		String section = "particles:" + uitos(entry.key.get_id());
+		p_frame->set_value(section, "kind", "particle_state");
+		p_frame->set_value(section, "path", entry.value);
+		p_frame->set_value(section, "allocated", layout.buffer.is_valid());
+		p_frame->set_value(section, "stride", layout.stride);
+		p_frame->set_value(section, "userdata_count", layout.userdata_count);
+		p_frame->set_value(section, "capacity", layout.count);
+		if (layout.buffer.is_null()) {
+			continue;
+		}
+		Plane plane;
+		plane.name = "particles_" + uitos(entry.key.get_id());
+		plane.buffer = true;
+		plane.byte_count = int64_t(layout.stride) * layout.count;
+		p_frame->set_value(section, "buffer", plane.name);
+		const int index = readback_frame->planes.size();
+		readback_frame->planes.push_back(plane);
+		readback_frame->pending++;
+		error = RenderingDevice::get_singleton()->buffer_get_data_async(layout.buffer, callable_mp(this, &WRenderCapture::_texture_readback).bind(readback_frame, index));
+		if (error != OK) {
+			readback_frame->pending--;
+			readback_frame->planes.write[index].error = error;
+			failure.set(error);
+		}
+	}
+}
+
 void WRenderCapture::_set_sample(int64_t p_frame, double p_seconds, double p_render_time, double p_time_step, bool p_detailed_inputs) {
+	Error previous_capture = WRenderDocCapture::get_result();
+	if (previous_capture != OK) {
+		failure.set(previous_capture);
+		return;
+	}
+	_pump_frames(false);
+	if (readback_frame.is_valid()) {
+		failure.set(ERR_BUSY);
+		return;
+	}
+	readback_frame.instantiate();
+	readback_frame->index = frame_index;
+	readback_frame->metadata.instantiate();
+	readback_frame->metadata->set_value("frame", "sample_ticks_usec", int64_t(OS::get_singleton()->get_ticks_usec()));
+	WGodotGPUProfile::mark("capture.sample", directory, p_frame);
 	sample_frame = p_frame;
 	sample_seconds = p_seconds;
 	sample_render_time = p_render_time;
 	sample_time_step = p_time_step;
 	detailed_inputs = p_detailed_inputs;
+	if (detailed_inputs && WRenderDocCapture::is_available()) {
+		Error error = WRenderDocCapture::request(directory, frame_index, p_frame, p_seconds);
+		if (error != OK) {
+			failure.set(error);
+		}
+		// The RDC owns complete graphics inputs. Keep native semantic/output
+		// checkpoints, without writing a duplicate copy of every GPU resource.
+		detailed_inputs = false;
+	}
 }
 
 WRenderCapture *WRenderCapture::_find(const RenderDataRD *p_data) {
@@ -87,6 +230,7 @@ WRenderCapture *WRenderCapture::_find(const RenderDataRD *p_data) {
 }
 
 void WRenderCapture::_read_texture(const String &p_name, RID p_texture) {
+	WGodotGPUProfile::Scope profile_scope("capture.queue_texture_readback");
 	RenderingDevice *rd = RenderingDevice::get_singleton();
 	if (p_texture.is_null()) {
 		failure.set(ERR_UNAVAILABLE);
@@ -105,7 +249,14 @@ void WRenderCapture::_read_texture(const String &p_name, RID p_texture) {
 		destination.height = format.height;
 		destination.format = format.format;
 		destination.usage_bits = RD::TEXTURE_USAGE_CAN_COPY_FROM_BIT | RD::TEXTURE_USAGE_CAN_COPY_TO_BIT;
-		RID resolved = rd->texture_create(destination, RD::TextureView());
+		const RID *cached = readback_textures.getptr(p_texture);
+		RID resolved = cached ? *cached : RID();
+		if (resolved.is_null()) {
+			resolved = rd->texture_create(destination, RD::TextureView());
+			if (resolved.is_valid()) {
+				readback_textures.insert(p_texture, resolved);
+			}
+		}
 		if (resolved.is_null()) {
 			failure.set(ERR_CANT_CREATE);
 			return;
@@ -116,7 +267,6 @@ void WRenderCapture::_read_texture(const String &p_name, RID p_texture) {
 		} else {
 			failure.set(error);
 		}
-		rd->free_rid(resolved);
 		return;
 	}
 	if (RD::format_has_depth(format.format)) {
@@ -127,14 +277,20 @@ void WRenderCapture::_read_texture(const String &p_name, RID p_texture) {
 		destination.height = format.height;
 		destination.format = RD::DATA_FORMAT_R32_SFLOAT;
 		destination.usage_bits = RD::TEXTURE_USAGE_STORAGE_BIT | RD::TEXTURE_USAGE_CAN_COPY_FROM_BIT;
-		RID depth = rd->texture_create(destination, RD::TextureView());
+		const RID *cached = readback_textures.getptr(p_texture);
+		RID depth = cached ? *cached : RID();
+		if (depth.is_null()) {
+			depth = rd->texture_create(destination, RD::TextureView());
+			if (depth.is_valid()) {
+				readback_textures.insert(p_texture, depth);
+			}
+		}
 		if (depth.is_null()) {
 			failure.set(ERR_CANT_CREATE);
 			return;
 		}
 		RendererRD::CopyEffects::get_singleton()->copy_depth_to_rect(p_texture, depth, Rect2i(0, 0, format.width, format.height));
 		_read_texture(p_name, depth);
-		rd->free_rid(depth);
 		return;
 	}
 	Plane plane;
@@ -142,20 +298,86 @@ void WRenderCapture::_read_texture(const String &p_name, RID p_texture) {
 	plane.width = format.width;
 	plane.height = format.height;
 	plane.format = format.format;
-	plane.bytes = rd->texture_get_data(p_texture, 0);
-	if (plane.bytes.is_empty()) {
-		failure.set(ERR_CANT_ACQUIRE_RESOURCE);
+	plane.byte_count = RD::get_image_format_required_size(format.format, format.width, format.height, format.depth, format.mipmaps);
+	const int index = readback_frame->planes.size();
+	readback_frame->planes.push_back(plane);
+	const uint64_t started = OS::get_singleton()->get_ticks_usec();
+	// Enqueue the copy at this exact pass boundary. Waiting until finish_frame
+	// to enqueue would read overwritten attachments instead of intermediate data.
+	readback_frame->pending++;
+	Error error = rd->texture_get_data_async(p_texture, 0, callable_mp(this, &WRenderCapture::_texture_readback).bind(readback_frame, index));
+	readback_frame->planes.write[index].read_usec = OS::get_singleton()->get_ticks_usec() - started;
+	if (error != OK) {
+		readback_frame->pending--;
+		readback_frame->planes.write[index].error = error;
+		failure.set(error);
 	}
-	planes.push_back(plane);
+}
+
+void WRenderCapture::_texture_readback(const PackedByteArray &p_bytes, Ref<ReadbackFrame> p_frame, int p_index) {
+	// The device invokes this on its render thread when the corresponding
+	// fence retires. Later samples cannot overwrite this frame's ownership.
+	Plane &plane = p_frame->planes.write[p_index];
+	plane.bytes = p_bytes;
+	if (p_bytes.size() != plane.byte_count) {
+		plane.error = ERR_CANT_ACQUIRE_RESOURCE;
+		failure.set(plane.error);
+	}
+	p_frame->pending--;
+	if (p_frame->pending == 0) {
+		p_frame->readbacks_finished_usec = OS::get_singleton()->get_ticks_usec();
+	}
+}
+
+uint64_t WRenderCapture::_collect_readbacks() {
+	WGodotGPUProfile::Scope profile_scope("capture.readback_drain");
+	const uint64_t started = OS::get_singleton()->get_ticks_usec();
+	RenderingDevice::get_singleton()->flush_pending_readbacks();
+	return OS::get_singleton()->get_ticks_usec() - started;
+}
+
+void WRenderCapture::_pump_frames(bool p_wait) {
+	while (!writers.is_empty() && WorkerThreadPool::get_singleton()->is_task_completed(writers.front()->get()->task)) {
+		_drain_write(false);
+	}
+	const int capacity = MAX(1, int(RenderingDevice::get_singleton()->get_frame_delay()));
+	while (!readback_frames.is_empty()) {
+		Ref<ReadbackFrame> frame = readback_frames.front()->get();
+		if (frame->pending) {
+			if (!p_wait) {
+				return;
+			}
+			_collect_readbacks();
+			if (frame->pending) {
+				failure.set(ERR_CANT_ACQUIRE_RESOURCE);
+				readback_frames.pop_front();
+				return;
+			}
+		}
+		if (writers.size() >= capacity) {
+			if (!p_wait) {
+				return;
+			}
+			_drain_write(false);
+		}
+		frame->metadata->set_value("frame", "readback_ticks_usec", int64_t(frame->readbacks_finished_usec));
+		_plan_write(frame.ptr());
+		frame->owner = this;
+		readback_frames.pop_front();
+		writers.push_back(frame);
+		frame->task = WorkerThreadPool::get_singleton()->add_native_task(
+				&WRenderCapture::_write_frame_task, frame.ptr(), true, "Save rendering capture frame");
+	}
 }
 
 bool WRenderCapture::prepare_frame(const RenderDataRD *p_data) {
 	WRenderCapture *capture = _find(p_data);
-	if (capture && capture->sample_frame >= 0 && capture->sample_render_time >= 0) {
-		// Replay source shader time explicitly. Disk/GPU readback stalls must
-		// not advance TIME independently of the captured animation sample.
+	if (capture && capture->sample_render_time >= 0) {
+		// Hold shader time on intervening display frames too. The sampler owns
+		// the clock until end(), including while it records a multi-frame scene
+		// snapshot; alternating with wall time would flicker animated materials.
 		p_data->scene_data->time = capture->sample_render_time;
-		p_data->scene_data->time_step = capture->sample_time_step;
+		p_data->scene_data->time_step = capture->sample_frame >= 0 ? capture->sample_time_step : 0.0;
 		return true;
 	}
 	return false;
@@ -180,19 +402,78 @@ void WRenderCapture::texture(const RenderDataRD *p_data, const String &p_name, R
 	}
 }
 
-void WRenderCapture::_write_plane(uint32_t p_index) {
-	Plane &plane = planes.write[p_index];
-	PackedByteArray compressed;
-	compressed.resize(Compression::get_max_compressed_buffer_size(plane.bytes.size(), Compression::MODE_DEFLATE));
-	int64_t size = Compression::compress(compressed.ptrw(), plane.bytes.ptr(), plane.bytes.size(), Compression::MODE_DEFLATE);
-	if (size < 0) {
-		plane.error = ERR_CANT_CREATE;
+void WRenderCapture::_write_plane(ReadbackFrame *p_frame, uint32_t p_index) {
+	Plane &plane = p_frame->planes.write[p_index];
+	if (plane.alias >= 0) {
 		return;
 	}
-	Ref<FileAccess> file = FileAccess::open(directory.path_join(vformat("frame_%08d_%s.bin.z", frame_index, plane.name)), FileAccess::WRITE, &plane.error);
+	const uint64_t started = OS::get_singleton()->get_ticks_usec();
+	if (plane.needs_write && plane.error == OK) {
+		plane.byte_count = plane.bytes.size();
+		_store_plane(plane, false, p_frame->index);
+	}
+	plane.write_usec = OS::get_singleton()->get_ticks_usec() - started;
+}
+
+void WRenderCapture::_store_plane(Plane &plane, bool p_reuse_input, int p_frame_index) {
+	WGodotGPUProfile::Scope profile_scope("capture.store_plane");
+	plane.byte_count = plane.bytes.size();
+	if (plane.byte_count > INT32_MAX) {
+		plane.error = ERR_PARAMETER_RANGE_ERROR;
+		return;
+	}
+	if (plane.compressed.is_empty()) {
+		Vector<WReadbackCodec::Input> inputs;
+		inputs.push_back({ plane.bytes, plane.shuffle_stride });
+		const uint64_t started = OS::get_singleton()->get_ticks_usec();
+		Vector<WReadbackCodec::Output> encoded = WReadbackCodec::encode(inputs);
+		plane.compress_usec = OS::get_singleton()->get_ticks_usec() - started;
+		if (encoded.size() != 1 || encoded[0].error != OK) {
+			plane.error = encoded.size() == 1 ? encoded[0].error : ERR_CANT_CREATE;
+			return;
+		}
+		plane.compressed = encoded[0].bytes;
+	}
+	PackedByteArray compressed = std::move(plane.compressed);
+	const int64_t size = compressed.size();
+	if (p_reuse_input) {
+		const String *previous = input_payloads.getptr(plane.name);
+		if (previous) {
+			Ref<FileAccess> saved = FileAccess::open(directory.path_join(*previous), FileAccess::READ);
+			if (saved.is_valid() && saved->get_length() == uint64_t(size)) {
+				// Compression is lossless: identical encoded bytes establish identical
+				// payloads. Compare in bounded chunks, without inflating old images.
+				uint8_t chunk[16384];
+				int64_t offset = 0;
+				while (offset < size) {
+					uint64_t count = MIN(int64_t(sizeof(chunk)), size - offset);
+					if (saved->get_buffer(chunk, count) != count || memcmp(chunk, compressed.ptr() + offset, count) != 0) {
+						break;
+					}
+					offset += count;
+				}
+				if (offset == size) {
+					plane.file = *previous;
+					plane.bytes.clear();
+					return;
+				}
+			}
+		}
+	}
+	plane.file = vformat("frame_%08d_%s.bin.zst", p_frame_index, plane.name);
+	const uint64_t write_started = OS::get_singleton()->get_ticks_usec();
+	Ref<FileAccess> file = FileAccess::open(directory.path_join(plane.file), FileAccess::WRITE, &plane.error);
 	if (file.is_valid()) {
 		file->store_buffer(compressed.ptr(), size);
 		plane.error = file->get_error();
+	}
+	file.unref();
+	plane.file_usec = OS::get_singleton()->get_ticks_usec() - write_started;
+	if (p_reuse_input) {
+		if (plane.error == OK) {
+			input_payloads.insert(plane.name, plane.file);
+		}
+		plane.bytes.clear();
 	}
 }
 
@@ -214,21 +495,85 @@ String WRenderCapture::buffer(const RenderDataRD *p_data, RID p_buffer) {
 	}
 	String name = "buffer_" + uitos(p_buffer.get_id());
 	if (!capture->input_buffers.has(p_buffer)) {
+		WGodotGPUProfile::Scope profile_scope("capture.input_buffer");
 		Plane plane;
 		plane.name = name;
 		plane.buffer = true;
 		plane.bytes = RD::get_singleton()->buffer_get_data(p_buffer);
 		if (plane.bytes.is_empty()) {
 			capture->failure.set(ERR_CANT_ACQUIRE_RESOURCE);
+			plane.error = ERR_CANT_ACQUIRE_RESOURCE;
+		} else {
+			capture->_store_plane(plane, true, capture->frame_index);
 		}
-		capture->planes.push_back(plane);
+		capture->readback_frame->planes.push_back(plane);
 		capture->input_buffers.insert(p_buffer);
 	}
 	return name;
 }
 
+String WRenderCapture::bound_texture(const RenderDataRD *p_data, RID p_texture) {
+	Ref<ConfigFile> data = inputs(p_data);
+	if (data.is_null() || p_texture.is_null()) {
+		return String();
+	}
+	WRenderCapture *capture = _find(p_data);
+	String name = "texture_" + uitos(p_texture.get_id());
+	if (capture->input_textures.has(p_texture)) {
+		return name;
+	}
+	capture->input_textures.insert(p_texture);
+	WGodotGPUProfile::Scope profile_scope("capture.input_texture");
+	RD *rd = RD::get_singleton();
+	RD::TextureFormat format = rd->texture_get_format(p_texture);
+	data->set_value(name, "format", int(format.format));
+	data->set_value(name, "type", int(format.texture_type));
+	data->set_value(name, "samples", 1 << int(format.samples));
+	data->set_value(name, "layers", int(format.array_layers));
+	data->set_value(name, "mipmaps", int(format.mipmaps));
+	if (format.samples != RD::TEXTURE_SAMPLES_1 || !(format.usage_bits & RD::TEXTURE_USAGE_CAN_COPY_FROM_BIT)) {
+		// A resolved image does not establish individual MSAA input samples.
+		data->set_value(name, "error", ERR_UNAVAILABLE);
+		capture->failure.set(ERR_UNAVAILABLE);
+		return name;
+	}
+	PackedStringArray payloads;
+	for (uint32_t layer = 0; layer < format.array_layers; layer++) {
+		Plane plane;
+		plane.name = name + "_layer_" + itos(layer);
+		plane.texture_input = true;
+		plane.width = format.width;
+		plane.height = format.height;
+		plane.depth = format.depth;
+		plane.layer = layer;
+		plane.format = format.format;
+		int64_t offset = 0;
+		for (uint32_t mip = 0; mip < format.mipmaps; mip++) {
+			int64_t size = RD::get_image_format_required_size(format.format, MAX(1u, format.width >> mip),
+					MAX(1u, format.height >> mip), MAX(1u, format.depth >> mip), 1);
+			plane.mip_offsets.push_back(offset);
+			plane.mip_sizes.push_back(size);
+			offset += size;
+		}
+		plane.bytes = rd->texture_get_data(p_texture, layer);
+		if (plane.bytes.size() != offset) {
+			plane.error = ERR_CANT_ACQUIRE_RESOURCE;
+			capture->failure.set(plane.error);
+		} else {
+			// Drain input data immediately. A scene with many large materials
+			// must not retain all of their images until the end of this frame.
+			capture->_store_plane(plane, true, capture->frame_index);
+		}
+		payloads.push_back(plane.name);
+		capture->readback_frame->planes.push_back(plane);
+	}
+	data->set_value(name, "payloads", payloads);
+	return name;
+}
+
 void WRenderCapture::_write_plane_task(void *p_userdata, uint32_t p_index) {
-	static_cast<WRenderCapture *>(p_userdata)->_write_plane(p_index);
+	ReadbackFrame *frame = static_cast<ReadbackFrame *>(p_userdata);
+	frame->owner->_write_plane(frame, p_index);
 }
 
 void WRenderCapture::finish_frame(const RenderDataRD *p_data) {
@@ -236,20 +581,19 @@ void WRenderCapture::finish_frame(const RenderDataRD *p_data) {
 	if (!capture || capture->sample_frame < 0) {
 		return;
 	}
+	WGodotGPUProfile::Scope profile_scope("capture.finish_frame");
+	capture->_capture_skeleton_palettes();
+	RENDER_TIMESTAMP("Capture Final Readbacks");
 	Ref<RenderSceneBuffersRD> rb = p_data->render_buffers;
 	for (uint32_t view = 0; view < rb->get_view_count(); view++) {
 		capture->_read_texture("hdr_" + itos(view), rb->get_internal_texture(view));
 		capture->_read_texture("depth_" + itos(view), rb->get_depth_texture(view));
 		capture->_read_texture("scene_" + itos(view), RendererRD::TextureStorage::get_singleton()->render_target_get_rd_texture_slice(rb->get_render_target(), view));
 	}
-	// Bounded to one frame. Parallel compression/writing never builds a growing
-	// readback queue. Deliberate capture stalls require a fixed simulation clock.
-	if (!capture->planes.is_empty()) {
-		WorkerThreadPool::GroupID task = WorkerThreadPool::get_singleton()->add_native_group_task(&WRenderCapture::_write_plane_task, capture, capture->planes.size());
-		WorkerThreadPool::get_singleton()->wait_for_group_task_completion(task);
-	}
-	Ref<ConfigFile> frame;
-	frame.instantiate();
+	Ref<ConfigFile> frame = capture->readback_frame->metadata;
+	capture->_read_particles(frame);
+	RENDER_TIMESTAMP("Capture Readbacks Queued");
+	frame->set_value("frame", "readback_mode", "pipelined");
 	frame->set_value("frame", "process_frame", capture->sample_frame);
 	frame->set_value("frame", "seconds", capture->sample_seconds);
 	frame->set_value("frame", "render_seconds", p_data->scene_data->time);
@@ -264,36 +608,171 @@ void WRenderCapture::finish_frame(const RenderDataRD *p_data) {
 	frame->set_value("frame", "decals", p_data->decals ? int64_t(p_data->decals->size()) : 0);
 	frame->set_value("frame", "fog_volumes", p_data->fog_volumes ? int64_t(p_data->fog_volumes->size()) : 0);
 	frame->set_value("frame", "render_region", p_data->render_region);
-	if (capture->input_data.is_valid()) {
-		String name = vformat("frame_%08d_inputs.ini", capture->frame_index);
-		Error error = capture->input_data->save(capture->directory.path_join(name));
-		if (error != OK) {
-			capture->failure.set(error);
-		}
-		frame->set_value("frame", "inputs", name);
-		capture->input_data.unref();
-	}
-	for (const Plane &plane : capture->planes) {
-		frame->set_value(plane.name, "file", vformat("frame_%08d_%s.bin.z", capture->frame_index, plane.name));
-		frame->set_value(plane.name, "width", plane.width);
-		frame->set_value(plane.name, "height", plane.height);
-		frame->set_value(plane.name, "format", plane.format);
-		frame->set_value(plane.name, "bytes", plane.bytes.size());
-		frame->set_value(plane.name, "encoding", "zlib");
-		frame->set_value(plane.name, "kind", plane.buffer ? "buffer" : "texture");
-		if (plane.error != OK) {
-			capture->failure.set(plane.error);
-		}
-	}
-	frame->set_value("frame", "error", capture->failure.get());
-	Error error = frame->save(capture->directory.path_join(vformat("frame_%08d.ini", capture->frame_index)));
-	if (error != OK) {
-		capture->failure.set(error);
-	}
-	capture->planes.clear();
+	capture->readback_frame->metadata = frame;
+	capture->readback_frame->inputs = capture->input_data;
+	capture->readback_frames.push_back(capture->readback_frame);
+	capture->readback_frame.unref();
+	capture->input_data.unref();
 	capture->input_buffers.clear();
+	capture->input_textures.clear();
+	// Reuse capture-owned resolve/depth textures. Each readback copy stays at
+	// its pass boundary; command dependencies protect it from later writes.
 	capture->sample_frame = -1;
 	capture->frame_index++;
+	capture->_pump_frames(false);
+	// Bound retained images by the device's actual frame latency plus a writer
+	// handoff. A slow disk cannot accumulate the rest of a long recording.
+	if (capture->readback_frames.size() + capture->writers.size() > int(RenderingDevice::get_singleton()->get_frame_delay()) + 1) {
+		capture->_pump_frames(true);
+	}
+	capture->submitted_frame_count.set(capture->frame_index);
+}
+
+void WRenderCapture::_drain_write(bool p_all) {
+	while (!writers.is_empty()) {
+		WGodotGPUProfile::Scope profile_scope("capture.wait_writer");
+		WorkerThreadPool::get_singleton()->wait_for_task_completion(writers.front()->get()->task);
+		writers.pop_front();
+		if (!p_all) {
+			return;
+		}
+	}
+}
+
+void WRenderCapture::_plan_write(ReadbackFrame *p_frame) {
+	WGodotGPUProfile::Scope profile_scope("capture.plan_write");
+	HashMap<String, OutputPayload> next_payloads;
+	for (int i = 0; i < p_frame->planes.size(); i++) {
+		Plane &plane = p_frame->planes.write[i];
+		if (!plane.buffer && !plane.texture_input && plane.byte_count % 8 == 0 &&
+				(plane.format == RD::DATA_FORMAT_R16G16B16A16_SFLOAT || plane.format == RD::DATA_FORMAT_R32_SFLOAT)) {
+			plane.shuffle_stride = 8;
+		}
+		if (plane.file.is_empty() && plane.error == OK) {
+			for (int j = 0; j < i; j++) {
+				const Plane &other = p_frame->planes[j];
+				if (!plane.buffer && !plane.texture_input && !other.buffer && !other.texture_input &&
+						other.error == OK && other.width == plane.width && other.height == plane.height &&
+						other.format == plane.format && other.bytes == plane.bytes) {
+					plane.alias = j;
+					plane.file = other.file;
+					plane.reused = true;
+					break;
+				}
+			}
+			const OutputPayload *previous = output_payloads.getptr(plane.name);
+			if (plane.file.is_empty() && previous && previous->shuffle_stride == plane.shuffle_stride && previous->bytes == plane.bytes) {
+				plane.file = previous->file;
+				plane.reused = true;
+			}
+			if (plane.file.is_empty()) {
+				plane.file = vformat("frame_%08d_%s.bin.zst", p_frame->index, plane.name);
+				plane.needs_write = true;
+			}
+		}
+		if (!plane.texture_input && plane.error == OK && !plane.bytes.is_empty()) {
+			next_payloads.insert(plane.name, { plane.bytes, plane.file, plane.shuffle_stride });
+		}
+	}
+	// References name the owning job's deterministic output, even if it is
+	// still being written. end() joins every job before publishing success.
+	output_payloads = std::move(next_payloads);
+}
+
+void WRenderCapture::_write_frame_task(void *p_userdata) {
+	ReadbackFrame *frame = static_cast<ReadbackFrame *>(p_userdata);
+	frame->owner->_write_frame(frame);
+}
+
+void WRenderCapture::_write_frame(ReadbackFrame *p_frame) {
+	WGodotGPUProfile::Scope profile_scope("capture.write_frame");
+	const uint64_t started = OS::get_singleton()->get_ticks_usec();
+	Vector<Plane> &write_planes = p_frame->planes;
+	Ref<ConfigFile> write_frame = p_frame->metadata;
+	Ref<ConfigFile> write_inputs = p_frame->inputs;
+	const int write_index = p_frame->index;
+	if (!write_planes.is_empty()) {
+		Vector<WReadbackCodec::Input> inputs;
+		Vector<int> destinations;
+		for (int i = 0; i < write_planes.size(); i++) {
+			Plane &plane = write_planes.write[i];
+			if (!plane.needs_write || plane.error != OK) {
+				continue;
+			}
+			inputs.push_back({ plane.bytes, plane.shuffle_stride });
+			destinations.push_back(i);
+		}
+		const uint64_t compress_started = OS::get_singleton()->get_ticks_usec();
+		Vector<WReadbackCodec::Output> encoded = WReadbackCodec::encode(inputs);
+		write_frame->set_value("frame", "compression_batch_usec", int64_t(OS::get_singleton()->get_ticks_usec() - compress_started));
+		for (int i = 0; i < destinations.size(); i++) {
+			Plane &plane = write_planes.write[destinations[i]];
+			plane.error = encoded.size() == inputs.size() ? encoded[i].error : ERR_CANT_CREATE;
+			if (plane.error == OK) {
+				plane.compressed = encoded[i].bytes;
+			}
+		}
+		// The bounded pipeline eventually waits for these jobs. Use the pool's
+		// normal capacity instead of its restricted background-task quota.
+		WorkerThreadPool::GroupID task = WorkerThreadPool::get_singleton()->add_native_group_task(
+				&WRenderCapture::_write_plane_task, p_frame, write_planes.size(), -1, true, "Write capture planes");
+		WorkerThreadPool::get_singleton()->wait_for_group_task_completion(task);
+		for (Plane &plane : write_planes) {
+			if (plane.alias >= 0) {
+				const Plane &original = write_planes[plane.alias];
+				plane.file = original.file;
+				plane.byte_count = original.byte_count;
+				plane.error = original.error;
+				plane.reused = true;
+				plane.bytes = original.bytes;
+			}
+		}
+	}
+	if (write_inputs.is_valid()) {
+		String name = vformat("frame_%08d_inputs.ini", write_index);
+		Error error = write_inputs->save(directory.path_join(name));
+		if (error != OK) {
+			failure.set(error);
+		}
+		write_frame->set_value("frame", "inputs", name);
+		write_inputs.unref();
+	}
+	for (const Plane &plane : write_planes) {
+		write_frame->set_value(plane.name, "file", plane.file);
+		write_frame->set_value(plane.name, "width", plane.width);
+		write_frame->set_value(plane.name, "height", plane.height);
+		write_frame->set_value(plane.name, "format", plane.format);
+		write_frame->set_value(plane.name, "bytes", plane.byte_count);
+		write_frame->set_value(plane.name, "encoding", "zstd");
+		if (plane.shuffle_stride) {
+			write_frame->set_value(plane.name, "shuffle_stride", plane.shuffle_stride);
+			write_frame->set_value(plane.name, "shuffle_block_bytes", WReadbackCodec::BLOCK_BYTES);
+		}
+		write_frame->set_value(plane.name, "read_usec", int64_t(plane.read_usec));
+		write_frame->set_value(plane.name, "write_usec", int64_t(plane.write_usec));
+		write_frame->set_value(plane.name, "compress_usec", int64_t(plane.compress_usec));
+		write_frame->set_value(plane.name, "file_usec", int64_t(plane.file_usec));
+		write_frame->set_value(plane.name, "reused", plane.reused);
+		write_frame->set_value(plane.name, "kind", plane.buffer ? "buffer" : (plane.texture_input ? "texture_input" : "texture"));
+		if (plane.texture_input) {
+			write_frame->set_value(plane.name, "depth", plane.depth);
+			write_frame->set_value(plane.name, "layer", plane.layer);
+			write_frame->set_value(plane.name, "mip_offsets", plane.mip_offsets);
+			write_frame->set_value(plane.name, "mip_sizes", plane.mip_sizes);
+		}
+		if (plane.error != OK) {
+			failure.set(plane.error);
+		}
+	}
+	write_frame->set_value("frame", "published_ticks_usec", int64_t(OS::get_singleton()->get_ticks_usec()));
+	write_frame->set_value("frame", "writer_usec", int64_t(OS::get_singleton()->get_ticks_usec() - started));
+	write_frame->set_value("frame", "error", failure.get());
+	Error error = write_frame->save(directory.path_join(vformat("frame_%08d.ini", write_index)));
+	if (error != OK) {
+		failure.set(error);
+	}
+	write_planes.clear();
+	write_frame.unref();
 }
 
 void WRenderCapture::end() {
@@ -305,6 +784,32 @@ void WRenderCapture::end() {
 
 void WRenderCapture::_end() {
 	Ref<WRenderCapture> keep_alive(this);
+	// Only final draining (or explicit backpressure) waits for GPU readbacks.
+	_collect_readbacks();
+	if (readback_frame.is_valid()) {
+		// A viewport disappeared midway through a frame. Its callbacks have
+		// drained, but incomplete semantic/frame metadata cannot be published.
+		readback_frame.unref();
+		failure.set(ERR_CANT_ACQUIRE_RESOURCE);
+	}
+	for (const KeyValue<RID, RID> &texture : readback_textures) {
+		RenderingDevice::get_singleton()->free_rid(texture.value);
+	}
+	readback_textures.clear();
+	while (!readback_frames.is_empty()) {
+		_pump_frames(true);
+	}
+	_drain_write();
+	output_payloads.clear();
+	palette_request.unref();
+	{
+		MutexLock lock(palette_mutex);
+		frame_palettes.unref();
+	}
+	Error gpu_capture = WRenderDocCapture::get_result();
+	if (gpu_capture != OK) {
+		failure.set(gpu_capture);
+	}
 	Ref<WRenderCapture> *registered = captures.getptr(target);
 	if (registered && registered->ptr() == this) {
 		captures.erase(target);

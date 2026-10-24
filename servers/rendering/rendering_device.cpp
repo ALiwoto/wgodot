@@ -46,6 +46,13 @@
 
 #include "modules/modules_enabled.gen.h"
 
+// wgodot-changes::begin
+#include "servers/rendering/rendering_device_readback.h"
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+#include "modules/wgodot/rendering/gpu_profile.h"
+#endif
+// wgodot-changes::end
+
 #ifdef MODULE_GLSLANG_ENABLED
 #include "modules/glslang/shader_compile.h"
 #endif
@@ -1078,6 +1085,11 @@ void RenderingDevice::_staging_buffer_execute_required_action(StagingBuffers &p_
 			// Do nothing.
 		} break;
 		case STAGING_REQUIRED_ACTION_FLUSH_AND_STALL_ALL: {
+			// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+			WGodotGPUProfile::Scope staging_scope(&p_staging_buffers == &download_staging_buffers ? "device.download_staging_flush" : "device.upload_staging_flush");
+#endif
+			// wgodot-changes::end
 			_flush_and_stall_for_all_frames();
 
 			// Clear the whole staging buffer.
@@ -1090,6 +1102,11 @@ void RenderingDevice::_staging_buffer_execute_required_action(StagingBuffers &p_
 			p_staging_buffers.blocks.write[p_staging_buffers.current].frame_used = frames_drawn;
 		} break;
 		case STAGING_REQUIRED_ACTION_STALL_PREVIOUS: {
+			// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+			WGodotGPUProfile::Scope staging_scope(&p_staging_buffers == &download_staging_buffers ? "device.download_staging_wait_previous" : "device.upload_staging_wait_previous");
+#endif
+			// wgodot-changes::end
 			_stall_for_previous_frames();
 
 			for (int i = 0; i < p_staging_buffers.blocks.size(); i++) {
@@ -1611,6 +1628,16 @@ RID RenderingDevice::texture_buffer_create(uint32_t p_size_elements, DataFormat 
 RID RenderingDevice::texture_create(const TextureFormat &p_format, const TextureView &p_view, const Vector<Vector<uint8_t>> &p_data) {
 	// Some adjustments will happen.
 	TextureFormat format = p_format;
+// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	if (GLOBAL_GET_CACHED(bool, "debug/settings/rendering/readable_capture_textures") &&
+			!(format.usage_bits & TEXTURE_USAGE_TRANSIENT_BIT)) {
+		// Capture readback must be allowed when the allocation is created.
+		// This flag enables no copies, hooks, or disk work outside a capture.
+		format.usage_bits |= TEXTURE_USAGE_CAN_COPY_FROM_BIT;
+	}
+#endif
+// wgodot-changes::end
 
 	if (format.shareable_formats.size()) {
 		ERR_FAIL_COND_V_MSG(!format.shareable_formats.has(format.format), RID(),
@@ -2965,6 +2992,20 @@ Error RenderingDevice::texture_get_data_async(RID p_texture, uint32_t p_layer, c
 
 	return OK;
 }
+
+// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+void RenderingDevice::flush_pending_readbacks() {
+	ERR_RENDER_THREAD_GUARD();
+	for (const Frame &pending : frames) {
+		if (!pending.download_texture_get_data_requests.is_empty() || !pending.download_buffer_get_data_requests.is_empty()) {
+			_flush_and_stall_for_all_frames();
+			return;
+		}
+	}
+}
+#endif
+// wgodot-changes::end
 
 bool RenderingDevice::texture_is_shared(RID p_texture) {
 	ERR_RENDER_THREAD_GUARD_V(false);
@@ -8341,6 +8382,14 @@ void RenderingDevice::_begin_frame(bool p_presented) {
 
 	frames[frame].timestamp_result_count = frames[frame].timestamp_count;
 	frames[frame].timestamp_count = 0;
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGodotGPUProfile::resolved_queries(this);
+	if (this == singleton && WGodotGPUProfile::is_enabled()) {
+		capture_timestamp("Submission Begin");
+	}
+#endif
+	// wgodot-changes::end
 	frames[frame].index = Engine::get_singleton()->get_frames_drawn();
 }
 
@@ -8358,6 +8407,13 @@ void RenderingDevice::_end_frame() {
 	}
 
 	// The command buffer must be copied into a stack variable as the driver workarounds can change the command buffer in use.
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	if (this == singleton && WGodotGPUProfile::is_enabled() && !draw_list.active && !compute_list.active && !raytracing_list.active) {
+		capture_timestamp("Submission End");
+	}
+#endif
+	// wgodot-changes::end
 	RDD::CommandBufferID command_buffer = frames[frame].command_buffer;
 	GodotProfileZoneGroupedFirst(_profile_zone, "_submit_transfer_workers");
 	_submit_transfer_workers(command_buffer);
@@ -8465,7 +8521,16 @@ void RenderingDevice::_execute_frame(bool p_present) {
 }
 
 void RenderingDevice::_stall_for_frame(uint32_t p_frame) {
-	thread_local PackedByteArray packed_byte_array;
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGodotGPUProfile::Scope profile_scope("device.wait_and_retire_frame");
+#endif
+	// wgodot-changes::end
+	// wgodot-changes::begin
+	// Each callback can retain its result. Reusing one array here triggers a
+	// full copy-on-write of the preceding payload before overwriting it.
+	// Keep ownership local to each request instead.
+	// wgodot-changes::end
 
 	if (frames[p_frame].fence_signaled) {
 		GodotProfileZoneGroupedFirst(_profile_zone, "driver->fence_wait");
@@ -8474,20 +8539,38 @@ void RenderingDevice::_stall_for_frame(uint32_t p_frame) {
 
 		// Flush any pending requests for asynchronous buffer downloads.
 		if (!frames[p_frame].download_buffer_get_data_requests.is_empty()) {
+			// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+			WGodotGPUProfile::Scope readback_scope("device.copy_readback_buffers");
+#endif
+			// wgodot-changes::end
 			GodotProfileZoneGrouped(_profile_zone, "flush asynchronous buffer downloads");
 			for (uint32_t i = 0; i < frames[p_frame].download_buffer_get_data_requests.size(); i++) {
 				const BufferGetDataRequest &request = frames[p_frame].download_buffer_get_data_requests[i];
+				// wgodot-changes::begin
+				PackedByteArray packed_byte_array;
+				// wgodot-changes::end
 				packed_byte_array.resize(request.size);
 
-				uint32_t array_offset = 0;
-				for (uint32_t j = 0; j < request.frame_local_count; j++) {
-					uint32_t local_index = request.frame_local_index + j;
-					const RDD::BufferCopyRegion &region = frames[p_frame].download_buffer_copy_regions[local_index];
-					uint8_t *buffer_data = driver->buffer_map(frames[p_frame].download_buffer_staging_buffers[local_index]);
-					memcpy(&packed_byte_array.write[array_offset], &buffer_data[region.dst_offset], region.size);
-					driver->buffer_unmap(frames[p_frame].download_buffer_staging_buffers[local_index]);
-					array_offset += region.size;
+				// wgodot-changes::begin
+				{
+					RenderingDeviceReadbackMappings mappings(driver);
+					uint8_t *output = packed_byte_array.ptrw();
+					uint32_t array_offset = 0;
+					for (uint32_t j = 0; j < request.frame_local_count; j++) {
+						uint32_t local_index = request.frame_local_index + j;
+						const RDD::BufferCopyRegion &region = frames[p_frame].download_buffer_copy_regions[local_index];
+						const uint8_t *buffer_data = mappings.get(frames[p_frame].download_buffer_staging_buffers[local_index]);
+						if (!buffer_data) {
+							ERR_PRINT("Cannot map a completed buffer readback.");
+							packed_byte_array.clear();
+							break;
+						}
+						memcpy(output + array_offset, buffer_data + region.dst_offset, region.size);
+						array_offset += region.size;
+					}
 				}
+				// wgodot-changes::end
 
 				request.callback.call(packed_byte_array);
 			}
@@ -8499,10 +8582,18 @@ void RenderingDevice::_stall_for_frame(uint32_t p_frame) {
 
 		// Flush any pending requests for asynchronous texture downloads.
 		if (!frames[p_frame].download_texture_get_data_requests.is_empty()) {
+			// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+			WGodotGPUProfile::Scope readback_scope("device.copy_readback_textures");
+#endif
+			// wgodot-changes::end
 			GodotProfileZoneGrouped(_profile_zone, "flush asynchronous texture downloads");
 			for (uint32_t i = 0; i < frames[p_frame].download_texture_get_data_requests.size(); i++) {
 				const TextureGetDataRequest &request = frames[p_frame].download_texture_get_data_requests[i];
 				uint32_t texture_size = get_image_format_required_size(request.format, request.width, request.height, request.depth, request.mipmaps);
+				// wgodot-changes::begin
+				PackedByteArray packed_byte_array;
+				// wgodot-changes::end
 				packed_byte_array.resize(texture_size);
 
 				// Find the block size of the texture's format.
@@ -8514,31 +8605,40 @@ void RenderingDevice::_stall_for_frame(uint32_t p_frame) {
 				uint32_t pixel_size = get_image_format_pixel_size(request.format);
 				uint32_t region_size = texture_download_region_size_px;
 
-				for (uint32_t j = 0; j < request.frame_local_count; j++) {
-					uint32_t local_index = request.frame_local_index + j;
-					const RDD::BufferTextureCopyRegion &region = frames[p_frame].download_buffer_texture_copy_regions[local_index];
-					uint32_t w = STEPIFY(request.width >> region.texture_subresource.mipmap, block_w);
-					uint32_t h = STEPIFY(request.height >> region.texture_subresource.mipmap, block_h);
-					uint32_t region_w = MIN(region_size, w - region.texture_offset.x);
-					uint32_t region_h = MIN(region_size, h - region.texture_offset.y);
+				// wgodot-changes::begin
+				{
+					RenderingDeviceReadbackMappings mappings(driver);
+					uint8_t *output = packed_byte_array.ptrw();
+					for (uint32_t j = 0; j < request.frame_local_count; j++) {
+						uint32_t local_index = request.frame_local_index + j;
+						const RDD::BufferTextureCopyRegion &region = frames[p_frame].download_buffer_texture_copy_regions[local_index];
+						uint32_t w = STEPIFY(request.width >> region.texture_subresource.mipmap, block_w);
+						uint32_t h = STEPIFY(request.height >> region.texture_subresource.mipmap, block_h);
+						uint32_t region_w = MIN(region_size, w - region.texture_offset.x);
+						uint32_t region_h = MIN(region_size, h - region.texture_offset.y);
 
-					uint8_t *buffer_data = driver->buffer_map(frames[p_frame].download_texture_staging_buffers[local_index]);
-					const uint8_t *read_ptr = buffer_data + region.buffer_offset;
-					uint8_t *write_ptr = packed_byte_array.ptrw() + frames[p_frame].download_texture_mipmap_offsets[local_index];
-					uint32_t unit_size = pixel_size;
-					if (block_w != 1 || block_h != 1) {
-						unit_size = block_size;
+						const uint8_t *buffer_data = mappings.get(frames[p_frame].download_texture_staging_buffers[local_index]);
+						if (!buffer_data) {
+							ERR_PRINT("Cannot map a completed texture readback.");
+							packed_byte_array.clear();
+							break;
+						}
+						const uint8_t *read_ptr = buffer_data + region.buffer_offset;
+						uint8_t *write_ptr = output + frames[p_frame].download_texture_mipmap_offsets[local_index];
+						uint32_t unit_size = pixel_size;
+						if (block_w != 1 || block_h != 1) {
+							unit_size = block_size;
+						}
+
+						write_ptr += ((region.texture_offset.y / block_h) * (w / block_w) + (region.texture_offset.x / block_w)) * unit_size;
+						for (uint32_t y = region_h / block_h; y > 0; y--) {
+							memcpy(write_ptr, read_ptr, (region_w / block_w) * unit_size);
+							write_ptr += (w / block_w) * unit_size;
+							read_ptr += region.row_pitch;
+						}
 					}
-
-					write_ptr += ((region.texture_offset.y / block_h) * (w / block_w) + (region.texture_offset.x / block_w)) * unit_size;
-					for (uint32_t y = region_h / block_h; y > 0; y--) {
-						memcpy(write_ptr, read_ptr, (region_w / block_w) * unit_size);
-						write_ptr += (w / block_w) * unit_size;
-						read_ptr += region.row_pitch;
-					}
-
-					driver->buffer_unmap(frames[p_frame].download_texture_staging_buffers[local_index]);
 				}
+				// wgodot-changes::end
 
 				request.callback.call(packed_byte_array);
 			}
@@ -8559,6 +8659,11 @@ void RenderingDevice::_stall_for_previous_frames() {
 }
 
 void RenderingDevice::_flush_and_stall_for_all_frames(bool p_begin_frame) {
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGodotGPUProfile::Scope profile_scope("device.flush_and_wait");
+#endif
+	// wgodot-changes::end
 	_stall_for_previous_frames();
 	_end_frame();
 	_execute_frame(false);

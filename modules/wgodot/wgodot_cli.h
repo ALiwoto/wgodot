@@ -22,6 +22,7 @@ bool is_command_requested();
 bool execute_if_requested(int &r_exit_code);
 
 int request_editor_command(const Dictionary &p_request, Dictionary &r_response);
+String make_absolute_output_path(const String &p_path);
 
 String get_current_project_root();
 String get_project_key(const String &p_project_root);

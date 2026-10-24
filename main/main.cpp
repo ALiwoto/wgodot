@@ -161,6 +161,10 @@
 // wgodot-changes::begin
 #ifdef MODULE_WGODOT_ENABLED
 #include "modules/wgodot/wgodot_cli.h"
+#ifdef TOOLS_ENABLED
+#include "modules/wgodot/rendering/renderdoc_capture.h"
+#include "modules/wgodot/rendering/render_stepper.h"
+#endif
 #include "modules/wgodot/wgodot_game_bridge.h"
 #include "modules/wgodot/wgodot_pause_controller.h"
 #include "modules/wgodot/wgodot_performance.h"
@@ -626,6 +630,9 @@ void Main::print_help(const char *p_binary) {
 	print_help_option("--clear-shader-cache", "Clear the shader_cache directory at launch, so it's re-generated.\n");
 // wgodot-changes::begin
 	print_help_option("--wgodot-startup-profile", "Print native startup timings through the first frame.\n");
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	print_help_option("--renderdoc <library>", "Load RenderDoc before graphics initialization for explicit GPU captures.\n");
+#endif
 // wgodot-changes::end
 #if defined(DEBUG_ENABLED) || defined(DEV_ENABLED)
 	print_help_option("--extra-gpu-memory-tracking", "Enables additional memory tracking (see class reference for `RenderingDevice.get_driver_and_device_memory_report()` and linked methods). Currently only implemented for Vulkan. Enabling this feature may cause crashes on some systems due to buggy drivers or bugs in the Vulkan Loader. See https://github.com/godotengine/godot/issues/95967\n");
@@ -1327,13 +1334,25 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 				goto error;
 			}
 		} else if (arg == "-f" || arg == "--fullscreen") { // force fullscreen
+			// wgodot-changes::begin
+			init_windowed = false;
+			init_maximized = false;
+			// wgodot-changes::end
 			init_fullscreen = true;
 			window_mode = DisplayServerEnums::WINDOW_MODE_FULLSCREEN;
 		} else if (arg == "-m" || arg == "--maximized") { // force maximized window
+			// wgodot-changes::begin
+			init_windowed = false;
+			init_fullscreen = false;
+			// wgodot-changes::end
 			init_maximized = true;
 			window_mode = DisplayServerEnums::WINDOW_MODE_MAXIMIZED;
 		} else if (arg == "-w" || arg == "--windowed") { // force windowed window
-
+			// wgodot-changes::begin
+			init_fullscreen = false;
+			init_maximized = false;
+			window_mode = DisplayServerEnums::WINDOW_MODE_WINDOWED;
+			// wgodot-changes::end
 			init_windowed = true;
 		} else if (arg == "--gpu-index") {
 			if (N) {
@@ -1349,6 +1368,16 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 		} else if (arg == "--gpu-abort") {
 			Engine::singleton->abort_on_gpu_errors = true;
 #endif
+// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+		} else if (arg == "--renderdoc") {
+			if (!N || WRenderDocCapture::initialize(N->get()) != OK) {
+				OS::get_singleton()->print("Cannot initialize the requested RenderDoc library.\n");
+				goto error;
+			}
+			N = N->next();
+#endif
+// wgodot-changes::end
 		} else if (arg == "--generate-spirv-debug-info") {
 			Engine::singleton->generate_spirv_debug_info = true;
 		} else if (arg == "--clear-shader-cache") {
@@ -5181,6 +5210,10 @@ bool Main::iteration() {
 
 	// wgodot-changes::begin
 #ifdef MODULE_WGODOT_ENABLED
+#ifdef TOOLS_ENABLED
+	WGodotPerformance::begin_phase(WGodotPerformance::RENDER_SYNC);
+	WRenderStepper::prepare_iteration();
+#endif
 	WGodotPerformance::begin_phase(WGodotPerformance::PROCESS);
 #endif
 	// wgodot-changes::end
@@ -5235,6 +5268,13 @@ bool Main::iteration() {
 	// wgodot-changes::begin
 #ifdef MODULE_WGODOT_ENABLED
 	WGodotGameBridge::set_rendering(true);
+#endif
+	// wgodot-changes::end
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	if (WRenderStepper::iterate(has_pending_resources_for_processing)) {
+		force_redraw_requested = false;
+	} else
 #endif
 	// wgodot-changes::end
 	if (wants_present || has_pending_resources_for_processing) {
