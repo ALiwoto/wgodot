@@ -143,6 +143,10 @@ void MeshInstance3D::set_mesh(const Ref<Mesh> &p_mesh) {
 
 	notify_property_list_changed();
 	update_configuration_warnings();
+	// wgodot-changes::begin
+	// Mesh identity changed; edits within the resource use Mesh.changed.
+	emit_signal(SNAME("mesh_changed"));
+	// wgodot-changes::end
 }
 
 Ref<Mesh> MeshInstance3D::get_mesh() const {
@@ -918,6 +922,7 @@ void MeshInstance3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_skin_reference"), &MeshInstance3D::get_skin_reference);
 	// wgodot-changes::begin
 	ClassDB::bind_method(D_METHOD("get_pose_aabb"), &MeshInstance3D::get_pose_aabb);
+	ADD_SIGNAL(MethodInfo("mesh_changed"));
 	// wgodot-changes::end
 
 	ClassDB::bind_method(D_METHOD("get_surface_override_material_count"), &MeshInstance3D::get_surface_override_material_count);

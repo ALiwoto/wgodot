@@ -803,16 +803,7 @@ uint32_t RenderForwardClustered::_setup_environment(const RenderDataRD *p_render
 	RD::get_singleton()->buffer_update(scene_state.implementation_uniform_buffers[uniform_buffer_index], 0, sizeof(SceneState::UBO), &scene_state.ubo);
 
 // wgodot-changes::begin
-#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
-	Ref<ConfigFile> captured_uniforms = WRenderCapture::inputs(p_render_data);
-	if (captured_uniforms.is_valid()) {
-		String section = "environment:" + uitos(uniform_buffer_index);
-		captured_uniforms->set_value(section, "scene_buffer", WRenderCapture::buffer(p_render_data, scene_state.uniform_buffers[uniform_buffer_index]));
-		captured_uniforms->set_value(section, "implementation_buffer", WRenderCapture::buffer(p_render_data, scene_state.implementation_uniform_buffers[uniform_buffer_index]));
-		captured_uniforms->set_value(section, "opaque", p_opaque_render_buffers);
-		captured_uniforms->set_value(section, "no_fog", p_no_fog);
-	}
-#endif
+
 // wgodot-changes::end
 
 	return uniform_buffer_index;
@@ -953,7 +944,9 @@ void RenderForwardClustered::_fill_instance_data(RenderListType p_render_list, i
 	}
 
 	if (p_update_buffer && element_total > 0u) {
-		RenderingDevice::get_singleton()->buffer_flush(scene_state.instance_buffer[p_render_list]._get(0u));
+		// wgodot-changes::begin
+		RenderingDevice::get_singleton()->buffer_flush(scene_state.instance_buffer[p_render_list]._get(0u), 0, (p_offset + element_total) * sizeof(SceneState::InstanceData));
+		// wgodot-changes::end
 	}
 }
 
@@ -2049,79 +2042,7 @@ void RenderForwardClustered::_render_scene(RenderDataRD *p_render_data, const Co
 // wgodot-changes::begin
 	render_list[RENDER_LIST_DISTORTION].sort_by_key();
 	_fill_instance_data(RENDER_LIST_DISTORTION, render_info);
-#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
-	Ref<ConfigFile> captured_inputs = WRenderCapture::inputs(p_render_data);
-	if (captured_inputs.is_valid()) {
-		RendererRD::MeshStorage *mesh_storage = RendererRD::MeshStorage::get_singleton();
-		RendererRD::LightStorage *light_storage = RendererRD::LightStorage::get_singleton();
-		captured_inputs->set_value("world", "omni_light_buffer", WRenderCapture::buffer(p_render_data, light_storage->get_omni_light_buffer()));
-		captured_inputs->set_value("world", "spot_light_buffer", WRenderCapture::buffer(p_render_data, light_storage->get_spot_light_buffer()));
-		captured_inputs->set_value("world", "directional_light_buffer", WRenderCapture::buffer(p_render_data, light_storage->get_directional_light_buffer()));
-		captured_inputs->set_value("world", "reflection_probe_buffer", WRenderCapture::buffer(p_render_data, light_storage->get_reflection_probe_buffer()));
-		captured_inputs->set_value("world", "decal_buffer", WRenderCapture::buffer(p_render_data, RendererRD::TextureStorage::get_singleton()->get_decal_buffer()));
-		captured_inputs->set_value("world", "global_parameters_buffer", WRenderCapture::buffer(p_render_data, RendererRD::MaterialStorage::get_singleton()->global_shader_uniforms_get_storage_buffer()));
-		for (RenderListType list_type : { RENDER_LIST_OPAQUE, RENDER_LIST_MOTION, RENDER_LIST_ALPHA, RENDER_LIST_DISTORTION }) {
-			const RenderList &list = render_list[list_type];
-			if (!list.elements.is_empty()) {
-				captured_inputs->set_value("list:" + itos(list_type), "instances_buffer", WRenderCapture::buffer(p_render_data, scene_state.instance_buffer[list_type]._get(0u)));
-			}
-			for (uint32_t index = 0; index < list.elements.size(); index++) {
-				const GeometryInstanceSurfaceDataCache *surface = list.elements[index];
-				const GeometryInstanceForwardClustered *owner = surface->owner;
-				const String section = "surface:" + itos(list_type) + ":" + itos(index);
-				captured_inputs->set_value(section, "base", int64_t(owner->data->base.get_id()));
-				captured_inputs->set_value(section, "base_type", int(owner->data->base_type));
-				captured_inputs->set_value(section, "surface", int(surface->surface_index));
-				captured_inputs->set_value(section, "flags", int64_t(surface->flags));
-				captured_inputs->set_value(section, "transform", owner->transform);
-				captured_inputs->set_value(section, "aabb", owner->transformed_aabb);
-				captured_inputs->set_value(section, "layers", int64_t(owner->layer_mask));
-				captured_inputs->set_value(section, "instances", int64_t(owner->instance_count));
-				captured_inputs->set_value(section, "lod", int(surface->sort.lod_index));
-				captured_inputs->set_value(section, "depth", owner->depth);
-				captured_inputs->set_value(section, "fade", owner->parent_fade_alpha);
-				captured_inputs->set_value(section, "alpha", owner->force_alpha);
-				captured_inputs->set_value(section, "skeleton", int64_t(owner->data->skeleton.get_id()));
-				captured_inputs->set_value(section, "mesh_instance", int64_t(owner->mesh_instance.get_id()));
-				if (owner->data->base_type == RSE::INSTANCE_MESH) {
-					RID mesh = owner->data->base;
-					captured_inputs->set_value(section, "vertex_buffer", WRenderCapture::buffer(p_render_data, mesh_storage->mesh_surface_get_vertex_buffer_rd_rid(mesh, surface->surface_index)));
-					captured_inputs->set_value(section, "attribute_buffer", WRenderCapture::buffer(p_render_data, mesh_storage->mesh_surface_get_attribute_buffer_rd_rid(mesh, surface->surface_index)));
-					captured_inputs->set_value(section, "skin_buffer", WRenderCapture::buffer(p_render_data, mesh_storage->mesh_surface_get_skin_buffer_rd_rid(mesh, surface->surface_index)));
-					captured_inputs->set_value(section, "index_buffer", WRenderCapture::buffer(p_render_data, mesh_storage->mesh_surface_get_index_buffer_rd_rid(mesh, surface->surface_index)));
-					if (owner->mesh_instance.is_valid()) {
-						captured_inputs->set_value(section, "deformed_vertex_buffer", WRenderCapture::buffer(p_render_data, mesh_storage->mesh_instance_get_render_vertex_buffer(owner->mesh_instance, surface->surface_index)));
-					}
-				}
-				if (surface->material) {
-					captured_inputs->set_value(section, "material_buffer", WRenderCapture::buffer(p_render_data, surface->material->get_capture_uniform_buffer()));
-					PackedStringArray textures;
-					for (RID texture : surface->material->get_capture_textures()) {
-						textures.push_back(WRenderCapture::bound_texture(p_render_data, texture));
-					}
-					captured_inputs->set_value(section, "textures", textures);
-				}
-				if (surface->shader) {
-					String shader_section = "shader:" + uitos(surface->shader->version.get_id());
-					captured_inputs->set_value(section, "shader", shader_section);
-					if (!captured_inputs->has_section(shader_section)) {
-						captured_inputs->set_value(shader_section, "path", surface->shader->path);
-						captured_inputs->set_value(shader_section, "code", surface->shader->code);
-						captured_inputs->set_value(shader_section, "blend", surface->shader->blend_mode);
-						captured_inputs->set_value(shader_section, "depth_draw", int(surface->shader->depth_draw));
-						captured_inputs->set_value(shader_section, "depth_test", int(surface->shader->depth_test));
-						captured_inputs->set_value(shader_section, "cull", int(surface->shader->cull_mode));
-						PackedInt32Array offsets;
-						for (uint32_t offset : surface->shader->ubo_offsets) {
-							offsets.push_back(offset);
-						}
-						captured_inputs->set_value(shader_section, "uniform_offsets", offsets);
-					}
-				}
-			}
-		}
-	}
-#endif
+
 // wgodot-changes::end
 
 	RD::get_singleton()->draw_command_end_label();
@@ -3139,9 +3060,12 @@ void RenderForwardClustered::_render_shadow_append(RID p_framebuffer, const Page
 
 void RenderForwardClustered::_render_shadow_process() {
 	RenderingDevice *rd = RenderingDevice::get_singleton();
-	if (scene_state.instance_buffer[RENDER_LIST_SECONDARY].get_size(0u) > 0u) {
-		rd->buffer_flush(scene_state.instance_buffer[RENDER_LIST_SECONDARY]._get(0u));
+	// wgodot-changes::begin
+	const uint32_t instance_count = render_list[RENDER_LIST_SECONDARY].elements.size();
+	if (instance_count > 0u) {
+		rd->buffer_flush(scene_state.instance_buffer[RENDER_LIST_SECONDARY]._get(0u), 0, instance_count * sizeof(SceneState::InstanceData));
 	}
+	// wgodot-changes::end
 
 	//render shadows one after the other, so this can be done un-barriered and the driver can optimize (as well as allow us to run compute at the same time)
 

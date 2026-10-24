@@ -215,7 +215,7 @@ public:
 	void clear_instance_shader_parameter(const StringName &p_name);
 	template <typename T> void set_instance_shader_parameter_at(int p_slot, const T &p_value) {
 		WInstanceShaderValue value = WInstanceShaderValue::pack(p_value);
-		if (get_instance_shader_parameters()->set(p_slot, value)) {
+		if (get_instance_shader_parameters()->set(p_slot, value) == WInstanceShaderParameters::SetResult::CHANGED) {
 			_send_instance_shader_parameter(p_slot, value);
 		}
 	}

@@ -6,6 +6,7 @@
 namespace WGodotPerformance {
 
 enum FramePhase {
+	PREPARE,
 	PHYSICS,
 	PROCESS,
 	DEFERRED_CALLS,
@@ -13,6 +14,11 @@ enum FramePhase {
 	RENDER_SYNC,
 	RENDER_DRAW,
 	DIAGNOSTICS,
+	EXTENSIONS,
+	SCRIPT_SERVERS,
+	AUDIO,
+	DEBUGGER,
+	FRAME_PACING,
 	PHASE_COUNT,
 };
 
@@ -45,5 +51,12 @@ void begin_phase(FramePhase p_phase);
 Dictionary execute(uint64_t p_request_id, const String &p_command, const Dictionary &p_options, bool &r_deferred);
 void end_frame();
 void reset();
+
+// Covers the whole iteration, including early returns and work after drawing.
+class FrameScope {
+public:
+	FrameScope() { begin_frame(); }
+	~FrameScope() { end_frame(); }
+};
 
 } // namespace WGodotPerformance

@@ -43,7 +43,7 @@ void GeometryInstance3D::set_instance_shader_parameter(const StringName &p_name,
 	}
 	const int slot = get_instance_shader_parameter_slot(p_name);
 	WInstanceShaderValue value = WInstanceShaderValue::from_variant(p_value);
-	if (value.valid() && instance_shader_parameters->set(slot, value)) {
+	if (value.valid() && instance_shader_parameters->set(slot, value) == WInstanceShaderParameters::SetResult::CHANGED) {
 		_send_instance_shader_parameter(slot, value);
 	}
 }

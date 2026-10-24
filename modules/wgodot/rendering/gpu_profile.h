@@ -45,14 +45,18 @@ Result take(bool p_stop);
 void cancel();
 void resolved_queries(RenderingDevice *p_device);
 void mark(const char *p_name, const String &p_detail, int64_t p_sample);
+void interval(const String &p_name, uint64_t p_begin, uint64_t p_end);
 Dictionary report(const Result &p_result);
 
 class Scope {
 	const char *name;
 	uint64_t started_usec = 0;
+	String capture;
+	int64_t sample = -1;
 
 public:
-	explicit Scope(const char *p_name);
+	explicit Scope(const char *p_name, const String &p_capture = String(), int64_t p_sample = -1);
+	void finish();
 	~Scope();
 };
 

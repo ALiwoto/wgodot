@@ -2369,6 +2369,12 @@ void GDScriptLanguage::finish() {
 		ERR_PRINT("GDScript bug (please report): Dangling function in function_list after language shutdown.");
 		function_list.clear();
 	}
+	// wgodot-changes::begin
+#ifdef DEBUG_ENABLED
+	profile_frame_functions.clear();
+	profile_last_frame_functions.clear();
+#endif
+	// wgodot-changes::end
 
 	finishing = false;
 }
@@ -2378,6 +2384,8 @@ void GDScriptLanguage::profiling_start() {
 	MutexLock lock(mutex);
 	// wgodot-changes::begin
 	profiling_generation++;
+	profile_frame_functions.clear();
+	profile_last_frame_functions.clear();
 	// wgodot-changes::end
 
 	SelfList<GDScriptFunction> *elem = function_list.first();
@@ -2418,135 +2426,15 @@ void GDScriptLanguage::profiling_stop() {
 #endif
 }
 
+// wgodot-changes::begin
 int GDScriptLanguage::profiling_get_accumulated_data(ProfilingInfo *r_info_arr, int p_info_max) {
-	int current = 0;
-#ifdef DEBUG_ENABLED
-
-	MutexLock lock(mutex);
-
-	profiling_collate_native_call_data(true);
-	SelfList<GDScriptFunction> *elem = function_list.first();
-	while (elem) {
-		if (current >= p_info_max) {
-			break;
-		}
-		int last_non_internal = current;
-		r_info_arr[current].call_count = elem->self()->profile.call_count.get();
-		r_info_arr[current].self_time = elem->self()->profile.self_time.get();
-		r_info_arr[current].total_time = elem->self()->profile.total_time.get();
-		r_info_arr[current].signature = elem->self()->profile.signature;
-		current++;
-
-		// wgodot-changes::begin
-		uint64_t nat_time = 0;
-		// wgodot-changes::end
-		// wgodot-changes::begin
-		HashMap<String, GDScriptFunction::Profile::NativeProfile>::ConstIterator nat_calls = elem->self()->profile.accumulated_native_calls.begin();
-		// wgodot-changes::end
-		// wgodot-changes::begin
-		while (nat_calls && current < p_info_max) {
-			// Buffer slots are reused between frame and accumulated reports.
-			r_info_arr[current].internal_time = nat_calls->value.total_time;
-			// wgodot-changes::end
-			r_info_arr[current].call_count = nat_calls->value.call_count;
-			r_info_arr[current].total_time = nat_calls->value.total_time;
-			r_info_arr[current].self_time = nat_calls->value.total_time;
-			r_info_arr[current].signature = nat_calls->value.signature;
-			nat_time += nat_calls->value.total_time;
-			current++;
-			++nat_calls;
-		}
-		r_info_arr[last_non_internal].internal_time = nat_time;
-		elem = elem->next();
-	}
-#endif
-
-	return current;
+	return profiling_get_data(r_info_arr, p_info_max, true);
 }
 
 int GDScriptLanguage::profiling_get_frame_data(ProfilingInfo *r_info_arr, int p_info_max) {
-	int current = 0;
-
-#ifdef DEBUG_ENABLED
-	MutexLock lock(mutex);
-
-	profiling_collate_native_call_data(false);
-	SelfList<GDScriptFunction> *elem = function_list.first();
-	while (elem) {
-		if (current >= p_info_max) {
-			break;
-		}
-		if (elem->self()->profile.last_frame_call_count > 0) {
-			int last_non_internal = current;
-			r_info_arr[current].call_count = elem->self()->profile.last_frame_call_count;
-			r_info_arr[current].self_time = elem->self()->profile.last_frame_self_time;
-			r_info_arr[current].total_time = elem->self()->profile.last_frame_total_time;
-			r_info_arr[current].signature = elem->self()->profile.signature;
-			current++;
-
-			// wgodot-changes::begin
-			uint64_t nat_time = 0;
-			// wgodot-changes::end
-			HashMap<String, GDScriptFunction::Profile::NativeProfile>::ConstIterator nat_calls = elem->self()->profile.last_native_calls.begin();
-			// wgodot-changes::begin
-			while (nat_calls && current < p_info_max) {
-				// wgodot-changes::end
-				r_info_arr[current].call_count = nat_calls->value.call_count;
-				r_info_arr[current].total_time = nat_calls->value.total_time;
-				r_info_arr[current].self_time = nat_calls->value.total_time;
-				r_info_arr[current].internal_time = nat_calls->value.total_time;
-				r_info_arr[current].signature = nat_calls->value.signature;
-				nat_time += nat_calls->value.total_time;
-				current++;
-				++nat_calls;
-			}
-			r_info_arr[last_non_internal].internal_time = nat_time;
-		}
-		elem = elem->next();
-	}
-#endif
-
-	return current;
+	return profiling_get_data(r_info_arr, p_info_max, false);
 }
-
-void GDScriptLanguage::profiling_collate_native_call_data(bool p_accumulated) {
-#ifdef DEBUG_ENABLED
-	// The same native call can be called from multiple functions, so join them together here.
-	// Only use the name of the function (ie signature.split[2]).
-	HashMap<String, GDScriptFunction::Profile::NativeProfile *> seen_nat_calls;
-	SelfList<GDScriptFunction> *elem = function_list.first();
-	while (elem) {
-		// wgodot-changes::begin
-		if (p_accumulated) {
-			// Include the current partial frame, which frame() has not rolled over.
-			elem->self()->profile.accumulate_native_calls();
-			elem->self()->profile.native_calls.clear();
-		}
-		HashMap<String, GDScriptFunction::Profile::NativeProfile> *nat_calls = p_accumulated ? &elem->self()->profile.accumulated_native_calls : &elem->self()->profile.last_native_calls;
-		// wgodot-changes::end
-		HashMap<String, GDScriptFunction::Profile::NativeProfile>::Iterator it = nat_calls->begin();
-
-		while (it != nat_calls->end()) {
-			// wgodot-changes::begin
-			const auto current_call = it;
-			++it; // Erasing current_call invalidates that iterator.
-			Vector<String> sig = current_call->value.signature.split("::");
-			// wgodot-changes::end
-			HashMap<String, GDScriptFunction::Profile::NativeProfile *>::ConstIterator already_found = seen_nat_calls.find(sig[2]);
-			// wgodot-changes::begin
-			if (already_found) {
-				already_found->value->total_time += current_call->value.total_time;
-				already_found->value->call_count += current_call->value.call_count;
-				nat_calls->remove(current_call);
-			} else {
-				seen_nat_calls.insert(sig[2], &current_call->value);
-			}
-			// wgodot-changes::end
-		}
-		elem = elem->next();
-	}
-#endif
-}
+// wgodot-changes::end
 
 struct GDScriptDepSort {
 	//must support sorting so inheritance works properly (parent must be reloaded first)
@@ -2701,12 +2589,35 @@ void GDScriptLanguage::reload_tool_script(const Ref<Script> &p_script) {
 	reload_scripts(scripts);
 }
 
+// wgodot-changes::begin
+#ifdef DEBUG_ENABLED
+void GDScriptLanguage::profiling_touch(GDScriptFunction *p_function) {
+	MutexLock lock(mutex);
+	if (!p_function->profile_frame_list.in_list()) {
+		profile_frame_functions.add(&p_function->profile_frame_list);
+	}
+}
+#endif
+// wgodot-changes::end
+
 void GDScriptLanguage::frame() {
 #ifdef DEBUG_ENABLED
 	if (profiling) {
 		MutexLock lock(mutex);
 
-		SelfList<GDScriptFunction> *elem = function_list.first();
+		// wgodot-changes::begin
+		// Only functions used in these two frames need resetting or publishing.
+		// Large projects must not scan every loaded function at the frame rate.
+		while (SelfList<GDScriptFunction> *previous = profile_last_frame_functions.first()) {
+			GDScriptFunction::Profile &profile = previous->self()->profile;
+			profile.last_frame_call_count = 0;
+			profile.last_frame_self_time = 0;
+			profile.last_frame_total_time = 0;
+			profile.last_native_calls.clear();
+			previous->remove_from_list();
+		}
+		SelfList<GDScriptFunction> *elem = profile_frame_functions.first();
+		// wgodot-changes::end
 		while (elem) {
 			elem->self()->profile.last_frame_call_count = elem->self()->profile.frame_call_count.get();
 			elem->self()->profile.last_frame_self_time = elem->self()->profile.frame_self_time.get();
@@ -2714,12 +2625,20 @@ void GDScriptLanguage::frame() {
 			// wgodot-changes::begin
 			elem->self()->profile.accumulate_native_calls();
 			// wgodot-changes::end
-			elem->self()->profile.last_native_calls = elem->self()->profile.native_calls;
+			// wgodot-changes::begin
+			// Reuse both maps' allocations after the previous frame was cleared.
+			SWAP(elem->self()->profile.last_native_calls, elem->self()->profile.native_calls);
+			// wgodot-changes::end
 			elem->self()->profile.frame_call_count.set(0);
 			elem->self()->profile.frame_self_time.set(0);
 			elem->self()->profile.frame_total_time.set(0);
 			elem->self()->profile.native_calls.clear();
+			// wgodot-changes::begin
+			GDScriptFunction *function = elem->self();
 			elem = elem->next();
+			function->profile_frame_list.remove_from_list();
+			profile_last_frame_functions.add(&function->profile_last_frame_list);
+			// wgodot-changes::end
 		}
 	}
 

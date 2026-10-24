@@ -30,6 +30,9 @@
 
 #pragma once
 
+// wgodot-changes::begin
+#include "modules/modules_enabled.gen.h"
+// wgodot-changes::end
 #include "core/object/worker_thread_pool.h"
 #include "core/os/condition_variable.h"
 #include "core/os/thread_safe.h"
@@ -184,6 +187,14 @@ private:
 	StagingBuffers download_staging_buffers;
 
 	struct Buffer {
+		// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+		// Persistent uploads are write-only mappings. Record from cached CPU
+		// memory instead of reading back write-combined driver memory at flush.
+		uint8_t *capture_mapping = nullptr;
+		Vector<uint8_t> capture_upload;
+#endif
+		// wgodot-changes::end
 		RDD::BufferID driver_id;
 		uint32_t size = 0;
 		BitField<RDD::BufferUsageBits> usage = {};
@@ -274,7 +285,10 @@ public:
 	Error buffer_get_data_async(RID p_buffer, const Callable &p_callback, uint32_t p_offset = 0, uint32_t p_size = 0);
 	uint64_t buffer_get_device_address(RID p_buffer);
 	uint8_t *buffer_persistent_map_advance(RID p_buffer);
-	void buffer_flush(RID p_buffer);
+	// wgodot-changes::begin
+	// The written range of a persistent upload. Zero size flushes the remainder.
+	void buffer_flush(RID p_buffer, uint32_t p_offset = 0, uint32_t p_size = 0);
+	// wgodot-changes::end
 
 private:
 	/******************/

@@ -1885,26 +1885,38 @@ void TextureStorage::texture_3d_placeholder_initialize(RID p_texture) {
 	texture_3d_initialize(p_texture, Image::FORMAT_RGBA8, 4, 4, 4, false, texture_3d_placeholder);
 }
 
-Ref<Image> TextureStorage::texture_2d_get(RID p_texture) const {
-	Texture *tex = texture_owner.get_or_null(p_texture);
-	ERR_FAIL_NULL_V(tex, Ref<Image>());
-
+// wgodot-changes::begin
+TextureStorage::Texture2DReadback TextureStorage::texture_2d_readback(RID p_texture) const {
+	const Texture *tex = texture_owner.get_or_null(p_texture);
+	ERR_FAIL_NULL_V(tex, Texture2DReadback());
+	Texture2DReadback result;
+	result.texture = tex->rd_texture;
+	result.width = tex->width;
+	result.height = tex->height;
+	result.mipmaps = tex->mipmaps;
+	result.format = tex->format;
+	result.validated_format = tex->validated_format;
+	result.rd_format = tex->rd_format;
+	result.path = tex->path;
 #ifdef TOOLS_ENABLED
-	if (tex->image_cache_2d.is_valid() && !tex->is_render_target) {
-		return tex->image_cache_2d;
+	if (!tex->is_render_target) {
+		result.cached = tex->image_cache_2d;
 	}
 #endif
-	Vector<uint8_t> data = RD::get_singleton()->texture_get_data(tex->rd_texture, 0);
-	ERR_FAIL_COND_V(data.is_empty(), Ref<Image>());
-	Ref<Image> image;
+	return result;
+}
 
+Ref<Image> TextureStorage::Texture2DReadback::decode(const Vector<uint8_t> &p_data) const {
+	ERR_FAIL_COND_V(p_data.is_empty(), Ref<Image>());
+	const Vector<uint8_t> &data = p_data;
+	Ref<Image> image;
 	// Expand RGB10_A2 into RGBAH.
-	if (tex->rd_format == RD::DATA_FORMAT_A2B10G10R10_UNORM_PACK32) {
+	if (rd_format == RD::DATA_FORMAT_A2B10G10R10_UNORM_PACK32) {
 		Vector<uint8_t> new_data;
 		new_data.resize(data.size() * 2);
-		uint16_t *ndp = (uint16_t *)new_data.ptr();
+		uint16_t *ndp = reinterpret_cast<uint16_t *>(new_data.ptrw());
 
-		uint32_t *ptr = (uint32_t *)data.ptr();
+		const uint32_t *ptr = reinterpret_cast<const uint32_t *>(data.ptr());
 		uint32_t num_pixels = data.size() / 4;
 
 		for (uint32_t ofs = 0; ofs < num_pixels; ofs++) {
@@ -1919,26 +1931,40 @@ Ref<Image> TextureStorage::texture_2d_get(RID p_texture) const {
 			ndp[ofs * 4 + 2] = Math::make_half_float(float(b) / 1023.0);
 			ndp[ofs * 4 + 3] = Math::make_half_float(float(a) / 3.0);
 		}
-		image = Image::create_from_data(tex->width, tex->height, tex->mipmaps > 1, tex->validated_format, new_data);
+		image = Image::create_from_data(width, height, mipmaps > 1, validated_format, new_data);
 	} else {
-		image = Image::create_from_data(tex->width, tex->height, tex->mipmaps > 1, tex->validated_format, data);
+		image = Image::create_from_data(width, height, mipmaps > 1, validated_format, data);
 	}
 
-	if (image->is_empty()) {
-		const String &path_str = tex->path.is_empty() ? "with no path" : vformat("with path '%s'", tex->path);
+	if (image.is_null() || image->is_empty()) {
+		const String &path_str = path.is_empty() ? "with no path" : vformat("with path '%s'", path);
 		ERR_FAIL_V_MSG(Ref<Image>(), vformat("Texture %s has no data.", path_str));
 	}
 
-	if (tex->format != tex->validated_format) {
-		image->convert(tex->format);
+	if (format != validated_format) {
+		image->convert(format);
 	}
 
+	return image;
+}
+// wgodot-changes::end
+
+Ref<Image> TextureStorage::texture_2d_get(RID p_texture) const {
+	// wgodot-changes::begin
+	const Texture2DReadback readback = texture_2d_readback(p_texture);
+	if (readback.cached.is_valid()) {
+		return readback.cached;
+	}
+	ERR_FAIL_COND_V(readback.texture.is_null(), Ref<Image>());
+	Ref<Image> image = readback.decode(RD::get_singleton()->texture_get_data(readback.texture, 0));
+	ERR_FAIL_COND_V(image.is_null(), Ref<Image>());
+	// wgodot-changes::end
 #ifdef TOOLS_ENABLED
+	Texture *tex = texture_owner.get_or_null(p_texture);
 	if (Engine::get_singleton()->is_editor_hint() && !tex->is_render_target) {
 		tex->image_cache_2d = image;
 	}
 #endif
-
 	return image;
 }
 

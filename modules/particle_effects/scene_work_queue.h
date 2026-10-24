@@ -16,6 +16,7 @@ class SceneWorkItem : public RefCounted {
 	bool completed = false;
 	bool queued = false;
 	uint64_t resume_frame = 0;
+	uint64_t deadline_usec = 0;
 
 protected:
 	static void _bind_methods();
@@ -25,6 +26,9 @@ public:
 	void cancel();
 	// Waiting for rendering or another frame cannot make progress by spinning.
 	void yield_until_next_frame();
+	// Batch related operations inside one step without repeatedly crossing the
+	// script boundary. The queue still owns the current frame's deadline.
+	uint64_t get_deadline_usec() const { return deadline_usec; }
 	bool is_cancelled() const { return cancelled; }
 	bool is_completed() const { return completed; }
 };

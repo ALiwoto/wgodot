@@ -471,6 +471,14 @@ class GDScriptLanguage : public ScriptLanguage {
 	friend class GDScriptFunction;
 
 	SelfList<GDScriptFunction>::List function_list;
+	// wgodot-changes::begin
+	int profiling_get_data(ProfilingInfo *r_info_arr, int p_info_max, bool p_accumulated);
+#ifdef DEBUG_ENABLED
+	SelfList<GDScriptFunction>::List profile_frame_functions;
+	SelfList<GDScriptFunction>::List profile_last_frame_functions;
+	void profiling_touch(GDScriptFunction *p_function);
+#endif
+	// wgodot-changes::end
 #ifdef DEBUG_ENABLED
 	bool profiling;
 	// wgodot-changes::begin
@@ -658,7 +666,6 @@ public:
 	virtual void profiling_start() override;
 	virtual void profiling_stop() override;
 	virtual void profiling_set_save_native_calls(bool p_enable) override;
-	void profiling_collate_native_call_data(bool p_accumulated);
 
 	virtual int profiling_get_accumulated_data(ProfilingInfo *r_info_arr, int p_info_max) override;
 	virtual int profiling_get_frame_data(ProfilingInfo *r_info_arr, int p_info_max) override;

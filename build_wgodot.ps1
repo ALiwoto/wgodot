@@ -10,6 +10,9 @@ param(
 	[string]$BuildProfilePath,
 	[string]$PostgreSQLPath,
 	[string]$PythonExecutable,
+	# Queue an incremental follow-up without overlapping an existing build.
+	[ValidateRange(0, 2147483647)]
+	[int]$WaitForProcessId = 0,
 	[ValidatePattern('^([a-z][a-z0-9_]*)?$')]
 	[string]$GameName = '',
 	[ValidateSet('client', 'server')]
@@ -30,13 +33,23 @@ if ($StatusPath) {
 	New-Item -ItemType Directory -Path (Split-Path -Parent $StatusPath) -Force | Out-Null
 	@(
 		'[build]'
-		'state=running'
+		$(if ($WaitForProcessId) { 'state=waiting' } else { 'state=running' })
 		"started=$started"
 		"pid=$PID"
 	) | Set-Content -LiteralPath $StatusPath -Encoding utf8
 }
 
 try {
+	if ($WaitForProcessId) {
+		$previousBuild = Get-Process -Id $WaitForProcessId -ErrorAction SilentlyContinue
+		if ($previousBuild) {
+			$previousBuild | Wait-Process
+		}
+		if ($StatusPath) {
+			(Get-Content -LiteralPath $StatusPath) -replace '^state=waiting$', 'state=running' |
+				Set-Content -LiteralPath $StatusPath -Encoding utf8
+		}
+	}
 	if ($Game -and $Templates) {
 		throw "Use either -Game or -Templates."
 	}

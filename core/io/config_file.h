@@ -35,6 +35,10 @@
 #include "core/templates/hash_map.h"
 #include "core/variant/variant_parser.h"
 
+// wgodot-changes::begin
+class StringBuilder;
+// wgodot-changes::end
+
 class ConfigFile : public RefCounted {
 	GDCLASS(ConfigFile, RefCounted);
 
@@ -66,6 +70,10 @@ public:
 	Error parse(const String &p_data);
 
 	String encode_to_text() const; // used by exporter
+	// wgodot-changes::begin
+	// Immutable section encoding lets background writers stream bounded batches.
+	void encode_section_to_text(const String &p_section, StringBuilder &r_output) const;
+	// wgodot-changes::end
 
 	void clear();
 

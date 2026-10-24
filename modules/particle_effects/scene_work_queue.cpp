@@ -8,6 +8,7 @@
 void SceneWorkItem::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("cancel"), &SceneWorkItem::cancel);
 	ClassDB::bind_method(D_METHOD("yield_until_next_frame"), &SceneWorkItem::yield_until_next_frame);
+	ClassDB::bind_method(D_METHOD("get_deadline_usec"), &SceneWorkItem::get_deadline_usec);
 	ClassDB::bind_method(D_METHOD("is_cancelled"), &SceneWorkItem::is_cancelled);
 	ClassDB::bind_method(D_METHOD("is_completed"), &SceneWorkItem::is_completed);
 	GDVIRTUAL_BIND(_step);
@@ -81,7 +82,7 @@ void SceneWorkQueue::_notification(int p_what) {
 		// must not expand the queue's budget and create a catch-up spiral.
 		double frame_usec = engine->get_process_step() * 1000000.0;
 		if (engine->get_max_fps() > 0) {
-			frame_usec = MIN(frame_usec, 1000000.0 / engine->get_max_fps());
+			frame_usec = 1000000.0 / engine->get_max_fps();
 		}
 		const double spent_usec = double(started - engine->get_frame_ticks());
 		budget_usec = MAX(budget_usec, MAX(0.0, frame_usec - spent_usec) * frame_budget_fraction);
@@ -106,7 +107,9 @@ void SceneWorkQueue::_notification(int p_what) {
 			waiting = 0;
 			bool finished = true;
 			active = item;
+			item->deadline_usec = deadline;
 			item->GDVIRTUAL_CALL(_step, finished);
+			item->deadline_usec = 0;
 			active.unref();
 			if (item->cancelled) {
 				item->queued = false;

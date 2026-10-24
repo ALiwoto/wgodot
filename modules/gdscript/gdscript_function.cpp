@@ -262,6 +262,10 @@ GDScriptFunction::~GDScriptFunction() {
 #ifdef DEBUG_ENABLED
 	MutexLock lock(GDScriptLanguage::get_singleton()->mutex);
 	GDScriptLanguage::get_singleton()->function_list.remove(&function_list);
+	// wgodot-changes::begin
+	profile_frame_list.remove_from_list();
+	profile_last_frame_list.remove_from_list();
+	// wgodot-changes::end
 #endif
 }
 

@@ -37,6 +37,23 @@ void print_performance(const Dictionary &p_response) {
 	if (!intervals.is_empty()) {
 		print_line(vformat("  Frame interval: mean %.3f ms, p95 %.3f ms, max %.3f ms", double(intervals["mean"]), double(intervals["p95"]), double(intervals["max"])));
 	}
+	const Dictionary active = p_response.get("main_thread_active_ms", Dictionary());
+	if (!active.is_empty()) {
+		print_line(vformat("  Main-thread work/waits (FPS pacing excluded): mean %.3f ms, p95 %.3f ms, max %.3f ms", double(active["mean"]), double(active["p95"]), double(active["max"])));
+		const Array longest = p_response["longest_main_thread_frames"];
+		for (int i = 0; i < MIN(3, longest.size()); i++) {
+			const Dictionary row = longest[i];
+			print_line(vformat("    Frame %d: %.3f ms; largest phase %s %.3f ms", int64_t(row["frame"]), double(row["active_ms"]), String(row["dominant_phase"]), double(row["dominant_phase_ms"])));
+		}
+	}
+	const Dictionary gap = p_response.get("longest_render_gap", Dictionary());
+	if (!gap.is_empty()) {
+		print_line(vformat("  Longest interval without a submitted draw: %.3f ms%s (not necessarily a main-thread stall)", double(gap["milliseconds"]), bool(gap["render_clock_held"]) ? "; render clock explicitly held" : ""));
+	}
+	if (p_response.has("gpu_profile_summary")) {
+		const Dictionary gpu = p_response["gpu_profile_summary"];
+		print_line(vformat("  GPU profile saved: %d resolved query batches, %d CPU events%s.", int(gpu["query_batches"]), int(gpu["cpu_events"]), bool(gpu["truncated"]) ? " (capacity reached)" : ""));
+	}
 	if (p_response.has("gpu_profile")) {
 		const Dictionary gpu = p_response["gpu_profile"];
 		const Array batches = gpu["query_batches"];
@@ -171,7 +188,7 @@ int run(const String &p_command, const Vector<String> &p_arguments) {
 		return result != 0 ? result : 4;
 	}
 	const bool report_saved = response.has("report_path");
-	if (report_saved) {
+	if (report_saved && json_output) {
 		Ref<JSON> report;
 		report.instantiate();
 		Error read_error;

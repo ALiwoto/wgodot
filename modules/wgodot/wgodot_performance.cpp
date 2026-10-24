@@ -4,6 +4,7 @@
 #if defined(TOOLS_ENABLED) && defined(DEBUG_ENABLED)
 
 #include "rendering/gpu_profile.h"
+#include "rendering/render_stepper.h"
 #include "servers/rendering/rendering_device.h"
 
 #include "core/config/engine.h"
@@ -28,12 +29,15 @@ namespace WGodotPerformance {
 namespace {
 
 constexpr int MAX_SAMPLES = 1800;
-const char *PHASE_NAMES[] = { "physics", "process", "deferred_calls", "navigation", "render_sync", "render_draw", "diagnostics" };
+const char *PHASE_NAMES[] = { "prepare", "physics", "process", "deferred_calls", "navigation", "render_sync", "render_draw", "diagnostics", "extensions", "script_servers", "audio", "debugger", "frame_pacing" };
 const char *REGION_NAMES[] = { "scene_instantiate", "node_attach", "delete_queue", "script_instance_free", "animation_free", "animation_caches", "animation_evaluate", "resource_load" };
 
 struct FrameTiming {
 	uint64_t frame = 0;
 	uint64_t started_usec = 0;
+	uint64_t draw_count = 0;
+	double no_draw_ms = 0;
+	bool render_clock_held = false;
 	double milliseconds[PHASE_COUNT] = {};
 	double region_milliseconds[REGION_COUNT] = {};
 	uint64_t region_calls[REGION_COUNT] = {};
@@ -78,8 +82,10 @@ struct Capture {
 	Vector<FrameTiming> frame_timings;
 	WGodotGPUProfile::Result stopped_gpu;
 	FrameTiming current_timing;
-	FramePhase phase = PHYSICS;
+	FramePhase phase = PREPARE;
 	uint64_t phase_started_usec = 0;
+	uint64_t last_draw_usec = 0;
+	bool draw_gap_held = false;
 };
 
 Capture capture;
@@ -332,16 +338,38 @@ void build_performance_report(void *p_userdata) {
 	response["frame_interval_ms"] = statistics(data.frame_intervals);
 	response["frames"] = data.frames;
 	Array timings;
+	Array longest_frames;
+	Vector<double> active_times;
+	double longest_draw_gap_ms = 0;
+	Dictionary longest_draw_gap;
 	for (const FrameTiming &timing : data.frame_timings) {
 		Dictionary row;
 		row["frame"] = int64_t(timing.frame);
 		row["time_usec"] = int64_t(timing.started_usec);
 		double total = 0.0;
+		int dominant = PREPARE;
 		for (int i = 0; i < PHASE_COUNT; ++i) {
 			row[PHASE_NAMES[i]] = timing.milliseconds[i];
 			total += timing.milliseconds[i];
+			if (i != FRAME_PACING && timing.milliseconds[i] > timing.milliseconds[dominant]) {
+				dominant = i;
+			}
 		}
+		row["dominant_phase"] = PHASE_NAMES[dominant];
+		row["dominant_phase_ms"] = timing.milliseconds[dominant];
 		row["total_ms"] = total;
+		const double active_ms = total - timing.milliseconds[FRAME_PACING];
+		row["active_ms"] = active_ms;
+		row["draw_count"] = int64_t(timing.draw_count);
+		row["render_clock_held"] = timing.render_clock_held;
+		row["no_draw_ms"] = timing.no_draw_ms;
+		active_times.push_back(active_ms);
+		if (timing.no_draw_ms > longest_draw_gap_ms) {
+			longest_draw_gap_ms = timing.no_draw_ms;
+			longest_draw_gap["milliseconds"] = timing.no_draw_ms;
+			longest_draw_gap["frame"] = int64_t(timing.frame);
+			longest_draw_gap["render_clock_held"] = timing.render_clock_held;
+		}
 		Dictionary regions;
 		for (int i = 0; i < REGION_COUNT; ++i) {
 			Dictionary region;
@@ -351,8 +379,22 @@ void build_performance_report(void *p_userdata) {
 		}
 		row["regions"] = regions;
 		timings.push_back(row);
+		// A compact worst-frame view is available without --gpu or scanning JSON.
+		int rank = 0;
+		while (rank < longest_frames.size() && double(Dictionary(longest_frames[rank])["active_ms"]) >= active_ms) {
+			rank++;
+		}
+		if (rank < 10) {
+			longest_frames.insert(rank, row);
+			if (longest_frames.size() > 10) {
+				longest_frames.resize(10);
+			}
+		}
 	}
 	response["frame_cpu_ms"] = timings;
+	response["main_thread_active_ms"] = statistics(active_times);
+	response["longest_main_thread_frames"] = longest_frames;
+	response["longest_render_gap"] = longest_draw_gap;
 	if (bool(data.options.get("gpu", false))) {
 		response["gpu_profile"] = WGodotGPUProfile::report(report.gpu);
 	}
@@ -371,11 +413,24 @@ void build_performance_report(void *p_userdata) {
 		if (write_error != OK) {
 			response = error("perf", "Cannot save performance report: " + output + " (" + error_names[write_error] + ")");
 		} else {
-			response = Dictionary();
-			response["ok"] = true;
+			// Return the compact diagnostic summary, without reading/parsing the
+			// multi-megabyte trace again merely to print the CLI's receipt.
+			response.erase("frame_cpu_ms");
+			if (response.has("gpu_profile")) {
+				Dictionary summary;
+				summary["query_batches"] = report.gpu.batches.size();
+				summary["cpu_events"] = report.gpu.events.size();
+				summary["truncated"] = report.gpu.truncated;
+				response["gpu_profile_summary"] = summary;
+				response.erase("gpu_profile");
+			}
 			response["report_path"] = output;
 		}
 	}
+	// Releasing the large trace is worker work too. poll_report only owns the
+	// small response and joins this already-completed task on the main thread.
+	report.data = Capture();
+	report.gpu = WGodotGPUProfile::Result();
 }
 
 void poll_report() {
@@ -456,7 +511,11 @@ RegionScope::~RegionScope() {
 	}
 	region_depth[region]--;
 	if (started_usec != 0 && capture.phase_started_usec != 0) {
-		capture.current_timing.region_milliseconds[region] += (OS::get_singleton()->get_ticks_usec() - started_usec) / 1000.0;
+		const uint64_t now = OS::get_singleton()->get_ticks_usec();
+		capture.current_timing.region_milliseconds[region] += (now - started_usec) / 1000.0;
+		if (WGodotGPUProfile::is_enabled()) {
+			WGodotGPUProfile::interval(String("main.region.") + REGION_NAMES[region], started_usec, now);
+		}
 	}
 }
 
@@ -466,9 +525,13 @@ void begin_frame() {
 	}
 	capture.current_timing = FrameTiming();
 	capture.current_timing.frame = Engine::get_singleton()->get_process_frames();
-	capture.phase = PHYSICS;
+	capture.current_timing.draw_count = Engine::get_singleton()->get_frames_drawn();
+	capture.phase = PREPARE;
 	capture.phase_started_usec = OS::get_singleton()->get_ticks_usec();
 	capture.current_timing.started_usec = capture.phase_started_usec;
+	if (capture.last_draw_usec == 0) {
+		capture.last_draw_usec = capture.phase_started_usec;
+	}
 }
 
 void begin_phase(FramePhase p_phase) {
@@ -477,6 +540,9 @@ void begin_phase(FramePhase p_phase) {
 	}
 	const uint64_t now = OS::get_singleton()->get_ticks_usec();
 	capture.current_timing.milliseconds[capture.phase] += (now - capture.phase_started_usec) / 1000.0;
+	if (WGodotGPUProfile::is_enabled()) {
+		WGodotGPUProfile::interval(String("main.") + PHASE_NAMES[capture.phase], capture.phase_started_usec, now);
+	}
 	capture.phase = p_phase;
 	capture.phase_started_usec = now;
 }
@@ -596,6 +662,18 @@ void end_frame() {
 			return;
 		}
 		capture.current_timing.milliseconds[capture.phase] += (now - capture.phase_started_usec) / 1000.0;
+		if (WGodotGPUProfile::is_enabled()) {
+			WGodotGPUProfile::interval(String("main.") + PHASE_NAMES[capture.phase], capture.phase_started_usec, now);
+			WGodotGPUProfile::interval("main.iteration", capture.current_timing.started_usec, now);
+		}
+		capture.current_timing.draw_count = Engine::get_singleton()->get_frames_drawn() - capture.current_timing.draw_count;
+		capture.draw_gap_held |= WRenderStepper::is_active();
+		capture.current_timing.no_draw_ms = (now - capture.last_draw_usec) / 1000.0;
+		capture.current_timing.render_clock_held = capture.draw_gap_held;
+		if (capture.current_timing.draw_count > 0) {
+			capture.last_draw_usec = now;
+			capture.draw_gap_held = false;
+		}
 		capture.frame_timings.push_back(capture.current_timing);
 		capture.phase_started_usec = 0;
 		if (capture.previous_usec != capture.started_usec) {

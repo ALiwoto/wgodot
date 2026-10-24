@@ -11,6 +11,7 @@
 #include "wgodot_performance_cli.h"
 #include "wgodot_profiler_cli.h"
 #include "wgodot_rename_cli.h"
+#include "rendering/capture_pack.h"
 
 #include "core/config/project_settings.h"
 #include "core/io/dir_access.h"
@@ -217,11 +218,12 @@ void print_cli_help() {
 	print_line("Usage: godot [Godot options] --wg <command> [arguments]");
 	print_line("");
 	print_line("Commands:");
+	print_line("  capture-pack --files <file-list> --status <status.ini>  Compress sealed native capture archives after the entire session; one absolute file path per line. Runs locally without an editor connection.");
 	print_line("  export-cpp <directory> [--target client|server] [--jobs N] [--analyze-only] [--profile-memory] [--standalone] [--trace on|off|true|false] Generate native game C++; --profile-memory writes allocation/resource CSV diagnostics; --standalone uses saved files without blocking the editor.");
 	print_line("  import                            Refresh/import assets and reload changed scenes in the running editor.");
 	print_line("  move <source> <destination> [...] [--dry-run] [--json]  Move project files/folders and update resource references.");
 	print_line("  status [--json] [--session <id>]  Show the matching editor and running game sessions.");
-	print_line("  run [--current|<scene>] [--windowed|--fullscreen] [--resolution <W>x<H>] [--fixed-fps <fps>] [--renderdoc <library>] [--timeout <seconds>] [--json] [-- <user arguments>]  Run the main, current, or specified scene.");
+	print_line("  run [--current|<scene>] [--windowed|--fullscreen] [--resolution <W>x<H>] [--fixed-fps <fps>] [--native-render-capture <directory>] [--timeout <seconds>] [--json] [-- <user arguments>]  Run the main, current, or specified scene.");
 	print_line("    run, check and import: --timeout 1..3600 seconds (default 300), including waiting for editor asset work.");
 	print_line("  stop [--json]                     Stop the running game.");
 	print_line("  tree [options]                    Print the running game's scene tree.");
@@ -1275,12 +1277,12 @@ int run_run_command(const Vector<String> &p_arguments) {
 				return 2;
 			}
 			mode = "current";
-		} else if (argument == "--renderdoc") {
+		} else if (argument == "--native-render-capture") {
 			if (++index >= p_arguments.size()) {
-				print_line("wgodot: --renderdoc requires the capture library path.");
+				print_line("wgodot: --native-render-capture requires an output directory.");
 				return 2;
 			}
-			options["renderdoc"] = p_arguments[index];
+			options["native_render_capture"] = p_arguments[index];
 		} else if (argument == "--windowed" || argument == "--fullscreen") {
 			if (options.has("window_mode")) {
 				print_line("wgodot: specify only one window mode.");
@@ -1405,6 +1407,10 @@ bool execute_if_requested(int &r_exit_code) {
 
 	if (command == "export-cpp") {
 		r_exit_code = WGodotCppExporter::run(arguments);
+		return true;
+	}
+	if (command == "capture-pack") {
+		r_exit_code = WCapturePack::run(arguments);
 		return true;
 	}
 	if (command == "format") {

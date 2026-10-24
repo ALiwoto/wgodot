@@ -192,15 +192,25 @@ WInstanceShaderParameters::Item WInstanceShaderParameters::get(int p_slot) const
 	return items[p_slot];
 }
 
-bool WInstanceShaderParameters::set(int p_slot, WInstanceShaderValue &r_value) {
+WInstanceShaderParameters::SetResult WInstanceShaderParameters::set(int p_slot, WInstanceShaderValue &r_value) {
 	MutexLock lock(mutex);
-	ERR_FAIL_INDEX_V(p_slot, items.size(), false);
-	ERR_FAIL_COND_V(!r_value.valid(), false);
+	ERR_FAIL_INDEX_V(p_slot, items.size(), SetResult::INVALID);
+	ERR_FAIL_COND_V(!r_value.valid(), SetResult::INVALID);
+	const Item &previous = items[p_slot];
+	ERR_FAIL_COND_V_MSG(previous.gpu_index >= 0 && !r_value.convert_to(previous.default_value.type), SetResult::INVALID, "Instance-uniform value does not match its shader declaration: " + previous.info.name);
+	// Compare the exact typed GPU payload before requesting writable storage.
+	// Snapshots share this vector: even an unchanged write would otherwise
+	// clone it and enqueue another renderer upload. Preserve override identity
+	// and both color spaces; approximate equality could erase visible changes.
+	if (previous.overridden && previous.value.type == r_value.type && previous.value.source_type == r_value.source_type &&
+			memcmp(previous.value.words, r_value.words, sizeof(r_value.words)) == 0 &&
+			memcmp(previous.value.linear_words, r_value.linear_words, sizeof(r_value.linear_words)) == 0) {
+		return SetResult::UNCHANGED;
+	}
 	Item &item = items.write[p_slot];
-	ERR_FAIL_COND_V_MSG(item.gpu_index >= 0 && !r_value.convert_to(item.default_value.type), false, "Instance-uniform value does not match its shader declaration: " + item.info.name);
 	item.value = r_value;
 	item.overridden = true;
-	return true;
+	return SetResult::CHANGED;
 }
 
 WInstanceShaderValue WInstanceShaderParameters::value(int p_slot) const {

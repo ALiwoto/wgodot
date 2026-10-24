@@ -33,7 +33,6 @@
 #include "modules/modules_enabled.gen.h"
 #if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
 #include "modules/wgodot/rendering/gpu_profile.h"
-#include "modules/wgodot/rendering/renderdoc_capture.h"
 #endif
 // wgodot-changes::end
 
@@ -88,7 +87,6 @@ void RenderingServerDefault::_draw(bool p_swap_buffers, double frame_step) {
 	// wgodot-changes::begin
 #if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
 	WGodotGPUProfile::Scope profile_scope("render.frame");
-	WRenderDocCapture::begin_frame();
 #endif
 	// wgodot-changes::end
 	GodotProfileZoneGroupedFirst(_profile_zone, "rasterizer->begin_frame");
@@ -136,11 +134,6 @@ void RenderingServerDefault::_draw(bool p_swap_buffers, double frame_step) {
 
 	GodotProfileZoneGrouped(_profile_zone, "rasterizer->end_frame");
 	RSG::rasterizer->end_frame(p_swap_buffers);
-	// wgodot-changes::begin
-#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
-	WRenderDocCapture::end_frame();
-#endif
-	// wgodot-changes::end
 	// wgodot-changes::begin
 #if defined(TOOLS_ENABLED) && defined(DEBUG_ENABLED)
 	WGodotTextureCapture::end_render_frame();

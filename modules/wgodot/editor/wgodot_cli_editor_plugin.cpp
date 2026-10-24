@@ -347,10 +347,11 @@ void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
 	if (command == "run") {
 		const String mode = options.get("mode", "main");
 		Vector<String> play_args;
-		if (options.has("renderdoc")) {
-			play_args.push_back("--renderdoc");
-			play_args.push_back(options["renderdoc"]);
+		if (options.has("native_render_capture")) {
+			play_args.push_back("--native-render-capture");
+			play_args.push_back(options["native_render_capture"]);
 		}
+
 		if (options.has("fixed_fps")) {
 			int fps = options["fixed_fps"];
 			if (fps < 1 || fps > 120) {

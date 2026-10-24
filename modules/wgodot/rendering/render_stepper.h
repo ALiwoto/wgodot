@@ -11,6 +11,7 @@ class WRenderStepper : public RefCounted {
 	static WRenderStepper *active;
 	bool requested = false;
 	bool draw_pending = false;
+	bool processing_requested = false;
 	double frame_step = 0;
 	static void _retire_resources();
 
@@ -20,9 +21,14 @@ protected:
 public:
 	static Ref<WRenderStepper> begin();
 	Error request_frame(double p_step);
+	// Ready CPU preparation can continue without spending another displayed
+	// frame interval. Waiting for I/O must not request immediate processing.
+	void request_processing();
 	void finish();
 	static void prepare_iteration();
 	static bool iterate(bool p_pending_resources);
+	static bool should_delay_iteration();
+	static bool is_active() { return active != nullptr; }
 	~WRenderStepper();
 };
 #endif

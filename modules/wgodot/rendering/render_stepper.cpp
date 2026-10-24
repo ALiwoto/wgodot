@@ -17,6 +17,7 @@ WRenderStepper *WRenderStepper::active = nullptr;
 void WRenderStepper::_bind_methods() {
 	ClassDB::bind_static_method(get_class_static(), D_METHOD("begin"), &WRenderStepper::begin);
 	ClassDB::bind_method(D_METHOD("request_frame", "step"), &WRenderStepper::request_frame);
+	ClassDB::bind_method(D_METHOD("request_processing"), &WRenderStepper::request_processing);
 	ClassDB::bind_method(D_METHOD("finish"), &WRenderStepper::finish);
 }
 
@@ -39,6 +40,12 @@ Error WRenderStepper::request_frame(double p_step) {
 	return OK;
 }
 
+void WRenderStepper::request_processing() {
+	ERR_FAIL_COND(!Thread::is_main_thread());
+	ERR_FAIL_COND(active != this);
+	processing_requested = true;
+}
+
 void WRenderStepper::finish() {
 	ERR_FAIL_COND(!Thread::is_main_thread());
 	if (active == this) {
@@ -48,10 +55,14 @@ void WRenderStepper::finish() {
 }
 
 void WRenderStepper::prepare_iteration() {
-	if (!active || !active->draw_pending) {
+	if (!active) {
 		return;
 	}
 	Ref<WRenderStepper> stepper(active);
+	stepper->processing_requested = false;
+	if (!stepper->draw_pending) {
+		return;
+	}
 	WGodotGPUProfile::Scope profile_scope("capture.wait_previous_render");
 	// Normal gameplay overlaps processing with the previous render. Offline
 	// sampling instead needs that render's completed state before advancing.
@@ -83,6 +94,13 @@ bool WRenderStepper::iterate(bool p_pending_resources) {
 		RenderingServer::get_singleton()->call_on_render_thread(callable_mp_static(&WRenderStepper::_retire_resources));
 	}
 	return true;
+}
+
+bool WRenderStepper::should_delay_iteration() {
+	// The ordinary FPS limiter advances its target on every call. Calling it
+	// for preparation-only iterations adds artificial slow motion. Draws still
+	// consume one normal pacing interval; idle/I/O waits retain normal pacing.
+	return !active || active->draw_pending || !active->processing_requested;
 }
 
 WRenderStepper::~WRenderStepper() {

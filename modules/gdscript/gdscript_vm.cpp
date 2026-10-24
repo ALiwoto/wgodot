@@ -116,12 +116,21 @@ static String _get_var_type(const Variant *p_var) {
 }
 
 void GDScriptFunction::_profile_native_call(uint64_t p_t_taken, const String &p_func_name, const String &p_instance_class_name) {
-	HashMap<String, Profile::NativeProfile>::Iterator inner_prof = profile.native_calls.find(p_func_name);
+	// wgodot-changes::begin
+	const Profile::NativeKey key(p_instance_class_name, p_func_name);
+	Profile::NativeCalls::Iterator inner_prof = profile.native_calls.find(key);
+	// wgodot-changes::end
 	if (inner_prof) {
 		inner_prof->value.call_count += 1;
 	} else {
-		String sig = vformat("%s::0::%s%s%s", get_script()->get_script_path(), p_instance_class_name, p_instance_class_name.is_empty() ? "" : ".", p_func_name);
-		inner_prof = profile.native_calls.insert(p_func_name, Profile::NativeProfile{ 1, 0, sig });
+		// wgodot-changes::begin
+		// Native identities must not depend on whichever script called first.
+		// An empty source path denotes a native method in the profiler UI.
+		// Format once per caller/session, not once per frame.
+		const Profile::NativeProfile *previous = profile.accumulated_native_calls.getptr(key);
+		String sig = previous ? previous->signature : vformat("::0::%s%s%s", p_instance_class_name, p_instance_class_name.is_empty() ? "" : ".", p_func_name);
+		inner_prof = profile.native_calls.insert(key, Profile::NativeProfile{ 1, 0, sig });
+		// wgodot-changes::end
 	}
 	inner_prof->value.total_time += p_t_taken;
 }
@@ -756,7 +765,11 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 		function_start_time = OS::get_singleton()->get_ticks_usec();
 		function_call_time = 0;
 		profile.call_count.increment();
-		profile.frame_call_count.increment();
+		// wgodot-changes::begin
+		if (profile.frame_call_count.increment() == 1) {
+			GDScriptLanguage::get_singleton()->profiling_touch(this);
+		}
+		// wgodot-changes::end
 	}
 	bool exit_ok = false;
 	int variant_address_limits[ADDR_TYPE_MAX] = { _stack_size, _constant_count, p_instance ? (int)p_instance->members.size() : 0 };
@@ -2624,6 +2637,14 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 
 				Callable::CallError err;
 
+				// wgodot-changes::begin
+#ifdef DEBUG_ENABLED
+				const bool profile_base_call = GDScriptLanguage::get_singleton()->is_profiling_capture(profiling_generation) &&
+						(E || GDScriptLanguage::get_singleton()->profile_native_calls);
+				const uint64_t base_call_start = profile_base_call ? OS::get_singleton()->get_ticks_usec() : 0;
+				const MethodBind *profile_base_method = nullptr;
+#endif
+				// wgodot-changes::end
 				if (E) {
 					*dst = E->value->call(p_instance, (const Variant **)argptrs, argc, err);
 				} else if (gds->native.ptr()) {
@@ -2632,6 +2653,11 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 						if (!mb) {
 							err.error = Callable::CallError::CALL_ERROR_INVALID_METHOD;
 						} else {
+							// wgodot-changes::begin
+#ifdef DEBUG_ENABLED
+							profile_base_method = mb;
+#endif
+							// wgodot-changes::end
 							*dst = mb->call(p_instance->owner, (const Variant **)argptrs, argc, err);
 						}
 					} else {
@@ -2645,6 +2671,17 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 					}
 				}
 
+				// wgodot-changes::begin
+#ifdef DEBUG_ENABLED
+				if (profile_base_call && GDScriptLanguage::get_singleton()->is_profiling_capture(profiling_generation)) {
+					const uint64_t elapsed = OS::get_singleton()->get_ticks_usec() - base_call_start;
+					function_call_time += elapsed;
+					if (profile_base_method) {
+						_profile_native_call(elapsed, profile_base_method->get_name(), profile_base_method->get_instance_class());
+					}
+				}
+#endif
+				// wgodot-changes::end
 				if (err.error != Callable::CallError::CALL_OK) {
 #ifdef DEBUG_ENABLED
 					String methodstr = *methodname;

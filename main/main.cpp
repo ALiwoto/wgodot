@@ -162,8 +162,10 @@
 #ifdef MODULE_WGODOT_ENABLED
 #include "modules/wgodot/wgodot_cli.h"
 #ifdef TOOLS_ENABLED
-#include "modules/wgodot/rendering/renderdoc_capture.h"
+#include "modules/wgodot/rendering/device_capture/recorder.h"
+#include "modules/wgodot/rendering/gpu_profile.h"
 #include "modules/wgodot/rendering/render_stepper.h"
+#include "modules/wgodot/rendering/render_capture.h"
 #endif
 #include "modules/wgodot/wgodot_game_bridge.h"
 #include "modules/wgodot/wgodot_pause_controller.h"
@@ -377,11 +379,27 @@ static Vector<String> get_files_with_extension(const String &p_root, const Strin
 }
 #endif
 
+// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+static String native_render_capture_directory;
+#endif
+// wgodot-changes::end
+
 void finalize_display() {
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WRenderCapture::finish_all();
+#endif
+	// wgodot-changes::end
 	rendering_server->finish();
 	memdelete(rendering_server);
 
 	memdelete(display_server);
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPUCapture::Recorder::stop();
+#endif
+	// wgodot-changes::end
 	memdelete(accessibility_server);
 }
 
@@ -631,7 +649,7 @@ void Main::print_help(const char *p_binary) {
 // wgodot-changes::begin
 	print_help_option("--wgodot-startup-profile", "Print native startup timings through the first frame.\n");
 #if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
-	print_help_option("--renderdoc <library>", "Load RenderDoc before graphics initialization for explicit GPU captures.\n");
+	print_help_option("--native-render-capture <directory>", "Record RenderingDevice commands and resource changes asynchronously.\n");
 #endif
 // wgodot-changes::end
 #if defined(DEBUG_ENABLED) || defined(DEV_ENABLED)
@@ -1370,12 +1388,14 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 #endif
 // wgodot-changes::begin
 #if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
-		} else if (arg == "--renderdoc") {
-			if (!N || WRenderDocCapture::initialize(N->get()) != OK) {
-				OS::get_singleton()->print("Cannot initialize the requested RenderDoc library.\n");
+		} else if (arg == "--native-render-capture") {
+			if (!N) {
+				OS::get_singleton()->print("Missing native capture output directory.\n");
 				goto error;
 			}
+			native_render_capture_directory = N->get();
 			N = N->next();
+
 #endif
 // wgodot-changes::end
 		} else if (arg == "--generate-spirv-debug-info") {
@@ -2197,6 +2217,18 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 #endif
 	}
 
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	if (!native_render_capture_directory.is_empty()) {
+		const String path = ProjectSettings::get_singleton()->globalize_path(native_render_capture_directory);
+		if (WGPUCapture::Recorder::start(path) != OK) {
+			OS::get_singleton()->print("Cannot create native render capture journal.\n");
+			goto error;
+		}
+	}
+#endif
+	// wgodot-changes::end
+
 #ifdef TOOLS_ENABLED
 	if (!project_manager && !editor) {
 		// If we didn't find a project, we fall back to the project manager.
@@ -2795,7 +2827,14 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 		if (bool(GLOBAL_GET("display/window/size/sharp_corners"))) {
 			window_flags |= DisplayServerEnums::WINDOW_FLAG_SHARP_CORNERS_BIT;
 		}
-		window_mode = (DisplayServerEnums::WindowMode)(GLOBAL_GET("display/window/size/mode").operator int());
+		// wgodot-changes::begin
+		// Resolve the mode before creating the native window. Project defaults
+		// must not overwrite an explicit command-line mode and cause startup
+		// to enter fullscreen before a later windowed transition.
+		if (!init_windowed && !init_fullscreen && !init_maximized) {
+			window_mode = (DisplayServerEnums::WindowMode)(GLOBAL_GET("display/window/size/mode").operator int());
+		}
+		// wgodot-changes::end
 		int initial_position_type = GLOBAL_GET("display/window/size/initial_position_type").operator int();
 		if (initial_position_type == Window::WINDOW_INITIAL_POSITION_ABSOLUTE) { // Absolute.
 			if (!init_use_custom_pos) {
@@ -3047,6 +3086,11 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 	return OK;
 
 error:
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPUCapture::Recorder::stop();
+#endif
+	// wgodot-changes::end
 
 	text_driver = "";
 	display_driver = "";
@@ -5039,6 +5083,9 @@ static uint64_t navigation_process_max = 0;
 // to be set explicitly here (defaults to EXIT_SUCCESS).
 bool Main::iteration() {
 // wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGodotPerformance::FrameScope performance_frame;
+#endif
 	WGodotStartupProfile::Scope wgodot_profile("First frame", String(), true);
 #if defined(MODULE_WGODOT_ENABLED) || defined(WGODOT_NATIVE_GAME)
 	WGodotPreloads::get_singleton()->poll();
@@ -5094,7 +5141,7 @@ bool Main::iteration() {
 	GodotProfileZoneGrouped(_profile_zone, "physics");
 	// wgodot-changes::begin
 #ifdef MODULE_WGODOT_ENABLED
-	WGodotPerformance::begin_frame();
+	WGodotPerformance::begin_phase(WGodotPerformance::PHYSICS);
 #endif
 	// wgodot-changes::end
 	for (int iters = 0; iters < advance.physics_steps; ++iters) {
@@ -5297,7 +5344,6 @@ bool Main::iteration() {
 	WGodotGameBridge::set_rendering(false);
 	WGodotGameBridge::end_frame();
 	WGodotWaitController::end_frame();
-	WGodotPerformance::end_frame();
 #endif
 	// wgodot-changes::end
 
@@ -5306,7 +5352,17 @@ bool Main::iteration() {
 	uint64_t frame_time = OS::get_singleton()->get_ticks_usec() - ticks;
 
 	GodotProfileZoneGrouped(_profile_zone, "GDExtensionManager::frame");
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGodotPerformance::begin_phase(WGodotPerformance::EXTENSIONS);
+#endif
+	// wgodot-changes::end
 	GDExtensionManager::get_singleton()->frame();
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGodotPerformance::begin_phase(WGodotPerformance::SCRIPT_SERVERS);
+#endif
+	// wgodot-changes::end
 
 	GodotProfileZoneGrouped(_profile_zone, "ScriptServer::frame");
 	for (int i = 0; i < ScriptServer::get_language_count(); i++) {
@@ -5314,11 +5370,26 @@ bool Main::iteration() {
 	}
 
 	GodotProfileZoneGrouped(_profile_zone, "AudioServer::update");
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGodotPerformance::begin_phase(WGodotPerformance::AUDIO);
+#endif
+	// wgodot-changes::end
 	AudioServer::get_singleton()->update();
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGodotPerformance::begin_phase(WGodotPerformance::DEBUGGER);
+#endif
+	// wgodot-changes::end
 
 	if (EngineDebugger::is_active()) {
 		EngineDebugger::get_singleton()->iteration(frame_time, process_ticks, physics_process_ticks, physics_step);
 	}
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGodotPerformance::begin_phase(WGodotPerformance::DIAGNOSTICS);
+#endif
+	// wgodot-changes::end
 
 	frames++;
 	Engine::get_singleton()->_process_frames++;
@@ -5380,7 +5451,20 @@ bool Main::iteration() {
 	bool wake_for_events = scene_tree && scene_tree->is_accessibility_enabled();
 
 	GodotProfileZoneGrouped(_profile_zone, "OS::add_frame_delay");
-	OS::get_singleton()->add_frame_delay(DisplayServer::get_singleton()->window_can_draw(), wake_for_events);
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGodotPerformance::begin_phase(WGodotPerformance::FRAME_PACING);
+	if (WRenderStepper::should_delay_iteration())
+#endif
+	// wgodot-changes::end
+	{
+		OS::get_singleton()->add_frame_delay(DisplayServer::get_singleton()->window_can_draw(), wake_for_events);
+	}
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGodotPerformance::begin_phase(WGodotPerformance::DIAGNOSTICS);
+#endif
+	// wgodot-changes::end
 
 #ifdef TOOLS_ENABLED
 	if (auto_build_solutions) {

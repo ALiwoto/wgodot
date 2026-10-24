@@ -129,13 +129,31 @@ void mark(const char *p_name, const String &p_detail, int64_t p_sample) {
 	append_event(std::move(event));
 }
 
-Scope::Scope(const char *p_name) : name(p_name) {
+void interval(const String &p_name, uint64_t p_begin, uint64_t p_end) {
+	if (!enabled.is_set() || !p_begin) {
+		return;
+	}
+	CPUEvent event;
+	event.name = p_name;
+	event.thread = Thread::get_caller_id();
+	event.begin_usec = p_begin;
+	event.end_usec = p_end;
+	append_event(std::move(event));
+}
+
+Scope::Scope(const char *p_name, const String &p_capture, int64_t p_sample) : name(p_name) {
 	if (enabled.is_set()) {
 		started_usec = OS::get_singleton()->get_ticks_usec();
+		capture = p_capture;
+		sample = p_sample;
 	}
 }
 
 Scope::~Scope() {
+	finish();
+}
+
+void Scope::finish() {
 	if (!started_usec || !enabled.is_set()) {
 		return;
 	}
@@ -144,6 +162,9 @@ Scope::~Scope() {
 	event.begin_usec = started_usec;
 	event.thread = Thread::get_caller_id();
 	event.name = name;
+	event.detail = capture;
+	event.sample = sample;
+	started_usec = 0;
 	append_event(std::move(event));
 }
 

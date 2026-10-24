@@ -380,6 +380,10 @@ void FileAccessWindows::flush() {
 	ERR_FAIL_NULL(f);
 
 	fflush(f);
+	// wgodot-changes::begin
+	// Buffered writes can first fail when flushed (for example, a full disk).
+	check_errors(true);
+	// wgodot-changes::end
 	if (prev_op == WRITE) {
 		prev_op = 0;
 	}

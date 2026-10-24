@@ -365,6 +365,12 @@ private:
 	int _instruction_args_size = 0;
 
 	SelfList<GDScriptFunction> function_list{ this };
+	// wgodot-changes::begin
+#ifdef DEBUG_ENABLED
+	SelfList<GDScriptFunction> profile_frame_list{ this };
+	SelfList<GDScriptFunction> profile_last_frame_list{ this };
+#endif
+	// wgodot-changes::end
 	mutable Variant nil;
 	TightLocalVector<Pair<int, Variant::Type>> temporary_slots;
 	List<StackDebug> stack_debug;
@@ -455,13 +461,15 @@ private:
 			uint64_t total_time;
 			String signature;
 		} NativeProfile;
-		HashMap<String, NativeProfile> native_calls;
-		HashMap<String, NativeProfile> last_native_calls;
 		// wgodot-changes::begin
-		HashMap<String, NativeProfile> accumulated_native_calls;
+		using NativeKey = Pair<String, String>; // Class and method, without per-call string concatenation.
+		using NativeCalls = HashMap<NativeKey, NativeProfile>;
+		NativeCalls native_calls;
+		NativeCalls last_native_calls;
+		NativeCalls accumulated_native_calls;
 
 		void accumulate_native_calls() {
-			for (const KeyValue<String, NativeProfile> &entry : native_calls) {
+			for (const KeyValue<NativeKey, NativeProfile> &entry : native_calls) {
 				NativeProfile *total = accumulated_native_calls.getptr(entry.key);
 				if (total) {
 					total->call_count += entry.value.call_count;

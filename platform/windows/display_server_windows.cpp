@@ -30,6 +30,12 @@
 
 #include "display_server_windows.h"
 
+// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+#include "modules/wgodot/rendering/gpu_profile.h"
+#endif
+// wgodot-changes::end
+
 #include "drop_target_windows.h"
 #include "key_mapping_windows.h"
 #include "native_menu_windows.h"
@@ -4515,6 +4521,11 @@ bool DisplayServerWindows::process_raw_input() {
 
 void DisplayServerWindows::process_events() {
 	ERR_FAIL_COND(!Thread::is_main_thread());
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGodotGPUProfile::Scope event_scope("platform.events");
+#endif
+	// wgodot-changes::end
 
 	if (!drop_events) {
 #ifdef SDL_ENABLED

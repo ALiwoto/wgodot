@@ -391,6 +391,20 @@ public:
 	virtual RID mesh_surface_get_material(RID p_mesh, int p_surface) const override;
 
 	virtual RenderingServerTypes::SurfaceData mesh_get_surface(RID p_mesh, int p_surface) const override;
+	// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+	// Render-thread descriptor only. Capturers queue copies at the inspected
+	// frame, without the synchronous full-surface readback in mesh_get_surface.
+	struct SurfaceGeometryReadback {
+		RID vertices, indices;
+		uint64_t format = 0;
+		uint32_t vertex_count = 0, index_count = 0;
+		RSE::PrimitiveType primitive = RSE::PRIMITIVE_MAX;
+		AABB aabb;
+	};
+	SurfaceGeometryReadback mesh_surface_geometry_readback(RID p_mesh, int p_surface) const;
+#endif
+	// wgodot-changes::end
 
 	virtual RID mesh_surface_get_vertex_buffer_rd_rid(RID p_mesh, int p_surface) const override;
 	virtual RID mesh_surface_get_attribute_buffer_rd_rid(RID p_mesh, int p_surface) const override;

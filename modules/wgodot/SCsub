@@ -11,6 +11,7 @@ env_wgodot.add_source_files(env.modules_sources, "*.cpp")
 env_wgodot.add_source_files(env.modules_sources, "codecs/*.cpp")
 env_wgodot.add_source_files(env.modules_sources, "animation/*.cpp")
 env_wgodot.add_source_files(env.modules_sources, "rendering/*.cpp")
+env_wgodot.add_source_files(env.modules_sources, "rendering/device_capture/*.cpp")
 
 if env.editor_build:
     import pathlib

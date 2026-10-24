@@ -716,6 +716,26 @@ RenderingServerTypes::SurfaceData MeshStorage::mesh_get_surface(RID p_mesh, int 
 	return sd;
 }
 
+// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+MeshStorage::SurfaceGeometryReadback MeshStorage::mesh_surface_geometry_readback(RID p_mesh, int p_surface) const {
+	const Mesh *mesh = mesh_owner.get_or_null(p_mesh);
+	ERR_FAIL_NULL_V(mesh, SurfaceGeometryReadback());
+	ERR_FAIL_UNSIGNED_INDEX_V(uint32_t(p_surface), mesh->surface_count, SurfaceGeometryReadback());
+	const Mesh::Surface &surface = *mesh->surfaces[p_surface];
+	SurfaceGeometryReadback result;
+	result.vertices = surface.vertex_buffer;
+	result.indices = surface.index_buffer;
+	result.format = surface.format;
+	result.vertex_count = surface.vertex_count;
+	result.index_count = surface.index_count;
+	result.primitive = surface.primitive;
+	result.aabb = surface.aabb;
+	return result;
+}
+#endif
+// wgodot-changes::end
+
 int MeshStorage::mesh_get_surface_count(RID p_mesh) const {
 	Mesh *mesh = mesh_owner.get_or_null(p_mesh);
 	ERR_FAIL_NULL_V(mesh, 0);

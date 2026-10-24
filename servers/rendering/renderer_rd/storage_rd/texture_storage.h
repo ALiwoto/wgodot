@@ -617,6 +617,19 @@ public:
 	virtual void texture_3d_placeholder_initialize(RID p_texture) override;
 
 	virtual Ref<Image> texture_2d_get(RID p_texture) const override;
+	// wgodot-changes::begin
+	struct Texture2DReadback {
+		RID texture;
+		Ref<Image> cached;
+		int width = 0, height = 0, mipmaps = 0;
+		Image::Format format = Image::FORMAT_RGBA8;
+		Image::Format validated_format = Image::FORMAT_RGBA8;
+		RD::DataFormat rd_format = RD::DATA_FORMAT_MAX;
+		String path;
+		Ref<Image> decode(const Vector<uint8_t> &p_data) const;
+	};
+	Texture2DReadback texture_2d_readback(RID p_texture) const;
+	// wgodot-changes::end
 	virtual Ref<Image> texture_2d_layer_get(RID p_texture, int p_layer) const override;
 	virtual Vector<Ref<Image>> texture_3d_get(RID p_texture) const override;
 

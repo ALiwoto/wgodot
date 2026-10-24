@@ -329,6 +329,9 @@ Error FileAccessUnix::resize(int64_t p_length) {
 void FileAccessUnix::flush() {
 	ERR_FAIL_NULL_MSG(f, "File must be opened before use.");
 	fflush(f);
+	// wgodot-changes::begin
+	check_errors(true);
+	// wgodot-changes::end
 }
 
 bool FileAccessUnix::store_buffer(const uint8_t *p_src, uint64_t p_length) {

@@ -29,6 +29,13 @@
 /**************************************************************************/
 
 #include "rendering_device.h"
+
+// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+#include "modules/wgodot/rendering/device_capture/recorder.h"
+#endif
+// wgodot-changes::end
+
 #include "rendering_device.compat.inc"
 
 #include "core/config/engine.h"
@@ -297,6 +304,11 @@ Vector<uint8_t> RenderingDevice::shader_compile_spirv_from_source(ShaderStage p_
 }
 
 RID RenderingDevice::shader_create_from_spirv(const Vector<ShaderStageSPIRVData> &p_spirv, const String &p_shader_name) {
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGodotGPUProfile::Scope profile_scope("device.create_shader");
+#endif
+	// wgodot-changes::end
 	Vector<uint8_t> bytecode = shader_compile_binary_from_spirv(p_spirv, p_shader_name);
 	ERR_FAIL_COND_V(bytecode.is_empty(), RID());
 	return shader_create_from_bytecode(bytecode);
@@ -357,6 +369,12 @@ void RenderingDevice::_tlas_remove_blas_dependencies(AccelerationStructure *p_tl
 }
 
 RID RenderingDevice::blas_create(Span<AccelerationStructureGeometry> p_geometries, BitField<AccelerationStructureFlagBits> p_flags) {
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(UNSUPPORTED, "blas_create");
+#endif
+	// wgodot-changes::end
+
 	ERR_FAIL_COND_V_MSG(!has_feature(SUPPORTS_RAYTRACING_PIPELINE) && !has_feature(SUPPORTS_RAY_QUERY), RID(), "The current rendering device has neither raytracing pipeline nor ray query support.");
 
 	thread_local LocalVector<RDD::AccelerationStructureGeometry> rdd_geometries;
@@ -478,6 +496,12 @@ BitField<RDD::BufferUsageBits> RenderingDevice::_creation_to_usage_bits(BitField
 }
 
 RID RenderingDevice::tlas_create(uint32_t p_max_instance_count, BitField<AccelerationStructureFlagBits> p_flags) {
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(UNSUPPORTED, "tlas_create");
+#endif
+	// wgodot-changes::end
+
 	ERR_FAIL_COND_V_MSG(!has_feature(SUPPORTS_RAYTRACING_PIPELINE) && !has_feature(SUPPORTS_RAY_QUERY), RID(), "The current rendering device has neither raytracing pipeline nor ray query support.");
 
 	AccelerationStructure acceleration_structure;
@@ -1169,6 +1193,12 @@ Error RenderingDevice::buffer_copy(RID p_src_buffer, RID p_dst_buffer, uint32_t 
 
 	draw_graph.add_buffer_copy(src_buffer->driver_id, src_buffer->draw_tracker, dst_buffer->driver_id, dst_buffer->draw_tracker, region);
 
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(BUFFER_COPY, p_src_buffer, p_dst_buffer, p_src_offset, p_dst_offset, p_size);
+#endif
+	// wgodot-changes::end
 	return OK;
 }
 
@@ -1180,7 +1210,14 @@ Error RenderingDevice::_buffer_update(Buffer *p_buffer, RID p_buffer_id, uint32_
 
 		memcpy(dst_data + p_offset, p_data, p_size);
 		direct_copy_count++;
-		buffer_flush(p_buffer_id);
+		// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+		// This internal upload already has a CPU source recorded by
+		// buffer_update(). It must not flush a previous public mapping.
+		p_buffer->capture_mapping = nullptr;
+#endif
+		driver->buffer_flush(p_buffer->driver_id);
+		// wgodot-changes::end
 		return OK;
 	}
 
@@ -1262,10 +1299,24 @@ Error RenderingDevice::buffer_update(RID p_buffer, uint32_t p_offset, uint32_t p
 	ERR_FAIL_NULL_V_MSG(buffer, ERR_INVALID_PARAMETER, "Buffer argument is not a valid buffer of any type.");
 	ERR_FAIL_COND_V_MSG(p_offset + p_size > buffer->size, ERR_INVALID_PARAMETER, "Attempted to write buffer (" + itos((p_offset + p_size) - buffer->size) + " bytes) past the end.");
 
-	return _buffer_update(buffer, p_buffer, p_offset, p_size, p_data);
+	Error error = _buffer_update(buffer, p_buffer, p_offset, p_size, p_data);
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	if (error == OK) {
+		WGPU_RECORD(BUFFER_UPDATE, p_buffer, p_offset, (WGPUCapture::Bytes{ p_data, p_size }));
+	}
+#endif
+	// wgodot-changes::end
+	return error;
 }
 
 Error RenderingDevice::driver_callback_add(RDD::DriverCallback p_callback, void *p_userdata, VectorView<CallbackResource> p_resources) {
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(UNSUPPORTED, "driver_callback_add");
+#endif
+	// wgodot-changes::end
+
 	ERR_RENDER_THREAD_GUARD_V(ERR_UNAVAILABLE);
 
 	ERR_FAIL_COND_V_MSG(draw_list.active, ERR_INVALID_PARAMETER,
@@ -1367,6 +1418,12 @@ Error RenderingDevice::buffer_clear(RID p_buffer, uint32_t p_offset, uint32_t p_
 
 	draw_graph.add_buffer_clear(buffer->driver_id, buffer->draw_tracker, p_offset, p_size);
 
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(BUFFER_CLEAR, p_buffer, p_offset, p_size);
+#endif
+	// wgodot-changes::end
 	return OK;
 }
 
@@ -1501,6 +1558,12 @@ Error RenderingDevice::buffer_get_data_async(RID p_buffer, const Callable &p_cal
 }
 
 uint64_t RenderingDevice::buffer_get_device_address(RID p_buffer) {
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(UNSUPPORTED, "buffer_get_device_address");
+#endif
+	// wgodot-changes::end
+
 	ERR_RENDER_THREAD_GUARD_V(0);
 
 	Buffer *buffer = _get_buffer_from_owner(p_buffer);
@@ -1516,14 +1579,45 @@ uint8_t *RenderingDevice::buffer_persistent_map_advance(RID p_buffer) {
 	Buffer *buffer = _get_buffer_from_owner(p_buffer);
 	ERR_FAIL_NULL_V_MSG(buffer, nullptr, "Buffer argument is not a valid buffer of any type.");
 	direct_copy_count++;
-	return driver->buffer_persistent_map_advance(buffer->driver_id, frames_drawn);
+	uint8_t *mapped = driver->buffer_persistent_map_advance(buffer->driver_id, frames_drawn);
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	buffer->capture_mapping = nullptr;
+	if (mapped && WGPUCapture::Recorder::get()) {
+		// Each advance selects a new upload region; callers write its consumed
+		// contents before flushing. The same CPU bytes go to the GPU and journal.
+		// Keep this allocation across frames, including multiple flushes of one
+		// mapping (for example opaque and transparent render-list appends).
+		buffer->capture_upload.resize(buffer->size);
+		buffer->capture_mapping = mapped;
+		return buffer->capture_upload.ptrw();
+	}
+	buffer->capture_upload.clear();
+#endif
+	// wgodot-changes::end
+	return mapped;
 }
 
-void RenderingDevice::buffer_flush(RID p_buffer) {
+// wgodot-changes::begin
+void RenderingDevice::buffer_flush(RID p_buffer, uint32_t p_offset, uint32_t p_size) {
+// wgodot-changes::end
 	ERR_RENDER_THREAD_GUARD();
 
 	Buffer *buffer = _get_buffer_from_owner(p_buffer);
 	ERR_FAIL_NULL_MSG(buffer, "Buffer argument is not a valid buffer of any type.");
+
+	// wgodot-changes::begin
+	ERR_FAIL_COND_MSG(p_offset > buffer->size || p_size > buffer->size - p_offset, "Persistent upload range exceeds the buffer allocation.");
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	if (buffer->capture_mapping) {
+		const uint32_t size = p_size ? p_size : buffer->size - p_offset;
+		WGodotGPUProfile::Scope profile_scope("capture.mapped_upload");
+		const uint8_t *source = buffer->capture_upload.ptr() + p_offset;
+		memcpy(buffer->capture_mapping + p_offset, source, size);
+		WGPU_RECORD(BUFFER_UPDATE, p_buffer, p_offset, (WGPUCapture::Bytes{ source, size }));
+	}
+#endif
+	// wgodot-changes::end
 	driver->buffer_flush(buffer->driver_id);
 }
 
@@ -1580,6 +1674,12 @@ RID RenderingDevice::storage_buffer_create(uint32_t p_size_bytes, Span<uint8_t> 
 #ifdef DEV_ENABLED
 	set_resource_name(id, "RID:" + itos(id.get_id()));
 #endif
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(BUFFER_CREATE, id, WGPUCapture::BufferKind::STORAGE, p_size_bytes, 0, p_usage, p_creation_bits, false, p_data);
+#endif
+	// wgodot-changes::end
 	return id;
 }
 
@@ -1618,6 +1718,12 @@ RID RenderingDevice::texture_buffer_create(uint32_t p_size_elements, DataFormat 
 #ifdef DEV_ENABLED
 	set_resource_name(id, "RID:" + itos(id.get_id()));
 #endif
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(BUFFER_CREATE, id, WGPUCapture::BufferKind::TEXEL, size_bytes, p_format, 0, 0, false, p_data);
+#endif
+	// wgodot-changes::end
 	return id;
 }
 
@@ -1852,6 +1958,12 @@ RID RenderingDevice::texture_create(const TextureFormat &p_format, const Texture
 		}
 	}
 
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(TEXTURE_CREATE, id, p_format, p_view, p_data);
+#endif
+	// wgodot-changes::end
 	return id;
 }
 
@@ -1938,6 +2050,12 @@ RID RenderingDevice::texture_create_shared(const TextureView &p_view, RID p_with
 #endif
 	_add_dependency(id, p_with_texture);
 
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(TEXTURE_SHARE, id, p_view, p_with_texture);
+#endif
+	// wgodot-changes::end
 	return id;
 }
 
@@ -1980,6 +2098,12 @@ RID RenderingDevice::texture_create_from_extension(TextureType p_type, DataForma
 	set_resource_name(id, "RID:" + itos(id.get_id()));
 #endif
 
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(TEXTURE_EXTERNAL, id, p_type, p_format, p_samples, p_usage, p_image, p_width, p_height, p_depth, p_layers, p_mipmaps);
+#endif
+	// wgodot-changes::end
 	return id;
 }
 
@@ -2124,6 +2248,12 @@ RID RenderingDevice::texture_create_shared_from_slice(const TextureView &p_view,
 #endif
 	_add_dependency(id, p_with_texture);
 
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(TEXTURE_SLICE, id, p_view, p_with_texture, p_layer, p_mipmap, p_mipmaps, p_slice_type, p_layers);
+#endif
+	// wgodot-changes::end
 	return id;
 }
 
@@ -2474,6 +2604,12 @@ Error RenderingDevice::texture_update(RID p_texture, uint32_t p_layer, const Vec
 
 	draw_graph.add_texture_update(texture->driver_id, texture->draw_tracker, command_buffer_to_texture_copies_vector);
 
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(TEXTURE_UPDATE, p_texture, p_layer, p_data);
+#endif
+	// wgodot-changes::end
 	return OK;
 }
 
@@ -2926,16 +3062,34 @@ Error RenderingDevice::texture_get_data_async(RID p_texture, uint32_t p_layer, c
 	for (uint32_t i = 0; i < tex->mipmaps; i++) {
 		uint32_t image_total = get_image_format_required_size(tex->format, tex->width, tex->height, tex->depth, i + 1, &w, &h, &d);
 		uint32_t tight_mip_size = image_total - mipmap_offset;
+		// wgodot-changes::begin
+		// Prefer contiguous rows for uncompressed images. Square tiles require
+		// thousands of small, strided CPU copies when a full render target is
+		// downloaded. Keep every stripe within the existing staging block budget.
+		uint32_t region_width = region_size;
+		uint32_t region_height = region_size;
+		if (block_w == 1 && block_h == 1) {
+			const uint64_t row_pitch = STEPIFY(uint64_t(w) * pixel_size, pitch_step);
+			if (row_pitch > 0 && row_pitch <= download_staging_buffers.block_size) {
+				region_width = w;
+				region_height = uint32_t(MIN(uint64_t(h), download_staging_buffers.block_size / row_pitch));
+			}
+		}
+		// wgodot-changes::end
 		for (uint32_t z = 0; z < d; z++) {
-			for (uint32_t y = 0; y < h; y += region_size) {
-				for (uint32_t x = 0; x < w; x += region_size) {
-					uint32_t region_w = MIN(region_size, w - x);
-					uint32_t region_h = MIN(region_size, h - y);
+			// wgodot-changes::begin
+			for (uint32_t y = 0; y < h; y += region_height) {
+				for (uint32_t x = 0; x < w; x += region_width) {
+					uint32_t region_w = MIN(region_width, w - x);
+					uint32_t region_h = MIN(region_height, h - y);
+					// wgodot-changes::end
 					ERR_FAIL_COND_V(region_w % block_w, ERR_BUG);
 					ERR_FAIL_COND_V(region_h % block_h, ERR_BUG);
 
-					uint32_t region_logic_w = MIN(region_size, logic_w - x);
-					uint32_t region_logic_h = MIN(region_size, logic_h - y);
+					// wgodot-changes::begin
+					uint32_t region_logic_w = MIN(region_width, logic_w - x);
+					uint32_t region_logic_h = MIN(region_height, logic_h - y);
+					// wgodot-changes::end
 					uint32_t region_pitch = get_compressed_image_format_pixels_shifted(tex->format, region_w * pixel_size * block_w);
 					region_pitch = STEPIFY(region_pitch, pitch_step);
 
@@ -3137,6 +3291,12 @@ Error RenderingDevice::texture_copy(RID p_from_texture, RID p_to_texture, const 
 
 	draw_graph.add_texture_copy(src_tex->driver_id, src_tex->draw_tracker, dst_tex->driver_id, dst_tex->draw_tracker, copy_region);
 
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(TEXTURE_COPY, p_from_texture, p_to_texture, p_from, p_to, p_size, p_src_mipmap, p_dst_mipmap, p_src_layer, p_dst_layer);
+#endif
+	// wgodot-changes::end
 	return OK;
 }
 
@@ -3190,6 +3350,12 @@ Error RenderingDevice::texture_resolve_multisample(RID p_from_texture, RID p_to_
 
 	draw_graph.add_texture_resolve(src_tex->driver_id, src_tex->draw_tracker, dst_tex->driver_id, dst_tex->draw_tracker, src_tex->base_layer, src_tex->base_mipmap, dst_tex->base_layer, dst_tex->base_mipmap);
 
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(TEXTURE_RESOLVE, p_from_texture, p_to_texture);
+#endif
+	// wgodot-changes::end
 	return OK;
 }
 
@@ -3208,6 +3374,12 @@ void RenderingDevice::texture_set_discardable(RID p_texture, bool p_discardable)
 	if (texture->shared_fallback != nullptr && texture->shared_fallback->texture_tracker != nullptr) {
 		texture->shared_fallback->texture_tracker->is_discardable = p_discardable;
 	}
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(TEXTURE_DISCARDABLE, p_texture, p_discardable);
+#endif
+	// wgodot-changes::end
 }
 
 bool RenderingDevice::texture_is_discardable(RID p_texture) {
@@ -3242,6 +3414,12 @@ Error RenderingDevice::texture_clear(RID p_texture, const Color &p_color, uint32
 
 	_texture_clear_color(p_texture, src_tex, p_color, p_base_mipmap, p_mipmaps, p_base_layer, p_layers);
 
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(TEXTURE_CLEAR, p_texture, p_color, p_base_mipmap, p_mipmaps, p_base_layer, p_layers);
+#endif
+	// wgodot-changes::end
 	return OK;
 }
 
@@ -3677,6 +3855,12 @@ RenderingDevice::FramebufferFormatID RenderingDevice::framebuffer_format_create_
 	}
 #endif
 
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(FRAMEBUFFER_FORMAT, id, p_attachments, p_passes, p_view_count, p_vrs_attachment);
+#endif
+	// wgodot-changes::end
 	return id;
 }
 
@@ -3712,6 +3896,12 @@ RenderingDevice::FramebufferFormatID RenderingDevice::framebuffer_format_create_
 	print_line("FRAMEBUFFER FORMAT:", id, "ATTACHMENTS: EMPTY");
 #endif
 
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(FRAMEBUFFER_EMPTY_FORMAT, id, p_samples);
+#endif
+	// wgodot-changes::end
 	return id;
 }
 
@@ -3747,6 +3937,12 @@ RID RenderingDevice::framebuffer_create_empty(const Size2i &p_size, TextureSampl
 	// This relies on the fact that HashMap will not change the address of an object after it's been inserted into the container.
 	framebuffer_cache->render_pass_creation_user_data = (void *)(&framebuffer_formats[framebuffer.format_id].E->key());
 
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(FRAMEBUFFER_EMPTY, id, p_size, p_samples, p_format_check);
+#endif
+	// wgodot-changes::end
 	return id;
 }
 
@@ -3884,6 +4080,12 @@ RID RenderingDevice::framebuffer_create_multipass(const Vector<RID> &p_texture_a
 	// This relies on the fact that HashMap will not change the address of an object after it's been inserted into the container.
 	framebuffer_cache->render_pass_creation_user_data = (void *)(&framebuffer_formats[framebuffer.format_id].E->key());
 
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(FRAMEBUFFER, id, p_texture_attachments, p_passes, p_format_check, p_view_count);
+#endif
+	// wgodot-changes::end
 	return id;
 }
 
@@ -3941,6 +4143,12 @@ RID RenderingDevice::sampler_create(const SamplerState &p_state) {
 #ifdef DEV_ENABLED
 	set_resource_name(id, "RID:" + itos(id.get_id()));
 #endif
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(SAMPLER, id, p_state);
+#endif
+	// wgodot-changes::end
 	return id;
 }
 
@@ -3999,6 +4207,12 @@ RID RenderingDevice::vertex_buffer_create(uint32_t p_size_bytes, Span<uint8_t> p
 #ifdef DEV_ENABLED
 	set_resource_name(id, "RID:" + itos(id.get_id()));
 #endif
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(BUFFER_CREATE, id, WGPUCapture::BufferKind::VERTEX, p_size_bytes, 0, 0, p_creation_bits, false, p_data);
+#endif
+	// wgodot-changes::end
 	return id;
 }
 
@@ -4057,6 +4271,12 @@ RenderingDevice::VertexFormatID RenderingDevice::vertex_format_create(const Vect
 	ce.vertex_formats = vertex_descriptions;
 	ce.bindings = std::move(bindings);
 	ce.driver_id = driver_id;
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(VERTEX_FORMAT, id, p_vertex_descriptions);
+#endif
+	// wgodot-changes::end
 	return id;
 }
 
@@ -4144,6 +4364,12 @@ RID RenderingDevice::vertex_array_create(uint32_t p_vertex_count, VertexFormatID
 		_add_dependency(id, buf);
 	}
 
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(VERTEX_ARRAY, id, p_vertex_count, p_vertex_format, p_src_buffers, p_offsets);
+#endif
+	// wgodot-changes::end
 	return id;
 }
 
@@ -4217,6 +4443,12 @@ RID RenderingDevice::index_buffer_create(uint32_t p_index_count, IndexBufferForm
 #ifdef DEV_ENABLED
 	set_resource_name(id, "RID:" + itos(id.get_id()));
 #endif
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(BUFFER_CREATE, id, WGPUCapture::BufferKind::INDEX, index_buffer.size, p_format, 0, p_creation_bits, p_use_restart_indices, p_data);
+#endif
+	// wgodot-changes::end
 	return id;
 }
 
@@ -4243,6 +4475,12 @@ RID RenderingDevice::index_array_create(RID p_index_buffer, uint32_t p_index_off
 
 	RID id = index_array_owner.make_rid(index_array);
 	_add_dependency(id, p_index_buffer);
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(INDEX_ARRAY, id, p_index_buffer, p_index_offset, p_index_count);
+#endif
+	// wgodot-changes::end
 	return id;
 }
 
@@ -4415,6 +4653,12 @@ RID RenderingDevice::shader_create_from_bytecode_with_samplers(const Vector<uint
 #ifdef DEV_ENABLED
 	set_resource_name(id, "RID:" + itos(id.get_id()));
 #endif
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(SHADER, id, p_shader_binary, p_immutable_samplers);
+#endif
+	// wgodot-changes::end
 	return id;
 }
 
@@ -4428,7 +4672,13 @@ RID RenderingDevice::shader_create_placeholder() {
 	_THREAD_SAFE_METHOD_
 
 	Shader shader;
-	return shader_owner.make_rid(shader);
+	RID id = shader_owner.make_rid(shader);
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(SHADER_PLACEHOLDER, id);
+#endif
+	// wgodot-changes::end
+	return id;
 }
 
 uint64_t RenderingDevice::shader_get_vertex_input_attribute_mask(RID p_shader) {
@@ -4483,6 +4733,12 @@ RID RenderingDevice::uniform_buffer_create(uint32_t p_size_bytes, Span<uint8_t> 
 #ifdef DEV_ENABLED
 	set_resource_name(id, "RID:" + itos(id.get_id()));
 #endif
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(BUFFER_CREATE, id, WGPUCapture::BufferKind::UNIFORM, p_size_bytes, 0, 0, p_creation_bits, false, p_data);
+#endif
+	// wgodot-changes::end
 	return id;
 }
 
@@ -4965,6 +5221,12 @@ RID RenderingDevice::uniform_set_create(const VectorView<RD::Uniform> &p_uniform
 		}
 	}
 
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(UNIFORM_SET, id, p_uniforms, p_shader, p_shader_set, p_linear_pool);
+#endif
+	// wgodot-changes::end
 	return id;
 }
 
@@ -4992,6 +5254,11 @@ bool RenderingDevice::uniform_sets_have_linear_pools() const {
 /*******************/
 
 RID RenderingDevice::render_pipeline_create(RID p_shader, FramebufferFormatID p_framebuffer_format, VertexFormatID p_vertex_format, RenderPrimitive p_render_primitive, const PipelineRasterizationState &p_rasterization_state, const PipelineMultisampleState &p_multisample_state, const PipelineDepthStencilState &p_depth_stencil_state, const PipelineColorBlendState &p_blend_state, BitField<PipelineDynamicStateFlags> p_dynamic_state_flags, uint32_t p_for_render_pass, const Vector<PipelineSpecializationConstant> &p_specialization_constants) {
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGodotGPUProfile::Scope profile_scope("device.create_render_pipeline");
+#endif
+	// wgodot-changes::end
 	// Needs a shader.
 	Shader *shader = shader_owner.get_or_null(p_shader);
 	ERR_FAIL_NULL_V(shader, RID());
@@ -5181,6 +5448,12 @@ RID RenderingDevice::render_pipeline_create(RID p_shader, FramebufferFormatID p_
 		_add_dependency(id, p_shader);
 	}
 
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(RENDER_PIPELINE, id, p_shader, p_framebuffer_format, p_vertex_format, p_render_primitive, p_rasterization_state, p_multisample_state, p_depth_stencil_state, p_blend_state, p_dynamic_state_flags, p_for_render_pass, p_specialization_constants);
+#endif
+	// wgodot-changes::end
 	return id;
 }
 
@@ -5191,6 +5464,11 @@ bool RenderingDevice::render_pipeline_is_valid(RID p_pipeline) {
 }
 
 RID RenderingDevice::compute_pipeline_create(RID p_shader, const Vector<PipelineSpecializationConstant> &p_specialization_constants) {
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGodotGPUProfile::Scope profile_scope("device.create_compute_pipeline");
+#endif
+	// wgodot-changes::end
 	Shader *shader;
 
 	{
@@ -5244,6 +5522,12 @@ RID RenderingDevice::compute_pipeline_create(RID p_shader, const Vector<Pipeline
 		_add_dependency(id, p_shader);
 	}
 
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(COMPUTE_PIPELINE, id, p_shader, p_specialization_constants);
+#endif
+	// wgodot-changes::end
 	return id;
 }
 
@@ -5310,6 +5594,12 @@ Error RenderingDevice::_raytracing_pipeline_create_sbt_buffer(RDD::RaytracingPip
 }
 
 RID RenderingDevice::raytracing_pipeline_create(Span<PipelineShader> p_raygen_shaders, Span<PipelineShader> p_miss_shaders, Span<HitGroup> p_hit_groups, uint32_t p_max_trace_recursion_depth) {
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(UNSUPPORTED, "raytracing_pipeline_create");
+#endif
+	// wgodot-changes::end
+
 	ERR_FAIL_COND_V_MSG(!has_feature(SUPPORTS_RAYTRACING_PIPELINE) && !has_feature(SUPPORTS_RAY_QUERY), RID(), "The current rendering device has neither raytracing pipeline nor ray query support.");
 
 	struct PipelineShaderKey : PipelineShader {
@@ -5710,6 +6000,12 @@ RenderingDevice::DrawListID RenderingDevice::draw_list_begin_for_screen(DisplayS
 	draw_graph.add_draw_list_set_viewport(viewport);
 	draw_graph.add_draw_list_set_scissor(viewport);
 
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(DRAW_SCREEN, int64_t(ID_TYPE_DRAW_LIST) << ID_BASE_SHIFT, p_screen, p_clear_color, viewport.size);
+#endif
+	// wgodot-changes::end
 	return int64_t(ID_TYPE_DRAW_LIST) << ID_BASE_SHIFT;
 }
 
@@ -5839,6 +6135,12 @@ RenderingDevice::DrawListID RenderingDevice::draw_list_begin(RID p_framebuffer, 
 	draw_graph.add_draw_list_set_viewport(viewport_rect);
 	draw_graph.add_draw_list_set_scissor(viewport_rect);
 
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(DRAW_BEGIN, int64_t(ID_TYPE_DRAW_LIST) << ID_BASE_SHIFT, p_framebuffer, p_draw_flags, p_clear_color_values, p_clear_depth_value, p_clear_stencil_value, p_region, p_breadcrumb);
+#endif
+	// wgodot-changes::end
 	return int64_t(ID_TYPE_DRAW_LIST) << ID_BASE_SHIFT;
 }
 
@@ -5854,6 +6156,12 @@ void RenderingDevice::draw_list_set_blend_constants(DrawListID p_list, const Col
 	ERR_FAIL_COND(!draw_list.active);
 
 	draw_graph.add_draw_list_set_blend_constants(p_color);
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(DRAW_BLEND, p_list, p_color);
+#endif
+	// wgodot-changes::end
 }
 
 void RenderingDevice::draw_list_bind_render_pipeline(DrawListID p_list, RID p_render_pipeline) {
@@ -5941,6 +6249,12 @@ void RenderingDevice::draw_list_bind_render_pipeline(DrawListID p_list, RID p_re
 	draw_list.validation.pipeline_primitive_minimum = pipeline->validation.primitive_minimum;
 	draw_list.validation.pipeline_push_constant_size = pipeline->push_constant_size;
 #endif
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(DRAW_PIPELINE, p_list, p_render_pipeline);
+#endif
+	// wgodot-changes::end
 }
 
 void RenderingDevice::draw_list_bind_uniform_set(DrawListID p_list, RID p_uniform_set, uint32_t p_index) {
@@ -5979,6 +6293,12 @@ void RenderingDevice::draw_list_bind_uniform_set(DrawListID p_list, RID p_unifor
 		}
 	}
 #endif
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(DRAW_UNIFORMS, p_list, p_uniform_set, p_index);
+#endif
+	// wgodot-changes::end
 }
 
 void RenderingDevice::draw_list_bind_vertex_array(DrawListID p_list, RID p_vertex_array) {
@@ -6008,6 +6328,12 @@ void RenderingDevice::draw_list_bind_vertex_array(DrawListID p_list, RID p_verte
 	for (int i = 0; i < vertex_array->draw_trackers.size(); i++) {
 		draw_graph.add_draw_list_usage(vertex_array->draw_trackers[i], RDG::RESOURCE_USAGE_VERTEX_BUFFER_READ);
 	}
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(DRAW_VERTICES, p_list, p_vertex_array);
+#endif
+	// wgodot-changes::end
 }
 
 void RenderingDevice::draw_list_bind_vertex_buffers_format(DrawListID p_list, VertexFormatID p_vertex_format, uint32_t p_vertex_count, const Span<RID> &p_vertex_buffers, const Span<uint64_t> &p_offsets) {
@@ -6108,6 +6434,12 @@ void RenderingDevice::draw_list_bind_vertex_buffers_format(DrawListID p_list, Ve
 	draw_list.validation.vertex_format = p_vertex_format;
 	draw_list.validation.vertex_max_instances_allowed = max_instances_allowed;
 #endif
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(DRAW_VERTEX_BUFFERS, p_list, p_vertex_format, p_vertex_count, p_vertex_buffers, p_offsets);
+#endif
+	// wgodot-changes::end
 }
 
 void RenderingDevice::draw_list_bind_index_array(DrawListID p_list, RID p_index_array) {
@@ -6136,6 +6468,12 @@ void RenderingDevice::draw_list_bind_index_array(DrawListID p_list, RID p_index_
 	if (index_array->draw_tracker != nullptr) {
 		draw_graph.add_draw_list_usage(index_array->draw_tracker, RDG::RESOURCE_USAGE_INDEX_BUFFER_READ);
 	}
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(DRAW_INDICES, p_list, p_index_array);
+#endif
+	// wgodot-changes::end
 }
 
 void RenderingDevice::draw_list_set_line_width(DrawListID p_list, float p_width) {
@@ -6144,6 +6482,12 @@ void RenderingDevice::draw_list_set_line_width(DrawListID p_list, float p_width)
 	ERR_FAIL_COND(!draw_list.active);
 
 	draw_graph.add_draw_list_set_line_width(p_width);
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(DRAW_LINE_WIDTH, p_list, p_width);
+#endif
+	// wgodot-changes::end
 }
 
 void RenderingDevice::draw_list_set_push_constant(DrawListID p_list, const void *p_data, uint32_t p_data_size) {
@@ -6161,6 +6505,12 @@ void RenderingDevice::draw_list_set_push_constant(DrawListID p_list, const void 
 #ifdef DEBUG_ENABLED
 	draw_list.validation.pipeline_push_constant_supplied = true;
 #endif
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(DRAW_PUSH, p_list, (WGPUCapture::Bytes{ p_data, p_data_size }));
+#endif
+	// wgodot-changes::end
 }
 
 void RenderingDevice::draw_list_draw(DrawListID p_list, bool p_use_indices, uint32_t p_instances, uint32_t p_procedural_vertices) {
@@ -6324,6 +6674,12 @@ void RenderingDevice::draw_list_draw(DrawListID p_list, bool p_use_indices, uint
 	}
 
 	draw_list.state.draw_count++;
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(DRAW, p_list, p_use_indices, p_instances, p_procedural_vertices);
+#endif
+	// wgodot-changes::end
 }
 
 void RenderingDevice::draw_list_draw_indirect(DrawListID p_list, bool p_use_indices, RID p_buffer, uint32_t p_offset, uint32_t p_draw_count, uint32_t p_stride) {
@@ -6433,6 +6789,12 @@ void RenderingDevice::draw_list_draw_indirect(DrawListID p_list, bool p_use_indi
 	}
 
 	_check_transfer_worker_buffer(buffer);
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(DRAW_INDIRECT, p_list, p_use_indices, p_buffer, p_offset, p_draw_count, p_stride);
+#endif
+	// wgodot-changes::end
 }
 
 void RenderingDevice::draw_list_set_viewport(DrawListID p_list, const Rect2i &p_rect) {
@@ -6444,6 +6806,12 @@ void RenderingDevice::draw_list_set_viewport(DrawListID p_list, const Rect2i &p_
 
 	draw_list.viewport = p_rect;
 	draw_graph.add_draw_list_set_viewport(p_rect);
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(DRAW_VIEWPORT, p_list, p_rect);
+#endif
+	// wgodot-changes::end
 }
 
 void RenderingDevice::draw_list_enable_scissor(DrawListID p_list, const Rect2 &p_rect) {
@@ -6461,6 +6829,12 @@ void RenderingDevice::draw_list_enable_scissor(DrawListID p_list, const Rect2 &p
 	}
 
 	draw_graph.add_draw_list_set_scissor(rect);
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(DRAW_SCISSOR, p_list, p_rect);
+#endif
+	// wgodot-changes::end
 }
 
 void RenderingDevice::draw_list_disable_scissor(DrawListID p_list) {
@@ -6469,6 +6843,12 @@ void RenderingDevice::draw_list_disable_scissor(DrawListID p_list) {
 	ERR_FAIL_COND(!draw_list.active);
 
 	draw_graph.add_draw_list_set_scissor(draw_list.viewport);
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(DRAW_SCISSOR_DISABLE, p_list);
+#endif
+	// wgodot-changes::end
 }
 
 uint32_t RenderingDevice::draw_list_get_current_pass() {
@@ -6492,6 +6872,12 @@ RenderingDevice::DrawListID RenderingDevice::draw_list_switch_to_next_pass() {
 
 	_draw_list_start(viewport);
 
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(DRAW_NEXT_PASS, int64_t(ID_TYPE_DRAW_LIST) << ID_BASE_SHIFT);
+#endif
+	// wgodot-changes::end
 	return int64_t(ID_TYPE_DRAW_LIST) << ID_BASE_SHIFT;
 }
 
@@ -6538,6 +6924,12 @@ void RenderingDevice::draw_list_end() {
 	}
 
 	draw_list_bound_textures.clear();
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD_EMPTY(DRAW_END);
+#endif
+	// wgodot-changes::end
 }
 
 /***************************/
@@ -6831,6 +7223,12 @@ RenderingDevice::ComputeListID RenderingDevice::compute_list_begin() {
 
 	draw_graph.add_compute_list_begin();
 
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(COMPUTE_BEGIN, int64_t(ID_TYPE_COMPUTE_LIST));
+#endif
+	// wgodot-changes::end
 	return ID_TYPE_COMPUTE_LIST;
 }
 
@@ -6909,6 +7307,12 @@ void RenderingDevice::compute_list_bind_compute_pipeline(ComputeListID p_list, R
 	compute_list.validation.pipeline_active = true;
 	compute_list.validation.pipeline_push_constant_size = pipeline->push_constant_size;
 #endif
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(COMPUTE_PIPELINE_BIND, p_list, p_compute_pipeline);
+#endif
+	// wgodot-changes::end
 }
 
 void RenderingDevice::compute_list_bind_uniform_set(ComputeListID p_list, RID p_uniform_set, uint32_t p_index) {
@@ -6948,6 +7352,12 @@ void RenderingDevice::compute_list_bind_uniform_set(ComputeListID p_list, RID p_
 		}
 	}
 #endif
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(COMPUTE_UNIFORMS, p_list, p_uniform_set, p_index);
+#endif
+	// wgodot-changes::end
 }
 
 void RenderingDevice::compute_list_set_push_constant(ComputeListID p_list, const void *p_data, uint32_t p_data_size) {
@@ -6971,6 +7381,12 @@ void RenderingDevice::compute_list_set_push_constant(ComputeListID p_list, const
 #ifdef DEBUG_ENABLED
 	compute_list.validation.pipeline_push_constant_supplied = true;
 #endif
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(COMPUTE_PUSH, p_list, (WGPUCapture::Bytes{ p_data, p_data_size }));
+#endif
+	// wgodot-changes::end
 }
 
 void RenderingDevice::compute_list_dispatch(ComputeListID p_list, uint32_t p_x_groups, uint32_t p_y_groups, uint32_t p_z_groups) {
@@ -7089,6 +7505,12 @@ void RenderingDevice::compute_list_dispatch(ComputeListID p_list, uint32_t p_x_g
 	}
 	draw_graph.add_compute_list_dispatch(p_x_groups, p_y_groups, p_z_groups);
 	compute_list.state.dispatch_count++;
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(DISPATCH, p_list, p_x_groups, p_y_groups, p_z_groups);
+#endif
+	// wgodot-changes::end
 }
 
 void RenderingDevice::compute_list_dispatch_threads(ComputeListID p_list, uint32_t p_x_threads, uint32_t p_y_threads, uint32_t p_z_threads) {
@@ -7233,6 +7655,12 @@ void RenderingDevice::compute_list_dispatch_indirect(ComputeListID p_list, RID p
 	}
 
 	_check_transfer_worker_buffer(buffer);
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(DISPATCH_INDIRECT, p_list, p_buffer, p_offset);
+#endif
+	// wgodot-changes::end
 }
 
 void RenderingDevice::compute_list_add_barrier(ComputeListID p_list) {
@@ -7265,6 +7693,12 @@ void RenderingDevice::compute_list_end() {
 	draw_graph.add_compute_list_end();
 
 	compute_list = ComputeList();
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD_EMPTY(COMPUTE_END);
+#endif
+	// wgodot-changes::end
 }
 
 #ifndef DISABLE_DEPRECATED
@@ -7775,6 +8209,12 @@ void RenderingDevice::free_rid(RID p_rid) {
 
 	_free_dependencies(p_rid); // Recursively erase dependencies first, to avoid potential API problems.
 	_free_internal(p_rid);
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(FREE, p_rid);
+#endif
+	// wgodot-changes::end
 }
 
 void RenderingDevice::_free_internal(RID p_id) {
@@ -7927,6 +8367,13 @@ void RenderingDevice::texture_replace_rid(RID p_old_texture, RID p_new_texture) 
 	Texture *new_texture = texture_owner.get_or_null(p_new_texture);
 	ERR_FAIL_NULL(new_texture);
 
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(TEXTURE_REPLACE, p_old_texture, p_new_texture);
+	WGPUCapture::Recorder::Suspension capture_suspension;
+#endif
+	// wgodot-changes::end
 	// We must snapshot the set because we'll be mutating the dependency map.
 	LocalVector<RID> dependent_uniform_sets;
 	{
@@ -8097,6 +8544,12 @@ void RenderingDevice::set_resource_name(RID p_id, const String &p_name) {
 #ifdef DEV_ENABLED
 	resource_names[p_id] = p_name;
 #endif
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(RESOURCE_NAME, p_id, p_name);
+#endif
+	// wgodot-changes::end
 }
 
 void RenderingDevice::_draw_command_begin_label(String p_label_name, const Color &p_color) {
@@ -8106,6 +8559,12 @@ void RenderingDevice::_draw_command_begin_label(String p_label_name, const Color
 void RenderingDevice::draw_command_begin_label(const Span<char> p_label_name, const Color &p_color) {
 	ERR_RENDER_THREAD_GUARD();
 
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(LABEL_BEGIN, String::utf8(p_label_name.ptr(), p_label_name.size()), p_color);
+#endif
+	// wgodot-changes::end
 	if (!context->is_debug_utils_enabled()) {
 		return;
 	}
@@ -8116,6 +8575,12 @@ void RenderingDevice::draw_command_begin_label(const Span<char> p_label_name, co
 #ifndef DISABLE_DEPRECATED
 void RenderingDevice::draw_command_insert_label(String p_label_name, const Color &p_color) {
 	WARN_PRINT("Deprecated. Inserting labels no longer applies due to command reordering.");
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(LABEL_INSERT, p_label_name, p_color);
+#endif
+	// wgodot-changes::end
 }
 #endif
 
@@ -8123,6 +8588,12 @@ void RenderingDevice::draw_command_end_label() {
 	ERR_RENDER_THREAD_GUARD();
 
 	draw_graph.end_label();
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD_EMPTY(LABEL_END);
+#endif
+	// wgodot-changes::end
 }
 
 String RenderingDevice::get_device_vendor_name() const {
@@ -8171,6 +8642,12 @@ void RenderingDevice::swap_buffers(bool p_present) {
 
 	GodotProfileZoneGrouped(_profile_zone, "_begin_frame");
 	_begin_frame(true);
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(SWAP, p_present);
+#endif
+	// wgodot-changes::end
 }
 
 void RenderingDevice::submit() {
@@ -8181,6 +8658,12 @@ void RenderingDevice::submit() {
 	_end_frame();
 	_execute_frame(false);
 	local_device_processing = true;
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD_EMPTY(SUBMIT);
+#endif
+	// wgodot-changes::end
 }
 
 void RenderingDevice::sync() {
@@ -8190,6 +8673,12 @@ void RenderingDevice::sync() {
 
 	_begin_frame(true);
 	local_device_processing = false;
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD_EMPTY(SYNCHRONIZE);
+#endif
+	// wgodot-changes::end
 }
 
 void RenderingDevice::_free_pending_resources(int p_frame) {
@@ -8534,9 +9023,25 @@ void RenderingDevice::_stall_for_frame(uint32_t p_frame) {
 
 	if (frames[p_frame].fence_signaled) {
 		GodotProfileZoneGroupedFirst(_profile_zone, "driver->fence_wait");
+		// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+		WGodotGPUProfile::Scope fence_scope("device.gpu_fence_wait");
+#endif
+		// wgodot-changes::end
 		driver->fence_wait(frames[p_frame].fence);
+		// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+		fence_scope.finish();
+#endif
+		// wgodot-changes::end
 		frames[p_frame].fence_signaled = false;
 
+		// wgodot-changes::begin
+		// Retire both queues before callbacks may enqueue new GPU work. A buffer
+		// callback can also request a texture (and vice versa).
+		Vector<Callable> completed_callbacks;
+		Vector<PackedByteArray> completed_data;
+		// wgodot-changes::end
 		// Flush any pending requests for asynchronous buffer downloads.
 		if (!frames[p_frame].download_buffer_get_data_requests.is_empty()) {
 			// wgodot-changes::begin
@@ -8545,16 +9050,27 @@ void RenderingDevice::_stall_for_frame(uint32_t p_frame) {
 #endif
 			// wgodot-changes::end
 			GodotProfileZoneGrouped(_profile_zone, "flush asynchronous buffer downloads");
-			for (uint32_t i = 0; i < frames[p_frame].download_buffer_get_data_requests.size(); i++) {
-				const BufferGetDataRequest &request = frames[p_frame].download_buffer_get_data_requests[i];
-				// wgodot-changes::begin
-				PackedByteArray packed_byte_array;
-				// wgodot-changes::end
-				packed_byte_array.resize(request.size);
-
-				// wgodot-changes::begin
-				{
-					RenderingDeviceReadbackMappings mappings(driver);
+			// wgodot-changes::begin
+			const uint32_t request_count = frames[p_frame].download_buffer_get_data_requests.size();
+			completed_callbacks.resize(request_count);
+			completed_data.resize(request_count);
+			LocalVector<bool> valid;
+			valid.resize(request_count);
+			{
+				RenderingDeviceReadbackMappings mappings(driver);
+				RenderingDeviceReadbackCopies copies;
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+				WGodotGPUProfile::Scope preparation_scope("device.prepare_buffer_readbacks");
+#endif
+				for (uint32_t i = 0; i < request_count; i++) {
+					const BufferGetDataRequest &request = frames[p_frame].download_buffer_get_data_requests[i];
+					completed_callbacks.write[i] = request.callback;
+					PackedByteArray &packed_byte_array = completed_data.write[i];
+					valid[i] = packed_byte_array.resize(request.size) == OK;
+					if (!valid[i]) {
+						ERR_PRINT("Cannot allocate a completed buffer readback.");
+						continue;
+					}
 					uint8_t *output = packed_byte_array.ptrw();
 					uint32_t array_offset = 0;
 					for (uint32_t j = 0; j < request.frame_local_count; j++) {
@@ -8563,17 +9079,25 @@ void RenderingDevice::_stall_for_frame(uint32_t p_frame) {
 						const uint8_t *buffer_data = mappings.get(frames[p_frame].download_buffer_staging_buffers[local_index]);
 						if (!buffer_data) {
 							ERR_PRINT("Cannot map a completed buffer readback.");
-							packed_byte_array.clear();
+							valid[i] = false;
 							break;
 						}
-						memcpy(output + array_offset, buffer_data + region.dst_offset, region.size);
+						copies.add(output + array_offset, buffer_data + region.dst_offset, region.size, region.size, region.size, 1);
 						array_offset += region.size;
 					}
 				}
-				// wgodot-changes::end
-
-				request.callback.call(packed_byte_array);
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+				preparation_scope.finish();
+				WGodotGPUProfile::Scope copy_scope("device.copy_buffer_readbacks");
+#endif
+				copies.finish();
 			}
+			for (uint32_t i = 0; i < request_count; i++) {
+				if (!valid[i]) {
+					completed_data.write[i].clear();
+				}
+			}
+			// wgodot-changes::end
 
 			frames[p_frame].download_buffer_staging_buffers.clear();
 			frames[p_frame].download_buffer_copy_regions.clear();
@@ -8588,67 +9112,107 @@ void RenderingDevice::_stall_for_frame(uint32_t p_frame) {
 #endif
 			// wgodot-changes::end
 			GodotProfileZoneGrouped(_profile_zone, "flush asynchronous texture downloads");
-			for (uint32_t i = 0; i < frames[p_frame].download_texture_get_data_requests.size(); i++) {
-				const TextureGetDataRequest &request = frames[p_frame].download_texture_get_data_requests[i];
-				uint32_t texture_size = get_image_format_required_size(request.format, request.width, request.height, request.depth, request.mipmaps);
-				// wgodot-changes::begin
-				PackedByteArray packed_byte_array;
+			// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+			WGodotGPUProfile::Scope preparation_scope("device.prepare_texture_readbacks");
+#endif
+			Vector<PackedByteArray> downloaded;
+			Vector<Callable> callbacks;
+			LocalVector<bool> valid;
+			const uint32_t request_count = frames[p_frame].download_texture_get_data_requests.size();
+			downloaded.resize(request_count);
+			callbacks.resize(request_count);
+			valid.resize(request_count);
+			{
+				RenderingDeviceReadbackMappings mappings(driver);
+				RenderingDeviceReadbackCopies copies;
 				// wgodot-changes::end
-				packed_byte_array.resize(texture_size);
+				for (uint32_t i = 0; i < frames[p_frame].download_texture_get_data_requests.size(); i++) {
+					const TextureGetDataRequest &request = frames[p_frame].download_texture_get_data_requests[i];
+					uint32_t texture_size = get_image_format_required_size(request.format, request.width, request.height, request.depth, request.mipmaps);
+					// wgodot-changes::begin
+					PackedByteArray &packed_byte_array = downloaded.write[i];
+					callbacks.write[i] = request.callback;
+					valid[i] = true;
+					if (packed_byte_array.resize(texture_size) != OK) {
+						valid[i] = false;
+						continue;
+					}
+					// wgodot-changes::end
 
-				// Find the block size of the texture's format.
-				uint32_t block_w = 0;
-				uint32_t block_h = 0;
-				get_compressed_image_format_block_dimensions(request.format, block_w, block_h);
+					// Find the block size of the texture's format.
+					uint32_t block_w = 0;
+					uint32_t block_h = 0;
+					get_compressed_image_format_block_dimensions(request.format, block_w, block_h);
 
-				uint32_t block_size = get_compressed_image_format_block_byte_size(request.format);
-				uint32_t pixel_size = get_image_format_pixel_size(request.format);
-				uint32_t region_size = texture_download_region_size_px;
+					uint32_t block_size = get_compressed_image_format_block_byte_size(request.format);
+					uint32_t pixel_size = get_image_format_pixel_size(request.format);
 
-				// wgodot-changes::begin
-				{
-					RenderingDeviceReadbackMappings mappings(driver);
-					uint8_t *output = packed_byte_array.ptrw();
-					for (uint32_t j = 0; j < request.frame_local_count; j++) {
-						uint32_t local_index = request.frame_local_index + j;
-						const RDD::BufferTextureCopyRegion &region = frames[p_frame].download_buffer_texture_copy_regions[local_index];
-						uint32_t w = STEPIFY(request.width >> region.texture_subresource.mipmap, block_w);
-						uint32_t h = STEPIFY(request.height >> region.texture_subresource.mipmap, block_h);
-						uint32_t region_w = MIN(region_size, w - region.texture_offset.x);
-						uint32_t region_h = MIN(region_size, h - region.texture_offset.y);
+					// wgodot-changes::begin
+					{
+						uint8_t *output = packed_byte_array.ptrw();
+						for (uint32_t j = 0; j < request.frame_local_count; j++) {
+							uint32_t local_index = request.frame_local_index + j;
+							const RDD::BufferTextureCopyRegion &region = frames[p_frame].download_buffer_texture_copy_regions[local_index];
+							uint32_t w = STEPIFY(MAX(1u, request.width >> region.texture_subresource.mipmap), block_w);
+							uint32_t region_w = STEPIFY(uint32_t(region.texture_region_size.x), block_w);
+							uint32_t region_h = STEPIFY(uint32_t(region.texture_region_size.y), block_h);
 
-						const uint8_t *buffer_data = mappings.get(frames[p_frame].download_texture_staging_buffers[local_index]);
-						if (!buffer_data) {
-							ERR_PRINT("Cannot map a completed texture readback.");
-							packed_byte_array.clear();
-							break;
-						}
-						const uint8_t *read_ptr = buffer_data + region.buffer_offset;
-						uint8_t *write_ptr = output + frames[p_frame].download_texture_mipmap_offsets[local_index];
-						uint32_t unit_size = pixel_size;
-						if (block_w != 1 || block_h != 1) {
-							unit_size = block_size;
-						}
+							const uint8_t *buffer_data = mappings.get(frames[p_frame].download_texture_staging_buffers[local_index]);
+							if (!buffer_data) {
+								ERR_PRINT("Cannot map a completed texture readback.");
+								// Earlier regions can already have queued copies into this
+								// array. Keep it alive until the entire group has joined.
+								valid[i] = false;
+								break;
+							}
+							const uint8_t *read_ptr = buffer_data + region.buffer_offset;
+							uint8_t *write_ptr = output + frames[p_frame].download_texture_mipmap_offsets[local_index];
+							uint32_t unit_size = pixel_size;
+							if (block_w != 1 || block_h != 1) {
+								unit_size = block_size;
+							}
 
-						write_ptr += ((region.texture_offset.y / block_h) * (w / block_w) + (region.texture_offset.x / block_w)) * unit_size;
-						for (uint32_t y = region_h / block_h; y > 0; y--) {
-							memcpy(write_ptr, read_ptr, (region_w / block_w) * unit_size);
-							write_ptr += (w / block_w) * unit_size;
-							read_ptr += region.row_pitch;
+							write_ptr += ((region.texture_offset.y / block_h) * (w / block_w) + (region.texture_offset.x / block_w)) * unit_size;
+							const uint32_t row_bytes = (region_w / block_w) * unit_size;
+							const uint32_t output_pitch = (w / block_w) * unit_size;
+							copies.add(write_ptr, read_ptr, row_bytes, output_pitch, region.row_pitch, region_h / block_h);
 						}
 					}
-				}
-				// wgodot-changes::end
+					// wgodot-changes::end
 
-				request.callback.call(packed_byte_array);
-			}
+				}
+				// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+				preparation_scope.finish();
+				WGodotGPUProfile::Scope copy_scope("device.copy_texture_readbacks");
+#endif
+				copies.finish();
+			} // Release mappings before callbacks can submit new device work.
+			// wgodot-changes::end
 
 			GodotProfileZoneGrouped(_profile_zone, "clear buffers");
 			frames[p_frame].download_texture_staging_buffers.clear();
 			frames[p_frame].download_buffer_texture_copy_regions.clear();
 			frames[p_frame].download_texture_mipmap_offsets.clear();
 			frames[p_frame].download_texture_get_data_requests.clear();
+			// wgodot-changes::begin
+			// Invoke only after both types of completed downloads are retired.
+			for (uint32_t i = 0; i < request_count; i++) {
+				completed_callbacks.push_back(callbacks[i]);
+				completed_data.push_back(valid[i] ? downloaded[i] : PackedByteArray());
+			}
+			// wgodot-changes::end
 		}
+		// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+		WGodotGPUProfile::Scope callbacks_scope("device.readback_callbacks");
+#endif
+		for (int i = 0; i < completed_callbacks.size(); i++) {
+			completed_callbacks[i].call(completed_data[i]);
+			completed_data.write[i].clear();
+		}
+		// wgodot-changes::end
 	}
 }
 
@@ -8962,6 +9526,12 @@ Error RenderingDevice::initialize(RenderingContextDriver *p_context, DisplayServ
 	// Find the best method available for VRS on the current hardware.
 	_vrs_detect_method();
 
+
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD(DEVICE, get_device_name(), get_device_api_name());
+#endif
+	// wgodot-changes::end
 	return OK;
 }
 
@@ -9378,6 +9948,12 @@ void RenderingDevice::finalize() {
 	// All these should be clear at this point.
 	ERR_FAIL_COND(dependency_map.size());
 	ERR_FAIL_COND(reverse_dependency_map.size());
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGPU_RECORD_EMPTY(DEVICE_END);
+#endif
+	// wgodot-changes::end
+
 }
 
 void RenderingDevice::_set_max_fps(int p_max_fps) {

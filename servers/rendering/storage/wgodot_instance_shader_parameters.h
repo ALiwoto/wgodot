@@ -76,6 +76,12 @@ struct WInstanceShaderValue {
 // lock protects metadata/value publication; render commands own their values.
 class WInstanceShaderParameters : public RefCounted {
 public:
+	enum class SetResult {
+		INVALID,
+		UNCHANGED,
+		CHANGED,
+	};
+
 	struct Item {
 		PropertyInfo info;
 		int gpu_index = -1;
@@ -97,7 +103,7 @@ public:
 	Vector<Item> snapshot() const;
 	Item get(int p_slot) const;
 	WInstanceShaderValue value(int p_slot) const;
-	bool set(int p_slot, WInstanceShaderValue &r_value);
+	SetResult set(int p_slot, WInstanceShaderValue &r_value);
 	WInstanceShaderValue clear(int p_slot);
 	int gpu_index(int p_slot, WInstanceShaderValue &r_value) const;
 };

@@ -91,7 +91,9 @@ void InstanceUniforms::set(RID p_self, const StringName &p_name, const Variant &
 		return;
 	}
 	WInstanceShaderValue value = WInstanceShaderValue::from_variant(p_value);
-	if (value.valid() && parameters->set(slot, value)) {
+	// Already on the render thread: preserve this command's position relative
+	// to draws. Shared CPU state may already contain a later scene-node write.
+	if (value.valid() && parameters->set(slot, value) != WInstanceShaderParameters::SetResult::INVALID) {
 		upload(p_self, slot, value);
 	}
 }

@@ -64,6 +64,7 @@ struct Block {
 	const uint8_t *source = nullptr;
 	int bytes = 0;
 	bool shuffled = false;
+	int compression_level = 1;
 	PackedByteArray compressed;
 	Error error = OK;
 };
@@ -81,9 +82,7 @@ void encode_block(void *p_userdata, uint32_t p_index) {
 		source = context.scratch;
 	}
 	block.compressed.resize(ZSTD_compressBound(block.bytes));
-	// Byte planes compress better than interleaved float components even with
-	// the fast strategy. Byte/texture inputs retain normal lossless level 1.
-	size_t size = ZSTD_compressCCtx(context.zstd, block.compressed.ptrw(), block.compressed.size(), source, block.bytes, block.shuffled ? -1 : 1);
+	size_t size = ZSTD_compressCCtx(context.zstd, block.compressed.ptrw(), block.compressed.size(), source, block.bytes, block.compression_level);
 	if (ZSTD_isError(size)) {
 		block.error = ERR_CANT_CREATE;
 		block.compressed.clear();
@@ -93,7 +92,8 @@ void encode_block(void *p_userdata, uint32_t p_index) {
 }
 } // namespace
 
-Vector<Output> encode(const Vector<Input> &p_inputs) {
+Vector<Output> encode(const Vector<Input> &p_inputs, WorkerThreadPool *p_pool) {
+	WorkerThreadPool *pool = p_pool ? p_pool : WorkerThreadPool::get_singleton();
 	Vector<Block> blocks;
 	for (const Input &input : p_inputs) {
 		ERR_FAIL_COND_V(input.shuffle_stride != 0 && (input.shuffle_stride != 8 || input.bytes.size() % 8), Vector<Output>());
@@ -102,15 +102,16 @@ Vector<Output> encode(const Vector<Input> &p_inputs) {
 			block.source = input.bytes.ptr() + offset;
 			block.bytes = MIN(int64_t(BLOCK_BYTES), input.bytes.size() - offset);
 			block.shuffled = input.shuffle_stride != 0;
+			block.compression_level = input.compression_level;
 			blocks.push_back(block);
 		}
 	}
 	if (!blocks.is_empty()) {
 		// One flat group over all planes: a large changing plane cannot leave
 		// most cores idle after the smaller/reused planes have finished.
-		auto task = WorkerThreadPool::get_singleton()->add_native_group_task(
+		auto task = pool->add_native_group_task(
 				&encode_block, blocks.ptrw(), blocks.size(), -1, true, "Encode capture blocks");
-		WorkerThreadPool::get_singleton()->wait_for_group_task_completion(task);
+		pool->wait_for_group_task_completion(task);
 	}
 	Vector<Output> outputs;
 	int first = 0;

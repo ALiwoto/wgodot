@@ -1,8 +1,11 @@
 // wgodot-changes::file
 #include "render_capture.h"
+#include "scene_snapshot.h"
+#include "capture_paths.h"
 
 #ifdef TOOLS_ENABLED
 #include "scene/3d/mesh_instance_3d.h"
+#include "scene/resources/mesh.h"
 #include "core/object/callable_mp.h"
 #include "core/os/semaphore.h"
 #include "scene/resources/3d/skin.h"
@@ -11,15 +14,49 @@
 #include "servers/rendering/storage/mesh_storage.h"
 #include "scene/3d/skeleton_3d.h"
 #include "scene/main/viewport.h"
+#include "scene/main/canvas_item.h"
 #include "modules/modules_enabled.gen.h"
 #ifdef MODULE_PARTICLE_EFFECTS_ENABLED
 #include "modules/particle_effects/particle_instance_3d.h"
 #include "modules/particle_effects/particle_instance_pool_3d.h"
 #endif
 
+TypedArray<Node> WRenderCapture::expand_snapshot_children(Node *p_root, Node *p_parent, const Ref<WSceneSnapshot> &p_output, const Ref<WCapturePaths> &p_paths, bool p_world) {
+	ERR_FAIL_NULL_V(p_root, TypedArray<Node>());
+	ERR_FAIL_NULL_V(p_parent, TypedArray<Node>());
+	ERR_FAIL_COND_V(p_output.is_null() || p_paths.is_null(), TypedArray<Node>());
+	Vector<Node *> pending;
+	// Include internal nodes as well: they can own visible geometry. Private
+	// particle slots are selected separately by the pool visitor.
+	for (int i = p_parent->get_child_count() - 1; i >= 0; i--) {
+		pending.push_back(p_parent->get_child(i));
+	}
+	TypedArray<Node> result;
+	while (!pending.is_empty()) {
+		Node *node = pending[pending.size() - 1];
+		pending.resize(pending.size() - 1);
+		ERR_FAIL_NULL_V(node, TypedArray<Node>());
+		const StringName native_type = node->get_class_name();
+		// Plain hierarchy nodes have no application-specific capture fields.
+		// Read them in one native traversal instead of calling the script visitor
+		// and its type-dispatch chain for every transform in every particle.
+		if (node->get_script_instance() || (native_type != Node::get_class_static() && native_type != Node3D::get_class_static())) {
+			result.push_back(node);
+			continue;
+		}
+		if (p_world && native_type == Node3D::get_class_static()) {
+			write_spatial(static_cast<Node3D *>(node), p_output, p_paths->get_path(p_root, node));
+		}
+		for (int i = node->get_child_count() - 1; i >= 0; i--) {
+			pending.push_back(node->get_child(i));
+		}
+	}
+	return result;
+}
+
 void WRenderCapture::PaletteBatch::collect(Node *p_node, Viewport *p_viewport) {
 	Viewport *node_viewport = Object::cast_to<Viewport>(p_node);
-	if (node_viewport && node_viewport != p_viewport) {
+	if (Object::cast_to<CanvasItem>(p_node) || (node_viewport && node_viewport != p_viewport)) {
 		return;
 	}
 #ifdef MODULE_PARTICLE_EFFECTS_ENABLED
@@ -89,6 +126,7 @@ void WRenderCapture::queue_skeleton_palettes(const TypedArray<Node> &p_roots) {
 }
 
 void WRenderCapture::_queue_skeleton_palettes(Ref<PaletteBatch> p_batch) {
+	ERR_FAIL_COND_MSG(ending || completed.is_set(), "Cannot append skeleton palettes after a rendering capture has ended.");
 	if (palette_request.is_valid()) {
 		failure.set(ERR_BUSY);
 		return;
@@ -144,30 +182,20 @@ bool WRenderCapture::render_visible(Node3D *p_node) {
 	return false;
 }
 
-void WRenderCapture::write_skeleton(Skeleton3D *p_skeleton, const Ref<ConfigFile> &p_output, const String &p_section) {
+void WRenderCapture::write_skeleton(Skeleton3D *p_skeleton, const Ref<WSceneSnapshot> &p_output, const String &p_section) {
 	ERR_FAIL_NULL(p_skeleton);
 	ERR_FAIL_COND(p_output.is_null());
-	const int count = p_skeleton->get_bone_count();
-	PackedStringArray names;
-	names.resize(count);
-	TypedArray<Transform3D> poses;
-	poses.resize(count);
-	for (int bone = 0; bone < count; bone++) {
-		names.set(bone, p_skeleton->get_bone_name(bone));
-		poses[bone] = p_skeleton->get_bone_global_pose(bone);
-	}
-	p_output->set_value(p_section, "bones", names);
-	p_output->set_value(p_section, "poses", poses);
+	p_output->capture_skeleton(p_skeleton, p_section);
 }
 
-void WRenderCapture::write_skeletons(Node *p_root, Node *p_node, const String &p_frame, const Ref<ConfigFile> &p_output) {
+void WRenderCapture::write_skeletons(Node *p_root, Node *p_node, const String &p_frame, const Ref<WSceneSnapshot> &p_output) {
 	ERR_FAIL_NULL(p_root);
 	ERR_FAIL_NULL(p_node);
 	ERR_FAIL_COND(p_output.is_null());
 	// Traverse natively: no per-node/per-bone VM dispatch or temporary child
 	// arrays. Stop at the same visibility and viewport boundaries as rendering.
 	Viewport *viewport = Object::cast_to<Viewport>(p_node);
-	if (viewport && viewport != p_root->get_viewport()) {
+	if (Object::cast_to<CanvasItem>(p_node) || (viewport && viewport != p_root->get_viewport())) {
 		return;
 	}
 	Node3D *spatial = Object::cast_to<Node3D>(p_node);
@@ -183,129 +211,59 @@ void WRenderCapture::write_skeletons(Node *p_root, Node *p_node, const String &p
 	}
 }
 
-void WRenderCapture::write_spatial(Node3D *p_node, const Ref<ConfigFile> &p_output, const String &p_section) {
-	ERR_FAIL_NULL(p_node);
+void WRenderCapture::write_skeleton_list(Node *p_root, const TypedArray<Skeleton3D> &p_skeletons, const String &p_frame, const Ref<WSceneSnapshot> &p_output) {
+	ERR_FAIL_NULL(p_root);
 	ERR_FAIL_COND(p_output.is_null());
-	p_output->set_value(p_section, "class", p_node->get_class());
-	p_output->set_value(p_section, "instance_id", int64_t(p_node->get_instance_id()));
-	p_output->set_value(p_section, "transform", render_transform(p_node));
-	p_output->set_value(p_section, "visible", render_visible(p_node));
-	if (!p_node->get_scene_file_path().is_empty() || !p_output->has_section_key(p_section, "source_scene")) {
-		p_output->set_value(p_section, "source_scene", p_node->get_scene_file_path());
+	for (int i = 0; i < p_skeletons.size(); i++) {
+		Skeleton3D *skeleton = Object::cast_to<Skeleton3D>(p_skeletons[i]);
+		ERR_FAIL_NULL(skeleton);
+		if (skeleton->get_viewport() != p_root->get_viewport()) {
+			continue;
+		}
+		// Match the recursive recorder's visibility pruning, including hidden
+		// ancestors separated from the rig by a plain Node (which breaks the
+		// Node3D visibility-parent chain). Walk only each rig's ancestry.
+		Node *ancestor = skeleton;
+		for (; ancestor; ancestor = ancestor->get_parent()) {
+			Node3D *spatial = Object::cast_to<Node3D>(ancestor);
+			if (Object::cast_to<CanvasItem>(ancestor) || (spatial && !spatial->is_visible_in_tree())) {
+				break;
+			}
+			if (ancestor == p_root) {
+				write_skeleton(skeleton, p_output, p_frame + ":" + String(p_root->get_path_to(skeleton)));
+				break;
+			}
+		}
 	}
 }
 
-void WRenderCapture::write_mesh(MeshInstance3D *p_node, const Ref<ConfigFile> &p_output, const String &p_section, const Ref<ConfigFile> &p_palettes) {
+void WRenderCapture::write_spatial(Node3D *p_node, const Ref<WSceneSnapshot> &p_output, const String &p_section) {
+	ERR_FAIL_NULL(p_node);
+	ERR_FAIL_COND(p_output.is_null());
+	p_output->capture_spatial(p_node, p_section);
+}
+
+void WRenderCapture::write_mesh(MeshInstance3D *p_node, const Ref<WSceneSnapshot> &p_output, const String &p_section, const Ref<ConfigFile> &p_palettes) {
 	ERR_FAIL_NULL(p_node);
 	ERR_FAIL_COND(p_output.is_null() || p_node->get_mesh().is_null());
-	p_output->set_value(p_section, "visible", render_visible(p_node));
-	p_output->set_value(p_section, "transform", render_transform(p_node));
-	p_output->set_value(p_section, "layers", p_node->get_layer_mask());
-	p_output->set_value(p_section, "mesh", p_node->get_mesh()->get_path());
-	p_output->set_value(p_section, "mesh_rid", int64_t(p_node->get_mesh()->get_rid().get_id()));
-	auto shadow = p_node->get_cast_shadows_setting();
-	p_output->set_value(p_section, "cast_shadows", shadow != GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
-	p_output->set_value(p_section, "two_sided_shadow", shadow == GeometryInstance3D::SHADOW_CASTING_SETTING_DOUBLE_SIDED);
-	p_output->set_value(p_section, "shadow_mode", int(shadow));
-	p_output->set_value(p_section, "transparency", p_node->get_transparency());
-	p_output->set_value(p_section, "visibility_begin", p_node->get_visibility_range_begin());
-	p_output->set_value(p_section, "visibility_end", p_node->get_visibility_range_end());
-	p_output->set_value(p_section, "extra_cull_margin", p_node->get_extra_cull_margin());
-	p_output->set_value(p_section, "custom_aabb", p_node->get_custom_aabb());
-	instance_uniforms(p_node, p_output, p_section, "instance/");
-	Ref<Skin> skin = p_node->get_skin();
-	if (skin.is_valid()) {
-		Ref<SkinReference> reference = p_node->get_skin_reference();
-		if (reference.is_valid()) {
-			String key = uitos(reference->get_skeleton().get_id());
-			ERR_FAIL_COND_MSG(p_palettes.is_null() || !p_palettes->has_section_key(key, "poses"), "Skin palette missing from frozen snapshot.");
-			TypedArray<Transform3D> palette = p_palettes->get_value(key, "poses");
-			ERR_FAIL_COND_MSG(palette.size() != skin->get_bind_count(), "Rendered skin palette and snapshot bindings differ.");
-			p_output->set_value(p_section, "skin/palette", palette);
-		}
-		const int count = skin->get_bind_count();
-		PackedStringArray names;
-		PackedInt32Array bones;
-		TypedArray<Transform3D> poses;
-		names.resize(count);
-		bones.resize(count);
-		poses.resize(count);
-		for (int i = 0; i < count; i++) {
-			names.set(i, skin->get_bind_name(i));
-			bones.set(i, skin->get_bind_bone(i));
-			poses[i] = skin->get_bind_pose(i);
-		}
-		p_output->set_value(p_section, "skin/names", names);
-		p_output->set_value(p_section, "skin/bones", bones);
-		p_output->set_value(p_section, "skin/poses", poses);
-	}
+	p_output->capture_mesh(p_node, p_section, p_palettes);
 }
 
-void WRenderCapture::write_transforms(const TypedArray<Node3D> &p_nodes, const Ref<ConfigFile> &p_output, const String &p_section) {
+void WRenderCapture::write_transforms(const TypedArray<Node3D> &p_nodes, const Ref<WSceneSnapshot> &p_output, const String &p_section) {
 	ERR_FAIL_COND(p_output.is_null());
-	const int count = p_nodes.size();
-	PackedInt64Array identities;
-	TypedArray<Transform3D> transforms;
-	PackedByteArray visible;
-	identities.resize(count);
-	transforms.resize(count);
-	visible.resize(count);
-	for (int i = 0; i < count; i++) {
-		Node3D *node = Object::cast_to<Node3D>(p_nodes[i]);
-		ERR_FAIL_NULL(node);
-		identities.set(i, int64_t(node->get_instance_id()));
-		transforms[i] = node->get_global_transform_interpolated();
-		visible.set(i, node->is_visible_in_tree());
-	}
-	p_output->set_value(p_section, "identities", identities);
-	p_output->set_value(p_section, "transforms", transforms);
-	p_output->set_value(p_section, "visible", visible);
+	p_output->capture_transforms(p_nodes, p_section);
 }
 
 #ifdef MODULE_PARTICLE_EFFECTS_ENABLED
-void WRenderCapture::write_particle_transforms(const TypedArray<ParticleInstance3D> &p_particles, const Ref<ConfigFile> &p_output, const String &p_section) {
+void WRenderCapture::write_particle_transforms(const TypedArray<ParticleInstance3D> &p_particles, const Ref<WSceneSnapshot> &p_output, const String &p_section) {
 	ERR_FAIL_COND(p_output.is_null());
-	const int count = p_particles.size();
-	PackedInt64Array identities;
-	PackedInt32Array births;
-	TypedArray<Transform3D> transforms;
-	PackedByteArray visible;
-	identities.resize(count);
-	births.resize(count);
-	transforms.resize(count);
-	visible.resize(count);
-	for (int i = 0; i < count; i++) {
-		ParticleInstance3D *particle = Object::cast_to<ParticleInstance3D>(p_particles[i]);
-		ERR_FAIL_NULL(particle);
-		identities.set(i, int64_t(particle->get_instance_id()));
-		births.set(i, particle->get_spawn_index());
-		transforms[i] = particle->get_render_transform(particle);
-		visible.set(i, particle->is_render_visible(particle));
-	}
-	p_output->set_value(p_section, "particle_identities", identities);
-	p_output->set_value(p_section, "particle_births", births);
-	p_output->set_value(p_section, "particle_transforms", transforms);
-	p_output->set_value(p_section, "particle_visible", visible);
+	p_output->capture_particle_transforms(p_particles, p_section);
 }
 
-void WRenderCapture::write_particle(ParticleInstance3D *p_particle, const Ref<ConfigFile> &p_output, const String &p_section) {
+void WRenderCapture::write_particle(ParticleInstance3D *p_particle, const Ref<WSceneSnapshot> &p_output, const String &p_section) {
 	ERR_FAIL_NULL(p_particle);
 	ERR_FAIL_COND(p_output.is_null());
-	Color color = p_particle->get_particle_render_color();
-	p_output->set_value(p_section, "particle/age", p_particle->get_particle_previous_age());
-	p_output->set_value(p_section, "particle/color", Vector4(color.r, color.g, color.b, color.a));
-	p_output->set_value(p_section, "particle/lifetime", p_particle->get_particle_lifetime());
-	if (p_particle->get_sprite_motion().is_valid()) {
-		p_output->set_value(p_section, "particle/relative_age", p_particle->get_particle_relative_age());
-		p_output->set_value(p_section, "particle/transform", p_particle->get_particle_transform());
-		p_output->set_value(p_section, "particle/position", p_particle->get_particle_position());
-		p_output->set_value(p_section, "particle/velocity", p_particle->get_particle_velocity());
-		p_output->set_value(p_section, "particle/base_size", p_particle->get_particle_base_size());
-		p_output->set_value(p_section, "particle/angle", p_particle->get_particle_angle());
-	}
-	p_output->set_value(p_section, "particle/orbit_position", p_particle->get_particle_render_orbit_offset());
-	p_output->set_value(p_section, "particle/orbit_offset", p_particle->get_particle_orbit_offset());
-	p_output->set_value(p_section, "particle/orbit_rotation", p_particle->get_particle_orbit_rotation());
+	p_output->capture_particle(p_particle, p_section);
 }
 #endif
 #endif

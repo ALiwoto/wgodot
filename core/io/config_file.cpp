@@ -129,18 +129,27 @@ String ConfigFile::encode_to_text() const {
 		} else {
 			sb.append("\n");
 		}
-		if (!E.key.is_empty()) {
-			sb.append("[" + E.key + "]\n\n");
-		}
-
-		for (const KeyValue<String, Variant> &F : E.value) {
-			String vstr;
-			VariantWriter::write_to_string(F.value, vstr, true);
-			sb.append(F.key.property_name_encode() + "=" + vstr + "\n");
-		}
+		// wgodot-changes::begin
+		encode_section_to_text(E.key, sb);
+		// wgodot-changes::end
 	}
 	return sb.as_string();
 }
+
+// wgodot-changes::begin
+void ConfigFile::encode_section_to_text(const String &p_section, StringBuilder &r_output) const {
+	const HashMap<String, Variant> *section = values.getptr(p_section);
+	ERR_FAIL_NULL(section);
+	if (!p_section.is_empty()) {
+		r_output.append("[" + p_section.replace("]", "\\]") + "]\n\n");
+	}
+	for (const KeyValue<String, Variant> &field : *section) {
+		String value;
+		VariantWriter::write_to_string(field.value, value, true);
+		r_output.append(field.key.property_name_encode() + "=" + value + "\n");
+	}
+}
+// wgodot-changes::end
 
 Error ConfigFile::save(const String &p_path) {
 	Error err;
