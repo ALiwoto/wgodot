@@ -12,6 +12,9 @@ int GDScriptLanguage::profiling_get_data(ProfilingInfo *r_info_arr, int p_info_m
 	auto collect_native = [&](const GDScriptFunction::Profile::NativeCalls &p_calls) {
 		uint64_t caller_time = 0;
 		for (const auto &entry : p_calls) {
+			if (entry.value.call_count == 0) {
+				continue;
+			}
 			caller_time += entry.value.total_time;
 			auto *total = native_totals.getptr(entry.key);
 			if (total) {

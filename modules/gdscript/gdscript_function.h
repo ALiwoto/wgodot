@@ -468,8 +468,20 @@ private:
 		NativeCalls last_native_calls;
 		NativeCalls accumulated_native_calls;
 
+		static void reset_native_calls(NativeCalls &r_calls) {
+			// Retain method keys/signatures between frames. HashMap::clear()
+			// releases every entry and forces the VM to allocate them again.
+			for (KeyValue<NativeKey, NativeProfile> &entry : r_calls) {
+				entry.value.call_count = 0;
+				entry.value.total_time = 0;
+			}
+		}
+
 		void accumulate_native_calls() {
 			for (const KeyValue<NativeKey, NativeProfile> &entry : native_calls) {
+				if (entry.value.call_count == 0) {
+					continue;
+				}
 				NativeProfile *total = accumulated_native_calls.getptr(entry.key);
 				if (total) {
 					total->call_count += entry.value.call_count;

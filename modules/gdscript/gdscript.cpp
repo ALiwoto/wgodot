@@ -2613,7 +2613,7 @@ void GDScriptLanguage::frame() {
 			profile.last_frame_call_count = 0;
 			profile.last_frame_self_time = 0;
 			profile.last_frame_total_time = 0;
-			profile.last_native_calls.clear();
+			GDScriptFunction::Profile::reset_native_calls(profile.last_native_calls);
 			previous->remove_from_list();
 		}
 		SelfList<GDScriptFunction> *elem = profile_frame_functions.first();
@@ -2626,13 +2626,13 @@ void GDScriptLanguage::frame() {
 			elem->self()->profile.accumulate_native_calls();
 			// wgodot-changes::end
 			// wgodot-changes::begin
-			// Reuse both maps' allocations after the previous frame was cleared.
+			// The previous-frame loop already reset the buffer we are reusing.
+			// Retain method entries/signatures instead of freeing them every frame.
 			SWAP(elem->self()->profile.last_native_calls, elem->self()->profile.native_calls);
 			// wgodot-changes::end
 			elem->self()->profile.frame_call_count.set(0);
 			elem->self()->profile.frame_self_time.set(0);
 			elem->self()->profile.frame_total_time.set(0);
-			elem->self()->profile.native_calls.clear();
 			// wgodot-changes::begin
 			GDScriptFunction *function = elem->self();
 			elem = elem->next();

@@ -32,6 +32,11 @@ class WSceneSnapshot : public RefCounted {
 		PackedStringArray names;
 		Vector<Transform3D> poses;
 	};
+	struct SkeletonNames {
+		uint64_t version = 0;
+		PackedStringArray names;
+	};
+	HashMap<ObjectID, SkeletonNames> skeleton_names;
 	struct Mesh {
 		String section, path;
 		Transform3D transform;

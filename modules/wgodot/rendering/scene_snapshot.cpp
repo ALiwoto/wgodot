@@ -59,11 +59,23 @@ void WSceneSnapshot::capture_skeleton(Skeleton3D *p_node, const String &p_sectio
 	Skeleton value;
 	value.section = p_section;
 	const int count = p_node->get_bone_count();
-	value.names.resize(count);
+	SkeletonNames &names = skeleton_names[p_node->get_instance_id()];
+	if (names.version != p_node->get_version()) {
+		// Bone names are structural, unlike poses. Reuse their immutable COW
+		// array across frames; adding, clearing or renaming bones changes version.
+		PackedStringArray current;
+		current.resize(count);
+		String *data = current.ptrw();
+		for (int i = 0; i < count; i++) {
+			data[i] = p_node->get_bone_name(i);
+		}
+		names.names = std::move(current);
+		names.version = p_node->get_version();
+	}
+	value.names = names.names;
 	value.poses.resize(count);
 	Transform3D *poses = value.poses.ptrw();
 	for (int i = 0; i < count; i++) {
-		value.names.set(i, p_node->get_bone_name(i));
 		poses[i] = p_node->get_bone_global_pose(i);
 	}
 	const int *existing = skeleton_sections.getptr(p_section);
@@ -311,6 +323,7 @@ Ref<ConfigFile> WSceneSnapshot::materialize() {
 	transforms.clear();
 	particles.clear();
 	skeleton_sections.clear();
+	skeleton_names.clear();
 	return metadata;
 }
 
@@ -324,6 +337,7 @@ void WSceneSnapshot::clear() {
 	transforms.clear();
 	particles.clear();
 	skeleton_sections.clear();
+	skeleton_names.clear();
 	mesh_bounds.clear();
 	mesh_readbacks.clear();
 }
