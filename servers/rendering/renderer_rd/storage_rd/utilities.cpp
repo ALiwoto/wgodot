@@ -28,6 +28,13 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
+// wgodot-changes::begin
+#include "modules/modules_enabled.gen.h"
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+#include "modules/wgodot/rendering/gpu_profile.h"
+#endif
+// wgodot-changes::end
+
 #include "utilities.h"
 
 #include "servers/rendering/renderer_rd/environment/fog.h"
@@ -250,6 +257,11 @@ String Utilities::get_captured_timestamp_name(uint32_t p_index) const {
 /* MISC */
 
 void Utilities::update_dirty_resources() {
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGodotGPUProfile::Scope profile_scope("render.prepare.resources");
+#endif
+	// wgodot-changes::end
 	MaterialStorage::get_singleton()->_update_global_shader_uniforms(); //must do before materials, so it can queue them for update
 	MaterialStorage::get_singleton()->_update_queued_materials();
 	MeshStorage::get_singleton()->_update_dirty_multimeshes();

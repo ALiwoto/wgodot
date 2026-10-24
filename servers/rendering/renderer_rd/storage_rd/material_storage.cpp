@@ -28,6 +28,13 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
+// wgodot-changes::begin
+#include "modules/modules_enabled.gen.h"
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+#include "modules/wgodot/rendering/gpu_profile.h"
+#endif
+// wgodot-changes::end
+
 #include "material_storage.h"
 // wgodot-changes::begin
 #include "servers/rendering/storage/wgodot_shader_parameter_io.h"
@@ -2141,6 +2148,11 @@ void MaterialStorage::global_shader_parameters_instance_update(RID p_instance, i
 // wgodot-changes::end
 
 void MaterialStorage::_update_global_shader_uniforms() {
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGodotGPUProfile::Scope profile_scope("render.prepare.global_uniforms");
+#endif
+	// wgodot-changes::end
 	MaterialStorage *material_storage = MaterialStorage::get_singleton();
 	if (global_shader_uniforms.buffer_dirty_region_count > 0) {
 		uint32_t total_regions = 1 + (global_shader_uniforms.buffer_size / GlobalShaderUniforms::BUFFER_DIRTY_REGION_SIZE);
@@ -2465,6 +2477,11 @@ void MaterialStorage::_material_queue_update(Material *material, bool p_uniform,
 }
 
 void MaterialStorage::_update_queued_materials() {
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGodotGPUProfile::Scope profile_scope("render.prepare.materials");
+#endif
+	// wgodot-changes::end
 	SelfList<Material>::List copy;
 	{
 		MutexLock lock(material_update_list_mutex);

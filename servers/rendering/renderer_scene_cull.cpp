@@ -28,6 +28,13 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
+// wgodot-changes::begin
+#include "modules/modules_enabled.gen.h"
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+#include "modules/wgodot/rendering/gpu_profile.h"
+#endif
+// wgodot-changes::end
+
 #include "renderer_scene_cull.h"
 
 #include "core/config/engine.h"
@@ -4152,6 +4159,11 @@ void RendererSceneCull::render_probes() {
 }
 
 void RendererSceneCull::render_particle_colliders() {
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGodotGPUProfile::Scope profile_scope("render.prepare.particle_colliders");
+#endif
+	// wgodot-changes::end
 	while (heightfield_particle_colliders_update_list.begin()) {
 		Instance *hfpc = *heightfield_particle_colliders_update_list.begin();
 
@@ -4400,6 +4412,11 @@ void RendererSceneCull::_update_dirty_instance(Instance *p_instance) const {
 
 void RendererSceneCull::update_dirty_instances() const {
 	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGodotGPUProfile::Scope profile_scope("render.prepare.instances");
+#endif
+	// wgodot-changes::end
+	// wgodot-changes::begin
 	do {
 		while (_instance_update_list.first()) {
 			_update_dirty_instance(_instance_update_list.first()->self());
@@ -4413,7 +4430,17 @@ void RendererSceneCull::update_dirty_instances() const {
 }
 
 void RendererSceneCull::update() {
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGodotGPUProfile::Scope profile_scope("render.prepare.scene");
+#endif
+	// wgodot-changes::end
 	//optimize bvhs
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGodotGPUProfile::Scope bvh_scope("render.prepare.spatial_index");
+#endif
+	// wgodot-changes::end
 
 	uint32_t rid_count = scenario_owner.get_rid_count();
 	RID *rids = (RID *)alloca(sizeof(RID) * rid_count);
@@ -4423,6 +4450,11 @@ void RendererSceneCull::update() {
 		s->indexers[Scenario::INDEXER_GEOMETRY].optimize_incremental(indexer_update_iterations);
 		s->indexers[Scenario::INDEXER_VOLUMES].optimize_incremental(indexer_update_iterations);
 	}
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	bvh_scope.finish();
+#endif
+	// wgodot-changes::end
 	scene_render->update();
 	update_dirty_instances();
 	render_particle_colliders();

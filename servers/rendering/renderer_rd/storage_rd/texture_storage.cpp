@@ -28,6 +28,13 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
+// wgodot-changes::begin
+#include "modules/modules_enabled.gen.h"
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+#include "modules/wgodot/rendering/gpu_profile.h"
+#endif
+// wgodot-changes::end
+
 #include "texture_storage.h"
 
 #include "core/config/engine.h"
@@ -3506,6 +3513,11 @@ void TextureStorage::area_light_atlas_remove_texture(RID p_texture) {
 }
 
 void TextureStorage::update_area_light_atlas() {
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGodotGPUProfile::Scope profile_scope("render.prepare.area_light_atlas");
+#endif
+	// wgodot-changes::end
 	CopyEffects *copy_effects = CopyEffects::get_singleton();
 	ERR_FAIL_NULL(copy_effects);
 
@@ -3912,6 +3924,11 @@ Dependency *TextureStorage::decal_get_dependency(RID p_decal) {
 }
 
 void TextureStorage::update_decal_atlas() {
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGodotGPUProfile::Scope profile_scope("render.prepare.decal_atlas");
+#endif
+	// wgodot-changes::end
 	CopyEffects *copy_effects = CopyEffects::get_singleton();
 	ERR_FAIL_NULL(copy_effects);
 

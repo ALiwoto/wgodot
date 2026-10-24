@@ -1016,7 +1016,11 @@ Error parse_message(void *p_user, const String &p_message, const Array &p_argume
 	} else if (command == "debug_inspect") {
 		response = WGodotDebugInspector::inspect_object(options);
 	} else if (command == "perf" || command == "textures") {
-		response = WGodotPerformance::execute(request_id, command, options, response_deferred);
+		if (debugging && (!Thread::is_main_thread() || !(command == "perf" && String(options.get("action", String())) == "read"))) {
+			response = make_error(command, "debugger_paused", "Use perf read on the main thread for completed frames, or resume the debugger before controlling capture.");
+		} else {
+			response = WGodotPerformance::execute(request_id, command, options, response_deferred);
+		}
 	} else if (command == "wait") {
 		const int count = options.get("count", 1);
 		const bool physics = options.get("physics", false);

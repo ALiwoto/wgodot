@@ -650,6 +650,10 @@ Dictionary execute(uint64_t p_request_id, const String &p_command, const Diction
 	return Dictionary();
 }
 
+void poll_completed_reports() {
+	poll_report();
+}
+
 void end_frame() {
 	poll_report();
 	if (capture.command.is_empty() || !capture.collecting) {
@@ -720,6 +724,8 @@ void reset() {
 #else
 
 namespace WGodotPerformance {
+
+void poll_completed_reports() {}
 RegionScope::RegionScope(FrameRegion p_region) :
 		region(p_region) {
 }

@@ -28,6 +28,13 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
+// wgodot-changes::begin
+#include "modules/modules_enabled.gen.h"
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+#include "modules/wgodot/rendering/gpu_profile.h"
+#endif
+// wgodot-changes::end
+
 #include "sky.h"
 
 #include "core/config/project_settings.h"
@@ -1519,6 +1526,11 @@ void SkyRD::invalidate_sky(Sky *p_sky) {
 }
 
 void SkyRD::update_dirty_skys() {
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGodotGPUProfile::Scope profile_scope("render.prepare.skies");
+#endif
+	// wgodot-changes::end
 	bool use_raster_effect = RendererRD::CopyEffects::get_singleton()->get_raster_effects().has_flag(RendererRD::CopyEffects::RASTER_EFFECT_OCTMAP);
 	Sky *sky = dirty_sky_list;
 

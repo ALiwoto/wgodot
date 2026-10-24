@@ -28,6 +28,13 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
+// wgodot-changes::begin
+#include "modules/modules_enabled.gen.h"
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+#include "modules/wgodot/rendering/gpu_profile.h"
+#endif
+// wgodot-changes::end
+
 #include "shader_rd.h"
 
 #include "core/config/engine.h"
@@ -686,6 +693,11 @@ bool ShaderRD::_load_from_cache(Version *p_version, int p_group) {
 }
 
 void ShaderRD::_save_to_cache(Version *p_version, int p_group) {
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGodotGPUProfile::Scope profile_scope("render.shader.cache_write");
+#endif
+	// wgodot-changes::end
 	ERR_FAIL_COND(!shader_cache_user_dir_valid);
 	String api_safe_name = String(RD::get_singleton()->get_device_api_name()).validate_filename().to_lower();
 	const String &path = _get_cache_file_path(p_version, p_group, api_safe_name, true);
@@ -738,8 +750,23 @@ void ShaderRD::_compile_version_end(Version *p_version, int p_group) {
 	if (p_version->group_compilation_tasks.size() <= p_group || p_version->group_compilation_tasks[p_group] == 0) {
 		return;
 	}
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGodotGPUProfile::Scope profile_scope("render.shader.finish");
+#endif
+	// wgodot-changes::end
 	WorkerThreadPool::GroupID group_task = p_version->group_compilation_tasks[p_group];
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGodotGPUProfile::Scope wait_scope("render.shader.compile_wait");
+#endif
+	// wgodot-changes::end
 	WorkerThreadPool::get_singleton()->wait_for_group_task_completion(group_task);
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	wait_scope.finish();
+#endif
+	// wgodot-changes::end
 	p_version->group_compilation_tasks.write[p_group] = 0;
 
 	bool all_valid = true;

@@ -49,6 +49,7 @@
 #ifdef MODULE_WGODOT_ENABLED
 #include "modules/wgodot/wgodot_conditional_breakpoint_evaluator.h"
 #include "modules/wgodot/wgodot_game_bridge.h"
+#include "modules/wgodot/wgodot_performance.h"
 #endif
 // wgodot-changes::end
 
@@ -466,6 +467,13 @@ void RemoteDebugger::debug(bool p_can_continue, bool p_is_error_breakpoint) {
 	// wgodot-changes::end
 
 	while (is_peer_connected()) {
+		// wgodot-changes::begin
+#ifdef MODULE_WGODOT_ENABLED
+		if (Thread::is_main_thread()) {
+			WGodotPerformance::poll_completed_reports();
+		}
+#endif
+		// wgodot-changes::end
 		flush_output();
 
 		_poll_messages();

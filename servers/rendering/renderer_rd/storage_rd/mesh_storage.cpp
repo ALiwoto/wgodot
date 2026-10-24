@@ -28,6 +28,13 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
+// wgodot-changes::begin
+#include "modules/modules_enabled.gen.h"
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+#include "modules/wgodot/rendering/gpu_profile.h"
+#endif
+// wgodot-changes::end
+
 #include "mesh_storage.h"
 
 #include "servers/rendering/renderer_viewport.h"
@@ -2307,6 +2314,11 @@ MeshStorage::MultiMeshInterpolator *MeshStorage::_multimesh_get_interpolator(RID
 }
 
 void MeshStorage::_update_dirty_multimeshes() {
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGodotGPUProfile::Scope profile_scope("render.prepare.multimeshes");
+#endif
+	// wgodot-changes::end
 	while (multimesh_dirty_list) {
 		MultiMesh *multimesh = multimesh_dirty_list;
 
@@ -2540,6 +2552,11 @@ void MeshStorage::skeleton_set_base_transform_2d(RID p_skeleton, const Transform
 }
 
 void MeshStorage::_update_dirty_skeletons() {
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGodotGPUProfile::Scope profile_scope("render.prepare.skeletons");
+#endif
+	// wgodot-changes::end
 	while (skeleton_dirty_list) {
 		Skeleton *skeleton = skeleton_dirty_list;
 

@@ -28,6 +28,13 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
+// wgodot-changes::begin
+#include "modules/modules_enabled.gen.h"
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+#include "modules/wgodot/rendering/gpu_profile.h"
+#endif
+// wgodot-changes::end
+
 #include "render_forward_clustered.h"
 
 // wgodot-changes::begin
@@ -309,6 +316,11 @@ bool RenderForwardClustered::free(RID p_rid) {
 }
 
 void RenderForwardClustered::update() {
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGodotGPUProfile::Scope profile_scope("render.prepare.forward_clustered");
+#endif
+	// wgodot-changes::end
 	RendererSceneRenderRD::update();
 	_update_global_pipeline_data_requirements_from_project();
 	_update_global_pipeline_data_requirements_from_light_storage();

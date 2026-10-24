@@ -50,6 +50,9 @@ void begin_frame();
 void begin_phase(FramePhase p_phase);
 Dictionary execute(uint64_t p_request_id, const String &p_command, const Dictionary &p_options, bool &r_deferred);
 void end_frame();
+// Deliver completed worker reports without advancing or finalizing a frame.
+// Called on the main thread, including while the script debugger is paused.
+void poll_completed_reports();
 void reset();
 
 // Covers the whole iteration, including early returns and work after drawing.

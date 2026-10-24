@@ -28,6 +28,13 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
+// wgodot-changes::begin
+#include "modules/modules_enabled.gen.h"
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+#include "modules/wgodot/rendering/gpu_profile.h"
+#endif
+// wgodot-changes::end
+
 #include "renderer_canvas_cull.h"
 
 #include "core/config/engine.h"
@@ -2611,6 +2618,11 @@ void RendererCanvasCull::_update_dirty_item(Item *p_item) {
 }
 
 void RendererCanvasCull::update() {
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WGodotGPUProfile::Scope profile_scope("render.prepare.canvas");
+#endif
+	// wgodot-changes::end
 	update_dirty_items();
 }
 
