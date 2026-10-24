@@ -29,6 +29,10 @@
 /**************************************************************************/
 
 #include "shader.h"
+
+// wgodot-changes::begin
+#include "core/os/thread.h"
+// wgodot-changes::end
 #include "shader.compat.inc"
 
 #include "core/config/engine.h"
@@ -134,6 +138,13 @@ void Shader::set_code(const String &p_code) {
 		RenderingServer::get_singleton()->shader_set_code(shader_rid, preprocessed_code);
 		preprocessed_code = String();
 	}
+	// wgodot-changes::begin
+	else if (!Thread::is_main_thread()) {
+		// A threaded resource/factory load owns this new shader. Start native
+		// preparation here instead of deferring it to the first visible material.
+		_check_shader_rid();
+	}
+	// wgodot-changes::end
 
 	emit_changed();
 }

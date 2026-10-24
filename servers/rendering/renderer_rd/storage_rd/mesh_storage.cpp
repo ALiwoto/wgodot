@@ -2315,6 +2315,9 @@ MeshStorage::MultiMeshInterpolator *MeshStorage::_multimesh_get_interpolator(RID
 
 void MeshStorage::_update_dirty_multimeshes() {
 	// wgodot-changes::begin
+	if (!multimesh_dirty_list) {
+		return;
+	}
 #if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
 	WGodotGPUProfile::Scope profile_scope("render.prepare.multimeshes");
 #endif
@@ -2553,6 +2556,9 @@ void MeshStorage::skeleton_set_base_transform_2d(RID p_skeleton, const Transform
 
 void MeshStorage::_update_dirty_skeletons() {
 	// wgodot-changes::begin
+	if (!skeleton_dirty_list) {
+		return;
+	}
 #if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
 	WGodotGPUProfile::Scope profile_scope("render.prepare.skeletons");
 #endif

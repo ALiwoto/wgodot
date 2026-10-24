@@ -38,6 +38,8 @@
 #include "material_storage.h"
 // wgodot-changes::begin
 #include "servers/rendering/storage/wgodot_shader_parameter_io.h"
+#include "core/os/thread.h"
+#include "servers/rendering/rendering_server.h"
 // wgodot-changes::end
 
 #include "core/config/engine.h"
@@ -2149,6 +2151,9 @@ void MaterialStorage::global_shader_parameters_instance_update(RID p_instance, i
 
 void MaterialStorage::_update_global_shader_uniforms() {
 	// wgodot-changes::begin
+	if (global_shader_uniforms.buffer_dirty_region_count == 0 && !global_shader_uniforms.must_update_buffer_materials && !global_shader_uniforms.must_update_texture_materials) {
+		return;
+	}
 #if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
 	WGodotGPUProfile::Scope profile_scope("render.prepare.global_uniforms");
 #endif
@@ -2327,6 +2332,16 @@ void MaterialStorage::shader_set_code(RID p_shader, const String &p_code) {
 		// wgodot-changes::end
 		shader->data->set_code(p_code);
 		// wgodot-changes::begin
+		if (shader->owners.is_empty() && !Thread::is_main_thread() && !RenderingServer::get_singleton()->is_on_render_thread()) {
+			// Resource preparation must not publish an unfinished native shader
+			// to the render thread. Join its parallel compilation on the loading
+			// worker while it has no material owners. Live shader edits keep the
+			// existing renderer path and its synchronization contract.
+			Pair<ShaderRD *, RID> native = shader->data->get_native_shader_and_version();
+			if (native.first && native.second.is_valid()) {
+				native.first->version_is_valid(native.second);
+			}
+		}
 		for (const auto &parameter : shader->default_texture_parameter) {
 			for (const auto &texture : parameter.value) {
 				shader->data->set_default_texture_parameter(parameter.key, texture.value, texture.key);
