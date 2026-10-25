@@ -30,6 +30,13 @@
 
 #include "rasterizer_gles3.h"
 
+// wgodot-changes::begin
+#include "modules/modules_enabled.gen.h"
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+#include "modules/wgodot/rendering/render_stepper.h"
+#endif
+// wgodot-changes::end
+
 #ifdef GLES3_ENABLED
 
 #include "core/config/engine.h"
@@ -107,8 +114,14 @@ void RasterizerGLES3::begin_frame(double frame_step) {
 	double time_roll_over = GLOBAL_GET_CACHED(double, "rendering/limits/time/time_rollover_secs");
 	time_total = Math::fmod(time_total, time_roll_over);
 
-	canvas->set_time(time_total);
-	scene->set_time(time_total, frame_step);
+	// wgodot-changes::begin
+	double shader_time = time_total;
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	shader_time = WRenderStepper::shader_time(shader_time);
+#endif
+	canvas->set_time(shader_time);
+	scene->set_time(shader_time, frame_step);
+	// wgodot-changes::end
 
 	GLES3::Utilities *utils = GLES3::Utilities::get_singleton();
 	utils->_capture_timestamps_begin();

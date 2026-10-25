@@ -142,6 +142,7 @@ class ParticleSpriteProfile3D : public ParticleMotionProfile3D {
 	double angular_velocity = 0.0;
 	Ref<ParticleFloatCurve> angular_velocity_over_life;
 	bool square = false;
+	Vector2 pivot_offset;
 	TypedArray<Mesh> frames;
 	Ref<ParticleFloatCurve> frame_over_life;
 	Ref<ParticleFloatCurve> frame_over_life_maximum;
@@ -168,6 +169,8 @@ public:
 	Ref<ParticleFloatCurve> get_angular_velocity_over_life() const { return angular_velocity_over_life; }
 	void set_square(bool p_value) { square = p_value; }
 	bool get_square() const { return square; }
+	void set_pivot_offset(const Vector2 &p_value) { pivot_offset = p_value; }
+	Vector2 get_pivot_offset() const { return pivot_offset; }
 	void set_frames(const TypedArray<Mesh> & p_value) { frames = p_value; }
 	TypedArray<Mesh> get_frames() const { return frames; }
 	void set_frame_over_life(const Ref<ParticleFloatCurve> & p_value) { frame_over_life = p_value; }

@@ -323,7 +323,9 @@ public:
 	void set_modifier_callback_mode_process(ModifierCallbackModeProcess p_mode);
 	ModifierCallbackModeProcess get_modifier_callback_mode_process() const;
 
-	void advance(double p_delta);
+	// wgodot-changes::begin
+	void advance(double p_delta, bool p_immediate = false);
+	// wgodot-changes::end
 
 #ifndef DISABLE_DEPRECATED
 	Transform3D get_bone_global_pose_no_override(int p_bone) const;

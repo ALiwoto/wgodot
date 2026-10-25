@@ -264,6 +264,12 @@ float RendererSceneRender::environment_get_tonemap_agx_contrast(RID p_env) const
 	return environment_storage.environment_get_tonemap_agx_contrast(p_env);
 }
 
+// wgodot-changes::begin
+void RendererSceneRender::environment_set_tonemap_log_lut_parameters(RID p_env, const Vector4 &p_parameters) {
+	environment_storage.environment_set_tonemap_log_lut_parameters(p_env, p_parameters);
+}
+// wgodot-changes::end
+
 RendererEnvironmentStorage::TonemapParameters RendererSceneRender::environment_get_tonemap_parameters(RID p_env, bool p_limit_agx_white, float p_output_max_value) const {
 	return environment_storage.environment_get_tonemap_parameters(p_env, p_limit_agx_white, p_output_max_value);
 }

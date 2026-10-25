@@ -123,6 +123,7 @@ void SceneShaderForwardMobile::ShaderData::set_code(const String &p_code) {
 	bool screen_read_current = false;
 	actions.render_mode_flags["screen_distortion"] = &screen_distortion;
 	actions.render_mode_flags["screen_read_current"] = &screen_read_current;
+	actions.render_mode_flags["screen_read_after_transparent"] = &screen_read_current;
 	actions.usage_flag_pointers["SCREEN_DISTORTION"] = &screen_distortion;
 	// wgodot-changes::end
 	actions.render_mode_flags["wireframe"] = &wireframe;

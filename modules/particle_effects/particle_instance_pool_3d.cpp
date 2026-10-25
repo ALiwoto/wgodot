@@ -6,6 +6,9 @@
 #include "scene/resources/3d/world_3d.h"
 
 void ParticleInstancePool3D::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("set_visibility_aabb", "value"), &ParticleInstancePool3D::set_visibility_aabb);
+	ClassDB::bind_method(D_METHOD("get_visibility_aabb"), &ParticleInstancePool3D::get_visibility_aabb);
+	ADD_PROPERTY(PropertyInfo(Variant::AABB, "visibility_aabb"), "set_visibility_aabb", "get_visibility_aabb");
 	ClassDB::bind_method(D_METHOD("prepare", "scene", "capacity"), &ParticleInstancePool3D::prepare);
 	ClassDB::bind_method(D_METHOD("acquire"), &ParticleInstancePool3D::acquire);
 	ClassDB::bind_method(D_METHOD("release", "instance"), &ParticleInstancePool3D::release);
@@ -71,12 +74,20 @@ Error ParticleInstancePool3D::prepare(const Ref<PackedScene> &p_scene, int p_cap
 			return error;
 		}
 		instance->hide();
+		instance->set_visibility_aabb(visibility_aabb);
 		instance->prepare_render_instances(this);
 		instances.push_back(instance);
 		indices.insert(instance, i);
 		available.push_back(i);
 	}
 	return OK;
+}
+
+void ParticleInstancePool3D::set_visibility_aabb(const AABB &p_value) {
+	visibility_aabb = p_value;
+	for (ParticleInstance3D *instance : instances) {
+		instance->set_visibility_aabb(p_value);
+	}
 }
 
 ParticleInstance3D *ParticleInstancePool3D::acquire() {

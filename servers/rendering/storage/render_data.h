@@ -46,4 +46,8 @@ public:
 
 	virtual RID get_environment() const = 0;
 	virtual RID get_camera_attributes() const = 0;
+	// wgodot-changes::begin
+	// Compositor callback only. Opt-in editor capture; a no-op in normal play.
+	void capture_texture(const StringName &p_name, RID p_texture, int p_view = 0) const;
+	// wgodot-changes::end
 };

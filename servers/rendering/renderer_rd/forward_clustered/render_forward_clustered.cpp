@@ -999,6 +999,7 @@ void RenderForwardClustered::_fill_render_list(RenderListType p_render_list, con
 			render_list[RENDER_LIST_ALPHA].clear();
 // wgodot-changes::begin
 			render_list[RENDER_LIST_DISTORTION].clear();
+			render_list[RENDER_LIST_SCREEN_EFFECT].clear();
 // wgodot-changes::end
 		}
 	}
@@ -1207,6 +1208,12 @@ void RenderForwardClustered::_fill_render_list(RenderListType p_render_list, con
 				if (surf->flags & GeometryInstanceSurfaceDataCache::FLAG_PASS_DISTORTION) {
 					surf->color_pass_inclusion_mask = COLOR_PASS_FLAG_TRANSPARENT;
 					render_list[RENDER_LIST_DISTORTION].add_element(surf);
+				} else if (surf->flags & GeometryInstanceSurfaceDataCache::FLAG_PASS_SCREEN_EFFECT) {
+					surf->color_pass_inclusion_mask = COLOR_PASS_FLAG_TRANSPARENT;
+					render_list[RENDER_LIST_SCREEN_EFFECT].add_element(surf);
+					if (uses_gi) {
+						surf->sort.uses_forward_gi = 1;
+					}
 				} else
 // wgodot-changes::end
 				if (force_alpha || (surf->flags & GeometryInstanceSurfaceDataCache::FLAG_PASS_ALPHA)) {
@@ -1234,7 +1241,7 @@ void RenderForwardClustered::_fill_render_list(RenderListType p_render_list, con
 				if (surf->flags & GeometryInstanceSurfaceDataCache::FLAG_USES_SCREEN_TEXTURE) {
 // wgodot-changes::begin
 					if (surf->shader->screen_read_current) {
-						scene_state.used_current_screen_texture = true;
+						scene_state.used_current_screen_texture |= !surf->shader->screen_read_after_transparent;
 					} else {
 						scene_state.used_screen_texture = true;
 					}
@@ -2054,6 +2061,8 @@ void RenderForwardClustered::_render_scene(RenderDataRD *p_render_data, const Co
 // wgodot-changes::begin
 	render_list[RENDER_LIST_DISTORTION].sort_by_key();
 	_fill_instance_data(RENDER_LIST_DISTORTION, render_info);
+	render_list[RENDER_LIST_SCREEN_EFFECT].sort_by_reverse_depth_and_priority();
+	_fill_instance_data(RENDER_LIST_SCREEN_EFFECT, render_info);
 
 // wgodot-changes::end
 
@@ -2575,7 +2584,7 @@ void RenderForwardClustered::_render_scene(RenderDataRD *p_render_data, const Co
 			const StringName destination = SNAME("screen_read_current");
 			_render_buffers_ensure_screen_texture(p_render_data, destination);
 			RID current_uniform_set = _setup_render_pass_uniform_set(RENDER_LIST_ALPHA, p_render_data, is_multiview, radiance_texture, samplers, transparent_pass_uniform_buffer_index, true, rb->get_texture(RB_SCOPE_BUFFERS, destination));
-			_render_list_with_current_screen(&render_list_params, alpha_framebuffer, p_render_data, current_uniform_set);
+			_render_list_with_current_screen(&render_list_params, alpha_framebuffer, p_render_data, current_uniform_set, use_msaa);
 		} else {
 			_render_list_with_draw_list(&render_list_params, alpha_framebuffer, RD::DRAW_DEFAULT_ALL, Vector<Color>(), 0.0f, 0u, p_render_data->render_region);
 		}
@@ -2629,6 +2638,24 @@ void RenderForwardClustered::_render_scene(RenderDataRD *p_render_data, const Co
 		}
 		WRenderCapture::stage(p_render_data, "after_distortion");
 #endif
+	}
+	if (rb_data.is_valid() && !render_list[RENDER_LIST_SCREEN_EFFECT].elements.is_empty()) {
+		RENDER_TIMESTAMP("Render Late Screen Effects");
+		RD::get_singleton()->draw_command_begin_label("Render Late Screen Effects");
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+		WRenderCapture::stage(p_render_data, "before_screen_effects");
+#endif
+		const StringName destination = SNAME("screen_read_current");
+		_render_buffers_ensure_screen_texture(p_render_data, destination);
+		RID uniform_set = _setup_render_pass_uniform_set(RENDER_LIST_SCREEN_EFFECT, p_render_data, is_multiview, radiance_texture, samplers, transparent_pass_uniform_buffer_index, true, rb->get_texture(RB_SCOPE_BUFFERS, destination));
+		RID framebuffer = FramebufferCacheRD::get_singleton()->get_cache_multiview(p_render_data->scene_data->view_count, rb->get_internal_texture(), RID(), RID(), rb->get_depth_texture());
+		uint32_t flags = COLOR_PASS_FLAG_TRANSPARENT | (is_multiview ? COLOR_PASS_FLAG_MULTIVIEW : 0);
+		RenderListParameters params(render_list[RENDER_LIST_SCREEN_EFFECT].elements.ptr(), render_list[RENDER_LIST_SCREEN_EFFECT].element_info.ptr(), render_list[RENDER_LIST_SCREEN_EFFECT].elements.size(), reverse_cull, PASS_MODE_COLOR, flags, false, p_render_data->directional_light_soft_shadows, uniform_set, get_debug_draw_mode() == RSE::VIEWPORT_DEBUG_DRAW_WIREFRAME, Vector2(), p_render_data->scene_data->lod_distance_multiplier, p_render_data->scene_data->screen_mesh_lod_threshold, p_render_data->scene_data->view_count, 0, base_specialization, true);
+		_render_list_with_current_screen(&params, framebuffer, p_render_data, uniform_set, false);
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+		WRenderCapture::stage(p_render_data, "after_screen_effects");
+#endif
+		RD::get_singleton()->draw_command_end_label();
 	}
 
 // wgodot-changes::end
@@ -4427,6 +4454,8 @@ void RenderForwardClustered::_geometry_instance_add_surface_with_material(Geomet
 // wgodot-changes::begin
 	if (p_material->shader_data->screen_distortion) {
 		flags |= GeometryInstanceSurfaceDataCache::FLAG_PASS_DISTORTION;
+	} else if (p_material->shader_data->screen_read_after_transparent) {
+		flags |= GeometryInstanceSurfaceDataCache::FLAG_PASS_SCREEN_EFFECT | GeometryInstanceSurfaceDataCache::FLAG_PASS_ALPHA;
 	} else
 // wgodot-changes::end
 	if (p_material->shader_data->uses_alpha_pass()) {
@@ -4934,6 +4963,18 @@ void RenderForwardClustered::_mesh_compile_pipelines_for_surface(const SurfacePi
 				pipeline_key.color_pass_flags |= SceneShaderForwardClustered::PIPELINE_COLOR_PASS_FLAG_MULTIVIEW;
 			}
 			pipeline_key.framebuffer_format_id = RendererRD::ScreenDistortion::framebuffer_format(RD::TextureSamples(p_global.texture_samples), view_count, buffers_can_be_storage);
+			_mesh_compile_pipeline_for_surface(p_surface.shader, p_surface.mesh_surface, true, p_surface.instanced, p_source, pipeline_key, r_pipeline_pairs);
+		}
+		return;
+	}
+	if (p_surface.shader->screen_read_after_transparent) {
+		for (uint32_t view_count = 1; view_count <= (multiview_enabled ? 2u : 1u); view_count++) {
+			pipeline_key.version = SceneShaderForwardClustered::PIPELINE_VERSION_COLOR_PASS;
+			pipeline_key.color_pass_flags = SceneShaderForwardClustered::PIPELINE_COLOR_PASS_FLAG_TRANSPARENT;
+			if (view_count > 1) {
+				pipeline_key.color_pass_flags |= SceneShaderForwardClustered::PIPELINE_COLOR_PASS_FLAG_MULTIVIEW;
+			}
+			pipeline_key.framebuffer_format_id = _get_color_framebuffer_format_for_pipeline(buffers_color_format, buffers_can_be_storage, RD::TEXTURE_SAMPLES_1, false, false, view_count);
 			_mesh_compile_pipeline_for_surface(p_surface.shader, p_surface.mesh_surface, true, p_surface.instanced, p_source, pipeline_key, r_pipeline_pairs);
 		}
 		return;

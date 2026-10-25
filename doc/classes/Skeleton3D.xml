@@ -23,9 +23,15 @@
 		<method name="advance">
 			<return type="void" />
 			<param index="0" name="delta" type="float" />
+			<!-- wgodot-changes::begin -->
+			<param index="1" name="immediate" type="bool" default="false" />
+			<!-- wgodot-changes::end -->
 			<description>
 				Manually advance the child [SkeletonModifier3D]s by the specified time (in seconds).
 				[b]Note:[/b] The [param delta] is temporarily accumulated in the [Skeleton3D], and the deferred process uses the accumulated value to process the modification.
+				<!-- wgodot-changes::begin -->
+				If [param immediate] is [code]true[/code], pending poses and accumulated modifier time are evaluated before returning, including [signal skeleton_updated] and skin publication. Use manual callback mode when controlling the clock explicitly. Do not call immediate advancement from a skeleton update callback.
+				<!-- wgodot-changes::end -->
 			</description>
 		</method>
 		<method name="clear_bones">

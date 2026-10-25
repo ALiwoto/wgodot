@@ -9,6 +9,7 @@ void initialize_kawaii_physics_module(ModuleInitializationLevel p_level) {
 	if (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {
 		GDREGISTER_CLASS(KawaiiBoneCollision);
 		GDREGISTER_CLASS(KawaiiBoneChain);
+		GDREGISTER_CLASS(KawaiiBoneSimulationState);
 		GDREGISTER_CLASS(KawaiiBoneSimulator3D);
 	}
 }

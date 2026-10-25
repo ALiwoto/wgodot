@@ -181,6 +181,13 @@ public:
 	};
 
 	struct ResourceTracker {
+		// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+		// Capture readbacks may share a snapshot only if no write was queued
+		// since it. Never reset this at a frame boundary; slices use the root.
+		uint64_t content_revision = 1;
+#endif
+		// wgodot-changes::end
 		uint32_t reference_count = 0;
 		int64_t command_frame = -1;
 		int32_t command_index = -1;

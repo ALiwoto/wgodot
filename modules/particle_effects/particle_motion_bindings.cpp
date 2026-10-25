@@ -120,6 +120,9 @@ void ParticleMotionProfile3D::_bind_methods() {
 }
 
 void ParticleSpriteProfile3D::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("set_pivot_offset", "value"), &ParticleSpriteProfile3D::set_pivot_offset);
+	ClassDB::bind_method(D_METHOD("get_pivot_offset"), &ParticleSpriteProfile3D::get_pivot_offset);
+	ADD_PROPERTY(PropertyInfo(Variant::VECTOR2, "pivot_offset"), "set_pivot_offset", "get_pivot_offset");
 	ClassDB::bind_method(D_METHOD("set_size", "value"), &ParticleSpriteProfile3D::set_size);
 	ClassDB::bind_method(D_METHOD("get_size"), &ParticleSpriteProfile3D::get_size);
 	ADD_PROPERTY(PropertyInfo(Variant::VECTOR3, "size"), "set_size", "get_size");

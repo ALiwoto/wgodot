@@ -5,9 +5,12 @@
 #include "core/object/class_db.h"
 #include "scene/3d/mesh_instance_3d.h"
 #include "scene/3d/skeleton_3d.h"
+#include "scene/3d/light_3d.h"
+#include "scene/animation/animation_player.h"
 #include "scene/resources/3d/skin.h"
 #ifdef MODULE_PARTICLE_EFFECTS_ENABLED
 #include "modules/particle_effects/particle_instance_3d.h"
+#include "modules/particle_effects/particle_environment.h"
 #endif
 
 namespace {
@@ -22,12 +25,24 @@ TypedArray<Transform3D> boxed(const Vector<Transform3D> &p_values) {
 }
 
 void WSceneSnapshot::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("begin_node", "node"), &WSceneSnapshot::begin_node);
 	ClassDB::bind_method(D_METHOD("set_value", "section", "key", "value"), &WSceneSnapshot::set_value);
 	ClassDB::bind_method(D_METHOD("get_metadata"), &WSceneSnapshot::get_metadata);
 	ClassDB::bind_method(D_METHOD("has_skeleton", "section"), &WSceneSnapshot::has_skeleton);
+	ClassDB::bind_method(D_METHOD("copy_skeleton", "source", "source_section", "section"), &WSceneSnapshot::copy_skeleton);
 	ClassDB::bind_method(D_METHOD("capture_mesh_vertex_bounds", "mesh", "section"), &WSceneSnapshot::capture_mesh_vertex_bounds);
 	ClassDB::bind_method(D_METHOD("is_geometry_ready"), &WSceneSnapshot::is_geometry_ready);
 	ClassDB::bind_method(D_METHOD("clear"), &WSceneSnapshot::clear);
+}
+
+bool WSceneSnapshot::begin_node(Node *p_node) {
+	ERR_FAIL_NULL_V(p_node, false);
+	const ObjectID identity = p_node->get_instance_id();
+	if (visited_nodes.has(identity)) {
+		return false;
+	}
+	visited_nodes.insert(identity);
+	return true;
 }
 
 void WSceneSnapshot::remember_section(const String &p_section) {
@@ -87,6 +102,24 @@ void WSceneSnapshot::capture_skeleton(Skeleton3D *p_node, const String &p_sectio
 	}
 }
 
+void WSceneSnapshot::copy_skeleton(const Ref<WSceneSnapshot> &p_source, const String &p_source_section, const String &p_section) {
+	ERR_FAIL_COND(p_source.is_null());
+	const int *source_index = p_source->skeleton_sections.getptr(p_source_section);
+	ERR_FAIL_NULL_MSG(source_index, "Source snapshot has no captured skeleton: " + p_source_section);
+	// Typed COW arrays: retaining a rendered pose neither boxes every bone nor
+	// aliases the mutable skeleton that will advance on the next sample.
+	Skeleton value = p_source->skeletons[*source_index];
+	value.section = p_section;
+	remember_section(p_section);
+	const int *existing = skeleton_sections.getptr(p_section);
+	if (existing) {
+		skeletons.write[*existing] = std::move(value);
+	} else {
+		skeleton_sections.insert(p_section, skeletons.size());
+		skeletons.push_back(std::move(value));
+	}
+}
+
 void WSceneSnapshot::capture_mesh(MeshInstance3D *p_node, const String &p_section, const Ref<ConfigFile> &p_palettes) {
 	remember_section(p_section);
 	Mesh value;
@@ -130,7 +163,25 @@ void WSceneSnapshot::capture_mesh(MeshInstance3D *p_node, const String &p_sectio
 			poses[i] = skin->get_bind_pose(i);
 		}
 	}
+#ifdef MODULE_PARTICLE_EFFECTS_ENABLED
+	for (Node *parent = p_node->get_parent(); parent; parent = parent->get_parent()) {
+		ParticleInstance3D *particle = Object::cast_to<ParticleInstance3D>(parent);
+		if (particle) {
+			if (particle->get_motion().is_valid()) {
+				value.particle_mesh = true;
+				value.particle_transform = particle->get_pose()->get_transform() * particle->get_stretch()->get_transform() * p_node->get_transform();
+				capture_mesh_vertex_bounds(p_node->get_mesh(), p_section);
+			}
+			break;
+		}
+	}
+#endif
 	meshes.push_back(std::move(value));
+}
+
+void WSceneSnapshot::capture_animation(AnimationPlayer *p_node, const String &p_section) {
+	remember_section(p_section);
+	animations.push_back({ p_section, p_node->get_current_animation(), p_node->get_current_animation_position(), p_node->get_playing_speed() });
 }
 
 void WSceneSnapshot::capture_transforms(const TypedArray<Node3D> &p_nodes, const String &p_section) {
@@ -147,7 +198,7 @@ void WSceneSnapshot::capture_transforms(const TypedArray<Node3D> &p_nodes, const
 		ERR_FAIL_NULL(node);
 		value.identities.set(i, int64_t(node->get_instance_id()));
 		poses[i] = node->get_global_transform_interpolated();
-		value.visible.set(i, node->is_visible_in_tree());
+		value.visible.set(i, WRenderCapture::render_visible(node));
 	}
 	transforms.push_back(std::move(value));
 }
@@ -197,6 +248,37 @@ void WSceneSnapshot::capture_particle(ParticleInstance3D *p_node, const String &
 	value.orbit_rotation = p_node->get_particle_orbit_rotation();
 	particles.push_back(std::move(value));
 }
+
+void WSceneSnapshot::capture_ground(ParticleGroundProjector3D *p_node, const String &p_section) {
+	remember_section(p_section);
+	Ground value;
+	value.section = p_section;
+	value.collided = p_node->is_colliding();
+	const Transform3D transform = WRenderCapture::render_transform(p_node);
+	value.start = transform.origin;
+	value.end = transform.xform(p_node->get_target_position());
+	value.offset = p_node->get_world_offset();
+	if (value.collided) {
+		value.point = p_node->get_collision_point();
+		value.normal = p_node->get_collision_normal();
+	}
+	grounds.push_back(std::move(value));
+}
+
+void WSceneSnapshot::capture_particle_light(OmniLight3D *p_node, const String &p_section) {
+	remember_section(p_section);
+	ParticleLight value;
+	value.section = p_section;
+	value.transform = WRenderCapture::render_transform(p_node);
+	value.color = p_node->get_color();
+	value.energy = p_node->get_param(Light3D::PARAM_ENERGY);
+	value.range = p_node->get_param(Light3D::PARAM_RANGE);
+	value.specular = p_node->get_param(Light3D::PARAM_SPECULAR);
+	value.volumetric_energy = p_node->get_param(Light3D::PARAM_VOLUMETRIC_FOG_ENERGY);
+	value.cull_mask = p_node->get_cull_mask();
+	value.shadows = p_node->has_shadow();
+	particle_lights.push_back(std::move(value));
+}
 #endif
 
 void WSceneSnapshot::write_to(ConfigFile &p_output) const {
@@ -227,6 +309,9 @@ void WSceneSnapshot::write_to(ConfigFile &p_output) const {
 		p_output.set_value(v.section, "visibility_end", v.visibility_end);
 		p_output.set_value(v.section, "extra_cull_margin", v.cull_margin);
 		p_output.set_value(v.section, "custom_aabb", v.custom_aabb);
+		if (v.particle_mesh) {
+			p_output.set_value(v.section, "particle/mesh_transform", v.particle_transform);
+		}
 		for (const auto &uniform : v.uniforms) {
 			if (uniform.gpu_index >= 0) {
 				p_output.set_value(v.section, "instance/" + String(uniform.info.name), uniform.value.to_variant());
@@ -265,6 +350,32 @@ void WSceneSnapshot::write_to(ConfigFile &p_output) const {
 		p_output.set_value(v.section, "particle/orbit_position", v.orbit_position);
 		p_output.set_value(v.section, "particle/orbit_offset", v.orbit_offset);
 		p_output.set_value(v.section, "particle/orbit_rotation", v.orbit_rotation);
+	}
+	for (const Animation &v : animations) {
+		p_output.set_value(v.section, "animation", v.name);
+		p_output.set_value(v.section, "seconds", v.seconds);
+		p_output.set_value(v.section, "speed", v.speed);
+	}
+	for (const Ground &v : grounds) {
+		p_output.set_value(v.section, "ground/collided", v.collided);
+		p_output.set_value(v.section, "ground/start", v.start);
+		p_output.set_value(v.section, "ground/end", v.end);
+		p_output.set_value(v.section, "ground/offset", v.offset);
+		if (v.collided) {
+			p_output.set_value(v.section, "ground/point", v.point);
+			p_output.set_value(v.section, "ground/normal", v.normal);
+		}
+	}
+	for (const ParticleLight &v : particle_lights) {
+		p_output.set_value(v.section, "particle/light", true);
+		p_output.set_value(v.section, "light/transform", v.transform);
+		p_output.set_value(v.section, "light/color", v.color);
+		p_output.set_value(v.section, "light/energy", v.energy);
+		p_output.set_value(v.section, "light/range", v.range);
+		p_output.set_value(v.section, "light/specular", v.specular);
+		p_output.set_value(v.section, "light/volumetric_energy", v.volumetric_energy);
+		p_output.set_value(v.section, "light/cull_mask", v.cull_mask);
+		p_output.set_value(v.section, "light/shadows", v.shadows);
 	}
 }
 
@@ -305,7 +416,7 @@ Ref<ConfigFile> WSceneSnapshot::materialize() {
 	for (const String &section : metadata->get_sections()) {
 		remember_section(section);
 	}
-	if (spatials.is_empty() && skeletons.is_empty() && meshes.is_empty() && transforms.is_empty() && particles.is_empty()) {
+	if (spatials.is_empty() && skeletons.is_empty() && meshes.is_empty() && transforms.is_empty() && particles.is_empty() && animations.is_empty() && grounds.is_empty() && particle_lights.is_empty()) {
 		return metadata;
 	}
 	Ref<ConfigFile> combined;
@@ -322,12 +433,16 @@ Ref<ConfigFile> WSceneSnapshot::materialize() {
 	meshes.clear();
 	transforms.clear();
 	particles.clear();
+	animations.clear();
+	grounds.clear();
+	particle_lights.clear();
 	skeleton_sections.clear();
 	skeleton_names.clear();
 	return metadata;
 }
 
 void WSceneSnapshot::clear() {
+	visited_nodes.clear();
 	metadata->clear();
 	section_order.clear();
 	sections.clear();
@@ -336,6 +451,9 @@ void WSceneSnapshot::clear() {
 	meshes.clear();
 	transforms.clear();
 	particles.clear();
+	animations.clear();
+	grounds.clear();
+	particle_lights.clear();
 	skeleton_sections.clear();
 	skeleton_names.clear();
 	mesh_bounds.clear();

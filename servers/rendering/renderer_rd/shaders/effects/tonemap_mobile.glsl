@@ -78,6 +78,9 @@ layout(constant_id = 14) const bool glow_mode_screen = false;
 layout(constant_id = 15) const bool glow_mode_softlight = false;
 layout(constant_id = 16) const bool glow_mode_replace = false;
 layout(constant_id = 17) const bool glow_mode_mix = false;
+// wgodot-changes::begin
+layout(constant_id = 18) const bool tonemapper_log_lut = false;
+// wgodot-changes::end
 
 layout(push_constant, std430) uniform Params {
 	vec3 bcs;
@@ -321,6 +324,10 @@ vec3 apply_glow(vec3 color, vec3 glow, float white) {
 		return glow;
 	}
 }
+
+// wgodot-changes::begin
+#include "log_lut_inc.glsl"
+// wgodot-changes::end
 
 #ifdef USE_1D_LUT
 vec3 apply_color_correction(vec3 color) {
@@ -766,7 +773,13 @@ void main() {
 
 	// Tonemap to lower dynamic range.
 
+	// wgodot-changes::begin
+#ifndef USE_1D_LUT
+	color.rgb = tonemapper_log_lut ? tonemap_log_lut(color.rgb) : apply_tonemapping(color.rgb);
+#else
 	color.rgb = apply_tonemapping(color.rgb);
+#endif
+	// wgodot-changes::end
 
 #ifndef SUBPASS
 	// Post-tonemap glow.
@@ -779,8 +792,18 @@ void main() {
 		if (use_glow_map) {
 			glow = mix(glow, texture(glow_map, uv_interp).rgb * glow, params.glow_map_strength);
 		}
-		glow = apply_tonemapping(glow);
-		color.rgb = apply_glow(color.rgb, glow, params.white);
+		// wgodot-changes::begin
+#ifndef USE_1D_LUT
+		if (tonemapper_log_lut) {
+			glow = srgb_to_linear(tonemap_log_lut(glow));
+			color.rgb = linear_to_srgb(apply_glow(srgb_to_linear(color.rgb), glow, params.white));
+		} else
+#endif
+		{
+			glow = apply_tonemapping(glow);
+			color.rgb = apply_glow(color.rgb, glow, params.white);
+		}
+		// wgodot-changes::end
 	}
 #endif
 
@@ -791,9 +814,13 @@ void main() {
 		// Apply to relative luminance. This ensures that the hue and saturation of
 		// colors is not affected by the adjustment, but requires the multiplication
 		// to be performed on linear-encoded values.
-		color.rgb = color.rgb * params.bcs.x;
-
-		color.rgb = linear_to_srgb(color.rgb);
+		// wgodot-changes::begin
+		if (!tonemapper_log_lut) {
+			color.rgb = linear_to_srgb(color.rgb * params.bcs.x);
+		} else if (params.bcs.x != 1.0) {
+			color.rgb = linear_to_srgb(srgb_to_linear(color.rgb) * params.bcs.x);
+		}
+		// wgodot-changes::end
 
 		// Apply contrast:
 		// By applying contrast to RGB values that are perceptually uniform (nonlinear),
@@ -808,7 +835,8 @@ void main() {
 		// maintains compatibility with existing projects.
 		color.rgb = mix(vec3(dot(vec3(1.0), color.rgb) * (1.0 / 3.0)), color.rgb, params.bcs.z);
 
-		if (use_color_correction) {
+		// wgodot-changes: HDR grading already consumed the LUT.
+		if (use_color_correction && !tonemapper_log_lut) {
 			color.rgb = clamp(color.rgb, vec3(0.0), vec3(1.0));
 			color.rgb = apply_color_correction(color.rgb);
 			// When using color correction and convert_to_srgb is false, there
@@ -817,7 +845,11 @@ void main() {
 		} else if (!convert_to_srgb) {
 			color.rgb = srgb_to_linear(color.rgb);
 		}
-	} else if (convert_to_srgb) {
+	// wgodot-changes::begin
+	} else if (tonemapper_log_lut && !convert_to_srgb) {
+		color.rgb = srgb_to_linear(color.rgb);
+	} else if (!tonemapper_log_lut && convert_to_srgb) {
+	// wgodot-changes::end
 		color.rgb = linear_to_srgb(color.rgb); // Regular linear -> SRGB conversion.
 	}
 

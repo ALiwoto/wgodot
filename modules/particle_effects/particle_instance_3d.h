@@ -37,9 +37,9 @@ public:
 	StringName dynamics = "dynamics";
 	void set_dynamics(const StringName &p_name) { dynamics = p_name; }
 	StringName get_dynamics() const { return dynamics; }
-	StringName mesh_scale_sign = "mesh_scale_sign";
-	void set_mesh_scale_sign(const StringName &p_name) { mesh_scale_sign = p_name; }
-	StringName get_mesh_scale_sign() const { return mesh_scale_sign; }
+	StringName mesh_scale = "mesh_scale";
+	void set_mesh_scale(const StringName &p_name) { mesh_scale = p_name; }
+	StringName get_mesh_scale() const { return mesh_scale; }
 	StringName angle = "angle";
 	void set_angle(const StringName &p_name) { angle = p_name; }
 	StringName get_angle() const { return angle; }
@@ -97,7 +97,18 @@ class ParticleInstance3D : public Node3D {
 	GDCLASS(ParticleInstance3D, Node3D);
 	friend class ParticleInstancePool3D;
 	ParticleInstancePool3D *instance_pool = nullptr;
-	Vector<VisualInstance3D *> render_instances;
+	struct RenderInstance {
+		VisualInstance3D *visual = nullptr;
+		GeometryInstance3D *geometry = nullptr;
+		AABB authored_aabb;
+		bool bounds_overridden = false;
+	};
+	Vector<RenderInstance> render_instances;
+	bool render_instances_prepared = false;
+	AABB visibility_aabb;
+	Vector2 state_render_size;
+	double state_camera_offset = 0.0;
+	void update_render_bounds(RenderInstance &p_instance, const Transform3D &p_transform);
 	void collect_render_instances(Node *p_node);
 	void prepare_render_instances(ParticleInstancePool3D *p_pool);
 	void set_render_scenario(RID p_scenario);
@@ -201,6 +212,9 @@ protected:
 
 public:
 	ParticleInstance3D();
+	// Fixed bounds are in emitter space. Empty bounds use the rendered shape.
+	void set_visibility_aabb(const AABB &p_value) { visibility_aabb = p_value; }
+	AABB get_visibility_aabb() const { return visibility_aabb; }
 	ParticleInstancePool3D *get_instance_pool() const { return instance_pool; }
 	Transform3D get_particle_transform() const;
 	Transform3D get_render_transform(Node3D *p_node) const;

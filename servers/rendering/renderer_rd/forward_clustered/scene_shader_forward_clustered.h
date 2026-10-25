@@ -259,6 +259,7 @@ public:
 // wgodot-changes::begin
 		bool screen_distortion = false;
 		bool screen_read_current = false;
+		bool screen_read_after_transparent = false;
 // wgodot-changes::end
 		bool unshaded = false;
 		bool uses_vertex = false;

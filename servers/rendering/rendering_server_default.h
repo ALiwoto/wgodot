@@ -897,6 +897,9 @@ public:
 
 	FUNC4(environment_set_tonemap, RID, RSE::EnvironmentToneMapper, float, float)
 	FUNC2(environment_set_tonemap_agx_contrast, RID, float)
+	// wgodot-changes::begin
+	FUNC2(environment_set_tonemap_log_lut_parameters, RID, const Vector4 &)
+	// wgodot-changes::end
 
 	FUNC7(environment_set_adjustment, RID, bool, float, float, float, bool, RID)
 

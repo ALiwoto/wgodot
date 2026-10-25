@@ -70,6 +70,10 @@ namespace respv {
         case SpvOpAccessChain:
         case SpvOpDecorate:
         case SpvOpMemberDecorate:
+        // wgodot-changes::begin
+        case SpvOpVectorExtractDynamic:
+        case SpvOpVectorInsertDynamic:
+        // wgodot-changes::end
         case SpvOpVectorShuffle:
         case SpvOpCompositeConstruct:
         case SpvOpCompositeExtract:
@@ -379,6 +383,10 @@ namespace respv {
             rOperandWordSkip = UINT32_MAX;
             rOperandWordSkipString = false;
             return true;
+        // wgodot-changes::begin
+        // Unlike CompositeExtract, the dynamic component index is an ID.
+        case SpvOpVectorExtractDynamic:
+        // wgodot-changes::end
         case SpvOpVectorShuffle:
         case SpvOpCompositeInsert:
         case SpvOpSampledImage:
@@ -455,6 +463,9 @@ namespace respv {
             rOperandWordSkip = UINT32_MAX;
             rOperandWordSkipString = false;
             return true;
+        // wgodot-changes::begin
+        case SpvOpVectorInsertDynamic:
+        // wgodot-changes::end
         case SpvOpImageTexelPointer:
         case SpvOpSelect:
         case SpvOpBitFieldSExtract:

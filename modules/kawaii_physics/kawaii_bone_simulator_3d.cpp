@@ -37,6 +37,8 @@ void KawaiiBoneSimulator3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_wind_velocity", "velocity"), &KawaiiBoneSimulator3D::set_wind_velocity);
 	ClassDB::bind_method(D_METHOD("get_wind_velocity"), &KawaiiBoneSimulator3D::get_wind_velocity);
 	ClassDB::bind_method(D_METHOD("reset"), &KawaiiBoneSimulator3D::reset);
+	ClassDB::bind_method(D_METHOD("capture_state"), &KawaiiBoneSimulator3D::capture_state);
+	ClassDB::bind_method(D_METHOD("restore_state", "state", "frame_change"), &KawaiiBoneSimulator3D::restore_state, DEFVAL(Transform3D()));
 	ClassDB::bind_method(D_METHOD("set_teleport_detection_enabled", "enabled"), &KawaiiBoneSimulator3D::set_teleport_detection_enabled);
 	ClassDB::bind_method(D_METHOD("is_teleport_detection_enabled"), &KawaiiBoneSimulator3D::is_teleport_detection_enabled);
 	ADD_PROPERTY(PropertyInfo(Variant::ARRAY, "chains", PROPERTY_HINT_ARRAY_TYPE, "KawaiiBoneChain"), "set_chains", "get_chains");
@@ -83,7 +85,100 @@ bool KawaiiBoneSimulator3D::is_teleport_detection_enabled() const {
 }
 
 void KawaiiBoneSimulator3D::reset() {
-	initialized = false;
+	for (Chain &chain : simulation) {
+		chain.initialized = false;
+	}
+}
+
+Ref<KawaiiBoneSimulationState> KawaiiBoneSimulator3D::capture_state() {
+	Skeleton3D *skeleton = get_skeleton();
+	ERR_FAIL_NULL_V(skeleton, Ref<KawaiiBoneSimulationState>());
+	if (dirty) {
+		_build();
+	}
+	Ref<KawaiiBoneSimulationState> result;
+	result.instantiate();
+	result->random_seed = wind_random.get_seed();
+	result->random_state = wind_random.get_state();
+	result->has_random_state = true;
+	for (const Chain &chain : simulation) {
+		KawaiiBoneSimulationState::Chain state;
+		state.root = chain.settings->get_root_bone();
+		state.previous_delta = chain.previous_delta;
+		state.previous_transform = chain.previous_transform;
+		if (chain.initialized) {
+			for (const Particle &particle : chain.particles) {
+				state.particles.push_back({ particle.bone >= 0 ? StringName(skeleton->get_bone_name(particle.bone)) : StringName(),
+						particle.parent, particle.position, particle.previous_position });
+			}
+		}
+		result->chains.push_back(std::move(state));
+	}
+	return result;
+}
+
+Error KawaiiBoneSimulator3D::restore_state(const Ref<KawaiiBoneSimulationState> &p_state, const Transform3D &p_frame_change) {
+	ERR_FAIL_COND_V(p_state.is_null(), ERR_INVALID_PARAMETER);
+	ERR_FAIL_COND_V(!p_frame_change.is_finite() || Math::is_zero_approx(p_frame_change.basis.determinant()), ERR_INVALID_PARAMETER);
+	Skeleton3D *skeleton = get_skeleton();
+	ERR_FAIL_NULL_V(skeleton, ERR_UNCONFIGURED);
+	if (dirty) {
+		_build();
+	}
+	ERR_FAIL_COND_V_MSG(p_state->chains.size() != simulation.size(), ERR_INVALID_DATA, "Secondary-motion checkpoint must include every configured chain.");
+	LocalVector<int> sources;
+	LocalVector<LocalVector<int>> indices;
+	// Validate the entire topology before changing integration history. Source
+	// chain and particle order may differ; names plus parents identify particles.
+	for (const Chain &chain : simulation) {
+		int source = -1;
+		for (int i = 0; i < p_state->chains.size(); i++) {
+			if (p_state->chains[i].root == chain.settings->get_root_bone()) {
+				source = i;
+				break;
+			}
+		}
+		ERR_FAIL_COND_V_MSG(source < 0 || sources.has(source), ERR_INVALID_DATA, "Missing or ambiguous secondary-motion chain: " + String(chain.settings->get_root_bone()));
+		sources.push_back(source);
+		const KawaiiBoneSimulationState::Chain &state = p_state->chains[source];
+		LocalVector<int> mapping;
+		if (!state.particles.is_empty()) {
+			ERR_FAIL_COND_V_MSG(state.particles.size() != chain.particles.size(), ERR_INVALID_DATA, "Secondary-motion checkpoint topology differs: " + String(state.root));
+			for (const Particle &particle : chain.particles) {
+				const StringName bone = particle.bone >= 0 ? StringName(skeleton->get_bone_name(particle.bone)) : StringName();
+				const StringName parent = particle.parent >= 0 ? StringName(skeleton->get_bone_name(chain.particles[particle.parent].bone)) : StringName();
+				int found = -1;
+				for (int i = 0; i < state.particles.size(); i++) {
+					const KawaiiBoneSimulationState::Particle &candidate = state.particles[i];
+					const StringName candidate_parent = candidate.parent >= 0 ? state.particles[candidate.parent].bone : StringName();
+					if (candidate.bone == bone && candidate_parent == parent) {
+						ERR_FAIL_COND_V_MSG(found >= 0, ERR_INVALID_DATA, "Ambiguous secondary-motion particle: " + String(bone));
+						found = i;
+					}
+				}
+				ERR_FAIL_COND_V_MSG(found < 0 || mapping.has(found), ERR_INVALID_DATA, "Missing secondary-motion particle: " + String(bone));
+				mapping.push_back(found);
+			}
+		}
+		indices.push_back(std::move(mapping));
+	}
+	for (uint32_t i = 0; i < simulation.size(); i++) {
+		Chain &chain = simulation[i];
+		const KawaiiBoneSimulationState::Chain &state = p_state->chains[sources[i]];
+		chain.initialized = !state.particles.is_empty();
+		chain.previous_transform = p_frame_change * state.previous_transform;
+		chain.previous_delta = state.previous_delta;
+		for (uint32_t j = 0; j < indices[i].size(); j++) {
+			const KawaiiBoneSimulationState::Particle &particle = state.particles[indices[i][j]];
+			chain.particles[j].position = particle.position;
+			chain.particles[j].previous_position = particle.previous_position;
+		}
+	}
+	if (p_state->has_random_state) {
+		wind_random.seed(p_state->random_seed);
+		wind_random.set_state(p_state->random_state);
+	}
+	return OK;
 }
 
 void KawaiiBoneSimulator3D::_invalidate() {
@@ -208,7 +303,7 @@ void KawaiiBoneSimulator3D::_snapshot_pose(Chain &r_chain) {
 			particle.pose.origin += particle.pose.basis.get_rotation_quaternion().xform(r_chain.settings->get_forward_axis()) * r_chain.settings->get_dummy_length();
 		}
 		particle.output = particle.pose;
-		if (!initialized) {
+		if (!r_chain.initialized) {
 			particle.position = particle.pose.origin;
 			particle.previous_position = particle.position;
 		}
@@ -223,7 +318,7 @@ void KawaiiBoneSimulator3D::_snapshot_pose(Chain &r_chain) {
 			collision.axis = pose.basis.get_rotation_quaternion().xform(collision.axis);
 		}
 	}
-	if (!initialized) {
+	if (!r_chain.initialized) {
 		r_chain.previous_delta = 1.0 / r_chain.settings->get_target_framerate();
 	}
 }
@@ -275,11 +370,11 @@ void KawaiiBoneSimulator3D::_collide(Particle &r_particle, const Collision &p_co
 void KawaiiBoneSimulator3D::_simulate(Chain &r_chain, const Transform3D &p_component, real_t p_delta) {
 	const KawaiiBoneChain &settings = **r_chain.settings;
 	const Transform3D inverse_component = p_component.affine_inverse();
-	Vector3 translation = inverse_component.xform(previous_transform.origin);
+	Vector3 translation = inverse_component.xform(r_chain.previous_transform.origin);
 	if (teleport_detection_enabled && translation.length_squared() > settings.get_teleport_distance() * settings.get_teleport_distance()) {
 		translation = Vector3();
 	}
-	Quaternion rotation = p_component.basis.get_rotation_quaternion().inverse() * previous_transform.basis.get_rotation_quaternion();
+	Quaternion rotation = p_component.basis.get_rotation_quaternion().inverse() * r_chain.previous_transform.basis.get_rotation_quaternion();
 	// Matrix-to-quaternion conversion can flip q to -q during a full turn.
 	// That representation change must not count as a near-360-degree teleport.
 	if (rotation.w < 0.0) {
@@ -378,14 +473,14 @@ void KawaiiBoneSimulator3D::_process_modification(double p_delta) {
 		poses[i] = skeleton->get_bone_global_pose(i);
 	}
 	const Transform3D component = skeleton->get_global_transform();
-	if (!initialized) {
-		previous_transform = component;
-	}
 	for (Chain &chain : simulation) {
+		if (!chain.initialized) {
+			chain.previous_transform = component;
+		}
 		_snapshot_pose(chain);
 		_simulate(chain, component, p_delta);
 		_apply(chain);
+		chain.previous_transform = component;
+		chain.initialized = true;
 	}
-	previous_transform = component;
-	initialized = true;
 }

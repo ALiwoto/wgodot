@@ -4,9 +4,8 @@
 
 namespace RendererSceneRenderImplementation {
 
-void RenderForwardClustered::_render_list_with_current_screen(RenderListParameters *p_params, RID p_framebuffer, const RenderDataRD *p_render_data, RID p_current_uniform_set) {
+void RenderForwardClustered::_render_list_with_current_screen(RenderListParameters *p_params, RID p_framebuffer, const RenderDataRD *p_render_data, RID p_current_uniform_set, bool p_resolve_msaa) {
 	Ref<RenderSceneBuffersRD> rb = p_render_data->render_buffers;
-	const bool use_msaa = rb->get_msaa_3d() != RSE::VIEWPORT_MSAA_DISABLED;
 	const StringName destination = SNAME("screen_read_current");
 
 	auto draw_range = [&](int p_start, int p_count, RID p_uniform_set) {
@@ -32,8 +31,10 @@ void RenderForwardClustered::_render_list_with_current_screen(RenderListParamete
 
 		// Close the preceding render pass before resolving/copying. RD tracks
 		// these dependencies; the framebuffer is never sampled while attached.
-		// Keep its MSAA color/depth intact for subsequent transparent draws.
-		if (use_msaa) {
+		// Ordinary transparent draws still target MSAA. Late screen effects
+		// target resolved color: resolving again would erase their predecessors
+		// and the distortion composite with the older MSAA contents.
+		if (p_resolve_msaa) {
 			for (uint32_t view = 0; view < rb->get_view_count(); view++) {
 				RD::get_singleton()->texture_resolve_multisample(rb->get_color_msaa(view), rb->get_internal_texture(view));
 			}

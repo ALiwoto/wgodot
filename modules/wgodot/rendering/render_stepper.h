@@ -9,6 +9,9 @@
 class WRenderStepper : public RefCounted {
 	GDCLASS(WRenderStepper, RefCounted);
 	static WRenderStepper *active;
+	// Render-thread state; writes are ordered with draw submission.
+	static double shader_time_override;
+	static void _set_shader_time(double p_time);
 	bool requested = false;
 	bool draw_pending = false;
 	bool processing_requested = false;
@@ -21,6 +24,8 @@ protected:
 public:
 	static Ref<WRenderStepper> begin();
 	Error request_frame(double p_step);
+	void set_shader_time(double p_time);
+	static double shader_time(double p_default_time);
 	// Ready CPU preparation can continue without spending another displayed
 	// frame interval. Waiting for I/O must not request immediate processing.
 	void request_processing();

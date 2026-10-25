@@ -348,7 +348,37 @@ Error DirAccessWindows::rename(String p_path, String p_new_path) {
 		// Replace same-volume files in one operation. Deleting the destination
 		// first leaves readers without a file and loses it if the move fails.
 		// Preserve MoveFile's cross-volume file-move support as well.
-		return MoveFileExW((LPCWSTR)(path.utf16().get_data()), (LPCWSTR)(new_path.utf16().get_data()), MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED) != 0 ? OK : FAILED;
+		if (MoveFileExW((LPCWSTR)(path.utf16().get_data()), (LPCWSTR)(new_path.utf16().get_data()), MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED)) {
+			return OK;
+		}
+		const DWORD error = GetLastError();
+		// Let asynchronous publishers distinguish a reader's temporary lock
+		// from permissions, missing files and other permanent failures.
+		if (error == ERROR_SHARING_VIOLATION || error == ERROR_LOCK_VIOLATION) {
+			return ERR_BUSY;
+		}
+		if (error == ERROR_ACCESS_DENIED) {
+			// Replacing an existing destination can report ACCESS_DENIED even
+			// when its ACL permits deletion: a reader omitted FILE_SHARE_DELETE.
+			// Probe DELETE access to distinguish that case without modifying data.
+			// platform/windows/windows.h undefines winnt.h's DELETE macro.
+			constexpr DWORD delete_access = 0x00010000L;
+			const Char16String candidates[] = { path.utf16(), new_path.utf16() };
+			for (const Char16String &candidate : candidates) {
+				HANDLE handle = CreateFileW((LPCWSTR)candidate.get_data(), delete_access, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+				if (handle != INVALID_HANDLE_VALUE) {
+					CloseHandle(handle);
+				} else if (GetLastError() == ERROR_SHARING_VIOLATION) {
+					return ERR_BUSY;
+				}
+			}
+			return ERR_FILE_NO_PERMISSION;
+		}
+		if (error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND) {
+			return ERR_FILE_NOT_FOUND;
+		}
+		ERR_PRINT(vformat("Cannot rename '%s' to '%s': Windows error %d.", path, new_path, error));
+		return FAILED;
 		// wgodot-changes::end
 	}
 }

@@ -31,6 +31,9 @@
 #pragma once
 
 #include "core/templates/rid_owner.h"
+// wgodot-changes::begin
+#include "core/math/vector4.h"
+// wgodot-changes::end
 #include "servers/rendering/rendering_server_enums.h"
 
 class RendererEnvironmentStorage {
@@ -87,6 +90,9 @@ private:
 		float exposure = 1.0;
 		float white = 1.0;
 		float tonemap_agx_contrast = 1.25; // Default to approximately Blender's AgX contrast
+		// wgodot-changes::begin
+		Vector4 tonemap_log_lut_parameters = Vector4(1.0, 0.0, 1.0, 1.0);
+		// wgodot-changes::end
 		float max_value = 1.0;
 
 		// Fog
@@ -231,6 +237,9 @@ public:
 	float environment_get_white(RID p_env, bool p_limit_agx_white, float p_output_max_value) const;
 	void environment_set_tonemap_agx_contrast(RID p_env, float p_agx_contrast);
 	float environment_get_tonemap_agx_contrast(RID p_env) const;
+	// wgodot-changes::begin
+	void environment_set_tonemap_log_lut_parameters(RID p_env, const Vector4 &p_parameters);
+	// wgodot-changes::end
 	TonemapParameters environment_get_tonemap_parameters(RID p_env, bool p_limit_agx_white, float p_output_max_value) const;
 
 	// Fog

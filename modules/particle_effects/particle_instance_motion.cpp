@@ -129,7 +129,8 @@ void ParticleInstance3D::advance_sprite(double p_relative_age, double p_delta, b
 	if (!geometry) {
 		return;
 	}
-	uniform(bindings()->sprite_size, sprite_motion->size_at(source_size_clock ? state_relative_age : p_relative_age, state_size, size_random, size_life_random, p_spawned_now, state_velocity));
+	state_render_size = sprite_motion->size_at(source_size_clock ? state_relative_age : p_relative_age, state_size, size_random, size_life_random, p_spawned_now, state_velocity);
+	uniform(bindings()->sprite_size, state_render_size);
 	uniform(bindings()->angle, state_angle);
 	if (sprite_motion->get_frame_over_life().is_valid() && (p_spawned_now || p_relative_age <= 1.0)) {
 		set_frame(sprite_motion->sample_frame(p_relative_age, frame_random));

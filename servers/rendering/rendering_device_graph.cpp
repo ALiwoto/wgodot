@@ -424,6 +424,19 @@ void RenderingDeviceGraph::_add_command_to_graph(ResourceTracker **p_resource_tr
 		ResourceTracker *resource_tracker = p_resource_trackers[i];
 		DEV_ASSERT(resource_tracker != nullptr);
 
+		// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+		if (_is_write_usage(p_resource_usages[i])) {
+			ResourceTracker *owner = resource_tracker;
+			while (owner->parent) {
+				owner = owner->parent;
+			}
+			if (owner->content_revision) {
+				owner->content_revision++;
+			}
+		}
+#endif
+		// wgodot-changes::end
 		resource_tracker->reset_if_outdated(tracking_frame);
 
 		resource_tracker->command_index = p_command_index;

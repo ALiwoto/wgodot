@@ -8,10 +8,14 @@
 #include "core/variant/typed_array.h"
 #include "servers/rendering/storage/wgodot_instance_shader_parameters.h"
 
+class Node;
 class Node3D;
 class Skeleton3D;
 class MeshInstance3D;
 class ParticleInstance3D;
+class ParticleGroundProjector3D;
+class OmniLight3D;
+class AnimationPlayer;
 
 // Live scene reads finish on the scene thread. Only owned, typed values survive
 // into serialization; neither nodes nor mutable resources cross that boundary.
@@ -20,6 +24,7 @@ class WSceneSnapshot : public RefCounted {
 	Ref<ConfigFile> metadata;
 	Vector<String> section_order;
 	HashSet<String> sections;
+	HashSet<ObjectID> visited_nodes;
 	void remember_section(const String &p_section);
 	struct Spatial {
 		String section, class_name, source_scene;
@@ -44,6 +49,8 @@ class WSceneSnapshot : public RefCounted {
 		uint32_t layers = 0;
 		int shadow_mode = 0;
 		bool visible = false, skin = false, has_palette = false;
+		bool particle_mesh = false;
+		Transform3D particle_transform;
 		double transparency = 0, visibility_begin = 0, visibility_end = 0, cull_margin = 0;
 		AABB custom_aabb;
 		Vector<WInstanceShaderParameters::Item> uniforms;
@@ -72,6 +79,28 @@ class WSceneSnapshot : public RefCounted {
 	Vector<Mesh> meshes;
 	Vector<Transforms> transforms;
 	Vector<Particle> particles;
+	struct Animation {
+		String section;
+		StringName name;
+		double seconds = 0, speed = 0;
+	};
+	struct Ground {
+		String section;
+		bool collided = false;
+		Vector3 start, end, point, normal;
+		double offset = 0;
+	};
+	struct ParticleLight {
+		String section;
+		Transform3D transform;
+		Color color;
+		double energy = 0, range = 0, specular = 0, volumetric_energy = 0;
+		uint32_t cull_mask = 0;
+		bool shadows = false;
+	};
+	Vector<Animation> animations;
+	Vector<Ground> grounds;
+	Vector<ParticleLight> particle_lights;
 	struct MeshBounds {
 		String section;
 		Ref<WMeshBoundsReadback> readback;
@@ -85,15 +114,22 @@ protected:
 	static void _bind_methods();
 
 public:
+	// A held scene can have overlapping capture roots. Visit each object once
+	// per snapshot, without retaining live node pointers into serialization.
+	bool begin_node(Node *p_node);
 	void capture_spatial(Node3D *p_node, const String &p_section);
 	void capture_skeleton(Skeleton3D *p_node, const String &p_section);
+	void copy_skeleton(const Ref<WSceneSnapshot> &p_source, const String &p_source_section, const String &p_section);
 	void capture_mesh(MeshInstance3D *p_node, const String &p_section, const Ref<ConfigFile> &p_palettes);
+	void capture_animation(AnimationPlayer *p_node, const String &p_section);
 	void capture_mesh_vertex_bounds(const Ref<::Mesh> &p_mesh, const String &p_section);
 	bool is_geometry_ready() const;
 	void capture_transforms(const TypedArray<Node3D> &p_nodes, const String &p_section);
 #ifdef MODULE_PARTICLE_EFFECTS_ENABLED
 	void capture_particle_transforms(const TypedArray<ParticleInstance3D> &p_nodes, const String &p_section);
 	void capture_particle(ParticleInstance3D *p_node, const String &p_section);
+	void capture_ground(ParticleGroundProjector3D *p_node, const String &p_section);
+	void capture_particle_light(OmniLight3D *p_node, const String &p_section);
 #endif
 	bool has_skeleton(const String &p_section) const { return skeleton_sections.has(p_section) || metadata->has_section_key(p_section, "bones"); }
 	void set_value(const String &p_section, const String &p_key, const Variant &p_value);

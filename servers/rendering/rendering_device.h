@@ -392,6 +392,11 @@ public:
 		bool is_subsampled = false;
 		bool has_initial_data = false;
 		bool pending_clear = false;
+		// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+		bool externally_mutable = false;
+#endif
+		// wgodot-changes::end
 
 		BitField<RDD::TextureAspectBits> read_aspect_flags = {};
 		BitField<RDD::TextureAspectBits> barrier_aspect_flags = {};
@@ -501,6 +506,8 @@ public:
 #ifdef TOOLS_ENABLED
 	// Complete queued readbacks together, preserving their GPU copy boundaries.
 	void flush_pending_readbacks();
+	// Native diagnostics only. Zero means writes cannot be tracked safely.
+	uint64_t texture_get_content_revision(RID p_texture);
 #endif
 	// wgodot-changes::end
 

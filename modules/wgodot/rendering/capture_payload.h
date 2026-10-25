@@ -5,7 +5,7 @@
 
 namespace WCapturePayload {
 enum Kind : uint32_t { BYTES, TILED_IMAGE };
-constexpr uint32_t TILE_SIZE = 64;
+constexpr uint32_t TILE_SIZE = 16;
 
 struct Tiles {
 	uint32_t width = 0;
@@ -19,6 +19,10 @@ struct Tiles {
 // publisher after comparisons have completed on independent workers.
 Tiles compare_tiles(const Vector<uint8_t> &p_bytes, uint32_t p_width, uint32_t p_height, uint32_t p_pixel_bytes,
 		const Vector<uint8_t> &p_previous_bytes, const Tiles &p_previous);
+
+// Remove exact matches against another image from the pending writes. The
+// caller resolves the returned tile indices to that image's immutable IDs.
+Vector<uint32_t> reuse_tiles(const Vector<uint8_t> &p_bytes, const Vector<uint8_t> &p_other_bytes, Tiles &r_tiles);
 
 struct Packet {
 	Vector<uint8_t> bytes;

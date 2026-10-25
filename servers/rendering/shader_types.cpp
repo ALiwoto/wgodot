@@ -249,6 +249,7 @@ ShaderTypes::ShaderTypes() {
 // wgodot-changes::begin
 		shader_modes[RSE::SHADER_SPATIAL].modes.push_back({ PNAME("screen_distortion") });
 		shader_modes[RSE::SHADER_SPATIAL].modes.push_back({ PNAME("screen_read_current") });
+		shader_modes[RSE::SHADER_SPATIAL].modes.push_back({ PNAME("screen_read_after_transparent") });
 // wgodot-changes::end
 		shader_modes[RSE::SHADER_SPATIAL].modes.push_back({ PNAME("wireframe") });
 		shader_modes[RSE::SHADER_SPATIAL].modes.push_back({ PNAME("diffuse"), "lambert", "lambert_wrap", "burley", "toon" });

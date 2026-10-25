@@ -13,10 +13,12 @@
 #include "servers/rendering/rendering_server.h"
 
 WRenderStepper *WRenderStepper::active = nullptr;
+double WRenderStepper::shader_time_override = -1.0;
 
 void WRenderStepper::_bind_methods() {
 	ClassDB::bind_static_method(get_class_static(), D_METHOD("begin"), &WRenderStepper::begin);
 	ClassDB::bind_method(D_METHOD("request_frame", "step"), &WRenderStepper::request_frame);
+	ClassDB::bind_method(D_METHOD("set_shader_time", "time"), &WRenderStepper::set_shader_time);
 	ClassDB::bind_method(D_METHOD("request_processing"), &WRenderStepper::request_processing);
 	ClassDB::bind_method(D_METHOD("finish"), &WRenderStepper::finish);
 }
@@ -46,10 +48,26 @@ void WRenderStepper::request_processing() {
 	processing_requested = true;
 }
 
+void WRenderStepper::_set_shader_time(double p_time) {
+	shader_time_override = p_time;
+}
+
+void WRenderStepper::set_shader_time(double p_time) {
+	ERR_FAIL_COND(!Thread::is_main_thread());
+	ERR_FAIL_COND(active != this);
+	ERR_FAIL_COND(!Math::is_finite(p_time) || p_time < 0.0);
+	RenderingServer::get_singleton()->call_on_render_thread(callable_mp_static(&WRenderStepper::_set_shader_time).bind(p_time));
+}
+
+double WRenderStepper::shader_time(double p_default_time) {
+	return shader_time_override >= 0.0 ? shader_time_override : p_default_time;
+}
+
 void WRenderStepper::finish() {
 	ERR_FAIL_COND(!Thread::is_main_thread());
 	if (active == this) {
 		active = nullptr;
+		RenderingServer::get_singleton()->call_on_render_thread(callable_mp_static(&WRenderStepper::_set_shader_time).bind(-1.0));
 	}
 	requested = false;
 }
@@ -90,7 +108,11 @@ bool WRenderStepper::iterate(bool p_pending_resources) {
 		stepper->draw_pending = true;
 		RenderingServer::get_singleton()->draw(true, stepper->frame_step);
 		Engine::get_singleton()->increment_frames_drawn();
-	} else if (p_pending_resources) {
+	} else if (p_pending_resources && !stepper->processing_requested) {
+		// A CPU-only snapshot slice must not advance the device frame ring.
+		// Doing so waits for GPU fences between slices even though the next
+		// requested draw will retire those resources normally. Idle waits still
+		// drain the ring, so a task awaiting a readback cannot deadlock.
 		RenderingServer::get_singleton()->call_on_render_thread(callable_mp_static(&WRenderStepper::_retire_resources));
 	}
 	return true;
@@ -106,6 +128,7 @@ bool WRenderStepper::should_delay_iteration() {
 WRenderStepper::~WRenderStepper() {
 	if (active == this) {
 		active = nullptr;
+		RenderingServer::get_singleton()->call_on_render_thread(callable_mp_static(&WRenderStepper::_set_shader_time).bind(-1.0));
 	}
 }
 #endif

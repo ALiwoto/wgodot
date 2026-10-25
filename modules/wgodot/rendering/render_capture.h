@@ -50,6 +50,10 @@ class WRenderCapture : public RefCounted {
 		static void read(Ref<PaletteBatch> p_batch);
 	};
 	struct Plane {
+		struct TileAlias {
+			uint32_t tile = 0;
+			uint32_t plane = 0;
+		};
 		String name;
 		int width = 0;
 		int height = 0;
@@ -59,6 +63,7 @@ class WRenderCapture : public RefCounted {
 		String file;
 		uint64_t entry = 0;
 		WCapturePayload::Tiles tiles;
+		Vector<TileAlias> tile_aliases;
 		WCapturePayload::Packet packet;
 		int64_t byte_count = 0;
 		int depth = 1;
@@ -74,12 +79,18 @@ class WRenderCapture : public RefCounted {
 		bool reused = false;
 		bool needs_write = false;
 		int alias = -1;
+		int readback_alias = -1;
 	};
 	struct ReadbackFrame : public RefCounted {
 		GDSOFTCLASS(ReadbackFrame, RefCounted);
 
 	public:
 		Vector<Plane> planes;
+		struct TextureReadback {
+			uint64_t revision = 0;
+			int plane = -1;
+		};
+		HashMap<RID, TextureReadback> textures;
 		Ref<ConfigFile> metadata;
 		int index = 0;
 		int pending = 0;
@@ -125,6 +136,7 @@ class WRenderCapture : public RefCounted {
 	String directory;
 	bool passes = false;
 	int64_t sample_frame = -1;
+	bool sample_detailed_inputs = false;
 	double sample_seconds = 0;
 	double sample_render_time = -1;
 	double sample_time_step = 0;
@@ -201,7 +213,6 @@ public:
 	// duration of this call. Serialization is parallel and memory-bounded.
 	static Error save_snapshot(const Ref<WSceneSnapshot> &p_snapshot, const String &p_path);
 	static PackedInt32Array save_snapshots(const TypedArray<WSceneSnapshot> &p_snapshots, const PackedStringArray &p_paths);
-	static TypedArray<Node> expand_snapshot_children(Node *p_root, Node *p_parent, const Ref<WSceneSnapshot> &p_output, const Ref<WCapturePaths> &p_paths, bool p_world);
 	// Opt-in capture helpers. Frozen resources are reused only for unchanged
 	// state of the same live material; no asset-content hashing is involved.
 	Ref<ShaderMaterial> snapshot_material(const Ref<ShaderMaterial> &p_material);
@@ -235,6 +246,9 @@ public:
 	int get_error() const { return failure.get(); }
 	static void stage(const RenderDataRD *p_data, const String &p_name, bool p_multisample = false);
 	static void texture(const RenderDataRD *p_data, const String &p_name, RID p_texture);
+	// Custom compositor checkpoints obey the detailed-sample selection; they
+	// must not multiply continuous capture's readback/storage work.
+	static void compositor_texture(const RenderDataRD *p_data, const StringName &p_name, RID p_texture, int p_view);
 	static bool prepare_frame(const RenderDataRD *p_data);
 	static void finish_frame(const RenderDataRD *p_data);
 };

@@ -4,6 +4,7 @@
 #include "capture_paths.h"
 
 #ifdef TOOLS_ENABLED
+#include "scene/3d/camera_3d.h"
 #include "scene/3d/mesh_instance_3d.h"
 #include "scene/resources/mesh.h"
 #include "core/object/callable_mp.h"
@@ -20,39 +21,6 @@
 #include "modules/particle_effects/particle_instance_3d.h"
 #include "modules/particle_effects/particle_instance_pool_3d.h"
 #endif
-
-TypedArray<Node> WRenderCapture::expand_snapshot_children(Node *p_root, Node *p_parent, const Ref<WSceneSnapshot> &p_output, const Ref<WCapturePaths> &p_paths, bool p_world) {
-	ERR_FAIL_NULL_V(p_root, TypedArray<Node>());
-	ERR_FAIL_NULL_V(p_parent, TypedArray<Node>());
-	ERR_FAIL_COND_V(p_output.is_null() || p_paths.is_null(), TypedArray<Node>());
-	Vector<Node *> pending;
-	// Include internal nodes as well: they can own visible geometry. Private
-	// particle slots are selected separately by the pool visitor.
-	for (int i = p_parent->get_child_count() - 1; i >= 0; i--) {
-		pending.push_back(p_parent->get_child(i));
-	}
-	TypedArray<Node> result;
-	while (!pending.is_empty()) {
-		Node *node = pending[pending.size() - 1];
-		pending.resize(pending.size() - 1);
-		ERR_FAIL_NULL_V(node, TypedArray<Node>());
-		const StringName native_type = node->get_class_name();
-		// Plain hierarchy nodes have no application-specific capture fields.
-		// Read them in one native traversal instead of calling the script visitor
-		// and its type-dispatch chain for every transform in every particle.
-		if (node->get_script_instance() || (native_type != Node::get_class_static() && native_type != Node3D::get_class_static())) {
-			result.push_back(node);
-			continue;
-		}
-		if (p_world && native_type == Node3D::get_class_static()) {
-			write_spatial(static_cast<Node3D *>(node), p_output, p_paths->get_path(p_root, node));
-		}
-		for (int i = node->get_child_count() - 1; i >= 0; i--) {
-			pending.push_back(node->get_child(i));
-		}
-	}
-	return result;
-}
 
 void WRenderCapture::PaletteBatch::collect(Node *p_node, Viewport *p_viewport) {
 	Viewport *node_viewport = Object::cast_to<Viewport>(p_node);
@@ -168,18 +136,33 @@ Transform3D WRenderCapture::render_transform(Node3D *p_node) {
 
 bool WRenderCapture::render_visible(Node3D *p_node) {
 	ERR_FAIL_NULL_V(p_node, false);
+	Viewport *viewport = nullptr;
+	bool visible = false;
 	if (p_node->is_inside_tree()) {
-		return p_node->is_visible_in_tree();
+		visible = p_node->is_visible_in_tree();
+		viewport = p_node->get_viewport();
 	}
 #ifdef MODULE_PARTICLE_EFFECTS_ENABLED
-	for (Node *parent = p_node; parent; parent = parent->get_parent()) {
-		ParticleInstance3D *particle = Object::cast_to<ParticleInstance3D>(parent);
-		if (particle) {
-			return particle->is_render_visible(p_node);
+	else {
+		for (Node *parent = p_node; parent; parent = parent->get_parent()) {
+			ParticleInstance3D *particle = Object::cast_to<ParticleInstance3D>(parent);
+			if (particle) {
+				visible = particle->is_render_visible(p_node);
+				ParticleInstancePool3D *pool = particle->get_instance_pool();
+				viewport = pool ? pool->get_viewport() : nullptr;
+				break;
+			}
 		}
 	}
 #endif
-	return false;
+	if (!visible) {
+		return false;
+	}
+	const VisualInstance3D *visual = Object::cast_to<VisualInstance3D>(p_node);
+	const Camera3D *camera = viewport ? viewport->get_camera_3d() : nullptr;
+	// RendererSceneCull applies this mask to geometry and shadow casters.
+	// Keep nonvisual hierarchy nodes: their children have independent layers.
+	return !visual || !camera || (visual->get_layer_mask() & camera->get_cull_mask()) != 0;
 }
 
 void WRenderCapture::write_skeleton(Skeleton3D *p_skeleton, const Ref<WSceneSnapshot> &p_output, const String &p_section) {

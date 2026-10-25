@@ -689,6 +689,9 @@ enum EnvironmentToneMapper {
 	ENV_TONE_MAPPER_FILMIC,
 	ENV_TONE_MAPPER_ACES,
 	ENV_TONE_MAPPER_AGX,
+	// wgodot-changes::begin
+	ENV_TONE_MAPPER_LOG_LUT,
+	// wgodot-changes::end
 };
 
 enum EnvironmentSSRRoughnessQuality {

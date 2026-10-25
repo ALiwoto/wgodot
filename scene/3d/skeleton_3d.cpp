@@ -471,13 +471,22 @@ void Skeleton3D::_notification(int p_what) {
 	}
 }
 
-void Skeleton3D::advance(double p_delta) {
+// wgodot-changes::begin
+void Skeleton3D::advance(double p_delta, bool p_immediate) {
+	ERR_FAIL_COND_MSG(p_immediate && updating, "Cannot advance a skeleton recursively during its update.");
 	_find_modifiers();
 	if (!modifiers.is_empty()) {
 		update_delta += p_delta; // Accumulate delta for manual advance as it needs to process in deferred update.
 		_update_deferred(UPDATE_FLAG_MODIFIER);
 	}
+	if (p_immediate && update_flags != UPDATE_FLAG_NONE) {
+		// Offline/manual clocks need final modifiers and skin publication before
+		// reading this sample. The queued update will see cleared flags; it must
+		// not integrate the same delta a second time.
+		_notification(NOTIFICATION_UPDATE_SKELETON);
+	}
 }
+// wgodot-changes::end
 
 void Skeleton3D::set_modifier_callback_mode_process(Skeleton3D::ModifierCallbackModeProcess p_mode) {
 	if (modifier_callback_mode_process == p_mode) {
@@ -1385,7 +1394,9 @@ void Skeleton3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_modifier_callback_mode_process", "mode"), &Skeleton3D::set_modifier_callback_mode_process);
 	ClassDB::bind_method(D_METHOD("get_modifier_callback_mode_process"), &Skeleton3D::get_modifier_callback_mode_process);
 
-	ClassDB::bind_method(D_METHOD("advance", "delta"), &Skeleton3D::advance);
+	// wgodot-changes::begin
+	ClassDB::bind_method(D_METHOD("advance", "delta", "immediate"), &Skeleton3D::advance, DEFVAL(false));
+	// wgodot-changes::end
 
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "motion_scale", PROPERTY_HINT_RANGE, "0.001,10,0.001,or_greater"), "set_motion_scale", "get_motion_scale");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "show_rest_only"), "set_show_rest_only", "is_show_rest_only");

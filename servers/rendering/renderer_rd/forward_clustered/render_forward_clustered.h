@@ -84,6 +84,7 @@ class RenderForwardClustered : public RendererSceneRenderRD {
 		RENDER_LIST_ALPHA, //used for transparent objects
 // wgodot-changes::begin
 		RENDER_LIST_DISTORTION,
+		RENDER_LIST_SCREEN_EFFECT,
 // wgodot-changes::end
 		RENDER_LIST_SECONDARY, //used for shadows and other objects
 		RENDER_LIST_MAX
@@ -437,6 +438,7 @@ private:
 			MultiUmaBuffer<1u>("RENDER_LIST_MOTION"),
 			MultiUmaBuffer<1u>("RENDER_LIST_ALPHA"),
 			MultiUmaBuffer<1u>("RENDER_LIST_DISTORTION"),
+			MultiUmaBuffer<1u>("RENDER_LIST_SCREEN_EFFECT"),
 			MultiUmaBuffer<1u>("RENDER_LIST_SECONDARY"),
 		};
 // wgodot-changes::end
@@ -513,7 +515,7 @@ private:
 	void _render_list(RenderingDevice::DrawListID p_draw_list, RenderingDevice::FramebufferFormatID p_framebuffer_Format, RenderListParameters *p_params, uint32_t p_from_element, uint32_t p_to_element);
 	void _render_list_with_draw_list(RenderListParameters *p_params, RID p_framebuffer, BitField<RD::DrawFlags> p_draw_flags = RD::DRAW_DEFAULT_ALL, const Vector<Color> &p_clear_color_values = Vector<Color>(), float p_clear_depth_value = 0.0, uint32_t p_clear_stencil_value = 0, const Rect2 &p_region = Rect2());
 // wgodot-changes::begin
-	void _render_list_with_current_screen(RenderListParameters *p_params, RID p_framebuffer, const RenderDataRD *p_render_data, RID p_current_uniform_set);
+	void _render_list_with_current_screen(RenderListParameters *p_params, RID p_framebuffer, const RenderDataRD *p_render_data, RID p_current_uniform_set, bool p_resolve_msaa);
 // wgodot-changes::end
 
 	void _fill_instance_data(RenderListType p_render_list, int *p_render_info = nullptr, uint32_t p_offset = 0, int32_t p_max_elements = -1, bool p_update_buffer = true);
@@ -537,6 +539,7 @@ private:
 			FLAG_PASS_SHADOW = 8,
 // wgodot-changes::begin
 			FLAG_PASS_DISTORTION = 16,
+			FLAG_PASS_SCREEN_EFFECT = 32,
 // wgodot-changes::end
 			FLAG_USES_SHARED_SHADOW_MATERIAL = 128,
 			FLAG_USES_SUBSURFACE_SCATTERING = 2048,

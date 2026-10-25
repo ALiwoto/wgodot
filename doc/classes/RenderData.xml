@@ -10,6 +10,17 @@
 	<tutorials>
 	</tutorials>
 	<methods>
+		<!-- wgodot-changes::begin -->
+		<method name="capture_texture" qualifiers="const">
+			<return type="void" />
+			<param index="0" name="name" type="StringName" />
+			<param index="1" name="texture" type="RID" />
+			<param index="2" name="view" type="int" default="0" />
+			<description>
+				Records a compositor intermediate at the current detailed WRenderCapture checkpoint. Call from the compositor's render callback after ending its compute list. The recorder owns asynchronous readback and unchanged-payload reuse. Does nothing outside an opted-in detailed editor capture, including exported games.
+			</description>
+		</method>
+		<!-- wgodot-changes::end -->
 		<method name="get_camera_attributes" qualifiers="const">
 			<return type="RID" />
 			<description>

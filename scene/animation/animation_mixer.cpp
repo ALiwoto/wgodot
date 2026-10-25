@@ -537,16 +537,16 @@ void AnimationMixer::set_callback_mode_process(AnimationCallbackModeProcess p_mo
 		return;
 	}
 
-	bool was_active = is_active();
-	if (was_active) {
-		set_active(false);
-	}
-
+	// wgodot-changes::begin
+	// Changing who advances this mixer is not a deactivation. Keep track
+	// bindings, audio playback and AnimationTree state intact when handing
+	// playback between manual, idle and physics updates. Disable the old
+	// callback before enabling the new one, including for inactive mixers.
+	const bool was_processing = processing;
+	_set_process(false, true);
 	callback_mode_process = p_mode;
-
-	if (was_active) {
-		set_active(true);
-	}
+	_set_process(was_processing, true);
+	// wgodot-changes::end
 }
 
 AnimationMixer::AnimationCallbackModeProcess AnimationMixer::get_callback_mode_process() const {

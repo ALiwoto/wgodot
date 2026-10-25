@@ -2107,6 +2107,12 @@ RID RenderingDevice::texture_create_from_extension(TextureType p_type, DataForma
 	ERR_FAIL_COND_V(!texture.driver_id, RID());
 
 	_texture_make_mutable(&texture, RID());
+	// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+	// The external owner may write without submitting a device graph command.
+	texture.externally_mutable = true;
+#endif
+	// wgodot-changes::end
 
 	RID id = texture_owner.make_rid(texture);
 #ifdef DEV_ENABLED
@@ -3191,6 +3197,24 @@ Error RenderingDevice::texture_get_data_async(RID p_texture, uint32_t p_layer, c
 
 // wgodot-changes::begin
 #ifdef TOOLS_ENABLED
+uint64_t RenderingDevice::texture_get_content_revision(RID p_texture) {
+	ERR_RENDER_THREAD_GUARD_V(0);
+	const Texture *texture = texture_owner.get_or_null(p_texture);
+	ERR_FAIL_NULL_V(texture, 0);
+	if (texture->owner.is_valid()) {
+		texture = texture_owner.get_or_null(texture->owner);
+		ERR_FAIL_NULL_V(texture, 0);
+	}
+	const RDG::ResourceTracker *tracker = texture->draw_tracker;
+	if (!tracker || texture->externally_mutable) {
+		return 0;
+	}
+	while (tracker->parent) {
+		tracker = tracker->parent;
+	}
+	return tracker->content_revision;
+}
+
 void RenderingDevice::flush_pending_readbacks() {
 	ERR_RENDER_THREAD_GUARD();
 	for (const Frame &pending : frames) {
@@ -9717,6 +9741,20 @@ uint64_t RenderingDevice::get_driver_resource(DriverResource p_resource, RID p_r
 		case DRIVER_RESOURCE_TEXTURE_DATA_FORMAT: {
 			Texture *tex = texture_owner.get_or_null(p_rid);
 			ERR_FAIL_NULL_V(tex, 0);
+			// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+			// Native handles escape the graph's write tracking. Format queries do
+			// not expose storage and do not invalidate snapshot reuse.
+			if (p_resource != DRIVER_RESOURCE_TEXTURE_DATA_FORMAT) {
+				Texture *owner = tex->owner.is_valid() ? texture_owner.get_or_null(tex->owner) : tex;
+				if (owner) {
+					// Preserve this even before the first tracked use creates a
+					// ResourceTracker. Obtaining a handle must not alter the graph.
+					owner->externally_mutable = true;
+				}
+			}
+#endif
+			// wgodot-changes::end
 
 			driver_id = tex->driver_id.id;
 		} break;

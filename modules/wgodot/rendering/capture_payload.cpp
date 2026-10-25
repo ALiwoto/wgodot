@@ -17,6 +17,7 @@ Tiles compare_tiles(const Vector<uint8_t> &p_bytes, uint32_t p_width, uint32_t p
 	const uint32_t columns = (p_width + TILE_SIZE - 1) / TILE_SIZE;
 	const uint32_t rows = (p_height + TILE_SIZE - 1) / TILE_SIZE;
 	result.entries.resize(columns * rows);
+	result.changed.reserve(columns * rows);
 	uint64_t *entries = result.entries.ptrw();
 	const bool comparable = p_previous.width == p_width && p_previous.height == p_height &&
 			p_previous.pixel_bytes == p_pixel_bytes && p_previous_bytes.size() == p_bytes.size() &&
@@ -44,6 +45,38 @@ Tiles compare_tiles(const Vector<uint8_t> &p_bytes, uint32_t p_width, uint32_t p
 		}
 	}
 	return result;
+}
+
+Vector<uint32_t> reuse_tiles(const Vector<uint8_t> &p_bytes, const Vector<uint8_t> &p_other_bytes, Tiles &r_tiles) {
+	Vector<uint32_t> reused;
+	if (r_tiles.changed.is_empty() || p_bytes.size() != p_other_bytes.size()) {
+		return reused;
+	}
+	const uint32_t columns = (r_tiles.width + TILE_SIZE - 1) / TILE_SIZE;
+	const uint64_t pitch = uint64_t(r_tiles.width) * r_tiles.pixel_bytes;
+	const uint8_t *bytes = p_bytes.ptr();
+	const uint8_t *other = p_other_bytes.ptr();
+	uint32_t *changed = r_tiles.changed.ptrw();
+	int retained = 0;
+	for (int i = 0; i < r_tiles.changed.size(); i++) {
+		const uint32_t index = changed[i];
+		const uint32_t x = (index % columns) * TILE_SIZE;
+		const uint32_t y = (index / columns) * TILE_SIZE;
+		const uint32_t row_bytes = MIN(TILE_SIZE, r_tiles.width - x) * r_tiles.pixel_bytes;
+		const uint32_t rows = MIN(TILE_SIZE, r_tiles.height - y);
+		uint64_t offset = uint64_t(y) * pitch + uint64_t(x) * r_tiles.pixel_bytes;
+		bool same = true;
+		for (uint32_t row = 0; same && row < rows; row++, offset += pitch) {
+			same = memcmp(bytes + offset, other + offset, row_bytes) == 0;
+		}
+		if (same) {
+			reused.push_back(index);
+		} else {
+			changed[retained++] = index;
+		}
+	}
+	r_tiles.changed.resize(retained);
+	return reused;
 }
 
 Error Writer::open(const String &p_path) {

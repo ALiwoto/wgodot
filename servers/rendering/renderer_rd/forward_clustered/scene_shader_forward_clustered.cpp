@@ -76,6 +76,7 @@ void SceneShaderForwardClustered::ShaderData::set_code(const String &p_code) {
 // wgodot-changes::begin
 	screen_distortion = false;
 	screen_read_current = false;
+	screen_read_after_transparent = false;
 	bool uses_distortion_output = false;
 // wgodot-changes::end
 	unshaded = false;
@@ -126,6 +127,7 @@ void SceneShaderForwardClustered::ShaderData::set_code(const String &p_code) {
 // wgodot-changes::begin
 	actions.render_mode_flags["screen_distortion"] = &screen_distortion;
 	actions.render_mode_flags["screen_read_current"] = &screen_read_current;
+	actions.render_mode_flags["screen_read_after_transparent"] = &screen_read_after_transparent;
 	actions.usage_flag_pointers["SCREEN_DISTORTION"] = &uses_distortion_output;
 // wgodot-changes::end
 	actions.render_mode_flags["wireframe"] = &wireframe;
@@ -199,7 +201,15 @@ void SceneShaderForwardClustered::ShaderData::set_code(const String &p_code) {
 
 // wgodot-changes::begin
 	ERR_FAIL_COND_MSG(uses_distortion_output && !screen_distortion, "SCREEN_DISTORTION requires render_mode screen_distortion.");
+	// Late screen effects read the preceding effect's result, after the scene's
+	// transparency, MSAA resolve and distortion have completed.
+	screen_read_current |= screen_read_after_transparent;
 	ERR_FAIL_COND_MSG(screen_read_current && (screen_distortion || !gen_code.uses_screen_texture), "screen_read_current requires a screen texture and cannot be combined with screen_distortion.");
+	if (screen_read_after_transparent) {
+		depth_drawi = DEPTH_DRAW_DISABLED;
+		uses_depth_prepass_alpha = false;
+		alpha_antialiasing_mode = ALPHA_ANTIALIASING_OFF;
+	}
 	if (screen_distortion) {
 		depth_drawi = DEPTH_DRAW_DISABLED;
 		unshaded = true;

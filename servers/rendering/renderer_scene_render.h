@@ -143,6 +143,9 @@ public:
 	float environment_get_exposure(RID p_env) const;
 	float environment_get_white(RID p_env, bool p_limit_agx_white, float p_output_max_value) const;
 	void environment_set_tonemap_agx_contrast(RID p_env, float p_agx_contrast);
+	// wgodot-changes::begin
+	void environment_set_tonemap_log_lut_parameters(RID p_env, const Vector4 &p_parameters);
+	// wgodot-changes::end
 	float environment_get_tonemap_agx_contrast(RID p_env) const;
 	RendererEnvironmentStorage::TonemapParameters environment_get_tonemap_parameters(RID p_env, bool p_limit_agx_white, float p_output_max_value) const;
 

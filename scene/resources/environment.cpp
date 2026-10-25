@@ -205,6 +205,10 @@ void Environment::_update_ambient_light() {
 // Tonemap
 
 void Environment::set_tonemapper(ToneMapper p_tone_mapper) {
+	// wgodot-changes::begin
+	ERR_FAIL_COND_MSG(p_tone_mapper == TONE_MAPPER_LOG_LUT && OS::get_singleton()->get_current_rendering_method() == "gl_compatibility",
+			"Log LUT tone mapping requires Forward+ or Mobile rendering.");
+	// wgodot-changes::end
 	tone_mapper = p_tone_mapper;
 	_update_tonemap();
 	notify_property_list_changed();
@@ -249,6 +253,19 @@ void Environment::set_tonemap_agx_contrast(float p_agx_contrast) {
 float Environment::get_tonemap_agx_contrast() const {
 	return tonemap_agx_contrast;
 }
+
+// wgodot-changes::begin
+void Environment::set_tonemap_log_lut_parameters(const Vector4 &p_parameters) {
+	ERR_FAIL_COND_MSG(!p_parameters.is_finite() || p_parameters.x <= 0.0 || p_parameters.z <= 0.0 || p_parameters.w < 0.0,
+			"Log LUT parameters require finite values, positive log scale/input offset and nonnegative output scale.");
+	tonemap_log_lut_parameters = p_parameters;
+	RS::get_singleton()->environment_set_tonemap_log_lut_parameters(environment, p_parameters);
+}
+
+Vector4 Environment::get_tonemap_log_lut_parameters() const {
+	return tonemap_log_lut_parameters;
+}
+// wgodot-changes::end
 
 void Environment::_update_tonemap() {
 	RS::get_singleton()->environment_set_tonemap(
@@ -1163,6 +1180,14 @@ void Environment::_validate_property(PropertyInfo &p_property) const {
 		}
 		return;
 	}
+	// wgodot-changes::begin
+	if (p_property.name == "tonemap_log_lut_parameters") {
+		if (tone_mapper != TONE_MAPPER_LOG_LUT) {
+			p_property.usage = PROPERTY_USAGE_NO_EDITOR;
+		}
+		return;
+	}
+	// wgodot-changes::end
 
 	if (p_property.name == "glow_intensity") {
 		if (glow_blend_mode == GLOW_BLEND_MODE_MIX && OS::get_singleton()->get_current_rendering_method() != "gl_compatibility") {
@@ -1311,7 +1336,12 @@ void Environment::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_tonemap_agx_contrast"), &Environment::get_tonemap_agx_contrast);
 
 	ADD_GROUP("Tonemap", "tonemap_");
-	ADD_PROPERTY(PropertyInfo(Variant::INT, "tonemap_mode", PROPERTY_HINT_ENUM, "Linear,Reinhard,Filmic,ACES,AgX"), "set_tonemapper", "get_tonemapper");
+	// wgodot-changes::begin
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "tonemap_mode", PROPERTY_HINT_ENUM, "Linear,Reinhard,Filmic,ACES,AgX,Log LUT"), "set_tonemapper", "get_tonemapper");
+	ClassDB::bind_method(D_METHOD("set_tonemap_log_lut_parameters", "parameters"), &Environment::set_tonemap_log_lut_parameters);
+	ClassDB::bind_method(D_METHOD("get_tonemap_log_lut_parameters"), &Environment::get_tonemap_log_lut_parameters);
+	ADD_PROPERTY(PropertyInfo(Variant::VECTOR4, "tonemap_log_lut_parameters"), "set_tonemap_log_lut_parameters", "get_tonemap_log_lut_parameters");
+	// wgodot-changes::end
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "tonemap_exposure", PROPERTY_HINT_RANGE, "0,4,0.01,or_greater"), "set_tonemap_exposure", "get_tonemap_exposure");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "tonemap_white", PROPERTY_HINT_RANGE, "1,16,0.01,or_greater"), "set_tonemap_white", "get_tonemap_white");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "tonemap_agx_white", PROPERTY_HINT_RANGE, "2,16.5,0.01,or_greater"), "set_tonemap_agx_white", "get_tonemap_agx_white");
@@ -1619,6 +1649,9 @@ void Environment::_bind_methods() {
 	BIND_ENUM_CONSTANT(TONE_MAPPER_FILMIC);
 	BIND_ENUM_CONSTANT(TONE_MAPPER_ACES);
 	BIND_ENUM_CONSTANT(TONE_MAPPER_AGX);
+	// wgodot-changes::begin
+	BIND_ENUM_CONSTANT(TONE_MAPPER_LOG_LUT);
+	// wgodot-changes::end
 
 	BIND_ENUM_CONSTANT(GLOW_BLEND_MODE_ADDITIVE);
 	BIND_ENUM_CONSTANT(GLOW_BLEND_MODE_SCREEN);

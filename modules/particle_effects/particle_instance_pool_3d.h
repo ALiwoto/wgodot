@@ -14,6 +14,7 @@ class ParticleInstancePool3D : public Node3D {
 	Vector<int> available;
 	Vector<uint8_t> acquired;
 	HashMap<ParticleInstance3D *, int> indices;
+	AABB visibility_aabb;
 #ifdef TOOLS_ENABLED
 	bool capture_lifecycle = false;
 #endif
@@ -26,6 +27,8 @@ public:
 	ParticleInstancePool3D();
 	~ParticleInstancePool3D();
 	Error prepare(const Ref<PackedScene> &p_scene, int p_capacity);
+	void set_visibility_aabb(const AABB &p_value);
+	AABB get_visibility_aabb() const { return visibility_aabb; }
 	ParticleInstance3D *acquire();
 	void release(ParticleInstance3D *p_instance);
 	// Snapshot of pool slots, or acquired instances (including hidden ones).

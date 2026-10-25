@@ -31,9 +31,9 @@ void ParticleShaderBindings::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_dynamics", "name"), &ParticleShaderBindings::set_dynamics);
 	ClassDB::bind_method(D_METHOD("get_dynamics"), &ParticleShaderBindings::get_dynamics);
 	ADD_PROPERTY(PropertyInfo(Variant::STRING_NAME, "dynamics"), "set_dynamics", "get_dynamics");
-	ClassDB::bind_method(D_METHOD("set_mesh_scale_sign", "name"), &ParticleShaderBindings::set_mesh_scale_sign);
-	ClassDB::bind_method(D_METHOD("get_mesh_scale_sign"), &ParticleShaderBindings::get_mesh_scale_sign);
-	ADD_PROPERTY(PropertyInfo(Variant::STRING_NAME, "mesh_scale_sign"), "set_mesh_scale_sign", "get_mesh_scale_sign");
+	ClassDB::bind_method(D_METHOD("set_mesh_scale", "name"), &ParticleShaderBindings::set_mesh_scale);
+	ClassDB::bind_method(D_METHOD("get_mesh_scale"), &ParticleShaderBindings::get_mesh_scale);
+	ADD_PROPERTY(PropertyInfo(Variant::STRING_NAME, "mesh_scale"), "set_mesh_scale", "get_mesh_scale");
 	ClassDB::bind_method(D_METHOD("set_angle", "name"), &ParticleShaderBindings::set_angle);
 	ClassDB::bind_method(D_METHOD("get_angle"), &ParticleShaderBindings::get_angle);
 	ADD_PROPERTY(PropertyInfo(Variant::STRING_NAME, "angle"), "set_angle", "get_angle");
@@ -70,6 +70,9 @@ void ParticleSpawnContext3D::_bind_methods() {
 }
 
 void ParticleInstance3D::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("set_visibility_aabb", "value"), &ParticleInstance3D::set_visibility_aabb);
+	ClassDB::bind_method(D_METHOD("get_visibility_aabb"), &ParticleInstance3D::get_visibility_aabb);
+	ADD_PROPERTY(PropertyInfo(Variant::AABB, "visibility_aabb"), "set_visibility_aabb", "get_visibility_aabb");
 	ClassDB::bind_method(D_METHOD("set_source_size_clock", "enabled"), &ParticleInstance3D::set_source_size_clock);
 	ClassDB::bind_method(D_METHOD("get_source_size_clock"), &ParticleInstance3D::get_source_size_clock);
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "source_size_clock"), "set_source_size_clock", "get_source_size_clock");

@@ -784,7 +784,8 @@ void RendererSceneRenderRD::_render_buffers_post_process_and_tonemap(const Rende
 			if (environment_get_adjustments_enabled(p_render_data->environment) && environment_get_color_correction(p_render_data->environment).is_valid()) {
 				tonemap.use_color_correction = true;
 				tonemap.use_1d_color_correction = environment_get_use_1d_color_correction(p_render_data->environment);
-				tonemap.color_correction_texture = texture_storage->texture_get_rd_texture(environment_get_color_correction(p_render_data->environment), !tonemap.convert_to_srgb);
+				// wgodot-changes: Log LUT interpolation uses encoded texels even for HDR output.
+				tonemap.color_correction_texture = texture_storage->texture_get_rd_texture(environment_get_color_correction(p_render_data->environment), !tonemap.convert_to_srgb && tonemap.tonemap_mode != RSE::ENV_TONE_MAPPER_LOG_LUT);
 			}
 		}
 
@@ -998,7 +999,8 @@ void RendererSceneRenderRD::_post_process_subpass(RID p_source_texture, RID p_fr
 		if (environment_get_adjustments_enabled(p_render_data->environment) && environment_get_color_correction(p_render_data->environment).is_valid()) {
 			tonemap.use_color_correction = true;
 			tonemap.use_1d_color_correction = environment_get_use_1d_color_correction(p_render_data->environment);
-			tonemap.color_correction_texture = texture_storage->texture_get_rd_texture(environment_get_color_correction(p_render_data->environment), !tonemap.convert_to_srgb);
+			// wgodot-changes: Log LUT interpolation uses encoded texels even for HDR output.
+			tonemap.color_correction_texture = texture_storage->texture_get_rd_texture(environment_get_color_correction(p_render_data->environment), !tonemap.convert_to_srgb && tonemap.tonemap_mode != RSE::ENV_TONE_MAPPER_LOG_LUT);
 		}
 	}
 

@@ -273,12 +273,28 @@ float RendererEnvironmentStorage::environment_get_tonemap_agx_contrast(RID p_env
 	return env->tonemap_agx_contrast;
 }
 
+// wgodot-changes::begin
+void RendererEnvironmentStorage::environment_set_tonemap_log_lut_parameters(RID p_env, const Vector4 &p_parameters) {
+	Environment *env = environment_owner.get_or_null(p_env);
+	ERR_FAIL_NULL(env);
+	env->tonemap_log_lut_parameters = p_parameters;
+}
+// wgodot-changes::end
+
 RendererEnvironmentStorage::TonemapParameters RendererEnvironmentStorage::environment_get_tonemap_parameters(RID p_env, bool p_limit_agx_white, float p_output_max_value) const {
 	Environment *env = environment_owner.get_or_null(p_env);
 	ERR_FAIL_NULL_V(env, TonemapParameters());
 
 	float white = environment_get_white(p_env, p_limit_agx_white, p_output_max_value);
 	TonemapParameters tonemap_parameters = TonemapParameters();
+	// wgodot-changes::begin
+	if (env->tone_mapper == RSE::ENV_TONE_MAPPER_LOG_LUT) {
+		for (int i = 0; i < 4; i++) {
+			tonemap_parameters.tonemapper_params[i] = env->tonemap_log_lut_parameters[i];
+		}
+		return tonemap_parameters;
+	}
+	// wgodot-changes::end
 
 	if (env->tone_mapper == RSE::ENV_TONE_MAPPER_LINEAR) {
 		// Linear has no tonemapping parameters

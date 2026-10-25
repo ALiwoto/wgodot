@@ -32,9 +32,29 @@
 
 #include "core/object/class_db.h"
 
+// wgodot-changes::begin
+#include "modules/modules_enabled.gen.h"
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+#include "modules/wgodot/rendering/render_capture.h"
+#include "servers/rendering/renderer_rd/storage_rd/render_data_rd.h"
+#endif
+
+void RenderData::capture_texture(const StringName &p_name, RID p_texture, int p_view) const {
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	const RenderDataRD *data = Object::cast_to<RenderDataRD>(this);
+	if (data) {
+		WRenderCapture::compositor_texture(data, p_name, p_texture, p_view);
+	}
+#endif
+}
+// wgodot-changes::end
+
 void RenderData::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_render_scene_buffers"), &RenderData::get_render_scene_buffers);
 	ClassDB::bind_method(D_METHOD("get_render_scene_data"), &RenderData::get_render_scene_data);
 	ClassDB::bind_method(D_METHOD("get_environment"), &RenderData::get_environment);
 	ClassDB::bind_method(D_METHOD("get_camera_attributes"), &RenderData::get_camera_attributes);
+	// wgodot-changes::begin
+	ClassDB::bind_method(D_METHOD("capture_texture", "name", "texture", "view"), &RenderData::capture_texture, DEFVAL(0));
+	// wgodot-changes::end
 }

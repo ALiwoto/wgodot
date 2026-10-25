@@ -2,6 +2,7 @@
 #pragma once
 
 #include "kawaii_bone_chain.h"
+#include "kawaii_bone_simulation_state.h"
 
 #include "core/math/random_pcg.h"
 #include "core/templates/local_vector.h"
@@ -33,16 +34,16 @@ class KawaiiBoneSimulator3D : public SkeletonModifier3D {
 		LocalVector<Particle> particles;
 		LocalVector<Collision> collisions;
 		real_t previous_delta = 1.0 / 60.0;
+		Transform3D previous_transform;
+		bool initialized = false;
 	};
 
 	TypedArray<KawaiiBoneChain> chains;
 	LocalVector<Chain> simulation;
 	LocalVector<Transform3D> poses;
-	Transform3D previous_transform;
 	Vector3 wind_velocity;
 	RandomPCG wind_random;
 	bool dirty = true;
-	bool initialized = false;
 	bool teleport_detection_enabled = true;
 
 	void _invalidate();
@@ -68,6 +69,8 @@ public:
 	void set_teleport_detection_enabled(bool p_enabled);
 	bool is_teleport_detection_enabled() const;
 	void reset();
+	Ref<KawaiiBoneSimulationState> capture_state();
+	Error restore_state(const Ref<KawaiiBoneSimulationState> &p_state, const Transform3D &p_frame_change = Transform3D());
 	bool has_process() const override { return true; }
 	PackedStringArray get_configuration_warnings() const override;
 };

@@ -43,7 +43,6 @@ void WRenderCapture::_bind_methods() {
 	ClassDB::bind_static_method(get_class_static(), D_METHOD("finish_write_task", "task"), &WRenderCapture::finish_write_task);
 	ClassDB::bind_static_method(get_class_static(), D_METHOD("save_snapshot", "snapshot", "path"), &WRenderCapture::save_snapshot);
 	ClassDB::bind_static_method(get_class_static(), D_METHOD("save_snapshots", "snapshots", "paths"), &WRenderCapture::save_snapshots);
-	ClassDB::bind_static_method(get_class_static(), D_METHOD("expand_snapshot_children", "root", "parent", "output", "paths", "world"), &WRenderCapture::expand_snapshot_children);
 	ClassDB::bind_method(D_METHOD("snapshot_material", "material"), &WRenderCapture::snapshot_material);
 	ClassDB::bind_static_method(get_class_static(), D_METHOD("skeleton_palettes", "roots"), &WRenderCapture::skeleton_palettes);
 	ClassDB::bind_method(D_METHOD("queue_skeleton_palettes", "roots"), &WRenderCapture::queue_skeleton_palettes);
@@ -250,6 +249,7 @@ void WRenderCapture::_set_sample(int64_t p_frame, double p_seconds, double p_ren
 	}
 	WGodotGPUProfile::mark("capture.sample", directory, p_frame);
 	sample_frame = p_frame;
+	sample_detailed_inputs = p_detailed_inputs;
 	sample_seconds = p_seconds;
 	sample_render_time = p_render_time;
 	sample_time_step = p_time_step;
@@ -280,6 +280,17 @@ void WRenderCapture::_read_texture(const String &p_name, RID p_texture) {
 		failure.set(ERR_UNAVAILABLE);
 		return;
 	}
+	const uint64_t revision = rd->texture_get_content_revision(p_texture);
+	const ReadbackFrame::TextureReadback *captured = readback_frame->textures.getptr(p_texture);
+	if (revision && captured && captured->revision == revision) {
+		Plane plane = readback_frame->planes[captured->plane];
+		plane.name = p_name;
+		plane.readback_alias = captured->plane;
+		plane.alias = captured->plane;
+		plane.read_usec = 0;
+		readback_frame->planes.push_back(plane);
+		return;
+	}
 	RD::TextureFormat format = rd->texture_get_format(p_texture);
 	if (format.array_layers != 1) {
 		failure.set(ERR_UNAVAILABLE);
@@ -307,7 +318,11 @@ void WRenderCapture::_read_texture(const String &p_name, RID p_texture) {
 		}
 		Error error = rd->texture_resolve_multisample(p_texture, resolved);
 		if (error == OK) {
+			const int index = readback_frame->planes.size();
 			_read_texture(p_name, resolved);
+			if (revision && readback_frame->planes.size() > index) {
+				readback_frame->textures.insert(p_texture, { revision, index });
+			}
 		} else {
 			failure.set(error);
 		}
@@ -334,7 +349,11 @@ void WRenderCapture::_read_texture(const String &p_name, RID p_texture) {
 			return;
 		}
 		RendererRD::CopyEffects::get_singleton()->copy_depth_to_rect(p_texture, depth, Rect2i(0, 0, format.width, format.height));
+		const int index = readback_frame->planes.size();
 		_read_texture(p_name, depth);
+		if (revision && readback_frame->planes.size() > index) {
+			readback_frame->textures.insert(p_texture, { revision, index });
+		}
 		return;
 	}
 	Plane plane;
@@ -357,6 +376,8 @@ void WRenderCapture::_read_texture(const String &p_name, RID p_texture) {
 		readback_frame->pending--;
 		readback_frame->planes.write[index].error = error;
 		failure.set(error);
+	} else if (revision) {
+		readback_frame->textures.insert(p_texture, { revision, index });
 	}
 }
 
@@ -420,6 +441,14 @@ void WRenderCapture::_pump_frames(bool p_wait) {
 			}
 		}
 		frame->metadata->set_value("frame", "readback_ticks_usec", int64_t(frame->readbacks_finished_usec));
+		for (Plane &plane : frame->planes) {
+			if (plane.readback_alias >= 0) {
+				const Plane &original = frame->planes[plane.readback_alias];
+				plane.bytes = original.bytes;
+				plane.error = original.error;
+			}
+		}
+		frame->textures.clear();
 		frame->owner = this;
 		readback_frames.pop_front();
 		// Compare immutable bytes on a worker. One planner preserves chronological
@@ -497,6 +526,13 @@ void WRenderCapture::texture(const RenderDataRD *p_data, const String &p_name, R
 	WRenderCapture *capture = _find(p_data);
 	if (capture && capture->passes && capture->sample_frame >= 0) {
 		capture->_read_texture(p_name, p_texture);
+	}
+}
+
+void WRenderCapture::compositor_texture(const RenderDataRD *p_data, const StringName &p_name, RID p_texture, int p_view) {
+	WRenderCapture *capture = _find(p_data);
+	if (capture && capture->passes && capture->sample_frame >= 0 && capture->sample_detailed_inputs) {
+		capture->_read_texture("compositor_" + String(p_name) + "_" + itos(p_view), p_texture);
 	}
 }
 
@@ -613,7 +649,7 @@ void WRenderCapture::_compare_plane(uint32_t p_index, Plane *p_planes) const {
 					plane.format == RD::DATA_FORMAT_B8G8R8A8_UNORM || plane.format == RD::DATA_FORMAT_B8G8R8A8_SRGB)) {
 		plane.shuffle_stride = 8;
 	}
-	if (!plane.file.is_empty() || plane.error != OK) {
+	if (plane.readback_alias >= 0 || !plane.file.is_empty() || plane.error != OK) {
 		return;
 	}
 	for (uint32_t i = 0; i < p_index; i++) {
@@ -643,6 +679,19 @@ void WRenderCapture::_compare_plane(uint32_t p_index, Plane *p_planes) const {
 				RD::get_image_format_pixel_size(RD::DataFormat(plane.format)),
 				previous ? previous->bytes : PackedByteArray(),
 				previous ? previous->tiles : WCapturePayload::Tiles());
+		// Intermediate passes usually change only part of the attachment. Match
+		// exact tiles against earlier passes as well as the previous sample.
+		// Only immutable pixels are read here; IDs are resolved after workers join.
+		for (int i = int(p_index) - 1; i >= 0 && !plane.tiles.changed.is_empty(); i--) {
+			const Plane &other = p_planes[i];
+			if (other.buffer || other.texture_input || other.error != OK || other.readback_alias >= 0 ||
+					other.width != plane.width || other.height != plane.height || other.format != plane.format) {
+				continue;
+			}
+			for (uint32_t tile : WCapturePayload::reuse_tiles(plane.bytes, other.bytes, plane.tiles)) {
+				plane.tile_aliases.push_back({ tile, uint32_t(i) });
+			}
+		}
 	}
 }
 
@@ -678,6 +727,9 @@ void WRenderCapture::_plan_write(ReadbackFrame *p_frame) {
 			uint64_t *entries = plane.tiles.entries.ptrw();
 			for (uint32_t tile : plane.tiles.changed) {
 				entries[tile] = next_payload_entry++;
+			}
+			for (const Plane::TileAlias &alias : plane.tile_aliases) {
+				entries[alias.tile] = planes[alias.plane].tiles.entries[alias.tile];
 			}
 			packets++;
 		} else if (plane.reused) {
@@ -716,6 +768,7 @@ void WRenderCapture::_plan_write(ReadbackFrame *p_frame) {
 		// work must never retain full images or an earlier frame's tile arrays.
 		plane.bytes.clear();
 		plane.tiles = WCapturePayload::Tiles();
+		plane.tile_aliases.clear();
 	}
 }
 
@@ -813,6 +866,7 @@ void WRenderCapture::_write_frame(ReadbackFrame *p_frame) {
 		write_frame->set_value(plane.name, "file_usec", int64_t(plane.file_usec));
 		write_frame->set_value(plane.name, "raw_file_bytes", int64_t(plane.packet.bytes.size()));
 		write_frame->set_value(plane.name, "reused", plane.reused);
+		write_frame->set_value(plane.name, "readback_reused", plane.readback_alias >= 0);
 		write_frame->set_value(plane.name, "kind", plane.buffer ? "buffer" : (plane.texture_input ? "texture_input" : "texture"));
 		if (plane.texture_input) {
 			write_frame->set_value(plane.name, "depth", plane.depth);

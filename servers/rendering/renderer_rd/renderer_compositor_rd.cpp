@@ -32,6 +32,10 @@
 
 // wgodot-changes::begin
 #include "core/profiling/wgodot_startup_profile.h"
+#include "modules/modules_enabled.gen.h"
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+#include "modules/wgodot/rendering/render_stepper.h"
+#endif
 // wgodot-changes::end
 
 #include "core/config/engine.h"
@@ -133,8 +137,16 @@ void RendererCompositorRD::begin_frame(double frame_step) {
 	double time_roll_over = GLOBAL_GET_CACHED(double, "rendering/limits/time/time_rollover_secs");
 	time = Math::fmod(time, time_roll_over);
 
-	canvas->set_time(time);
-	scene->set_time(time, frame_step);
+	// wgodot-changes::begin
+	// Inspection overrides shader TIME without changing simulation delta or
+	// the ordinary clock resumed when the inspection scope ends.
+	double shader_time = time;
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	shader_time = WRenderStepper::shader_time(shader_time);
+#endif
+	canvas->set_time(shader_time);
+	scene->set_time(shader_time, frame_step);
+	// wgodot-changes::end
 }
 
 void RendererCompositorRD::end_frame(bool p_present) {

@@ -9,6 +9,16 @@
 	<tutorials>
 		<link title="Ray-casting">$DOCS_URL/tutorials/physics/ray-casting.html</link>
 	</tutorials>
+	<!-- wgodot-changes::begin -->
+	<methods>
+		<method name="get_compositor" qualifiers="const">
+			<return type="Compositor" />
+			<description>
+				Returns the world's compositor, used when the current camera has no compositor override.
+			</description>
+		</method>
+	</methods>
+	<!-- wgodot-changes::end -->
 	<members>
 		<member name="camera_attributes" type="CameraAttributes" setter="set_camera_attributes" getter="get_camera_attributes">
 			The default [CameraAttributes] resource to use if none set on the [Camera3D].
