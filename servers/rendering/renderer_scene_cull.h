@@ -477,6 +477,9 @@ public:
 
 		// sorting
 		float sorting_offset = 0.0;
+		// wgodot-changes::begin
+		int32_t sorting_priority = 0;
+		// wgodot-changes::end
 		bool use_aabb_center = true;
 
 		Vector<Color> lightmap_target_sh; //target is used for incrementally changing the SH over time, this avoids pops in some corner cases and when going interior <-> exterior
@@ -1028,6 +1031,9 @@ public:
 	virtual void instance_set_scenario(RID p_instance, RID p_scenario);
 	virtual void instance_set_layer_mask(RID p_instance, uint32_t p_mask);
 	virtual void instance_set_pivot_data(RID p_instance, float p_sorting_offset, bool p_use_aabb_center);
+	// wgodot-changes::begin
+	virtual void instance_geometry_set_sorting_priority(RID p_instance, int32_t p_priority) override;
+	// wgodot-changes::end
 	virtual void instance_set_transform(RID p_instance, const Transform3D &p_transform);
 	virtual void instance_attach_object_instance_id(RID p_instance, ObjectID p_id);
 	virtual void instance_set_blend_shape_weight(RID p_instance, int p_shape, float p_weight);

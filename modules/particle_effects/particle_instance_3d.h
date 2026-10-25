@@ -214,6 +214,7 @@ public:
 	ParticleInstance3D();
 	// Fixed bounds are in emitter space. Empty bounds use the rendered shape.
 	void set_visibility_aabb(const AABB &p_value) { visibility_aabb = p_value; }
+	void set_sorting_priority(int32_t p_priority);
 	AABB get_visibility_aabb() const { return visibility_aabb; }
 	ParticleInstancePool3D *get_instance_pool() const { return instance_pool; }
 	Transform3D get_particle_transform() const;

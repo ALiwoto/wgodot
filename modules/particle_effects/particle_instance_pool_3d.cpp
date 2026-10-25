@@ -6,6 +6,9 @@
 #include "scene/resources/3d/world_3d.h"
 
 void ParticleInstancePool3D::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("set_sorting_priority", "priority"), &ParticleInstancePool3D::set_sorting_priority);
+	ClassDB::bind_method(D_METHOD("get_sorting_priority"), &ParticleInstancePool3D::get_sorting_priority);
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "sorting_priority"), "set_sorting_priority", "get_sorting_priority");
 	ClassDB::bind_method(D_METHOD("set_visibility_aabb", "value"), &ParticleInstancePool3D::set_visibility_aabb);
 	ClassDB::bind_method(D_METHOD("get_visibility_aabb"), &ParticleInstancePool3D::get_visibility_aabb);
 	ADD_PROPERTY(PropertyInfo(Variant::AABB, "visibility_aabb"), "set_visibility_aabb", "get_visibility_aabb");
@@ -76,6 +79,7 @@ Error ParticleInstancePool3D::prepare(const Ref<PackedScene> &p_scene, int p_cap
 		instance->hide();
 		instance->set_visibility_aabb(visibility_aabb);
 		instance->prepare_render_instances(this);
+		instance->set_sorting_priority(sorting_priority);
 		instances.push_back(instance);
 		indices.insert(instance, i);
 		available.push_back(i);
@@ -87,6 +91,16 @@ void ParticleInstancePool3D::set_visibility_aabb(const AABB &p_value) {
 	visibility_aabb = p_value;
 	for (ParticleInstance3D *instance : instances) {
 		instance->set_visibility_aabb(p_value);
+	}
+}
+
+void ParticleInstancePool3D::set_sorting_priority(int32_t p_priority) {
+	if (sorting_priority == p_priority) {
+		return;
+	}
+	sorting_priority = p_priority;
+	for (ParticleInstance3D *instance : instances) {
+		instance->set_sorting_priority(p_priority);
 	}
 }
 

@@ -92,6 +92,9 @@ public:
 
 class GeometryInstance3D : public VisualInstance3D {
 	GDCLASS(GeometryInstance3D, VisualInstance3D);
+	// wgodot-changes::begin
+	int32_t sorting_priority = 0;
+	// wgodot-changes::end
 
 public:
 	static constexpr AncestralClass static_ancestral_class = AncestralClass::GEOMETRY_INSTANCE_3D;
@@ -184,6 +187,10 @@ public:
 	VisibilityRangeFadeMode get_visibility_range_fade_mode() const;
 
 	void set_material_override(const Ref<Material> &p_material);
+	// wgodot-changes::begin
+	void set_sorting_priority(int32_t p_priority);
+	int32_t get_sorting_priority() const { return sorting_priority; }
+	// wgodot-changes::end
 	Ref<Material> get_material_override() const;
 
 	void set_material_overlay(const Ref<Material> &p_material);

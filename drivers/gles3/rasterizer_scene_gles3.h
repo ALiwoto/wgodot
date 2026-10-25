@@ -728,6 +728,11 @@ private:
 
 		struct SortByReverseDepthAndPriority {
 			_FORCE_INLINE_ bool operator()(const GeometryInstanceSurface *A, const GeometryInstanceSurface *B) const {
+				// wgodot-changes::begin
+				if (A->owner->sorting_priority != B->owner->sorting_priority) {
+					return A->owner->sorting_priority < B->owner->sorting_priority;
+				}
+				// wgodot-changes::end
 				return (A->sort.priority == B->sort.priority) ? (A->owner->depth > B->owner->depth) : (A->sort.priority < B->sort.priority);
 			}
 		};

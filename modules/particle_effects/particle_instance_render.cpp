@@ -86,6 +86,14 @@ void ParticleInstance3D::set_render_scenario(RID p_scenario) {
 	}
 }
 
+void ParticleInstance3D::set_sorting_priority(int32_t p_priority) {
+	for (const RenderInstance &instance : render_instances) {
+		if (instance.geometry) {
+			instance.geometry->set_sorting_priority(p_priority);
+		}
+	}
+}
+
 void ParticleInstance3D::update_render_bounds(RenderInstance &p_instance, const Transform3D &p_transform) {
 	GeometryInstance3D *render_geometry = p_instance.geometry;
 	if (!render_geometry) {

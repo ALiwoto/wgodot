@@ -36,6 +36,9 @@
 		</method>
 	</methods>
 	<members>
+		<member name="sorting_priority" type="int" setter="set_sorting_priority" getter="get_sorting_priority" default="0">
+			Transparent geometry with higher priority is drawn later. Instance priority is compared before material render priority and distance. This does not affect opaque geometry or depth testing. Materials remain shared between instances with different priorities.
+		</member>
 		<member name="cast_shadow" type="int" setter="set_cast_shadows_setting" getter="get_cast_shadows_setting" enum="GeometryInstance3D.ShadowCastingSetting" default="1">
 			The mode used to cast shadows from this instance.
 		</member>

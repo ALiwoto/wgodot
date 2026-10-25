@@ -231,6 +231,16 @@ void GeometryInstance3D::set_material_override(const Ref<Material> &p_material) 
 	RS::get_singleton()->instance_geometry_set_material_override(get_instance(), p_material.is_valid() ? p_material->get_rid() : RID());
 }
 
+// wgodot-changes::begin
+void GeometryInstance3D::set_sorting_priority(int32_t p_priority) {
+	if (sorting_priority == p_priority) {
+		return;
+	}
+	sorting_priority = p_priority;
+	RS::get_singleton()->instance_geometry_set_sorting_priority(get_instance(), p_priority);
+}
+// wgodot-changes::end
+
 Ref<Material> GeometryInstance3D::get_material_override() const {
 	return material_override;
 }
@@ -536,6 +546,11 @@ void GeometryInstance3D::_validate_property(PropertyInfo &p_property) const {
 }
 
 void GeometryInstance3D::_bind_methods() {
+	// wgodot-changes::begin
+	ClassDB::bind_method(D_METHOD("set_sorting_priority", "priority"), &GeometryInstance3D::set_sorting_priority);
+	ClassDB::bind_method(D_METHOD("get_sorting_priority"), &GeometryInstance3D::get_sorting_priority);
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "sorting_priority"), "set_sorting_priority", "get_sorting_priority");
+	// wgodot-changes::end
 	// wgodot-changes::begin
 	_bind_typed_instance_shader_parameters();
 	// wgodot-changes::end

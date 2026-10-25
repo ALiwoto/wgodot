@@ -24,17 +24,17 @@
 #endif
 
 namespace {
-// Wire version 1. Records carry typed numbers/strings/raw uniform words, never
+// Wire version 2. Records carry typed numbers/strings/raw uniform words, never
 // Variant dictionaries, reflection property lists, texture pixels or vertices.
 // See tools/porting/live/wire.py in the client project's research tooling.
-enum Kind { SPATIAL = 1, SKELETON, MESH, MATERIAL, UNIFORM, PARTICLE, CAMERA, LIGHT, DECAL, AUDIO, ANIMATION, BODY };
+enum Kind { SPATIAL = 1, SKELETON, MESH, MATERIAL, UNIFORM, PARTICLE, CAMERA, LIGHT, DECAL, AUDIO, ANIMATION, BODY, GEOMETRY };
 
 struct Writer {
 	Ref<StreamPeerBuffer> output;
 	HashMap<ObjectID, String> materials;
 	Writer() {
 		output.instantiate();
-		output->put_u32(0x314c5357); // WSL1
+		output->put_u32(0x324c5357); // WSL2
 	}
 	void record(Kind p_kind, const String &p_path, const Vector<String> &p_strings, const Vector<double> &p_values, const Vector<uint8_t> &p_raw = {}) {
 		output->put_u16(p_kind);
@@ -198,7 +198,22 @@ PackedByteArray WLiveSceneProbe::snapshot(Node *p_root, Skeleton3D *p_body) {
 		if (Node3D *spatial = Object::cast_to<Node3D>(node)) {
 			Vector<double> values = { double(WRenderCapture::render_visible(spatial)) };
 			Writer::transform(values, WRenderCapture::render_transform(spatial));
-			writer.record(SPATIAL, path, { spatial->get_class(), spatial->get_scene_file_path() }, values);
+			Node *parent = node->get_parent();
+#ifdef MODULE_PARTICLE_EFFECTS_ENABLED
+			if (ParticleInstance3D *particle = Object::cast_to<ParticleInstance3D>(node)) {
+				if (particle->get_instance_pool()) {
+					parent = particle->get_instance_pool();
+				}
+			}
+#endif
+			String parent_path;
+			if (parent) {
+				parent_path = parent->is_inside_tree() ? String(p_root->get_path_to(parent)) : "@" + uitos(parent->get_instance_id());
+			}
+			writer.record(SPATIAL, path, { spatial->get_class(), spatial->get_scene_file_path(), parent_path }, values);
+		}
+		if (GeometryInstance3D *geometry = Object::cast_to<GeometryInstance3D>(node)) {
+			writer.record(GEOMETRY, path, {}, { double(geometry->get_sorting_priority()), geometry->get_sorting_offset(), double(geometry->is_sorting_use_aabb_center()) });
 		}
 		if (Skeleton3D *skeleton = Object::cast_to<Skeleton3D>(node)) {
 			const SkeletonPose &pose = observe_skeleton(skeleton);
