@@ -292,7 +292,10 @@ String ResourceImporterScene::get_resource_type() const {
 }
 
 int ResourceImporterScene::get_format_version() const {
-	return 1;
+	// wgodot-changes::begin
+	// Repack cached meshes with nearest-rounded UNORM16 skin weights.
+	return _scene_import_type == "AnimationLibrary" ? 1 : 2;
+	// wgodot-changes::end
 }
 
 bool ResourceImporterScene::get_option_visibility(const String &p_path, const String &p_option, const HashMap<StringName, Variant> &p_options) const {

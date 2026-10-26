@@ -848,7 +848,11 @@ Error RenderingServer::_surface_set_data(Array p_arrays, uint64_t p_format, uint
 						uint16_t data[8];
 						for (int i = 0; i < p_vertex_array_len; i++) {
 							for (uint32_t j = 0; j < bone_count; j++) {
-								data[j] = CLAMP(src[i * bone_count + j] * 65535, 0, 65535);
+								// wgodot-changes::begin
+								// Truncation biases skin weights downward, including float
+								// representations of exactly representable UNORM8 weights.
+								data[j] = (uint16_t)CLAMP(Math::round(src[i * bone_count + j] * 65535.0f), 0.0f, 65535.0f);
+								// wgodot-changes::end
 							}
 
 							memcpy(&sw[p_offsets[ai] + i * p_skin_stride], data, 2 * bone_count);
@@ -862,7 +866,9 @@ Error RenderingServer::_surface_set_data(Array p_arrays, uint64_t p_format, uint
 						uint16_t data[8];
 						for (int i = 0; i < p_vertex_array_len; i++) {
 							for (uint32_t j = 0; j < bone_count; j++) {
-								data[j] = CLAMP(src[i * bone_count + j] * 65535, 0, 65535);
+								// wgodot-changes::begin
+								data[j] = (uint16_t)CLAMP(Math::round(src[i * bone_count + j] * 65535.0), 0.0, 65535.0);
+								// wgodot-changes::end
 							}
 
 							memcpy(&sw[p_offsets[ai] + i * p_skin_stride], data, 2 * bone_count);
