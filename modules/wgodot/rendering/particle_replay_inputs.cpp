@@ -5,7 +5,7 @@
 
 namespace {
 struct Channel {
-	enum Target { PARTICLE, BURST_SCALE, EMISSION_RATE };
+	enum Target { PARTICLE, BURST_SCALE, EMISSION_RATE, BIRTH };
 	const char *prefix;
 	Ref<RandomStream32> (ParticleInstance3D::*stream)() const;
 	Target target = PARTICLE;
@@ -26,6 +26,7 @@ const Channel channels[] = {
 	{ "particle_noise_update", &ParticleInstance3D::get_sprite_random },
 	{ "emitter_burst_scale", nullptr, Channel::BURST_SCALE },
 	{ "emitter_rate", nullptr, Channel::EMISSION_RATE },
+	{ "particle_birth", nullptr, Channel::BIRTH },
 };
 
 uint64_t sample_key(uint32_t p_frame, uint32_t p_step) {
@@ -35,6 +36,8 @@ uint64_t sample_key(uint32_t p_frame, uint32_t p_step) {
 
 void WParticleReplayInputs::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("configure", "recording"), &WParticleReplayInputs::configure);
+	ClassDB::bind_method(D_METHOD("replace_inputs", "recording"), &WParticleReplayInputs::replace_inputs);
+	ClassDB::bind_method(D_METHOD("apply_birth", "particle", "frame", "step", "random"), &WParticleReplayInputs::apply_birth);
 	ClassDB::bind_method(D_METHOD("bind_particle", "particle", "identity"), &WParticleReplayInputs::bind_particle);
 	ClassDB::bind_method(D_METHOD("apply", "particle", "frame", "step"), &WParticleReplayInputs::apply);
 	ClassDB::bind_method(D_METHOD("apply_active", "simulation", "frame", "step"), &WParticleReplayInputs::apply_active);
@@ -48,6 +51,18 @@ Error WParticleReplayInputs::configure(const Ref<ConfigFile> &p_recording) {
 	ERR_FAIL_COND_V_MSG(!original_streams.is_empty(), ERR_ALREADY_IN_USE, "Restore the previous particle replay before configuring another recording.");
 	inputs.clear();
 	bindings.clear();
+	return decode_inputs(p_recording);
+}
+
+Error WParticleReplayInputs::replace_inputs(const Ref<ConfigFile> &p_recording) {
+	ERR_FAIL_COND_V(p_recording.is_null(), ERR_INVALID_PARAMETER);
+	// Live inspection retains only the incoming frame. Keep stream ownership
+	// and active particle bindings until the session restores them.
+	inputs.clear();
+	return decode_inputs(p_recording);
+}
+
+Error WParticleReplayInputs::decode_inputs(const Ref<ConfigFile> &p_recording) {
 	for (const String &section : p_recording->get_sections()) {
 		// Channel names can contain underscores. Split numeric suffixes from
 		// the end, so size_life is never mistaken for the size channel.
@@ -102,7 +117,7 @@ Error WParticleReplayInputs::apply_stream(Reset &p_reset, const Ref<RandomStream
 	if (!original_streams.has(stream_id)) {
 		original_streams.insert(stream_id, { p_stream, p_stream->get_state() });
 	}
-	p_stream->reset(p_reset.state);
+	p_stream->debug_restore_state(p_reset.state);
 	p_reset.applied = true;
 	return OK;
 }
@@ -119,6 +134,9 @@ Error WParticleReplayInputs::apply_sample(ParticleInstance3D *p_particle, HashMa
 	Reset *values = resets->ptrw();
 	for (int i = 0; i < resets->size(); i++) {
 		Reset &reset = values[i];
+		if (channels[reset.channel].target == Channel::BIRTH) {
+			continue;
+		}
 		ERR_FAIL_COND_V_MSG(channels[reset.channel].target != Channel::PARTICLE, ERR_FILE_CORRUPT, "Emitter replay input targets a particle: " + *identity);
 		Ref<RandomStream32> stream = (p_particle->*channels[reset.channel].stream)();
 		Error error = apply_stream(reset, stream);
@@ -133,6 +151,24 @@ Error WParticleReplayInputs::apply(ParticleInstance3D *p_particle, uint32_t p_fr
 	ERR_FAIL_NULL_V(p_particle, ERR_INVALID_PARAMETER);
 	auto *sample = inputs.getptr(sample_key(p_frame, p_step));
 	return sample ? apply_sample(p_particle, *sample) : OK;
+}
+
+Error WParticleReplayInputs::apply_birth(ParticleInstance3D *p_particle, uint32_t p_frame, uint32_t p_step, const Ref<RandomStream32> &p_random) {
+	ERR_FAIL_NULL_V(p_particle, ERR_INVALID_PARAMETER);
+	const String *identity = bindings.getptr(p_particle->get_instance_id());
+	auto *sample = inputs.getptr(sample_key(p_frame, p_step));
+	if (!identity || !sample) {
+		return OK;
+	}
+	Vector<Reset> *resets = sample->getptr(*identity);
+	if (resets) {
+		for (Reset &reset : *resets) {
+			if (channels[reset.channel].target == Channel::BIRTH) {
+				return apply_stream(reset, p_random);
+			}
+		}
+	}
+	return OK;
 }
 
 Error WParticleReplayInputs::apply_active(const Ref<ParticleSimulation3D> &p_simulation, uint32_t p_frame, uint32_t p_step) {
@@ -186,7 +222,7 @@ PackedStringArray WParticleReplayInputs::get_unapplied_inputs() const {
 
 void WParticleReplayInputs::restore_streams() {
 	for (const auto &entry : original_streams) {
-		entry.value.stream->reset(entry.value.state);
+		entry.value.stream->debug_restore_state(entry.value.state);
 	}
 	original_streams.clear();
 }

@@ -103,8 +103,8 @@ void ParticleInstance3D::update_render_bounds(RenderInstance &p_instance, const 
 	const bool sprite = render_geometry == geometry && sprite_motion.is_valid();
 	const bool facing_mesh = render_geometry == geometry && motion.is_valid() && motion->get_faces_camera();
 	real_t camera_distance = render_geometry == geometry ? Math::abs(state_camera_offset) : 0.0;
-	if (facing_mesh && follows_emitter && camera_distance != 0.0) {
-		// Camera-facing meshes apply offsets in emitter space before facing.
+	if (render_geometry == geometry && motion.is_valid() && follows_emitter && camera_distance != 0.0) {
+		// Mesh particles apply camera offsets in emitter space before facing.
 		// Bound its world displacement even under nonuniform scale or shear.
 		const Basis emitter = get_emitter_transform().basis;
 		real_t squared_scale = 0.0;

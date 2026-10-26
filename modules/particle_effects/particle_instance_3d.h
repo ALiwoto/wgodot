@@ -197,7 +197,8 @@ class ParticleInstance3D : public Node3D {
 	void set_frame(double p_frame);
 	void prepare_orbit(const Ref<ParticleMotionProfile3D> &p_trajectory, double p_emitter_seconds);
 	Vector3 advance_orbit(const Ref<ParticleMotionProfile3D> &p_trajectory, double p_relative_age, double p_delta, bool p_spawned_now, double p_emitter_seconds);
-	void advance_sprite(double p_relative_age, double p_delta, bool p_spawned_now, double p_simulation_delta, const Ref<RandomStream32> &p_random, ParticleInstance3D *p_linked_particle, double p_emitter_seconds, double p_parameter_ratio);
+	void advance_sprite(double p_relative_age, double p_delta, bool p_spawned_now, double p_simulation_delta, const Ref<RandomStream32> &p_random, ParticleInstance3D *p_linked_particle, double p_emitter_seconds, double p_parameter_ratio, const Vector3 *p_birth_light_position);
+	void set_light_pose_position(const Vector3 &p_position);
 	void inherit_source_movement(const Ref<ParticleVectorCurve3D> &p_curve, double p_relative_age, double p_delta);
 	Vector3 acceleration_in_simulation(Vector3 p_value, bool p_world_space);
 	void add_acceleration(Vector3 p_value, double p_delta);

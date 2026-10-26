@@ -27,7 +27,7 @@ namespace {
 // Wire version 2. Records carry typed numbers/strings/raw uniform words, never
 // Variant dictionaries, reflection property lists, texture pixels or vertices.
 // See tools/porting/live/wire.py in the client project's research tooling.
-enum Kind { SPATIAL = 1, SKELETON, MESH, MATERIAL, UNIFORM, PARTICLE, CAMERA, LIGHT, DECAL, AUDIO, ANIMATION, BODY, GEOMETRY };
+enum Kind { SPATIAL = 1, SKELETON, MESH, MATERIAL, UNIFORM, PARTICLE, CAMERA, LIGHT, DECAL, AUDIO, ANIMATION, BODY, GEOMETRY, INSTANCE_UNIFORM };
 
 struct Writer {
 	Ref<StreamPeerBuffer> output;
@@ -214,6 +214,19 @@ PackedByteArray WLiveSceneProbe::snapshot(Node *p_root, Skeleton3D *p_body) {
 		}
 		if (GeometryInstance3D *geometry = Object::cast_to<GeometryInstance3D>(node)) {
 			writer.record(GEOMETRY, path, {}, { double(geometry->get_sorting_priority()), geometry->get_sorting_offset(), double(geometry->is_sorting_use_aabb_center()) });
+			for (const WInstanceShaderParameters::Item &item : geometry->get_instance_shader_parameters()->snapshot()) {
+				if (item.gpu_index < 0) {
+					continue;
+				}
+				const WInstanceShaderValue &value = item.overridden ? item.value : item.default_value;
+				Vector<uint8_t> words;
+				words.resize(8 * sizeof(uint32_t));
+				for (int i = 0; i < 4; i++) {
+					encode_uint32(value.words[i], words.ptrw() + i * sizeof(uint32_t));
+					encode_uint32(value.linear_words[i], words.ptrw() + (i + 4) * sizeof(uint32_t));
+				}
+				writer.record(INSTANCE_UNIFORM, path, { item.info.name }, { double(value.type), double(item.gpu_index), double(item.overridden) }, words);
+			}
 		}
 		if (Skeleton3D *skeleton = Object::cast_to<Skeleton3D>(node)) {
 			const SkeletonPose &pose = observe_skeleton(skeleton);
@@ -225,7 +238,7 @@ PackedByteArray WLiveSceneProbe::snapshot(Node *p_root, Skeleton3D *p_body) {
 		}
 		if (MeshInstance3D *mesh = Object::cast_to<MeshInstance3D>(node)) {
 			if (mesh->get_mesh().is_valid()) {
-				writer.record(MESH, path, { mesh->get_mesh()->get_path() }, { double(mesh->get_layer_mask()), double(mesh->get_cast_shadows_setting()), mesh->get_transparency() });
+				writer.record(MESH, path, { mesh->get_mesh()->get_path(), mesh->get_mesh()->get_name() }, { double(mesh->get_layer_mask()), double(mesh->get_cast_shadows_setting()), mesh->get_transparency() });
 				for (int i = 0; i < mesh->get_mesh()->get_surface_count(); i++) {
 					writer.material(mesh->get_active_material(i), path + ":" + itos(i));
 				}

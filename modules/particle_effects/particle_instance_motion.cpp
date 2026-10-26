@@ -78,7 +78,20 @@ Vector3 ParticleInstance3D::advance_orbit(const Ref<ParticleMotionProfile3D> &p_
 	return state_render_orbit_offset;
 }
 
-void ParticleInstance3D::advance_sprite(double p_relative_age, double p_delta, bool p_spawned_now, double p_simulation_delta, const Ref<RandomStream32> &p_random, ParticleInstance3D *p_linked_particle, double p_emitter_seconds, double p_parameter_ratio) {
+void ParticleInstance3D::set_light_pose_position(const Vector3 &p_position) {
+	Node3D *pose_parent = pose->get_parent_node_3d();
+	Node3D *light_parent = light->get_parent_node_3d();
+	if (pose_parent == light_parent) {
+		light->set_position(p_position);
+		return;
+	}
+	// Move only the light when a particle also owns independently drawn geometry.
+	// These transforms work for both detached pools and scene-tree instances.
+	const Vector3 world = pose_parent ? get_render_transform(pose_parent).xform(p_position) : p_position;
+	light->set_position(light_parent ? get_render_transform(light_parent).affine_inverse().xform(world) : world);
+}
+
+void ParticleInstance3D::advance_sprite(double p_relative_age, double p_delta, bool p_spawned_now, double p_simulation_delta, const Ref<RandomStream32> &p_random, ParticleInstance3D *p_linked_particle, double p_emitter_seconds, double p_parameter_ratio, const Vector3 *p_birth_light_position) {
 	const Vector3 position_before_motion = state_position;
 	if (!p_spawned_now) {
 		state_velocity = state_base_velocity;
@@ -123,8 +136,12 @@ void ParticleInstance3D::advance_sprite(double p_relative_age, double p_delta, b
 	const Vector3 orbit_position = advance_orbit(sprite_motion, p_relative_age, p_simulation_delta, p_spawned_now, p_emitter_seconds);
 	displacement += orbit_position - previous_orbit;
 	pose->set_position(state_position + orbit_position);
-	if (light && light_parameters->get_high_quality() && light_parameters->get_sample_position_before_motion() && !p_spawned_now) {
-		pose->set_position(position_before_motion);
+	if (light && light_parameters->get_high_quality()) {
+		if (p_birth_light_position) {
+			set_light_pose_position(*p_birth_light_position);
+		} else if (light_parameters->get_sample_position_before_motion() && !p_spawned_now) {
+			set_light_pose_position(position_before_motion);
+		}
 	}
 	if (!geometry) {
 		return;

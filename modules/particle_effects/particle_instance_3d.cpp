@@ -179,6 +179,8 @@ bool ParticleInstance3D::sample_playback(double p_seconds, double p_delta, const
 	double birth_curve_age = -1.0;
 	Vector3 unlinked_birth_velocity;
 	Vector3 birth_rotation_degrees;
+	Vector3 birth_light_position;
+	bool has_birth_light_position = false;
 	bool has_birth_rotation = false;
 	bool ground_sampled = false;
 	bool ground_failed = false;
@@ -276,6 +278,9 @@ bool ParticleInstance3D::sample_playback(double p_seconds, double p_delta, const
 					accelerations[initial->get_acceleration()->get_index()] = acceleration;
 				} break;
 				case Target::Light:
+					// HQ lights are created here, before subsequent location rules.
+					birth_light_position = state_position;
+					has_birth_light_position = true;
 					state_light_radius_multiplier = light_parameters->get_radius_over_emission().is_valid() ? light_parameters->get_radius_over_emission()->sample(p_emitter_seconds, p_parameter_ratio, birth_random) : 1.0;
 					state_light_enabled = birth_random->next_float() < light_parameters->get_spawn_fraction();
 					break;
@@ -376,7 +381,7 @@ bool ParticleInstance3D::sample_playback(double p_seconds, double p_delta, const
 			if (motion->get_pre_orientation().is_valid()) {
 				const Basis basis = Basis::from_euler(motion->get_pre_orientation()->sample(get_orientation_random()), EulerOrder::YZX);
 				geometry->set_basis(basis);
-				if (motion->get_faces_camera() || !motion->get_flattened_axes().is_empty()) {
+				if (motion->get_faces_camera() || !motion->get_flattened_axes().is_empty() || (follows_emitter && camera_offset.is_valid())) {
 					uniform(bindings()->mesh_pre_rotation_x, basis.get_column(0));
 					uniform(bindings()->mesh_pre_rotation_y, basis.get_column(1));
 					uniform(bindings()->mesh_pre_rotation_z, basis.get_column(2));
@@ -400,6 +405,9 @@ bool ParticleInstance3D::sample_playback(double p_seconds, double p_delta, const
 					set_transform(frozen_transform);
 				}
 				state_position = unscale_particle_vector(state_position, frozen_transform.basis);
+				if (has_birth_light_position) {
+					birth_light_position = unscale_particle_vector(birth_light_position, frozen_transform.basis);
+				}
 				state_velocity = unscale_particle_vector(state_velocity, frozen_transform.basis);
 			}
 			state_base_velocity = state_velocity;
@@ -528,8 +536,10 @@ bool ParticleInstance3D::sample_playback(double p_seconds, double p_delta, const
 			// its input basis free of the independent mesh-rotation payload.
 			pose->set_transform(Transform3D(motion->get_faces_camera() ? Basis() : Basis::from_euler(angles, EulerOrder::YZX), location));
 			stretch->set_scale(size);
-			if (motion->get_faces_camera()) {
+			if (motion->get_faces_camera() || (follows_emitter && camera_offset.is_valid())) {
 				uniform(bindings()->mesh_scale, size);
+			}
+			if (motion->get_faces_camera()) {
 				const double spin_scale = motion->get_spin_over_life().is_valid() ? motion->get_spin_over_life()->sample(relative_age, 0.0, rotation_random) : 1.0;
 				state_angle += state_angular_speed * spin_scale * (spawned_now ? birth_age : p_delta);
 				Vector3 direction = state_velocity;
@@ -543,7 +553,7 @@ bool ParticleInstance3D::sample_playback(double p_seconds, double p_delta, const
 			const Vector3 angular_velocity = motion->angular_velocity_at(relative_age, state_angular_velocity) * (180.0 / Math::PI);
 			state_rotation_degrees += angular_velocity * p_delta;
 		} else if (sprite_motion.is_valid()) {
-			advance_sprite(relative_age, spawned_now ? birth_age : p_delta, spawned_now, p_delta, p_random, p_linked_particle, p_emitter_seconds, p_parameter_ratio);
+			advance_sprite(relative_age, spawned_now ? birth_age : p_delta, spawned_now, p_delta, p_random, p_linked_particle, p_emitter_seconds, p_parameter_ratio, has_birth_light_position ? &birth_light_position : nullptr);
 		}
 		if (material_parameters.is_valid() && source_material_clock) {
 			uniform(bindings()->dynamics, material_parameters->sample(state_relative_age, state_material_parameters, p_parameter_ratio, p_random, spawned_now, p_emitter_seconds, state_velocity));

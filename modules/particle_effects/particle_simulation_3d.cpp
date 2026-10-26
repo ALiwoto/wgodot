@@ -109,20 +109,19 @@ bool ParticleSimulation3D::spawn(double p_age, double p_interpolation) {
 	if (pool) {
 		particle = pool->acquire();
 		ERR_FAIL_NULL_V(particle, false);
-		particle->set_spawn_index(spawned_count);
 		particle->reset_playback();
 	} else {
 		ERR_FAIL_INDEX_V(spawned_count, authored.size(), false);
 		particle = Object::cast_to<ParticleInstance3D>(authored[spawned_count]);
 	}
+	particle->set_spawn_index(spawned_count++);
 #ifdef TOOLS_ENABLED
-	const int64_t random_before = random->get_state();
-	if (pool && debug_prepare) {
+	if (debug_prepare) {
 		emit_signal(SNAME("debug_particle_prepared"), particle);
 	}
+	const int64_t random_before = random->get_state();
 #endif
 	particle->set_birth(seconds - delta);
-	particle->set_spawn_index(spawned_count++);
 	const bool alive = sample(particle, p_age, birth_offset * p_interpolation, active.size());
 	if (alive) {
 		active.push_back(particle);

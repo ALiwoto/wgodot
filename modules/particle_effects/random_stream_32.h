@@ -32,6 +32,8 @@ public:
 	}
 #ifdef TOOLS_ENABLED
 	void set_debug_observe_resets(bool p_enabled) { debug_observe_resets = p_enabled; }
+	// Restoring a sampled input is not the start of another simulation run.
+	void debug_restore_state(int64_t p_state) { state = uint32_t(p_state); }
 #endif
 	int64_t get_state() const { return state; }
 	void set_vector_order(const Vector3i &p_order);
