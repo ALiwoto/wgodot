@@ -253,6 +253,9 @@ layout(constant_id = 3) const bool sc_emulate_point_size = false;
 
 layout(set = 0, binding = 2) uniform sampler shadow_sampler;
 
+// wgodot-changes::begin
+#define INSTANCE_FLAGS_PRESERVE_TANGENT_FRAME (1 << 0)
+// wgodot-changes::end
 #define INSTANCE_FLAGS_DYNAMIC (1 << 3)
 #define INSTANCE_FLAGS_NON_UNIFORM_SCALE (1 << 4)
 #define INSTANCE_FLAGS_USE_GI_BUFFERS (1 << 5)

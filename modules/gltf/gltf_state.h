@@ -77,6 +77,11 @@ protected:
 	bool force_generate_tangents = false;
 	bool create_animations = true;
 	bool force_disable_compression = false;
+	// wgodot-changes::begin
+	bool preserve_tangent_frame = false;
+	bool orthonormalize_morph_tangent_frame = false;
+	bool normalize_morph_normal_weights = false;
+	// wgodot-changes::end
 	bool import_as_skeleton_bones = false;
 
 	HandleBinaryImageMode handle_binary_image_mode = HANDLE_BINARY_IMAGE_MODE_EXTRACT_TEXTURES;

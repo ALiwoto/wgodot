@@ -609,6 +609,18 @@ Error RenderingServer::_surface_set_data(Array p_arrays, uint64_t p_format, uint
 
 			} break;
 			case RSE::ARRAY_NORMAL: {
+				// wgodot-changes::begin
+				if (p_format & RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME) {
+					ERR_FAIL_COND_V(p_arrays[ai].get_type() != Variant::PACKED_VECTOR3_ARRAY, ERR_INVALID_PARAMETER);
+					const Vector<Vector3> normals = p_arrays[ai];
+					ERR_FAIL_COND_V(normals.size() != p_vertex_array_len, ERR_INVALID_PARAMETER);
+					for (int i = 0; i < p_vertex_array_len; i++) {
+						const float normal[3] = { float(normals[i].x), float(normals[i].y), float(normals[i].z) };
+						memcpy(&vw[p_offsets[ai] + i * p_normal_stride], normal, sizeof(normal));
+					}
+					break;
+				}
+				// wgodot-changes::end
 				// If using compression we store normal while storing vertices.
 				if (!(p_format & RSE::ARRAY_FLAG_COMPRESS_ATTRIBUTES)) {
 					ERR_FAIL_COND_V(p_arrays[ai].get_type() != Variant::PACKED_VECTOR3_ARRAY, ERR_INVALID_PARAMETER);
@@ -630,6 +642,39 @@ Error RenderingServer::_surface_set_data(Array p_arrays, uint64_t p_format, uint
 			} break;
 
 			case RSE::ARRAY_TANGENT: {
+				// wgodot-changes::begin
+				if (p_format & RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME) {
+					const Variant::Type type = p_arrays[ai].get_type();
+					ERR_FAIL_COND_V(type != Variant::PACKED_FLOAT32_ARRAY && type != Variant::PACKED_FLOAT64_ARRAY && type != Variant::NIL, ERR_INVALID_PARAMETER);
+					Vector<float> tangents32;
+					Vector<double> tangents64;
+					if (type == Variant::PACKED_FLOAT32_ARRAY) {
+						tangents32 = p_arrays[ai];
+						ERR_FAIL_COND_V(tangents32.size() != p_vertex_array_len * 4, ERR_INVALID_PARAMETER);
+					} else if (type == Variant::PACKED_FLOAT64_ARRAY) {
+						tangents64 = p_arrays[ai];
+						ERR_FAIL_COND_V(tangents64.size() != p_vertex_array_len * 4, ERR_INVALID_PARAMETER);
+					}
+					const Vector<Vector3> normals = p_arrays[RSE::ARRAY_NORMAL];
+					for (int i = 0; i < p_vertex_array_len; i++) {
+						float tangent[4];
+						if (type == Variant::NIL) {
+							const Vector3 n = normals[i].normalized();
+							const Vector3 t = Vector3(n.z, -n.x, n.y).cross(n).normalized();
+							tangent[0] = t.x;
+							tangent[1] = t.y;
+							tangent[2] = t.z;
+							tangent[3] = 1.0f;
+						} else {
+							for (int j = 0; j < 4; j++) {
+								tangent[j] = type == Variant::PACKED_FLOAT32_ARRAY ? tangents32[i * 4 + j] : float(tangents64[i * 4 + j]);
+							}
+						}
+						memcpy(&vw[p_offsets[ai] + i * p_normal_stride], tangent, sizeof(tangent));
+					}
+					break;
+				}
+				// wgodot-changes::end
 				// If using compression we store tangent while storing vertices.
 				if (!(p_format & RSE::ARRAY_FLAG_COMPRESS_ATTRIBUTES)) {
 					Variant::Type type = p_arrays[ai].get_type();
@@ -1096,10 +1141,17 @@ void RenderingServer::mesh_surface_make_offsets_from_format(uint64_t p_format, i
 				elem_size *= sizeof(float);
 			} break;
 			case RSE::ARRAY_NORMAL: {
-				elem_size = 4;
+				// wgodot-changes::begin
+				elem_size = (p_format & RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME) ? 12 : 4;
+				// wgodot-changes::end
 			} break;
 			case RSE::ARRAY_TANGENT: {
 				elem_size = (p_format & RSE::ARRAY_FLAG_COMPRESS_ATTRIBUTES) ? 0 : 4;
+				// wgodot-changes::begin
+				if (p_format & RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME) {
+					elem_size = 16;
+				}
+				// wgodot-changes::end
 			} break;
 			case RSE::ARRAY_COLOR: {
 				elem_size = 4;
@@ -1289,6 +1341,12 @@ Error RenderingServer::mesh_create_surface_data_from_arrays(RenderingServerTypes
 		format |= RSE::ARRAY_FLAG_USES_EMPTY_VERTEX_ARRAY;
 	}
 
+	// wgodot-changes::begin
+	ERR_FAIL_COND_V_MSG((format & RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME) && (format & RSE::ARRAY_FLAG_COMPRESS_ATTRIBUTES), ERR_INVALID_PARAMETER, "Authored tangent frames cannot use compressed mesh attributes.");
+	ERR_FAIL_COND_V_MSG((format & RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME) && ((format & RSE::ARRAY_FLAG_USE_2D_VERTICES) || !(format & RSE::ARRAY_FORMAT_NORMAL)), ERR_INVALID_PARAMETER, "Authored tangent frames require a 3D surface with normals.");
+	ERR_FAIL_COND_V_MSG((format & RSE::ARRAY_FLAG_ORTHONORMALIZE_MORPH_TANGENT_FRAME) && !(format & RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME), ERR_INVALID_PARAMETER, "Morph tangent frame orthonormalization requires float32 tangent frames.");
+	ERR_FAIL_COND_V_MSG((format & RSE::ARRAY_FLAG_NORMALIZE_MORPH_NORMAL_WEIGHTS) && !(format & RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME), ERR_INVALID_PARAMETER, "Morph normal weight normalization requires float32 tangent frames.");
+	// wgodot-changes::end
 	if ((format & RSE::ARRAY_FLAG_COMPRESS_ATTRIBUTES) && ((format & RSE::ARRAY_FORMAT_NORMAL) || (format & RSE::ARRAY_FORMAT_TANGENT))) {
 		// If using normals or tangents, then we need all three.
 		ERR_FAIL_COND_V_MSG(!(format & RSE::ARRAY_FORMAT_VERTEX), ERR_INVALID_PARAMETER, "Can't use compression flag 'RSE::ARRAY_FLAG_COMPRESS_ATTRIBUTES' while using normals or tangents without vertex array.");
@@ -1323,7 +1381,10 @@ Error RenderingServer::mesh_create_surface_data_from_arrays(RenderingServerTypes
 	Vector<uint8_t> blend_shape_data;
 
 	if (p_blend_shapes.size()) {
-		uint32_t bs_format = format & RSE::ARRAY_FORMAT_BLEND_SHAPE_MASK;
+		// wgodot-changes::begin
+		// Morphs share the base surface's vertex encoding, not just its channels.
+		const uint64_t bs_format = format & (RSE::ARRAY_FORMAT_BLEND_SHAPE_MASK | RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME);
+		// wgodot-changes::end
 		for (int i = 0; i < p_blend_shapes.size(); i++) {
 			Vector<uint8_t> vertex_array_shape;
 			vertex_array_shape.resize(vertex_array_size);
@@ -1513,6 +1574,13 @@ Array RenderingServer::_get_array_from_surface(uint64_t p_format, Vector<uint8_t
 					Vector3 *w = arr.ptrw();
 
 					for (int j = 0; j < p_vertex_len; j++) {
+						// wgodot-changes::begin
+						if (p_format & RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME) {
+							const float *v = reinterpret_cast<const float *>(&r[j * normal_elem_size + offsets[i]]);
+							w[j] = Vector3(v[0], v[1], v[2]);
+							continue;
+						}
+						// wgodot-changes::end
 						const uint32_t v = *(const uint32_t *)&r[j * normal_elem_size + offsets[i]];
 
 						w[j] = Vector3::octahedron_decode(Vector2((v & 0xFFFF) / 65535.0, ((v >> 16) & 0xFFFF) / 65535.0));
@@ -1530,6 +1598,12 @@ Array RenderingServer::_get_array_from_surface(uint64_t p_format, Vector<uint8_t
 					float *w = arr.ptrw();
 
 					for (int j = 0; j < p_vertex_len; j++) {
+						// wgodot-changes::begin
+						if (p_format & RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME) {
+							memcpy(&w[j * 4], &r[j * normal_elem_size + offsets[i]], sizeof(float) * 4);
+							continue;
+						}
+						// wgodot-changes::end
 						const uint32_t v = *(const uint32_t *)&r[j * normal_elem_size + offsets[i]];
 						float tangent_sign;
 						Vector3 res = Vector3::octahedron_tangent_decode(Vector2((v & 0xFFFF) / 65535.0, ((v >> 16) & 0xFFFF) / 65535.0), &tangent_sign);
@@ -1770,7 +1844,9 @@ TypedArray<Array> RenderingServer::mesh_surface_get_blend_shape_arrays(RID p_mes
 
 	if (blend_shape_data.size() > 0) {
 		uint32_t bs_offsets[RSE::ARRAY_MAX];
-		uint32_t bs_format = (sd.format & RSE::ARRAY_FORMAT_BLEND_SHAPE_MASK);
+		// wgodot-changes::begin
+		const uint64_t bs_format = sd.format & (RSE::ARRAY_FORMAT_BLEND_SHAPE_MASK | RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME);
+		// wgodot-changes::end
 		uint32_t vertex_elem_size;
 		uint32_t normal_elem_size;
 		uint32_t attrib_elem_size;
@@ -2462,6 +2538,11 @@ void RenderingServer::_bind_methods() {
 	BIND_BITFIELD_FLAG(RSE::ARRAY_FLAG_USES_EMPTY_VERTEX_ARRAY);
 
 	BIND_BITFIELD_FLAG(RSE::ARRAY_FLAG_COMPRESS_ATTRIBUTES);
+	// wgodot-changes::begin
+	BIND_BITFIELD_FLAG(RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME);
+	BIND_BITFIELD_FLAG(RSE::ARRAY_FLAG_ORTHONORMALIZE_MORPH_TANGENT_FRAME);
+	BIND_BITFIELD_FLAG(RSE::ARRAY_FLAG_NORMALIZE_MORPH_NORMAL_WEIGHTS);
+	// wgodot-changes::end
 
 	BIND_BITFIELD_FLAG(RSE::ARRAY_FLAG_USE_STORAGE_BUFFER);
 

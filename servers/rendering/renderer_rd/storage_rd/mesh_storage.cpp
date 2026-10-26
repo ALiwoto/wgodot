@@ -292,11 +292,17 @@ void MeshStorage::mesh_add_surface(RID p_mesh, const RenderingServerTypes::Surfa
 
 					} break;
 					case RSE::ARRAY_NORMAL: {
-						stride += sizeof(uint16_t) * 2;
+						// wgodot-changes::begin
+						stride += (p_surface.format & RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME) ? sizeof(float) * 3 : sizeof(uint16_t) * 2;
+						// wgodot-changes::end
 
 					} break;
 					case RSE::ARRAY_TANGENT: {
-						if (!(p_surface.format & RSE::ARRAY_FLAG_COMPRESS_ATTRIBUTES)) {
+						// wgodot-changes::begin
+						if (p_surface.format & RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME) {
+							stride += sizeof(float) * 4;
+						} else if (!(p_surface.format & RSE::ARRAY_FLAG_COMPRESS_ATTRIBUTES)) {
+						// wgodot-changes::end
 							stride += sizeof(uint16_t) * 2;
 						}
 					} break;
@@ -393,7 +399,9 @@ void MeshStorage::mesh_add_surface(RID p_mesh, const RenderingServerTypes::Surfa
 		// This allows us to avoid adding a shader permutation, and avoid passing dummy tangents. Since the stride is kept small
 		// this should still be a net win for bandwidth.
 		// If we do this, then the last normal will read past the end of the array. So we need to pad the array with dummy data.
-		if (!(new_surface.format & RSE::ARRAY_FLAG_COMPRESS_ATTRIBUTES) && (new_surface.format & RSE::ARRAY_FORMAT_NORMAL) && !(new_surface.format & RSE::ARRAY_FORMAT_TANGENT)) {
+		// wgodot-changes::begin
+		if (!(new_surface.format & (RSE::ARRAY_FLAG_COMPRESS_ATTRIBUTES | RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME)) && (new_surface.format & RSE::ARRAY_FORMAT_NORMAL) && !(new_surface.format & RSE::ARRAY_FORMAT_TANGENT)) {
+		// wgodot-changes::end
 			// Unfortunately, we need to copy the buffer, which is fine as doing a resize triggers a CoW anyway.
 			Vector<uint8_t> new_vertex_data;
 			new_vertex_data.resize_initialized(new_surface.vertex_data.size() + sizeof(uint16_t) * 2);
@@ -687,7 +695,9 @@ RenderingServerTypes::SurfaceData MeshStorage::mesh_get_surface(RID p_mesh, int 
 	if (s.vertex_buffer.is_valid()) {
 		sd.vertex_data = RD::get_singleton()->buffer_get_data(s.vertex_buffer);
 		// When using an uncompressed buffer with normals, but without tangents, we have to trim the padding.
-		if (!(s.format & RSE::ARRAY_FLAG_COMPRESS_ATTRIBUTES) && (s.format & RSE::ARRAY_FORMAT_NORMAL) && !(s.format & RSE::ARRAY_FORMAT_TANGENT)) {
+		// wgodot-changes::begin
+		if (!(s.format & (RSE::ARRAY_FLAG_COMPRESS_ATTRIBUTES | RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME)) && (s.format & RSE::ARRAY_FORMAT_NORMAL) && !(s.format & RSE::ARRAY_FORMAT_TANGENT)) {
+		// wgodot-changes::end
 			sd.vertex_data.resize(sd.vertex_data.size() - sizeof(uint16_t) * 2);
 		}
 	}
@@ -1275,6 +1285,18 @@ void MeshStorage::update_mesh_instances() {
 			push_constant.has_blend_shape = mi->mesh->blend_shape_count > 0;
 
 			push_constant.normal_tangent_stride = (push_constant.has_normal ? 1 : 0) + (push_constant.has_tangent ? 1 : 0);
+			// wgodot-changes::begin
+			push_constant.tangent_frame_flags = (mi->mesh->surfaces[i]->format & RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME) ? 1 : 0;
+			if (push_constant.tangent_frame_flags) {
+				push_constant.normal_tangent_stride = (push_constant.has_normal ? 3 : 0) + (push_constant.has_tangent ? 4 : 0);
+			}
+			if (mi->mesh->surfaces[i]->format & RSE::ARRAY_FLAG_ORTHONORMALIZE_MORPH_TANGENT_FRAME) {
+				push_constant.tangent_frame_flags |= 2;
+			}
+			if (mi->mesh->surfaces[i]->format & RSE::ARRAY_FLAG_NORMALIZE_MORPH_NORMAL_WEIGHTS) {
+				push_constant.tangent_frame_flags |= 4;
+			}
+			// wgodot-changes::end
 
 			push_constant.vertex_count = mi->mesh->surfaces[i]->vertex_count;
 			push_constant.vertex_stride = ((mi->mesh->surfaces[i]->vertex_buffer_size / mi->mesh->surfaces[i]->vertex_count) / 4) - push_constant.normal_tangent_stride;
@@ -1302,7 +1324,6 @@ void MeshStorage::update_mesh_instances() {
 
 			push_constant.blend_shape_count = mi->mesh->blend_shape_count;
 			push_constant.normalized_blend_shapes = mi->mesh->blend_shape_mode == RSE::BLEND_SHAPE_MODE_NORMALIZED;
-			push_constant.pad1 = 0;
 
 			RD::get_singleton()->compute_list_set_push_constant(compute_list, &push_constant, sizeof(SkeletonShader::PushConstant));
 
@@ -1383,6 +1404,13 @@ RD::VertexFormatID MeshStorage::_mesh_surface_generate_vertex_format(uint64_t p_
 				} break;
 				case RSE::ARRAY_NORMAL: {
 					vd.offset = 0;
+					// wgodot-changes::begin
+					if (p_surface_format & RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME) {
+						vd.format = RD::DATA_FORMAT_R32G32B32_SFLOAT;
+						normal_tangent_stride += sizeof(float) * 3;
+						break;
+					}
+					// wgodot-changes::end
 
 					if (!p_instanced_surface && (p_surface_format & RSE::ARRAY_FLAG_COMPRESS_ATTRIBUTES)) {
 						vd.format = RD::DATA_FORMAT_R16G16_UNORM;
@@ -1400,6 +1428,14 @@ RD::VertexFormatID MeshStorage::_mesh_surface_generate_vertex_format(uint64_t p_
 					}
 				} break;
 				case RSE::ARRAY_TANGENT: {
+					// wgodot-changes::begin
+					if (p_surface_format & RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME) {
+						vd.offset = normal_tangent_stride;
+						vd.format = RD::DATA_FORMAT_R32G32B32A32_SFLOAT;
+						normal_tangent_stride += sizeof(float) * 4;
+						break;
+					}
+					// wgodot-changes::end
 					vd.stride = 0;
 					vd.format = RD::DATA_FORMAT_R32G32B32A32_SFLOAT;
 				} break;
@@ -1535,6 +1571,13 @@ void MeshStorage::_mesh_surface_generate_version_for_input_mask(Mesh::Surface::V
 					buffer = mis != nullptr ? mis->vertex_buffer[p_current_buffer] : s->vertex_buffer;
 					break;
 				case RSE::ARRAY_TANGENT:
+					// wgodot-changes::begin
+					if (s->format & RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME) {
+						offset = position_stride * s->vertex_count;
+						buffer = mis != nullptr ? mis->vertex_buffer[p_current_buffer] : s->vertex_buffer;
+						break;
+					}
+					// wgodot-changes::end
 					buffer = mesh_default_rd_buffers[i];
 					break;
 				case RSE::ARRAY_COLOR:

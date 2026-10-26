@@ -27,9 +27,12 @@ layout(location = 0) in vec4 vertex_angle_attrib;
 #if defined(NORMAL_USED) || defined(TANGENT_USED)
 // Contains Normal/Axis in RG, can contain tangent in BA.
 layout(location = 1) in vec4 axis_tangent_attrib;
+// wgodot-changes::begin
+layout(location = 2) in vec4 authored_tangent_attrib;
+// wgodot-changes::end
 #endif
 
-// Location 2 is unused.
+
 
 #if defined(COLOR_USED)
 layout(location = 3) in vec4 color_attrib;
@@ -72,6 +75,9 @@ layout(location = 12) in vec4 previous_vertex_attrib;
 
 #if defined(NORMAL_USED) || defined(TANGENT_USED)
 layout(location = 13) in vec4 previous_normal_attrib;
+// wgodot-changes::begin
+layout(location = 14) in vec4 previous_authored_tangent_attrib;
+// wgodot-changes::end
 #endif
 
 #endif // MOTION_VECTORS
@@ -489,12 +495,18 @@ void vertex_shader(vec3 vertex_input,
 
 	// Normalize TBN vectors to account for model/normal transforms that may have scale
 #ifdef NORMAL_USED
-	normal_interp = normalize(normal);
+	// wgodot-changes::begin
+	normal_interp = bool(instances.data[instance_index].flags & INSTANCE_FLAGS_PRESERVE_TANGENT_FRAME) ? normal : normalize(normal);
+	// wgodot-changes::end
 #endif
 
 #ifdef TANGENT_USED
-	tangent_interp = normalize(tangent);
-	binormal_interp = normalize(binormal);
+	// wgodot-changes::begin
+	tangent_interp = bool(instances.data[instance_index].flags & INSTANCE_FLAGS_PRESERVE_TANGENT_FRAME) ? tangent : normalize(tangent);
+	// wgodot-changes::end
+	// wgodot-changes::begin
+	binormal_interp = bool(instances.data[instance_index].flags & INSTANCE_FLAGS_PRESERVE_TANGENT_FRAME) ? binormal : normalize(binormal);
+	// wgodot-changes::end
 #endif
 
 #ifdef MODE_RENDER_DEPTH
@@ -728,6 +740,9 @@ void vertex_shader(vec3 vertex_input,
 void _unpack_vertex_attributes(vec4 p_vertex_in, vec3 p_compressed_aabb_position, vec3 p_compressed_aabb_size,
 #if defined(NORMAL_USED) || defined(TANGENT_USED)
 		vec4 p_normal_in,
+		// wgodot-changes::begin
+		vec4 p_tangent_in, bool p_preserve_tangent_frame,
+		// wgodot-changes::end
 #ifdef NORMAL_USED
 		out vec3 r_normal,
 #endif
@@ -737,6 +752,18 @@ void _unpack_vertex_attributes(vec4 p_vertex_in, vec3 p_compressed_aabb_position
 		out vec3 r_vertex) {
 
 	r_vertex = p_vertex_in.xyz * p_compressed_aabb_size + p_compressed_aabb_position;
+	// wgodot-changes::begin
+#if defined(NORMAL_USED) || defined(TANGENT_USED)
+	if (p_preserve_tangent_frame) {
+#ifdef NORMAL_USED
+		r_normal = p_normal_in.xyz;
+#endif
+		r_tangent = p_tangent_in.xyz;
+		r_binormal = cross(p_normal_in.xyz, r_tangent) * p_tangent_in.w;
+		return;
+	}
+#endif
+	// wgodot-changes::end
 #ifdef NORMAL_USED
 	r_normal = oct_to_vec3(p_normal_in.xy * 2.0 - 1.0);
 #endif
@@ -791,6 +818,9 @@ void main() {
 
 #if defined(NORMAL_USED) || defined(TANGENT_USED)
 			previous_normal_attrib,
+			// wgodot-changes::begin
+			previous_authored_tangent_attrib, bool(instances.data[instance_index].flags & INSTANCE_FLAGS_PRESERVE_TANGENT_FRAME),
+			// wgodot-changes::end
 #ifdef NORMAL_USED
 			prev_normal,
 #endif
@@ -833,6 +863,9 @@ void main() {
 			instances.data[instance_index].compressed_aabb_size_pad.xyz,
 #if defined(NORMAL_USED) || defined(TANGENT_USED)
 			axis_tangent_attrib,
+			// wgodot-changes::begin
+			authored_tangent_attrib, bool(instances.data[instance_index].flags & INSTANCE_FLAGS_PRESERVE_TANGENT_FRAME),
+			// wgodot-changes::end
 #ifdef NORMAL_USED
 			normal,
 #endif

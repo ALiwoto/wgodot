@@ -294,7 +294,9 @@ private:
 			uint32_t blend_shape_count;
 			uint32_t normalized_blend_shapes;
 			uint32_t normal_tangent_stride;
-			uint32_t pad1;
+			// wgodot-changes::begin
+			uint32_t tangent_frame_flags; // Bits 0/1/2: preserve frame, orthonormalize morph frame, normalize morph normal weights.
+			// wgodot-changes::end
 			float skeleton_transform_x[2];
 			float skeleton_transform_y[2];
 

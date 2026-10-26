@@ -56,6 +56,9 @@ public:
 };
 
 typedef void (*ResourceSavedCallback)(Ref<Resource> p_resource, const String &p_path);
+// wgodot-changes::begin
+typedef void (*ResourceUIDChangedCallback)(const String &p_path);
+// wgodot-changes::end
 typedef ResourceUID::ID (*ResourceSaverGetResourceIDForPath)(const String &p_path, bool p_generate);
 
 class ResourceSaver {
@@ -67,6 +70,9 @@ class ResourceSaver {
 	static int saver_count;
 	static bool timestamp_on_save;
 	static ResourceSavedCallback save_callback;
+	// wgodot-changes::begin
+	static ResourceUIDChangedCallback uid_changed_callback;
+	// wgodot-changes::end
 	static ResourceSaverGetResourceIDForPath save_get_id_for_path;
 
 	static Ref<ResourceFormatSaver> _find_custom_resource_format_saver(const String &p_path);
@@ -96,6 +102,9 @@ public:
 	static ResourceUID::ID get_resource_id_for_path(const String &p_path, bool p_generate = false);
 
 	static void set_save_callback(ResourceSavedCallback p_callback);
+	// wgodot-changes::begin
+	static void set_uid_changed_callback(ResourceUIDChangedCallback p_callback);
+	// wgodot-changes::end
 	static void set_get_resource_id_for_path(ResourceSaverGetResourceIDForPath p_callback);
 
 	static bool add_custom_resource_format_saver(const String &p_script_path);

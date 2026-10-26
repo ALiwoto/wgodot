@@ -41,6 +41,9 @@ Ref<ResourceFormatSaver> ResourceSaver::saver[MAX_SAVERS];
 int ResourceSaver::saver_count = 0;
 bool ResourceSaver::timestamp_on_save = false;
 ResourceSavedCallback ResourceSaver::save_callback = nullptr;
+// wgodot-changes::begin
+ResourceUIDChangedCallback ResourceSaver::uid_changed_callback = nullptr;
+// wgodot-changes::end
 ResourceSaverGetResourceIDForPath ResourceSaver::save_get_id_for_path = nullptr;
 
 Error ResourceFormatSaver::save(const Ref<Resource> &p_resource, const String &p_path, uint32_t p_flags) {
@@ -164,6 +167,16 @@ Error ResourceSaver::set_uid(const String &p_path, ResourceUID::ID p_uid) {
 	for (int i = 0; i < saver_count; i++) {
 		err = saver[i]->set_uid(path, p_uid);
 		if (err == OK) {
+			// wgodot-changes::begin
+			// UID rewrites happen after save() has already published its metadata.
+			// Notify without loading a Resource merely to refresh that metadata.
+			if (uid_changed_callback) {
+				const String local_path = ProjectSettings::get_singleton()->localize_path(path);
+				if (local_path.begins_with("res://")) {
+					uid_changed_callback(local_path);
+				}
+			}
+			// wgodot-changes::end
 			break;
 		}
 	}
@@ -174,6 +187,12 @@ Error ResourceSaver::set_uid(const String &p_path, ResourceUID::ID p_uid) {
 void ResourceSaver::set_save_callback(ResourceSavedCallback p_callback) {
 	save_callback = p_callback;
 }
+
+// wgodot-changes::begin
+void ResourceSaver::set_uid_changed_callback(ResourceUIDChangedCallback p_callback) {
+	uid_changed_callback = p_callback;
+}
+// wgodot-changes::end
 
 void ResourceSaver::get_recognized_extensions(const Ref<Resource> &p_resource, List<String> *p_extensions) {
 	ERR_FAIL_COND_MSG(p_resource.is_null(), "It's not a reference to a valid Resource object.");

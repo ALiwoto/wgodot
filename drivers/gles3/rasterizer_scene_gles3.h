@@ -380,6 +380,9 @@ private:
 	virtual uint32_t get_max_lights_per_mesh() override;
 
 	enum {
+		// wgodot-changes::begin
+		INSTANCE_DATA_FLAG_PRESERVE_TANGENT_FRAME = 1 << 0,
+		// wgodot-changes::end
 		INSTANCE_DATA_FLAGS_DYNAMIC = 1 << 3,
 		INSTANCE_DATA_FLAGS_NON_UNIFORM_SCALE = 1 << 4,
 		INSTANCE_DATA_FLAG_USE_GI_BUFFERS = 1 << 5,

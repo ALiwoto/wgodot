@@ -2165,6 +2165,11 @@ void RenderForwardMobile::_fill_instance_data(RenderListType p_render_list, uint
 
 		AABB surface_aabb = AABB(Vector3(0.0, 0.0, 0.0), Vector3(1.0, 1.0, 1.0));
 		uint64_t format = RendererRD::MeshStorage::get_singleton()->mesh_surface_get_format(surface->surface);
+		// wgodot-changes::begin
+		if (format & RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME) {
+			instance_data.flags |= INSTANCE_DATA_FLAG_PRESERVE_TANGENT_FRAME;
+		}
+		// wgodot-changes::end
 		Vector4 uv_scale = Vector4(0.0, 0.0, 0.0, 0.0);
 
 		if (format & RSE::ARRAY_FLAG_COMPRESS_ATTRIBUTES) {

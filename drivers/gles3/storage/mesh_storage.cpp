@@ -131,11 +131,17 @@ void MeshStorage::mesh_add_surface(RID p_mesh, const RenderingServerTypes::Surfa
 						}
 					} break;
 					case RSE::ARRAY_NORMAL: {
-						stride += sizeof(uint16_t) * 2;
+						// wgodot-changes::begin
+						stride += (p_surface.format & RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME) ? sizeof(float) * 3 : sizeof(uint16_t) * 2;
+						// wgodot-changes::end
 
 					} break;
 					case RSE::ARRAY_TANGENT: {
-						if (!(p_surface.format & RSE::ARRAY_FLAG_COMPRESS_ATTRIBUTES)) {
+						// wgodot-changes::begin
+						if (p_surface.format & RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME) {
+							stride += sizeof(float) * 4;
+						} else if (!(p_surface.format & RSE::ARRAY_FLAG_COMPRESS_ATTRIBUTES)) {
+						// wgodot-changes::end
 							stride += sizeof(uint16_t) * 2;
 						}
 					} break;
@@ -227,7 +233,9 @@ void MeshStorage::mesh_add_surface(RID p_mesh, const RenderingServerTypes::Surfa
 		// This allows us to avoid adding a shader permutation, and avoid passing dummy tangents. Since the stride is kept small
 		// this should still be a net win for bandwidth.
 		// If we do this, then the last normal will read past the end of the array. So we need to pad the array with dummy data.
-		if (!(new_surface.format & RSE::ARRAY_FLAG_COMPRESS_ATTRIBUTES) && (new_surface.format & RSE::ARRAY_FORMAT_NORMAL) && !(new_surface.format & RSE::ARRAY_FORMAT_TANGENT)) {
+		// wgodot-changes::begin
+		if (!(new_surface.format & (RSE::ARRAY_FLAG_COMPRESS_ATTRIBUTES | RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME)) && (new_surface.format & RSE::ARRAY_FORMAT_NORMAL) && !(new_surface.format & RSE::ARRAY_FORMAT_TANGENT)) {
+		// wgodot-changes::end
 			// Unfortunately, we need to copy the buffer, which is fine as doing a resize triggers a CoW anyway.
 			Vector<uint8_t> new_vertex_data;
 			new_vertex_data.resize_initialized(new_surface.vertex_data.size() + sizeof(uint16_t) * 2);
@@ -382,11 +390,15 @@ void MeshStorage::mesh_add_surface(RID p_mesh, const RenderingServerTypes::Surfa
 		}
 		if ((new_surface.format & (1ULL << RSE::ARRAY_NORMAL))) {
 			normal_offset = position_stride * s->vertex_count;
-			normal_tangent_stride += sizeof(uint16_t) * 2;
+			// wgodot-changes::begin
+			normal_tangent_stride += (new_surface.format & RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME) ? sizeof(float) * 3 : sizeof(uint16_t) * 2;
+			// wgodot-changes::end
 		}
 		if ((new_surface.format & (1ULL << RSE::ARRAY_TANGENT))) {
 			tangent_offset = normal_offset + normal_tangent_stride;
-			normal_tangent_stride += sizeof(uint16_t) * 2;
+			// wgodot-changes::begin
+			normal_tangent_stride += (new_surface.format & RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME) ? sizeof(float) * 4 : sizeof(uint16_t) * 2;
+			// wgodot-changes::end
 		}
 
 		if (mesh->blend_shape_count > 0) {
@@ -407,11 +419,23 @@ void MeshStorage::mesh_add_surface(RID p_mesh, const RenderingServerTypes::Surfa
 				if ((new_surface.format & (1ULL << RSE::ARRAY_NORMAL))) {
 					// Normal and tangent are packed into the same attribute.
 					glEnableVertexAttribArray(RSE::ARRAY_NORMAL + 3);
-					glVertexAttribPointer(RSE::ARRAY_NORMAL + 3, 2, GL_UNSIGNED_SHORT, GL_TRUE, normal_tangent_stride, CAST_INT_TO_UCHAR_PTR(normal_offset));
+					// wgodot-changes::begin
+					if (new_surface.format & RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME) {
+						glVertexAttribPointer(RSE::ARRAY_NORMAL + 3, 3, GL_FLOAT, GL_FALSE, normal_tangent_stride, CAST_INT_TO_UCHAR_PTR(normal_offset));
+					} else {
+						glVertexAttribPointer(RSE::ARRAY_NORMAL + 3, 2, GL_UNSIGNED_SHORT, GL_TRUE, normal_tangent_stride, CAST_INT_TO_UCHAR_PTR(normal_offset));
+					}
+					// wgodot-changes::end
 				}
 				if ((p_surface.format & (1ULL << RSE::ARRAY_TANGENT))) {
 					glEnableVertexAttribArray(RSE::ARRAY_TANGENT + 3);
-					glVertexAttribPointer(RSE::ARRAY_TANGENT + 3, 2, GL_UNSIGNED_SHORT, GL_TRUE, normal_tangent_stride, CAST_INT_TO_UCHAR_PTR(tangent_offset));
+					// wgodot-changes::begin
+					if (new_surface.format & RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME) {
+						glVertexAttribPointer(RSE::ARRAY_TANGENT + 3, 4, GL_FLOAT, GL_FALSE, normal_tangent_stride, CAST_INT_TO_UCHAR_PTR(tangent_offset));
+					} else {
+						glVertexAttribPointer(RSE::ARRAY_TANGENT + 3, 2, GL_UNSIGNED_SHORT, GL_TRUE, normal_tangent_stride, CAST_INT_TO_UCHAR_PTR(tangent_offset));
+					}
+					// wgodot-changes::end
 				}
 			}
 			glBindVertexArray(0);
@@ -627,7 +651,9 @@ RenderingServerTypes::SurfaceData MeshStorage::mesh_get_surface(RID p_mesh, int 
 		sd.vertex_data = Utilities::buffer_get_data(GL_ARRAY_BUFFER, s.vertex_buffer, s.vertex_buffer_size);
 
 		// When using an uncompressed buffer with normals, but without tangents, we have to trim the padding.
-		if (!(s.format & RSE::ARRAY_FLAG_COMPRESS_ATTRIBUTES) && (s.format & RSE::ARRAY_FORMAT_NORMAL) && !(s.format & RSE::ARRAY_FORMAT_TANGENT)) {
+		// wgodot-changes::begin
+		if (!(s.format & (RSE::ARRAY_FLAG_COMPRESS_ATTRIBUTES | RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME)) && (s.format & RSE::ARRAY_FORMAT_NORMAL) && !(s.format & RSE::ARRAY_FORMAT_TANGENT)) {
+		// wgodot-changes::end
 			sd.vertex_data.resize(sd.vertex_data.size() - sizeof(uint16_t) * 2);
 		}
 	}
@@ -917,6 +943,20 @@ void MeshStorage::_mesh_surface_generate_version_for_input_mask(Mesh::Surface::V
 				}
 			} break;
 			case RSE::ARRAY_NORMAL: {
+				// wgodot-changes::begin
+				if (s->format & RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME) {
+					attribs[i].size = 3;
+					attribs[i].type = GL_FLOAT;
+					attribs[i].normalized = GL_FALSE;
+					attribs[i].offset = mis ? position_stride : position_stride * s->vertex_count;
+					normal_tangent_stride = sizeof(float) * (3 + ((s->format & RSE::ARRAY_FORMAT_TANGENT) ? 4 : 0));
+					if (mis) {
+						normal_tangent_stride += position_stride;
+						position_stride = normal_tangent_stride;
+					}
+					break;
+				}
+				// wgodot-changes::end
 				if (!mis && (s->format & RSE::ARRAY_FLAG_COMPRESS_ATTRIBUTES)) {
 					attribs[i].size = 2;
 					normal_tangent_stride += 2 * attribs[i].size;
@@ -944,6 +984,15 @@ void MeshStorage::_mesh_surface_generate_version_for_input_mask(Mesh::Surface::V
 				attribs[i].normalized = GL_TRUE;
 			} break;
 			case RSE::ARRAY_TANGENT: {
+				// wgodot-changes::begin
+				if (s->format & RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME) {
+					attribs[i].size = 4;
+					attribs[i].type = GL_FLOAT;
+					attribs[i].normalized = GL_FALSE;
+					attribs[i].offset = attribs[RSE::ARRAY_NORMAL].offset + sizeof(float) * 3;
+					break;
+				}
+				// wgodot-changes::end
 				// We never use the tangent attribute. It is always packed in ARRAY_NORMAL, or ARRAY_VERTEX.
 				attribs[i].enabled = false;
 				attribs[i].integer = false;
@@ -1049,15 +1098,21 @@ void MeshStorage::_mesh_surface_generate_version_for_input_mask(Mesh::Surface::V
 	}
 
 	if (p_uses_motion_vectors) {
-		for (int i = 0; i < RSE::ARRAY_TANGENT; i++) {
+		for (int i = 0; i <= RSE::ARRAY_TANGENT; i++) {
+			// wgodot-changes::begin
+			if (i == RSE::ARRAY_TANGENT && !(s->format & RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME)) {
+				continue;
+			}
+			const int location = i == RSE::ARRAY_TANGENT ? 22 : i + 16;
+			// wgodot-changes::end
 			if (mis) {
 				glBindBuffer(GL_ARRAY_BUFFER, mis->vertex_buffers[mis->prev_vertex_buffer]);
 			} else {
 				glBindBuffer(GL_ARRAY_BUFFER, s->vertex_buffer);
 			}
 
-			glVertexAttribPointer(i + 16, attribs[i].size, attribs[i].type, attribs[i].normalized, attribs[i].stride, CAST_INT_TO_UCHAR_PTR(attribs[i].offset));
-			glEnableVertexAttribArray(i + 16);
+			glVertexAttribPointer(location, attribs[i].size, attribs[i].type, attribs[i].normalized, attribs[i].stride, CAST_INT_TO_UCHAR_PTR(attribs[i].offset));
+			glEnableVertexAttribArray(location);
 		}
 	}
 
@@ -1200,11 +1255,15 @@ void MeshStorage::_mesh_instance_add_surface(MeshInstance *mi, Mesh *mesh, uint3
 		}
 		if ((s.format_cache & (1ULL << RSE::ARRAY_NORMAL))) {
 			s.vertex_normal_offset_cache = s.vertex_stride_cache;
-			s.vertex_stride_cache += sizeof(uint32_t) * 2;
+			// wgodot-changes::begin
+			s.vertex_stride_cache += (s.format_cache & RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME) ? sizeof(float) * 3 : sizeof(uint32_t) * 2;
+			// wgodot-changes::end
 		}
 		if ((s.format_cache & (1ULL << RSE::ARRAY_TANGENT))) {
 			s.vertex_tangent_offset_cache = s.vertex_stride_cache;
-			s.vertex_stride_cache += sizeof(uint32_t) * 2;
+			// wgodot-changes::begin
+			s.vertex_stride_cache += (s.format_cache & RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME) ? sizeof(float) * 4 : sizeof(uint32_t) * 2;
+			// wgodot-changes::end
 		}
 
 		int buffer_size = s.vertex_stride_cache * mesh->surfaces[p_surface]->vertex_count;
@@ -1215,6 +1274,11 @@ void MeshStorage::_mesh_instance_add_surface(MeshInstance *mi, Mesh *mesh, uint3
 		glBindBuffer(GL_ARRAY_BUFFER, s.vertex_buffers[0]);
 		GLES3::Utilities::get_singleton()->buffer_allocate_data(GL_ARRAY_BUFFER, s.vertex_buffers[0], buffer_size, nullptr, GL_DYNAMIC_DRAW, "MeshInstance vertex buffer");
 		if (mesh->blend_shape_count > 0) {
+			// wgodot-changes::begin
+			if (s.format_cache & RSE::ARRAY_FLAG_NORMALIZE_MORPH_NORMAL_WEIGHTS) {
+				buffer_size += sizeof(float) * mesh->surfaces[p_surface]->vertex_count;
+			}
+			// wgodot-changes::end
 			// Ping-Pong buffers for processing blendshapes.
 			glGenBuffers(2, s.blend_shape_vertex_buffers);
 			for (uint32_t i = 0; i < 2; i++) {
@@ -1291,26 +1355,57 @@ void MeshStorage::mesh_instance_set_canvas_item_transform(RID p_mesh_instance, c
 }
 
 void MeshStorage::_blend_shape_bind_mesh_instance_buffer(MeshInstance *p_mi, uint32_t p_surface) {
+	// wgodot-changes::begin
+	const bool normalize_normal_weights = p_mi->surfaces[p_surface].format_cache & RSE::ARRAY_FLAG_NORMALIZE_MORPH_NORMAL_WEIGHTS;
+	const int process_stride = p_mi->surfaces[p_surface].vertex_stride_cache + (normalize_normal_weights ? sizeof(float) : 0);
+	// wgodot-changes::end
 	glBindBuffer(GL_ARRAY_BUFFER, p_mi->surfaces[p_surface].blend_shape_vertex_buffers[0]);
 
 	if ((p_mi->surfaces[p_surface].format_cache & (1ULL << RSE::ARRAY_VERTEX))) {
 		glEnableVertexAttribArray(RSE::ARRAY_VERTEX);
-		glVertexAttribPointer(RSE::ARRAY_VERTEX, p_mi->surfaces[p_surface].vertex_size_cache, GL_FLOAT, GL_FALSE, p_mi->surfaces[p_surface].vertex_stride_cache, CAST_INT_TO_UCHAR_PTR(0));
+		// wgodot-changes::begin
+		glVertexAttribPointer(RSE::ARRAY_VERTEX, p_mi->surfaces[p_surface].vertex_size_cache, GL_FLOAT, GL_FALSE, process_stride, CAST_INT_TO_UCHAR_PTR(0));
+		// wgodot-changes::end
 	} else {
 		glDisableVertexAttribArray(RSE::ARRAY_VERTEX);
 	}
 	if ((p_mi->surfaces[p_surface].format_cache & (1ULL << RSE::ARRAY_NORMAL))) {
 		glEnableVertexAttribArray(RSE::ARRAY_NORMAL);
-		glVertexAttribIPointer(RSE::ARRAY_NORMAL, 2, GL_UNSIGNED_INT, p_mi->surfaces[p_surface].vertex_stride_cache, CAST_INT_TO_UCHAR_PTR(p_mi->surfaces[p_surface].vertex_normal_offset_cache));
+		// wgodot-changes::begin
+		if (p_mi->surfaces[p_surface].format_cache & RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME) {
+			glVertexAttribPointer(RSE::ARRAY_NORMAL, 3, GL_FLOAT, GL_FALSE, process_stride, CAST_INT_TO_UCHAR_PTR(p_mi->surfaces[p_surface].vertex_normal_offset_cache));
+		} else {
+			glVertexAttribIPointer(RSE::ARRAY_NORMAL, 2, GL_UNSIGNED_INT, process_stride, CAST_INT_TO_UCHAR_PTR(p_mi->surfaces[p_surface].vertex_normal_offset_cache));
+		}
+		// wgodot-changes::end
 	} else {
 		glDisableVertexAttribArray(RSE::ARRAY_NORMAL);
 	}
 	if ((p_mi->surfaces[p_surface].format_cache & (1ULL << RSE::ARRAY_TANGENT))) {
 		glEnableVertexAttribArray(RSE::ARRAY_TANGENT);
-		glVertexAttribIPointer(RSE::ARRAY_TANGENT, 2, GL_UNSIGNED_INT, p_mi->surfaces[p_surface].vertex_stride_cache, CAST_INT_TO_UCHAR_PTR(p_mi->surfaces[p_surface].vertex_tangent_offset_cache));
+		// wgodot-changes::begin
+		if (p_mi->surfaces[p_surface].format_cache & RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME) {
+			glVertexAttribPointer(RSE::ARRAY_TANGENT, 4, GL_FLOAT, GL_FALSE, process_stride, CAST_INT_TO_UCHAR_PTR(p_mi->surfaces[p_surface].vertex_tangent_offset_cache));
+		} else {
+			glVertexAttribIPointer(RSE::ARRAY_TANGENT, 2, GL_UNSIGNED_INT, process_stride, CAST_INT_TO_UCHAR_PTR(p_mi->surfaces[p_surface].vertex_tangent_offset_cache));
+		}
+		// wgodot-changes::end
 	} else {
 		glDisableVertexAttribArray(RSE::ARRAY_TANGENT);
 	}
+	// wgodot-changes::begin
+	if (normalize_normal_weights) {
+		glEnableVertexAttribArray(6);
+		glVertexAttribPointer(6, 1, GL_FLOAT, GL_FALSE, process_stride, CAST_INT_TO_UCHAR_PTR(p_mi->surfaces[p_surface].vertex_stride_cache));
+		const Mesh::Surface *surface = p_mi->mesh->surfaces[p_surface];
+		glBindBuffer(GL_ARRAY_BUFFER, surface->vertex_buffer);
+		glEnableVertexAttribArray(7);
+		glVertexAttribPointer(7, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 3, CAST_INT_TO_UCHAR_PTR(0));
+		glEnableVertexAttribArray(8);
+		const int normal_stride = sizeof(float) * ((surface->format & RSE::ARRAY_FORMAT_TANGENT) ? 7 : 3);
+		glVertexAttribPointer(8, 3, GL_FLOAT, GL_FALSE, normal_stride, CAST_INT_TO_UCHAR_PTR(surface->vertex_count * sizeof(float) * 3));
+	}
+	// wgodot-changes::end
 }
 
 void MeshStorage::_compute_skeleton(MeshInstance *p_mi, Skeleton *p_sk, uint32_t p_surface) {
@@ -1414,6 +1509,16 @@ void MeshStorage::update_mesh_instances() {
 				SkeletonShaderGLES3::ShaderVariant variant = SkeletonShaderGLES3::MODE_BASE_PASS;
 				uint64_t specialization = 0;
 				specialization |= array_is_2d ? (uint64_t)SkeletonShaderGLES3::MODE_2D : 0;
+				// wgodot-changes::begin
+				specialization |= (mi->surfaces[i].format_cache & RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME) ? (uint64_t)SkeletonShaderGLES3::PRESERVE_TANGENT_FRAME : 0;
+				specialization |= (mi->surfaces[i].format_cache & RSE::ARRAY_FLAG_ORTHONORMALIZE_MORPH_TANGENT_FRAME) ? (uint64_t)SkeletonShaderGLES3::ORTHONORMALIZE_MORPH_TANGENT_FRAME : 0;
+				if (mi->surfaces[i].format_cache & RSE::ARRAY_FLAG_NORMALIZE_MORPH_NORMAL_WEIGHTS) {
+					specialization |= SkeletonShaderGLES3::NORMALIZE_MORPH_NORMAL_WEIGHTS | SkeletonShaderGLES3::ACCUMULATE_MORPH_NORMAL_WEIGHTS;
+					if (mi->mesh->blend_shape_mode == RSE::BLEND_SHAPE_MODE_RELATIVE) {
+						specialization |= SkeletonShaderGLES3::RELATIVE_BLEND_SHAPES;
+					}
+				}
+				// wgodot-changes::end
 				specialization |= SkeletonShaderGLES3::USE_BLEND_SHAPES;
 				if (!array_is_2d) {
 					if ((mi->surfaces[i].format_cache & (1ULL << RSE::ARRAY_NORMAL))) {
@@ -1434,7 +1539,7 @@ void MeshStorage::update_mesh_instances() {
 
 				glBindBuffer(GL_ARRAY_BUFFER, 0);
 				GLuint vertex_array_gl = 0;
-				uint64_t mask = RSE::ARRAY_FORMAT_VERTEX | RSE::ARRAY_FORMAT_NORMAL | RSE::ARRAY_FORMAT_VERTEX;
+				uint64_t mask = RSE::ARRAY_FORMAT_VERTEX | RSE::ARRAY_FORMAT_NORMAL | RSE::ARRAY_FORMAT_TANGENT;
 				uint64_t format = mi->mesh->surfaces[i]->format & mask; // Format should only have vertex, normal, tangent (as necessary).
 				mesh_surface_get_vertex_arrays_and_format(mi->mesh->surfaces[i], format, false, vertex_array_gl);
 				glBindVertexArray(vertex_array_gl);
@@ -1481,6 +1586,9 @@ void MeshStorage::update_mesh_instances() {
 
 				specialization |= can_use_skeleton ? (uint64_t)SkeletonShaderGLES3::USE_SKELETON : 0;
 				specialization |= (can_use_skeleton && use_8_weights) ? (uint64_t)SkeletonShaderGLES3::USE_EIGHT_WEIGHTS : 0;
+				// wgodot-changes::begin
+				specialization &= ~SkeletonShaderGLES3::ACCUMULATE_MORPH_NORMAL_WEIGHTS;
+				// wgodot-changes::end
 				specialization |= SkeletonShaderGLES3::FINAL_PASS;
 				success = skeleton_shader.shader.version_bind_shader(skeleton_shader.shader_version, variant, specialization);
 				if (!success) {
@@ -1522,6 +1630,9 @@ void MeshStorage::update_mesh_instances() {
 				SkeletonShaderGLES3::ShaderVariant variant = SkeletonShaderGLES3::MODE_BASE_PASS;
 				uint64_t specialization = 0;
 				specialization |= array_is_2d ? (uint64_t)SkeletonShaderGLES3::MODE_2D : 0;
+				// wgodot-changes::begin
+				specialization |= (mi->surfaces[i].format_cache & RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME) ? (uint64_t)SkeletonShaderGLES3::PRESERVE_TANGENT_FRAME : 0;
+				// wgodot-changes::end
 				specialization |= SkeletonShaderGLES3::USE_SKELETON;
 				specialization |= SkeletonShaderGLES3::FINAL_PASS;
 				specialization |= use_8_weights ? (uint64_t)SkeletonShaderGLES3::USE_EIGHT_WEIGHTS : 0;
@@ -1550,7 +1661,7 @@ void MeshStorage::update_mesh_instances() {
 				skeleton_shader.shader.version_set_uniform(SkeletonShaderGLES3::INVERSE_TRANSFORM_OFFSET, inverse_transform[2], skeleton_shader.shader_version, variant, specialization);
 
 				GLuint vertex_array_gl = 0;
-				uint64_t mask = RSE::ARRAY_FORMAT_VERTEX | RSE::ARRAY_FORMAT_NORMAL | RSE::ARRAY_FORMAT_VERTEX;
+				uint64_t mask = RSE::ARRAY_FORMAT_VERTEX | RSE::ARRAY_FORMAT_NORMAL | RSE::ARRAY_FORMAT_TANGENT;
 				uint64_t format = mi->mesh->surfaces[i]->format & mask; // Format should only have vertex, normal, tangent (as necessary).
 				mesh_surface_get_vertex_arrays_and_format(mi->mesh->surfaces[i], format, false, vertex_array_gl);
 				glBindVertexArray(vertex_array_gl);

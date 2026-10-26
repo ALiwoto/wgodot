@@ -67,6 +67,17 @@
 		<member name="meshes/force_disable_compression" type="bool" setter="" getter="" default="false">
 			If [code]true[/code], mesh compression will not be used. Consider enabling if you notice blocky artifacts in your mesh normals or UVs, or if you have meshes that are larger than a few thousand meters in each direction.
 		</member>
+		<!-- wgodot-changes::begin -->
+		<member name="meshes/preserve_tangent_frame" type="bool" setter="" getter="" default="false">
+			For glTF imports, use [constant Mesh.ARRAY_FLAG_PRESERVE_TANGENT_FRAME]. If provided, custom [code]_WGODOT_NORMAL[/code] (VEC3) and [code]_WGODOT_TANGENT[/code] (VEC4) attributes supply the unnormalized source frame; otherwise the standard NORMAL and TANGENT attributes are used. Standard glTF morph deltas apply to that frame. Ordinary imports retain Godot's compact normalized format.
+		</member>
+		<member name="meshes/normalize_morph_normal_weights" type="bool" setter="" getter="" default="false">
+			For glTF surfaces with morph targets, enable [constant Mesh.ARRAY_FLAG_NORMALIZE_MORPH_NORMAL_WEIGHTS]. Requires [member meshes/preserve_tangent_frame]. Normal weights are normalized per affected vertex; position weights are not clamped.
+		</member>
+		<member name="meshes/orthonormalize_morph_tangent_frame" type="bool" setter="" getter="" default="false">
+			For glTF surfaces with morph targets, enable [constant Mesh.ARRAY_FLAG_ORTHONORMALIZE_MORPH_TANGENT_FRAME]. Requires [member meshes/preserve_tangent_frame]. This restores an orthonormal tangent frame after morph blending, before skeletal deformation; it does not normalize the skinned or interpolated frame.
+		</member>
+		<!-- wgodot-changes::end -->
 		<member name="meshes/generate_lods" type="bool" setter="" getter="" default="true">
 			If [code]true[/code], generates lower detail variants of the mesh which will be displayed in the distance to improve rendering performance. Not all meshes benefit from LOD, especially if they are never rendered from far away. Disabling this can reduce output file size and speed up importing. See [url=$DOCS_URL/tutorials/3d/mesh_lod.html#doc-mesh-lod]Mesh level of detail (LOD)[/url] for more information.
 		</member>

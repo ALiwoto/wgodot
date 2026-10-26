@@ -8041,6 +8041,14 @@ void EditorNode::_set_renderer_name_save_and_restart(const String &p_rendering_m
 }
 
 void EditorNode::_resource_saved(Ref<Resource> p_resource, const String &p_path) {
+	// wgodot-changes::begin
+	// Threaded importers publish metadata and folding state on the editor thread.
+	// Use its queue rather than a resource loader's private deferred queue.
+	if (!Thread::is_main_thread()) {
+		MessageQueue::get_main_singleton()->push_callable(callable_mp_static(&EditorNode::_resource_saved), p_resource, p_path);
+		return;
+	}
+	// wgodot-changes::end
 	if (singleton->saving_resources_in_path.has(p_resource)) {
 		// This is going to be handled by save_resource_in_path when the time is right.
 		return;

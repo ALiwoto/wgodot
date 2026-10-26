@@ -39,7 +39,12 @@
 using namespace RendererSceneRenderImplementation;
 
 void SceneShaderForwardClustered::ShaderData::set_code(const String &p_code) {
-	//compile
+	// wgodot-changes::begin
+	// Finish pipelines while their shader state is intact, before taking the
+	// shader mutex needed by compilation workers. Freeing a failed shader first
+	// would implicitly destroy pipelines still retained by this cache.
+	pipeline_hash_map.clear_pipelines();
+	// wgodot-changes::end
 
 	code = p_code;
 	ubo_size = 0;
@@ -267,8 +272,6 @@ void SceneShaderForwardClustered::ShaderData::set_code(const String &p_code) {
 	parameter_layout = gen_code.parameter_layout;
 	// wgodot-changes::end
 	texture_uniforms = gen_code.texture_uniforms;
-
-	pipeline_hash_map.clear_pipelines();
 
 	// If any form of Alpha Antialiasing is enabled, set the blend mode to alpha to coverage.
 	if (alpha_antialiasing_mode != ALPHA_ANTIALIASING_OFF) {

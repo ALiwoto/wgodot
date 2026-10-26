@@ -197,7 +197,14 @@ enum ArrayFormat : uint64_t {
 	// compute shaders. Required to write into them from a compute pipeline through the RIDs
 	// returned by `mesh_surface_get_vertex_buffer_rd_rid` and friends.
 	ARRAY_FLAG_USE_STORAGE_BUFFER = 1 << (ARRAY_COMPRESS_FLAGS_BASE + 5),
-	// We leave enough room for up to 4 more compression flags.
+	// wgodot-changes::begin
+	// Float32 vectors, including authored lengths, retained through deformation.
+	ARRAY_FLAG_PRESERVE_TANGENT_FRAME = 1ULL << (ARRAY_COMPRESS_FLAGS_BASE + 6),
+	// Rebuild an orthonormal frame after morphing, before skeletal deformation.
+	ARRAY_FLAG_ORTHONORMALIZE_MORPH_TANGENT_FRAME = 1ULL << (ARRAY_COMPRESS_FLAGS_BASE + 7),
+	ARRAY_FLAG_NORMALIZE_MORPH_NORMAL_WEIGHTS = 1ULL << (ARRAY_COMPRESS_FLAGS_BASE + 8),
+	// wgodot-changes::end
+	// Two flag bits remain before the format version.
 
 	ARRAY_FLAG_FORMAT_VERSION_BASE = ARRAY_COMPRESS_FLAGS_BASE + 10,
 	ARRAY_FLAG_FORMAT_VERSION_SHIFT = ARRAY_FLAG_FORMAT_VERSION_BASE,

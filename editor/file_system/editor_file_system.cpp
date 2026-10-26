@@ -939,7 +939,10 @@ bool EditorFileSystem::_update_scan_actions() {
 						// Re-assign the UID to file, just in case it was pulled from cache.
 						ResourceSaver::set_uid(new_file_path, existing_id);
 
-						if (id_known) {
+						// wgodot-changes::begin
+						// set_uid() now refreshes editor metadata and may register it.
+						if (ResourceUID::get_singleton()->has_id(existing_id)) {
+						// wgodot-changes::end
 							ResourceUID::get_singleton()->set_id(existing_id, new_file_path);
 						} else {
 							ResourceUID::get_singleton()->add_id(existing_id, new_file_path);
@@ -3903,6 +3906,18 @@ ResourceUID::ID EditorFileSystem::_resource_saver_get_resource_id_for_path(const
 	}
 }
 
+// wgodot-changes::begin
+void EditorFileSystem::_resource_saver_uid_changed(const String &p_path) {
+	// Use the normal metadata publication path so both the live UID registry
+	// and the persistent filesystem cache observe the final on-disk identity.
+	if (!Thread::is_main_thread()) {
+		MessageQueue::get_main_singleton()->push_callable(callable_mp(singleton, &EditorFileSystem::update_file), p_path);
+		return;
+	}
+	singleton->update_file(p_path);
+}
+// wgodot-changes::end
+
 static void _scan_extensions_dir(EditorFileSystemDirectory *d, HashSet<String> &extensions) {
 	int fc = d->get_file_count();
 	for (int i = 0; i < fc; i++) {
@@ -4021,6 +4036,9 @@ EditorFileSystem::EditorFileSystem() {
 
 	scan_total = 0;
 	ResourceSaver::set_get_resource_id_for_path(_resource_saver_get_resource_id_for_path);
+	// wgodot-changes::begin
+	ResourceSaver::set_uid_changed_callback(_resource_saver_uid_changed);
+	// wgodot-changes::end
 
 	// Set the callback method that the ResourceFormatImporter will use
 	// if resources are loaded during the first scan.
@@ -4034,6 +4052,9 @@ EditorFileSystem::EditorFileSystem() {
 }
 
 EditorFileSystem::~EditorFileSystem() {
+	// wgodot-changes::begin
+	ResourceSaver::set_uid_changed_callback(nullptr);
+	// wgodot-changes::end
 	memdelete(filesystem);
 	filesystem = nullptr;
 	ResourceSaver::set_get_resource_id_for_path(nullptr);

@@ -1542,7 +1542,12 @@ void RendererCanvasRenderRD::CanvasShaderData::_create_pipeline(PipelineKey p_pi
 }
 
 void RendererCanvasRenderRD::CanvasShaderData::set_code(const String &p_code) {
-	//compile
+	// wgodot-changes::begin
+	// Finish pipelines while their shader state is intact, before taking the
+	// shader mutex needed by compilation workers. Freeing a failed shader first
+	// would implicitly destroy pipelines still retained by this cache.
+	pipeline_hash_map.clear_pipelines();
+	// wgodot-changes::end
 
 	code = p_code;
 	ubo_size = 0;
@@ -1594,8 +1599,6 @@ void RendererCanvasRenderRD::CanvasShaderData::set_code(const String &p_code) {
 
 	uses_screen_texture_mipmaps = gen_code.uses_screen_texture_mipmaps;
 	uses_screen_texture = gen_code.uses_screen_texture;
-
-	pipeline_hash_map.clear_pipelines();
 
 	if (version.is_null()) {
 		version = canvas_singleton->shader.canvas_shader.version_create(false);

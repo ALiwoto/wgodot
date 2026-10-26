@@ -379,6 +379,9 @@ class EditorFileSystem : public Node {
 	void _reimport_thread(uint32_t p_index, ImportThreadData *p_import_data);
 
 	static ResourceUID::ID _resource_saver_get_resource_id_for_path(const String &p_path, bool p_generate);
+	// wgodot-changes::begin
+	static void _resource_saver_uid_changed(const String &p_path);
+	// wgodot-changes::end
 
 	bool _scan_extensions();
 	bool _scan_import_support(const Vector<String> &reimports);
@@ -398,7 +401,11 @@ protected:
 
 public:
 	// The name is the version, to keep compatibility with different versions of Godot.
-	static inline String CACHE_FILE_NAME = "filesystem_cache10";
+	// wgodot-changes::begin
+	// Older caches can retain the pre-rewrite UID of extracted resources with
+	// the same mtime as the final file. Rebuild metadata from resource headers.
+	static inline String CACHE_FILE_NAME = "filesystem_cache11";
+	// wgodot-changes::end
 
 	static EditorFileSystem *get_singleton() { return singleton; }
 

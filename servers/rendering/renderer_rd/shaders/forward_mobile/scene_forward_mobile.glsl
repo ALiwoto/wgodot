@@ -35,9 +35,12 @@ layout(location = 0) in vec4 vertex_angle_attrib;
 #ifdef NORMAL_USED
 // Contains Normal/Axis in RG, can contain tangent in BA.
 layout(location = 1) in vec4 axis_tangent_attrib;
+// wgodot-changes::begin
+layout(location = 2) in vec4 authored_tangent_attrib;
+// wgodot-changes::end
 #endif
 
-// Location 2 is unused.
+
 
 #if defined(COLOR_USED)
 layout(location = 3) in vec4 color_attrib;
@@ -209,6 +212,9 @@ uint multimesh_stride() {
 void _unpack_vertex_attributes(vec4 p_vertex_in, vec3 p_compressed_aabb_position, vec3 p_compressed_aabb_size,
 #if defined(NORMAL_USED) || defined(TANGENT_USED)
 		vec4 p_normal_in,
+		// wgodot-changes::begin
+		vec4 p_tangent_in, bool p_preserve_tangent_frame,
+		// wgodot-changes::end
 #ifdef NORMAL_USED
 		out vec3 r_normal,
 #endif
@@ -218,6 +224,18 @@ void _unpack_vertex_attributes(vec4 p_vertex_in, vec3 p_compressed_aabb_position
 		out vec3 r_vertex) {
 
 	r_vertex = p_vertex_in.xyz * p_compressed_aabb_size + p_compressed_aabb_position;
+	// wgodot-changes::begin
+#if defined(NORMAL_USED) || defined(TANGENT_USED)
+	if (p_preserve_tangent_frame) {
+#ifdef NORMAL_USED
+		r_normal = p_normal_in.xyz;
+#endif
+		r_tangent = p_tangent_in.xyz;
+		r_binormal = cross(p_normal_in.xyz, r_tangent) * p_tangent_in.w;
+		return;
+	}
+#endif
+	// wgodot-changes::end
 #ifdef NORMAL_USED
 	r_normal = oct_to_vec3(p_normal_in.xy * 2.0 - 1.0);
 #endif
@@ -516,12 +534,18 @@ void vertex_shader(in vec3 vertex,
 
 	// Normalize TBN vectors to account for model/normal transforms that may have scale
 #ifdef NORMAL_USED
-	normal_interp = hvec3(normalize(normal_highp));
+	// wgodot-changes::begin
+	normal_interp = bool(instances.data[instance_index].flags & INSTANCE_FLAGS_PRESERVE_TANGENT_FRAME) ? normal_highp : hvec3(normalize(normal_highp));
+	// wgodot-changes::end
 #endif
 
 #if defined(TANGENT_USED) || defined(NORMAL_MAP_USED) || defined(LIGHT_ANISOTROPY_USED) || defined(BENT_NORMAL_MAP_USED)
-	tangent_interp = hvec3(normalize(tangent_highp));
-	binormal_interp = hvec3(normalize(binormal_highp));
+	// wgodot-changes::begin
+	tangent_interp = bool(instances.data[instance_index].flags & INSTANCE_FLAGS_PRESERVE_TANGENT_FRAME) ? tangent_highp : hvec3(normalize(tangent_highp));
+	// wgodot-changes::end
+	// wgodot-changes::begin
+	binormal_interp = bool(instances.data[instance_index].flags & INSTANCE_FLAGS_PRESERVE_TANGENT_FRAME) ? binormal_highp : hvec3(normalize(binormal_highp));
+	// wgodot-changes::end
 #endif
 
 // VERTEX LIGHTING
@@ -774,6 +798,9 @@ void main() {
 			instances.data[draw_call.instance_index].compressed_aabb_size_pad.xyz,
 #if defined(NORMAL_USED) || defined(TANGENT_USED)
 			axis_tangent_attrib,
+			// wgodot-changes::begin
+			authored_tangent_attrib, bool(instances.data[instance_index].flags & INSTANCE_FLAGS_PRESERVE_TANGENT_FRAME),
+			// wgodot-changes::end
 #ifdef NORMAL_USED
 			normal,
 #endif

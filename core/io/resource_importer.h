@@ -45,6 +45,9 @@ class ResourceFormatImporter : public ResourceFormatLoader {
 		String path;
 		String type;
 		String importer;
+		// wgodot-changes::begin
+		int importer_version = 0;
+		// wgodot-changes::end
 		String group_file;
 		Variant metadata;
 		ResourceUID::ID uid = ResourceUID::INVALID_ID;

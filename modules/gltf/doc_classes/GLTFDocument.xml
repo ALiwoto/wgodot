@@ -182,5 +182,16 @@
 		<constant name="IMPORT_FLAG_FORCE_DISABLE_MESH_COMPRESSION" value="64" enum="ImportFlags" is_bitfield="true">
 			If [code]true[/code], mesh compression will not be used. Consider enabling if you notice blocky artifacts in your mesh normals or UVs, or if you have meshes that are larger than a few thousand meters in each direction.
 		</constant>
+		<!-- wgodot-changes::begin -->
+		<constant name="IMPORT_FLAG_PRESERVE_TANGENT_FRAME" value="128" enum="ImportFlags" is_bitfield="true">
+			Import float32 authored tangent frames without normalization. See [member ResourceImporterScene.meshes/preserve_tangent_frame].
+		</constant>
+		<constant name="IMPORT_FLAG_NORMALIZE_MORPH_NORMAL_WEIGHTS" value="512" enum="ImportFlags" is_bitfield="true">
+			Enable per-vertex morph normal weight normalization. Requires [constant IMPORT_FLAG_PRESERVE_TANGENT_FRAME]. See [member ResourceImporterScene.meshes/normalize_morph_normal_weights].
+		</constant>
+		<constant name="IMPORT_FLAG_ORTHONORMALIZE_MORPH_TANGENT_FRAME" value="256" enum="ImportFlags" is_bitfield="true">
+			Enable tangent-frame orthonormalization after morph blending and before skinning. Requires [constant IMPORT_FLAG_PRESERVE_TANGENT_FRAME]. See [member ResourceImporterScene.meshes/orthonormalize_morph_tangent_frame].
+		</constant>
+		<!-- wgodot-changes::end -->
 	</constants>
 </class>

@@ -105,7 +105,11 @@ layout(location = 0) in highp vec4 vertex_angle_attrib;
 layout(location = 1) in vec4 axis_tangent_attrib;
 #endif
 
-// location 2 is unused.
+// wgodot-changes::begin
+#ifdef NORMAL_USED
+layout(location = 2) in highp vec4 authored_tangent_attrib;
+#endif
+// wgodot-changes::end
 
 #if defined(COLOR_USED)
 layout(location = 3) in vec4 color_attrib;
@@ -170,6 +174,9 @@ layout(location = 15) in highp uvec4 instance_color_custom_data; // Color packed
 #if defined(RENDER_MOTION_VECTORS)
 layout(location = 16) in highp vec4 prev_vertex_attrib;
 layout(location = 17) in highp vec4 prev_normal_attrib;
+// wgodot-changes::begin
+layout(location = 22) in highp vec4 prev_authored_tangent_attrib;
+// wgodot-changes::end
 #ifdef USE_INSTANCING
 layout(location = 18) in highp vec4 prev_instance_xform0;
 layout(location = 19) in highp vec4 prev_instance_xform1;
@@ -179,6 +186,9 @@ layout(location = 21) in highp uvec4 prev_instance_color_custom_data;
 #endif // RENDER_MOTION_VECTORS
 
 #define FLAGS_NON_UNIFORM_SCALE (1 << 4)
+// wgodot-changes::begin
+#define FLAGS_PRESERVE_TANGENT_FRAME (1 << 0)
+// wgodot-changes::end
 
 layout(std140) uniform GlobalShaderUniformData { //ubo:1
 	vec4 global_shader_uniforms[MAX_GLOBAL_SHADER_UNIFORMS];
@@ -591,6 +601,9 @@ void vertex_shader(vec4 vertex_angle_attrib_input,
 #endif
 #ifdef NORMAL_USED
 		vec4 axis_tangent_attrib_input,
+		// wgodot-changes::begin
+		vec4 authored_tangent_attrib_input,
+		// wgodot-changes::end
 #endif
 #if defined(COLOR_USED)
 		vec4 color_attrib_input,
@@ -617,7 +630,10 @@ void vertex_shader(vec4 vertex_angle_attrib_input,
 #endif
 
 #ifdef NORMAL_USED
-	vec3 normal = oct_to_vec3(axis_tangent_attrib_input.xy * 2.0 - 1.0);
+	// wgodot-changes::begin
+	bool preserve_tangent_frame = bool(model_flags_input & uint(FLAGS_PRESERVE_TANGENT_FRAME));
+	vec3 normal = preserve_tangent_frame ? axis_tangent_attrib_input.xyz : oct_to_vec3(axis_tangent_attrib_input.xy * 2.0 - 1.0);
+	// wgodot-changes::end
 #endif
 
 	highp mat3 model_normal_matrix;
@@ -633,9 +649,15 @@ void vertex_shader(vec4 vertex_angle_attrib_input,
 	vec3 binormal;
 	float binormal_sign;
 	vec3 tangent;
-	if (axis_tangent_attrib.z > 0.0 || axis_tangent_attrib.w < 1.0) {
+	// wgodot-changes::begin
+	if (preserve_tangent_frame) {
+		tangent = authored_tangent_attrib_input.xyz;
+		binormal_sign = authored_tangent_attrib_input.w;
+		binormal = cross(normal, tangent) * binormal_sign;
+	} else if (axis_tangent_attrib_input.z > 0.0 || axis_tangent_attrib_input.w < 1.0) {
+	// wgodot-changes::end
 		// Uncompressed format.
-		vec2 signed_tangent_attrib = axis_tangent_attrib.zw * 2.0 - 1.0;
+		vec2 signed_tangent_attrib = axis_tangent_attrib_input.zw * 2.0 - 1.0;
 		tangent = oct_to_vec3(vec2(signed_tangent_attrib.x, abs(signed_tangent_attrib.y) * 2.0 - 1.0));
 		binormal_sign = sign(signed_tangent_attrib.y);
 		binormal = normalize(cross(normal, tangent) * binormal_sign);
@@ -764,12 +786,18 @@ void vertex_shader(vec4 vertex_angle_attrib_input,
 
 	// Normalize TBN vectors to account for model/normal transforms that may have scale
 #ifdef NORMAL_USED
-	normal_interp = normalize(normal);
+	// wgodot-changes::begin
+	normal_interp = preserve_tangent_frame ? normal : normalize(normal);
+	// wgodot-changes::end
 #endif
 
 #if defined(TANGENT_USED) || defined(NORMAL_MAP_USED) || defined(BENT_NORMAL_MAP_USED) || defined(LIGHT_ANISOTROPY_USED)
-	tangent_interp = normalize(tangent);
-	binormal_interp = normalize(binormal);
+	// wgodot-changes::begin
+	tangent_interp = preserve_tangent_frame ? tangent : normalize(tangent);
+	// wgodot-changes::end
+	// wgodot-changes::begin
+	binormal_interp = preserve_tangent_frame ? binormal : normalize(binormal);
+	// wgodot-changes::end
 #endif
 
 #ifndef RENDER_MOTION_VECTORS
@@ -948,6 +976,7 @@ void main() {
 #endif
 #ifdef NORMAL_USED
 			prev_normal_attrib,
+			prev_authored_tangent_attrib,
 #endif
 #if defined(COLOR_USED)
 			color_attrib,
@@ -981,6 +1010,7 @@ void main() {
 #endif
 #ifdef NORMAL_USED
 			axis_tangent_attrib,
+			authored_tangent_attrib,
 #endif
 #if defined(COLOR_USED)
 			color_attrib,
@@ -1063,6 +1093,9 @@ void main() {
 #endif
 
 #define FLAGS_NON_UNIFORM_SCALE (1 << 4)
+// wgodot-changes::begin
+#define FLAGS_PRESERVE_TANGENT_FRAME (1 << 0)
+// wgodot-changes::end
 
 /* Varyings */
 

@@ -3993,7 +3993,13 @@ void RasterizerSceneGLES3::_render_list_template(RenderListParameters *p_params,
 				}
 			}
 
-			material_storage->shaders.scene_shader.version_set_uniform(SceneShaderGLES3::MODEL_FLAGS, inst->flags_cache, shader->version, instance_variant, spec_constants);
+			// wgodot-changes::begin
+			uint32_t model_flags = inst->flags_cache;
+			if (static_cast<GLES3::Mesh::Surface *>(mesh_surface)->format & RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME) {
+				model_flags |= INSTANCE_DATA_FLAG_PRESERVE_TANGENT_FRAME;
+			}
+			material_storage->shaders.scene_shader.version_set_uniform(SceneShaderGLES3::MODEL_FLAGS, model_flags, shader->version, instance_variant, spec_constants);
+			// wgodot-changes::end
 			material_storage->shaders.scene_shader.version_set_uniform(SceneShaderGLES3::INSTANCE_OFFSET, uint32_t(inst->shader_uniforms_offset), shader->version, instance_variant, spec_constants);
 
 			if (p_pass_mode == PASS_MODE_MATERIAL) {

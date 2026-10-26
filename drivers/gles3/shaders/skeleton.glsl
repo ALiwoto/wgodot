@@ -13,6 +13,13 @@ USE_NORMAL = false
 USE_TANGENT = false
 FINAL_PASS = false
 USE_EIGHT_WEIGHTS = false
+// wgodot-changes::begin
+PRESERVE_TANGENT_FRAME = false
+ORTHONORMALIZE_MORPH_TANGENT_FRAME = false
+NORMALIZE_MORPH_NORMAL_WEIGHTS = false
+ACCUMULATE_MORPH_NORMAL_WEIGHTS = false
+RELATIVE_BLEND_SHAPES = false
+// wgodot-changes::end
 
 #[vertex]
 
@@ -32,6 +39,16 @@ USE_EIGHT_WEIGHTS = false
 
 // These come from the source mesh and the output from previous passes.
 layout(location = 0) in highp VFORMAT in_vertex;
+// wgodot-changes::begin
+#ifdef PRESERVE_TANGENT_FRAME
+#ifdef USE_NORMAL
+layout(location = 1) in highp vec3 in_normal;
+#endif
+#ifdef USE_TANGENT
+layout(location = 2) in highp vec4 in_tangent;
+#endif
+#else
+// wgodot-changes::end
 #ifdef MODE_BLEND_PASS
 #ifdef USE_NORMAL
 layout(location = 1) in highp uvec2 in_normal;
@@ -47,6 +64,9 @@ layout(location = 1) in highp vec2 in_normal;
 layout(location = 2) in highp vec2 in_tangent;
 #endif
 #endif // MODE_BLEND_PASS
+// wgodot-changes::begin
+#endif // PRESERVE_TANGENT_FRAME
+// wgodot-changes::end
 
 #ifdef USE_SKELETON
 #ifdef USE_EIGHT_WEIGHTS
@@ -66,21 +86,61 @@ uniform highp sampler2D skeleton_texture; // texunit:0
 #ifdef MODE_BLEND_PASS
 layout(location = 3) in highp VFORMAT blend_vertex;
 #ifdef USE_NORMAL
+// wgodot-changes::begin
+#ifdef PRESERVE_TANGENT_FRAME
+layout(location = 4) in highp vec3 blend_normal;
+#else
 layout(location = 4) in highp vec2 blend_normal;
 #endif
+// wgodot-changes::end
+#endif
 #ifdef USE_TANGENT
+// wgodot-changes::begin
+#ifdef PRESERVE_TANGENT_FRAME
+layout(location = 5) in highp vec4 blend_tangent;
+#else
 layout(location = 5) in highp vec2 blend_tangent;
 #endif
+// wgodot-changes::end
+#endif
 #endif // MODE_BLEND_PASS
+
+// wgodot-changes::begin
+#if defined(NORMALIZE_MORPH_NORMAL_WEIGHTS) && defined(MODE_BLEND_PASS)
+layout(location = 6) in highp float in_normal_weight;
+layout(location = 7) in highp vec3 base_vertex;
+layout(location = 8) in highp vec3 base_normal;
+#endif
+// wgodot-changes::end
 
 out highp VFORMAT out_vertex; //tfb:
 
 #ifdef USE_NORMAL
-flat out highp OFORMAT out_normal; //tfb:USE_NORMAL
+// wgodot-changes::begin
+#ifdef PRESERVE_TANGENT_FRAME
+#define NORMAL_OFORMAT vec3
+#else
+#define NORMAL_OFORMAT OFORMAT
+#endif
+flat out highp NORMAL_OFORMAT out_normal; //tfb:USE_NORMAL
+// wgodot-changes::end
 #endif
 #ifdef USE_TANGENT
-flat out highp OFORMAT out_tangent; //tfb:USE_TANGENT
+// wgodot-changes::begin
+#ifdef PRESERVE_TANGENT_FRAME
+#define TANGENT_OFORMAT vec4
+#else
+#define TANGENT_OFORMAT OFORMAT
 #endif
+flat out highp TANGENT_OFORMAT out_tangent; //tfb:USE_TANGENT
+// wgodot-changes::end
+#endif
+
+// wgodot-changes::begin
+#ifdef ACCUMULATE_MORPH_NORMAL_WEIGHTS
+flat out highp float out_normal_weight; //tfb:ACCUMULATE_MORPH_NORMAL_WEIGHTS
+#endif
+// wgodot-changes::end
 
 #ifdef USE_BLEND_SHAPES
 uniform highp float blend_weight;
@@ -185,6 +245,36 @@ void main() {
 
 #else // MODE_2D
 
+// wgodot-changes::begin
+#ifdef PRESERVE_TANGENT_FRAME
+	out_vertex = in_vertex;
+#ifdef USE_NORMAL
+	out_normal = in_normal;
+#endif
+#ifdef USE_TANGENT
+	out_tangent = in_tangent;
+#endif
+#ifdef USE_BLEND_SHAPES
+#ifdef MODE_BLEND_PASS
+	out_vertex += blend_vertex * blend_weight;
+#ifdef USE_NORMAL
+	out_normal += blend_normal * blend_weight;
+#endif
+#ifdef USE_TANGENT
+	out_tangent.xyz += blend_tangent.xyz * blend_weight;
+#endif
+#else
+	out_vertex *= blend_weight;
+#ifdef USE_NORMAL
+	out_normal *= blend_weight;
+#endif
+#ifdef USE_TANGENT
+	out_tangent.xyz *= blend_weight;
+#endif
+#endif
+#endif
+#else
+// wgodot-changes::end
 #ifdef USE_BLEND_SHAPES
 #ifdef MODE_BLEND_PASS
 	out_vertex = in_vertex + blend_vertex * blend_weight;
@@ -232,6 +322,40 @@ void main() {
 	out_tangent = in_tangent;
 #endif
 #endif // USE_BLEND_SHAPES
+// wgodot-changes::begin
+#endif // PRESERVE_TANGENT_FRAME
+#ifdef NORMALIZE_MORPH_NORMAL_WEIGHTS
+#ifdef MODE_BLEND_PASS
+#ifdef RELATIVE_BLEND_SHAPES
+	vec3 delta_vertex = blend_vertex;
+	vec3 delta_normal = blend_normal;
+#else
+	vec3 delta_vertex = blend_vertex - base_vertex;
+	vec3 delta_normal = blend_normal - base_normal;
+#endif
+	out_normal = in_normal + delta_normal * blend_weight;
+	float normal_weight = in_normal_weight;
+	// Match authored participation, including position-only morph vertices.
+	if (any(notEqual(delta_vertex, vec3(0.0))) || any(notEqual(delta_normal, vec3(0.0)))) {
+		normal_weight += abs(blend_weight);
+	}
+#ifdef FINAL_PASS
+	out_normal = base_normal + out_normal / max(1.0, normal_weight);
+#else
+	out_normal_weight = normal_weight;
+#endif
+#else
+	out_normal = vec3(0.0);
+	out_normal_weight = 0.0;
+#endif
+#endif
+#if defined(ORTHONORMALIZE_MORPH_TANGENT_FRAME) && defined(USE_BLEND_SHAPES) && defined(FINAL_PASS)
+	out_normal = normalize(out_normal);
+#ifdef USE_TANGENT
+	out_tangent.xyz = normalize(out_tangent.xyz - out_normal * dot(out_tangent.xyz, out_normal));
+#endif
+#endif
+// wgodot-changes::end
 
 #ifdef USE_SKELETON
 
@@ -262,12 +386,24 @@ void main() {
 	// Reverse order because its transposed.
 	out_vertex = (vec4(out_vertex, 1.0) * m).xyz;
 #ifdef USE_NORMAL
+	// wgodot-changes::begin
+#ifdef PRESERVE_TANGENT_FRAME
+	out_normal = (vec4(out_normal, 0.0) * m).xyz;
+#else
 	vec3 vertex_normal = oct_to_vec3(out_normal);
 	out_normal = vec3_to_oct(normalize((vec4(vertex_normal, 0.0) * m).xyz));
+#endif
+// wgodot-changes::end
 #endif // USE_NORMAL
 #ifdef USE_TANGENT
+	// wgodot-changes::begin
+#ifdef PRESERVE_TANGENT_FRAME
+	out_tangent.xyz = (vec4(out_tangent.xyz, 0.0) * m).xyz;
+#else
 	vec4 vertex_tangent = oct_to_tang(out_tangent);
 	out_tangent = tang_to_oct(vec4(normalize((vec4(vertex_tangent.xyz, 0.0) * m).xyz), vertex_tangent.w));
+#endif
+// wgodot-changes::end
 #endif // USE_TANGENT
 #endif // USE_SKELETON
 #endif // MODE_2D

@@ -105,6 +105,10 @@ Error ResourceFormatImporter::_get_path_and_type(const String &p_path, PathAndTy
 				r_path_and_type.type = ClassDB::get_compatibility_remapped_class(value);
 			} else if (assign == "importer") {
 				r_path_and_type.importer = value;
+			// wgodot-changes::begin
+			} else if (assign == "importer_version") {
+				r_path_and_type.importer_version = value;
+			// wgodot-changes::end
 			} else if (assign == "uid") {
 				r_path_and_type.uid = ResourceUID::get_singleton()->text_to_id(value);
 			} else if (assign == "group_file") {
@@ -553,6 +557,12 @@ bool ResourceFormatImporter::are_import_settings_valid(const String &p_path) con
 
 	for (int i = 0; i < importers.size(); i++) {
 		if (importers[i]->get_importer_name() == pat.importer) {
+			// wgodot-changes::begin
+			// Unchanged files can bypass the filesystem's full reimport check.
+			if (importers[i]->get_format_version() > pat.importer_version) {
+				return false;
+			}
+			// wgodot-changes::end
 			if (!importers[i]->are_import_settings_valid(p_path, pat.metadata)) { //importer thinks this is not valid
 				return false;
 			}
@@ -570,6 +580,10 @@ String ResourceFormatImporter::get_import_settings_hash() const {
 	String hash;
 	for (int i = 0; i < sorted_importers.size(); i++) {
 		hash += ":" + sorted_importers[i]->get_importer_name() + ":" + sorted_importers[i]->get_import_settings_string();
+		// wgodot-changes::begin
+		// A format change must revalidate cached imports even if their files are unchanged.
+		hash += ":" + itos(sorted_importers[i]->get_format_version());
+		// wgodot-changes::end
 	}
 	return hash.md5_text();
 }

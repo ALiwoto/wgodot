@@ -50,7 +50,9 @@ layout(push_constant, std430) uniform Params {
 	uint blend_shape_count;
 	bool normalized_blend_shapes;
 	uint normal_tangent_stride;
-	uint pad1;
+	// wgodot-changes::begin
+	uint tangent_frame_flags; // Bits 0/1/2: preserve frame, orthonormalize morph frame, normalize morph normal weights.
+	// wgodot-changes::end
 
 	vec2 skeleton_transform_x;
 	vec2 skeleton_transform_y;
@@ -192,18 +194,29 @@ void main() {
 	vec3 vertex;
 	vec3 normal;
 	vec4 tangent;
+	// wgodot-changes::begin
+	bool preserve_tangent_frame = (params.tangent_frame_flags & 1u) != 0u;
+	// wgodot-changes::end
 
 	vertex = uintBitsToFloat(uvec3(src_vertices.data[src_offset + 0], src_vertices.data[src_offset + 1], src_vertices.data[src_offset + 2]));
 
 	uint src_normal = params.vertex_count * params.vertex_stride + index * params.normal_tangent_stride;
 
 	if (params.has_normal) {
-		normal = decode_uint_oct_to_norm(src_vertices.data[src_normal]);
-		src_normal++;
+		// wgodot-changes::begin
+		normal = preserve_tangent_frame
+				? uintBitsToFloat(uvec3(src_vertices.data[src_normal], src_vertices.data[src_normal + 1], src_vertices.data[src_normal + 2]))
+				: decode_uint_oct_to_norm(src_vertices.data[src_normal]);
+		src_normal += preserve_tangent_frame ? 3 : 1;
+		// wgodot-changes::end
 	}
 
 	if (params.has_tangent) {
-		tangent = decode_uint_oct_to_tang(src_vertices.data[src_normal]);
+		// wgodot-changes::begin
+		tangent = preserve_tangent_frame
+				? uintBitsToFloat(uvec4(src_vertices.data[src_normal], src_vertices.data[src_normal + 1], src_vertices.data[src_normal + 2], src_vertices.data[src_normal + 3]))
+				: decode_uint_oct_to_tang(src_vertices.data[src_normal]);
+		// wgodot-changes::end
 	}
 
 	if (params.has_blend_shape) {
@@ -211,23 +224,50 @@ void main() {
 		vec3 blend_vertex = vec3(0.0);
 		vec3 blend_normal = vec3(0.0);
 		vec3 blend_tangent = vec3(0.0);
+		// wgodot-changes::begin
+		bool normalize_normal_weights = (params.tangent_frame_flags & 4u) != 0u;
+		float normal_weight = 0.0;
+		// wgodot-changes::end
 
 		for (uint i = 0; i < params.blend_shape_count; i++) {
 			float w = blend_shape_weights.data[i];
 			if (abs(w) > 0.0001) {
 				uint base_offset = params.vertex_count * i * (params.vertex_stride + params.normal_tangent_stride) + index * params.vertex_stride;
 
-				blend_vertex += uintBitsToFloat(uvec3(src_blend_shapes.data[base_offset + 0], src_blend_shapes.data[base_offset + 1], src_blend_shapes.data[base_offset + 2])) * w;
+				// wgodot-changes::begin
+				vec3 shape_vertex = uintBitsToFloat(uvec3(src_blend_shapes.data[base_offset + 0], src_blend_shapes.data[base_offset + 1], src_blend_shapes.data[base_offset + 2]));
+				blend_vertex += shape_vertex * w;
+				// wgodot-changes::end
 
 				uint base_normal = params.vertex_count * i * (params.vertex_stride + params.normal_tangent_stride) + params.vertex_count * params.vertex_stride + index * params.normal_tangent_stride;
 
 				if (params.has_normal) {
-					blend_normal += decode_uint_oct_to_norm(src_blend_shapes.data[base_normal]) * w;
-					base_normal++;
+					// wgodot-changes::begin
+					vec3 n = preserve_tangent_frame
+							? uintBitsToFloat(uvec3(src_blend_shapes.data[base_normal], src_blend_shapes.data[base_normal + 1], src_blend_shapes.data[base_normal + 2]))
+							: decode_uint_oct_to_norm(src_blend_shapes.data[base_normal]);
+					if (normalize_normal_weights) {
+						vec3 delta_normal = params.normalized_blend_shapes ? n - normal : n;
+						vec3 delta_vertex = params.normalized_blend_shapes ? shape_vertex - vertex : shape_vertex;
+						// Exact authored participation, not a near-zero deformation threshold.
+						if (any(notEqual(delta_vertex, vec3(0.0))) || any(notEqual(delta_normal, vec3(0.0)))) {
+							normal_weight += abs(w);
+						}
+						blend_normal += delta_normal * w;
+					} else {
+						blend_normal += n * w;
+					}
+					base_normal += preserve_tangent_frame ? 3 : 1;
+					// wgodot-changes::end
 				}
 
 				if (params.has_tangent) {
-					blend_tangent += decode_uint_oct_to_tang(src_blend_shapes.data[base_normal]).rgb * w;
+					// wgodot-changes::begin
+					vec3 t = preserve_tangent_frame
+							? uintBitsToFloat(uvec3(src_blend_shapes.data[base_normal], src_blend_shapes.data[base_normal + 1], src_blend_shapes.data[base_normal + 2]))
+							: decode_uint_oct_to_tang(src_blend_shapes.data[base_normal]).rgb;
+					blend_tangent += t * w;
+					// wgodot-changes::end
 				}
 
 				blend_total += w;
@@ -236,13 +276,28 @@ void main() {
 
 		if (params.normalized_blend_shapes) {
 			vertex = (1.0 - blend_total) * vertex;
-			normal = (1.0 - blend_total) * normal;
+			// wgodot-changes::begin
+			if (!normalize_normal_weights) {
+				normal = (1.0 - blend_total) * normal;
+			}
+			// wgodot-changes::end
 			tangent.rgb = (1.0 - blend_total) * tangent.rgb;
 		}
 
 		vertex += blend_vertex;
-		normal = normalize(normal + blend_normal);
-		tangent.rgb = normalize(tangent.rgb + blend_tangent);
+		// wgodot-changes::begin
+		if (normalize_normal_weights) {
+			blend_normal /= max(1.0, normal_weight);
+		}
+		normal = preserve_tangent_frame ? normal + blend_normal : normalize(normal + blend_normal);
+		tangent.rgb = preserve_tangent_frame ? tangent.rgb + blend_tangent : normalize(tangent.rgb + blend_tangent);
+		if ((params.tangent_frame_flags & 2u) != 0u) {
+			normal = normalize(normal);
+			if (params.has_tangent) {
+				tangent.xyz = normalize(tangent.xyz - normal * dot(tangent.xyz, normal));
+			}
+		}
+		// wgodot-changes::end
 	}
 
 	if (params.has_skeleton) {
@@ -287,8 +342,14 @@ void main() {
 
 		//reverse order because its transposed
 		vertex = (vec4(vertex, 1.0) * m).xyz;
-		normal = normalize((vec4(normal, 0.0) * m).xyz);
-		tangent.xyz = normalize((vec4(tangent.xyz, 0.0) * m).xyz);
+		// wgodot-changes::begin
+		normal = (vec4(normal, 0.0) * m).xyz;
+		tangent.xyz = (vec4(tangent.xyz, 0.0) * m).xyz;
+		if (!preserve_tangent_frame) {
+			normal = normalize(normal);
+			tangent.xyz = normalize(tangent.xyz);
+		}
+		// wgodot-changes::end
 	}
 
 	uint dst_offset = index * params.vertex_stride;
@@ -301,12 +362,35 @@ void main() {
 	uint dst_normal = params.vertex_count * params.vertex_stride + index * params.normal_tangent_stride;
 
 	if (params.has_normal) {
-		dst_vertices.data[dst_normal] = encode_norm_to_uint_oct(normal);
-		dst_normal++;
+		// wgodot-changes::begin
+		if (preserve_tangent_frame) {
+			uvec3 packed = floatBitsToUint(normal);
+			dst_vertices.data[dst_normal++] = packed.x;
+			dst_vertices.data[dst_normal++] = packed.y;
+			dst_vertices.data[dst_normal++] = packed.z;
+		} else {
+		// wgodot-changes::end
+			dst_vertices.data[dst_normal] = encode_norm_to_uint_oct(normal);
+			dst_normal++;
+		// wgodot-changes::begin
+		}
+		// wgodot-changes::end
 	}
 
 	if (params.has_tangent) {
-		dst_vertices.data[dst_normal] = encode_tang_to_uint_oct(tangent);
+		// wgodot-changes::begin
+		if (preserve_tangent_frame) {
+			uvec4 packed = floatBitsToUint(tangent);
+			dst_vertices.data[dst_normal++] = packed.x;
+			dst_vertices.data[dst_normal++] = packed.y;
+			dst_vertices.data[dst_normal++] = packed.z;
+			dst_vertices.data[dst_normal] = packed.w;
+		} else {
+		// wgodot-changes::end
+			dst_vertices.data[dst_normal] = encode_tang_to_uint_oct(tangent);
+		// wgodot-changes::begin
+		}
+		// wgodot-changes::end
 	}
 
 #endif

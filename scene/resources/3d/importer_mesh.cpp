@@ -62,6 +62,9 @@ Ref<ImporterMesh> ImporterMesh::merge_importer_meshes(const TypedArray<ImporterM
 			}
 			// Shallow-duplicate the surface arrays so that writing transformed data back doesn't mutate the original mesh.
 			Array this_surface_arrays = importer_mesh->get_surface_arrays(surface_index).duplicate(false);
+			// wgodot-changes::begin
+			const bool preserve_tangent_frame = importer_mesh->get_surface_format(surface_index) & Mesh::ARRAY_FLAG_PRESERVE_TANGENT_FRAME;
+			// wgodot-changes::end
 			ERR_FAIL_COND_V(this_surface_arrays.size() != Mesh::ARRAY_MAX, merged_importer_mesh);
 			// Transform the data of the mesh by the instance's relative transform.
 			{
@@ -71,12 +74,20 @@ Ref<ImporterMesh> ImporterMesh::merge_importer_meshes(const TypedArray<ImporterM
 				}
 				PackedVector3Array normals = this_surface_arrays[Mesh::ARRAY_NORMAL];
 				for (int normal_index = 0; normal_index < normals.size(); normal_index++) {
-					normals.ptrw()[normal_index] = relative_transform.basis.xform(normals[normal_index]).normalized();
+					// wgodot-changes::begin
+					const Vector3 normal = relative_transform.basis.xform(normals[normal_index]);
+					normals.ptrw()[normal_index] = preserve_tangent_frame ? normal : normal.normalized();
+					// wgodot-changes::end
 				}
 				PackedFloat32Array tangents = this_surface_arrays[Mesh::ARRAY_TANGENT];
 				for (int tangent_index = 0; tangent_index < tangents.size(); tangent_index += 4) {
 					Vector3 tangent = Vector3(tangents[tangent_index], tangents[tangent_index + 1], tangents[tangent_index + 2]);
-					tangent = relative_transform.basis.xform(tangent).normalized();
+					// wgodot-changes::begin
+					tangent = relative_transform.basis.xform(tangent);
+					if (!preserve_tangent_frame) {
+						tangent.normalize();
+					}
+					// wgodot-changes::end
 					tangents.ptrw()[tangent_index + 0] = tangent.x;
 					tangents.ptrw()[tangent_index + 1] = tangent.y;
 					tangents.ptrw()[tangent_index + 2] = tangent.z;
@@ -1041,7 +1052,9 @@ void ImporterMesh::create_shadow_mesh() {
 			}
 		}
 
-		shadow_mesh->add_surface(surfaces[i].primitive, new_surface, Array(), lods, Ref<Material>(), surfaces[i].name, surfaces[i].flags);
+		// wgodot-changes::begin
+		shadow_mesh->add_surface(surfaces[i].primitive, new_surface, Array(), lods, Ref<Material>(), surfaces[i].name, surfaces[i].flags & ~uint64_t(Mesh::ARRAY_FLAG_PRESERVE_TANGENT_FRAME | Mesh::ARRAY_FLAG_ORTHONORMALIZE_MORPH_TANGENT_FRAME | Mesh::ARRAY_FLAG_NORMALIZE_MORPH_NORMAL_WEIGHTS));
+		// wgodot-changes::end
 	}
 }
 

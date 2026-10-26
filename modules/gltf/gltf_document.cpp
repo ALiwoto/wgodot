@@ -1077,6 +1077,15 @@ Error GLTFDocument::_serialize_meshes(Ref<GLTFState> p_state) {
 						out.a = a[(i * 4) + 3];
 						attribs.write[i] = out;
 					}
+					// wgodot-changes::begin
+					if (format & Mesh::ARRAY_FLAG_PRESERVE_TANGENT_FRAME) {
+						attributes["_WGODOT_TANGENT"] = GLTFAccessor::encode_new_accessor_from_colors(p_state, attribs, GLTFBufferView::TARGET_ARRAY_BUFFER);
+						for (int64_t i = 0; i < ret_size; i++) {
+							const Vector3 tangent = Vector3(attribs[i].r, attribs[i].g, attribs[i].b).normalized();
+							attribs.write[i] = Color(tangent.x, tangent.y, tangent.z, attribs[i].a);
+						}
+					}
+					// wgodot-changes::end
 					attributes["TANGENT"] = GLTFAccessor::encode_new_accessor_from_colors(p_state, attribs, GLTFBufferView::TARGET_ARRAY_BUFFER);
 				}
 			}
@@ -1089,6 +1098,11 @@ Error GLTFDocument::_serialize_meshes(Ref<GLTFState> p_state) {
 					for (int64_t i = 0; i < ret_size; i++) {
 						attribs.write[i] = Vector3(a[i]).normalized();
 					}
+					// wgodot-changes::begin
+					if (format & Mesh::ARRAY_FLAG_PRESERVE_TANGENT_FRAME) {
+						attributes["_WGODOT_NORMAL"] = GLTFAccessor::encode_new_accessor_from_vector3s(p_state, a, GLTFBufferView::TARGET_ARRAY_BUFFER);
+					}
+					// wgodot-changes::end
 					attributes["NORMAL"] = GLTFAccessor::encode_new_accessor_from_vector3s(p_state, attribs, GLTFBufferView::TARGET_ARRAY_BUFFER);
 				}
 			}
@@ -1323,7 +1337,11 @@ Error GLTFDocument::_serialize_meshes(Ref<GLTFState> p_state) {
 						}
 						const GLTFAccessorIndex normal_accessor = attributes["NORMAL"];
 						if (normal_accessor != -1) {
-							const GLTFAccessorIndex new_accessor = GLTFAccessor::encode_new_sparse_accessor_from_vec3s(p_state, narr, Vector<Vector3>(), normal_tangent_sparse_rounding, GLTFBufferView::TARGET_ARRAY_BUFFER);
+							// wgodot-changes::begin
+							const GLTFAccessorIndex new_accessor = (format & Mesh::ARRAY_FLAG_PRESERVE_TANGENT_FRAME)
+									? GLTFAccessor::encode_new_accessor_from_vector3s(p_state, narr, GLTFBufferView::TARGET_ARRAY_BUFFER)
+									: GLTFAccessor::encode_new_sparse_accessor_from_vec3s(p_state, narr, Vector<Vector3>(), normal_tangent_sparse_rounding, GLTFBufferView::TARGET_ARRAY_BUFFER);
+							// wgodot-changes::end
 							if (new_accessor != -1) {
 								t["NORMAL"] = new_accessor;
 							}
@@ -1344,7 +1362,11 @@ Error GLTFDocument::_serialize_meshes(Ref<GLTFState> p_state) {
 						}
 						const GLTFAccessorIndex tangent_accessor = attributes["TANGENT"];
 						if (tangent_accessor != -1) {
-							const GLTFAccessorIndex new_accessor = GLTFAccessor::encode_new_sparse_accessor_from_vec3s(p_state, attribs, Vector<Vector3>(), normal_tangent_sparse_rounding, GLTFBufferView::TARGET_ARRAY_BUFFER);
+							// wgodot-changes::begin
+							const GLTFAccessorIndex new_accessor = (format & Mesh::ARRAY_FLAG_PRESERVE_TANGENT_FRAME)
+									? GLTFAccessor::encode_new_accessor_from_vector3s(p_state, attribs, GLTFBufferView::TARGET_ARRAY_BUFFER)
+									: GLTFAccessor::encode_new_sparse_accessor_from_vec3s(p_state, attribs, Vector<Vector3>(), normal_tangent_sparse_rounding, GLTFBufferView::TARGET_ARRAY_BUFFER);
+							// wgodot-changes::end
 							if (new_accessor != -1) {
 								t["TANGENT"] = new_accessor;
 							}
@@ -1581,10 +1603,16 @@ Error GLTFDocument::_parse_meshes(Ref<GLTFState> p_state) {
 				array[Mesh::ARRAY_VERTEX] = vertices;
 			}
 			if (a.has("NORMAL")) {
-				array[Mesh::ARRAY_NORMAL] = _decode_accessor_as_vec3(p_state, a["NORMAL"], indices_mapping);
+				// wgodot-changes::begin
+				const String normal_attribute = p_state->preserve_tangent_frame && a.has("_WGODOT_NORMAL") ? "_WGODOT_NORMAL" : "NORMAL";
+				array[Mesh::ARRAY_NORMAL] = _decode_accessor_as_vec3(p_state, a[normal_attribute], indices_mapping);
+				// wgodot-changes::end
 			}
 			if (a.has("TANGENT")) {
-				array[Mesh::ARRAY_TANGENT] = _decode_accessor_as_float32s(p_state, a["TANGENT"], indices_vec4_mapping);
+				// wgodot-changes::begin
+				const String tangent_attribute = p_state->preserve_tangent_frame && a.has("_WGODOT_TANGENT") ? "_WGODOT_TANGENT" : "TANGENT";
+				array[Mesh::ARRAY_TANGENT] = _decode_accessor_as_float32s(p_state, a[tangent_attribute], indices_vec4_mapping);
+				// wgodot-changes::end
 			}
 			// Usually mat_primary_texture_coord is "TEXCOORD_0", but in some edge cases it might be different.
 			if (a.has(mat_primary_texture_coord)) {
@@ -1812,7 +1840,7 @@ Error GLTFDocument::_parse_meshes(Ref<GLTFState> p_state) {
 				}
 			}
 
-			if (p_state->force_disable_compression || is_mesh_2d || !a.has("POSITION") || !a.has("NORMAL") || mesh_prim.has("targets") || (a.has("JOINTS_0") || a.has("JOINTS_1"))) {
+			if (p_state->preserve_tangent_frame || p_state->force_disable_compression || is_mesh_2d || !a.has("POSITION") || !a.has("NORMAL") || mesh_prim.has("targets") || (a.has("JOINTS_0") || a.has("JOINTS_1"))) {
 				flags &= ~RSE::ARRAY_FLAG_COMPRESS_ATTRIBUTES;
 			}
 
@@ -1828,6 +1856,17 @@ Error GLTFDocument::_parse_meshes(Ref<GLTFState> p_state) {
 			}
 			array = mesh_surface_tool->commit_to_arrays();
 
+			// wgodot-changes::begin
+			if (p_state->preserve_tangent_frame && a.has("NORMAL") && !is_mesh_2d) {
+				flags |= RSE::ARRAY_FLAG_PRESERVE_TANGENT_FRAME;
+				if (p_state->orthonormalize_morph_tangent_frame && mesh_prim.has("targets")) {
+					flags |= RSE::ARRAY_FLAG_ORTHONORMALIZE_MORPH_TANGENT_FRAME;
+				}
+				if (p_state->normalize_morph_normal_weights && mesh_prim.has("targets")) {
+					flags |= RSE::ARRAY_FLAG_NORMALIZE_MORPH_NORMAL_WEIGHTS;
+				}
+			}
+			// wgodot-changes::end
 			if ((flags & RSE::ARRAY_FLAG_COMPRESS_ATTRIBUTES) && a.has("NORMAL") && (a.has("TANGENT") || generate_tangents)) {
 				// Compression is enabled, so let's validate that the normals and tangents are correct.
 				Vector<Vector3> normals = array[Mesh::ARRAY_NORMAL];
@@ -6905,6 +6944,11 @@ void GLTFDocument::_bind_methods() {
 	BIND_ENUM_CONSTANT(VISIBILITY_MODE_EXCLUDE);
 
 	BIND_BITFIELD_FLAG(IMPORT_FLAG_GENERATE_TANGENT_ARRAYS);
+	// wgodot-changes::begin
+	BIND_BITFIELD_FLAG(IMPORT_FLAG_PRESERVE_TANGENT_FRAME);
+	BIND_BITFIELD_FLAG(IMPORT_FLAG_ORTHONORMALIZE_MORPH_TANGENT_FRAME);
+	BIND_BITFIELD_FLAG(IMPORT_FLAG_NORMALIZE_MORPH_NORMAL_WEIGHTS);
+	// wgodot-changes::end
 	BIND_BITFIELD_FLAG(IMPORT_FLAG_USE_NAMED_SKIN_BINDS);
 	BIND_BITFIELD_FLAG(IMPORT_FLAG_DISCARD_MESHES_AND_MATERIALS);
 	BIND_BITFIELD_FLAG(IMPORT_FLAG_FORCE_DISABLE_MESH_COMPRESSION);
@@ -7311,6 +7355,13 @@ Error GLTFDocument::append_from_scene(Node *p_node, Ref<GLTFState> p_state, uint
 	p_state->discard_meshes_and_materials = p_flags & ImportFlags::IMPORT_FLAG_DISCARD_MESHES_AND_MATERIALS;
 	p_state->force_generate_tangents = p_flags & ImportFlags::IMPORT_FLAG_GENERATE_TANGENT_ARRAYS;
 	p_state->force_disable_compression = p_flags & ImportFlags::IMPORT_FLAG_FORCE_DISABLE_MESH_COMPRESSION;
+	// wgodot-changes::begin
+	p_state->preserve_tangent_frame = p_flags & ImportFlags::IMPORT_FLAG_PRESERVE_TANGENT_FRAME;
+	p_state->orthonormalize_morph_tangent_frame = p_flags & ImportFlags::IMPORT_FLAG_ORTHONORMALIZE_MORPH_TANGENT_FRAME;
+	ERR_FAIL_COND_V_MSG(p_state->orthonormalize_morph_tangent_frame && !p_state->preserve_tangent_frame, ERR_INVALID_PARAMETER, "Morph tangent frame orthonormalization requires float32 tangent frames.");
+	p_state->normalize_morph_normal_weights = p_flags & ImportFlags::IMPORT_FLAG_NORMALIZE_MORPH_NORMAL_WEIGHTS;
+	ERR_FAIL_COND_V_MSG(p_state->normalize_morph_normal_weights && !p_state->preserve_tangent_frame, ERR_INVALID_PARAMETER, "Morph normal weight normalization requires float32 tangent frames.");
+	// wgodot-changes::end
 	if (!p_state->buffers.size()) {
 		p_state->buffers.push_back(Vector<uint8_t>());
 	}
@@ -7358,6 +7409,13 @@ Error GLTFDocument::append_from_buffer(const PackedByteArray &p_bytes, const Str
 	p_state->discard_meshes_and_materials = p_flags & ImportFlags::IMPORT_FLAG_DISCARD_MESHES_AND_MATERIALS;
 	p_state->force_generate_tangents = p_flags & ImportFlags::IMPORT_FLAG_GENERATE_TANGENT_ARRAYS;
 	p_state->force_disable_compression = p_flags & ImportFlags::IMPORT_FLAG_FORCE_DISABLE_MESH_COMPRESSION;
+	// wgodot-changes::begin
+	p_state->preserve_tangent_frame = p_flags & ImportFlags::IMPORT_FLAG_PRESERVE_TANGENT_FRAME;
+	p_state->orthonormalize_morph_tangent_frame = p_flags & ImportFlags::IMPORT_FLAG_ORTHONORMALIZE_MORPH_TANGENT_FRAME;
+	ERR_FAIL_COND_V_MSG(p_state->orthonormalize_morph_tangent_frame && !p_state->preserve_tangent_frame, ERR_INVALID_PARAMETER, "Morph tangent frame orthonormalization requires float32 tangent frames.");
+	p_state->normalize_morph_normal_weights = p_flags & ImportFlags::IMPORT_FLAG_NORMALIZE_MORPH_NORMAL_WEIGHTS;
+	ERR_FAIL_COND_V_MSG(p_state->normalize_morph_normal_weights && !p_state->preserve_tangent_frame, ERR_INVALID_PARAMETER, "Morph normal weight normalization requires float32 tangent frames.");
+	// wgodot-changes::end
 
 	Ref<FileAccessMemory> file_access;
 	file_access.instantiate();
@@ -7381,6 +7439,13 @@ Error GLTFDocument::append_from_file(const String &p_path, Ref<GLTFState> p_stat
 	p_state->discard_meshes_and_materials = p_flags & ImportFlags::IMPORT_FLAG_DISCARD_MESHES_AND_MATERIALS;
 	p_state->force_generate_tangents = p_flags & ImportFlags::IMPORT_FLAG_GENERATE_TANGENT_ARRAYS;
 	p_state->force_disable_compression = p_flags & ImportFlags::IMPORT_FLAG_FORCE_DISABLE_MESH_COMPRESSION;
+	// wgodot-changes::begin
+	p_state->preserve_tangent_frame = p_flags & ImportFlags::IMPORT_FLAG_PRESERVE_TANGENT_FRAME;
+	p_state->orthonormalize_morph_tangent_frame = p_flags & ImportFlags::IMPORT_FLAG_ORTHONORMALIZE_MORPH_TANGENT_FRAME;
+	ERR_FAIL_COND_V_MSG(p_state->orthonormalize_morph_tangent_frame && !p_state->preserve_tangent_frame, ERR_INVALID_PARAMETER, "Morph tangent frame orthonormalization requires float32 tangent frames.");
+	p_state->normalize_morph_normal_weights = p_flags & ImportFlags::IMPORT_FLAG_NORMALIZE_MORPH_NORMAL_WEIGHTS;
+	ERR_FAIL_COND_V_MSG(p_state->normalize_morph_normal_weights && !p_state->preserve_tangent_frame, ERR_INVALID_PARAMETER, "Morph normal weight normalization requires float32 tangent frames.");
+	// wgodot-changes::end
 
 	Error err;
 	Ref<FileAccess> file = FileAccess::open(p_path, FileAccess::READ, &err);

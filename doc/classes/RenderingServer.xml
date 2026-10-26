@@ -5024,6 +5024,17 @@
 		<constant name="ARRAY_FLAG_USE_STORAGE_BUFFER" value="1073741824" enum="ArrayFormat" is_bitfield="true">
 			Flag used to mark that the surface's vertex, attribute, skin, and index buffers must be created with the storage-buffer usage bit so they can be bound as storage buffers in compute shaders. This is required to write into them from a compute pipeline through the [RID]s returned by [method RenderingServer.mesh_surface_get_vertex_buffer_rd_rid] and the matching methods for the attribute, skin, and index buffers. Has no effect on the OpenGL backend, which does not expose [RenderingDevice] [RID]s.
 		</constant>
+		<!-- wgodot-changes::begin -->
+		<constant name="ARRAY_FLAG_PRESERVE_TANGENT_FRAME" value="2147483648" enum="ArrayFormat" is_bitfield="true">
+			Store normals and tangents as float32 vectors and preserve their lengths through blend shapes, skinning and vertex interpolation. Disabled by default. Uses 28 bytes per vertex for the tangent frame instead of 8. Requires 3D normals and cannot be combined with [constant ARRAY_FLAG_COMPRESS_ATTRIBUTES]. Shaders remain responsible for normalizing their final lighting normal.
+		</constant>
+		<constant name="ARRAY_FLAG_ORTHONORMALIZE_MORPH_TANGENT_FRAME" value="4294967296" enum="ArrayFormat" is_bitfield="true">
+			After blending morph targets, normalize the normal and orthogonalize and normalize the tangent against it, before skinning. Requires [constant ARRAY_FLAG_PRESERVE_TANGENT_FRAME]. Runs even when all morph weights are zero, but does not affect surfaces without morph targets. Skinning and interpolation retain the resulting vector lengths. Disabled by default.
+		</constant>
+		<constant name="ARRAY_FLAG_NORMALIZE_MORPH_NORMAL_WEIGHTS" value="8589934592" enum="ArrayFormat" is_bitfield="true">
+			Divide the weighted morph normal delta by the greater of 1 and the sum of absolute morph weights affecting that vertex. A morph participates when its position or normal differs from the base (normalized mode), or has a nonzero delta (relative mode). Position and tangent weights remain unrestricted. Requires [constant ARRAY_FLAG_PRESERVE_TANGENT_FRAME]. Disabled by default.
+		</constant>
+		<!-- wgodot-changes::end -->
 		<constant name="ARRAY_FLAG_FORMAT_VERSION_BASE" value="35" enum="ArrayFormat" is_bitfield="true">
 			Flag used to mark the start of the bits used to store the mesh version.
 		</constant>
