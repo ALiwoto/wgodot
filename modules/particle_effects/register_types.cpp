@@ -3,6 +3,7 @@
 #include "register_types.h"
 
 #include "particle_curves.h"
+#include "sprite_cutout_geometry_3d.h"
 #include "particle_instance_3d.h"
 #include "random_stream_32.h"
 #include "particle_instance_pool_3d.h"
@@ -25,6 +26,8 @@ void initialize_particle_effects_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(ParticleBirthRule3D);
 	GDREGISTER_CLASS(ParticleColorCurve);
 	GDREGISTER_CLASS(ParticleOrientation3D);
+	GDREGISTER_CLASS(SpriteCutoutGeometry3D);
+	GDREGISTER_CLASS(SpriteCutoutMesh3D);
 	GDREGISTER_CLASS(ParticleMaterialChannels);
 	GDREGISTER_CLASS(ParticleMotionProfile3D);
 	GDREGISTER_CLASS(ParticleSpriteProfile3D);
