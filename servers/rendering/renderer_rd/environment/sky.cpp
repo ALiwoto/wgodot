@@ -1246,7 +1246,9 @@ void SkyRD::setup_sky(const RenderDataRD *p_render_data, const Size2i p_screen_s
 	if (custom_fov && sky_scene_state.view_count == 1) {
 		// With custom fov we don't support stereo...
 		float near_plane = projection.get_z_near();
-		float far_plane = projection.get_z_far();
+		// wgodot-changes::begin
+		float far_plane = p_render_data->scene_data->z_far;
+		// wgodot-changes::end
 		float aspect = projection.get_aspect();
 
 		projection.set_perspective(custom_fov, aspect, near_plane, far_plane);
@@ -1273,7 +1275,9 @@ void SkyRD::setup_sky(const RenderDataRD *p_render_data, const Size2i p_screen_s
 		sky_scene_state.ubo.view_eye_offsets[i][3] = 0.0;
 	}
 
-	sky_scene_state.ubo.z_far = p_render_data->scene_data->view_projection[0].get_z_far(); // Should be the same for all projection.
+	// wgodot-changes::begin
+	sky_scene_state.ubo.z_far = p_render_data->scene_data->z_far;
+	// wgodot-changes::end
 	sky_scene_state.ubo.fog_enabled = RendererSceneRenderRD::get_singleton()->environment_get_fog_enabled(p_render_data->environment);
 	sky_scene_state.ubo.fog_density = RendererSceneRenderRD::get_singleton()->environment_get_fog_density(p_render_data->environment);
 	sky_scene_state.ubo.fog_aerial_perspective = RendererSceneRenderRD::get_singleton()->environment_get_fog_aerial_perspective(p_render_data->environment);

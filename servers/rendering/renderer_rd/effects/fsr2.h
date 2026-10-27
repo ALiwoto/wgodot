@@ -120,6 +120,9 @@ public:
 	Scratch scratch;
 	FfxFsr2Context fsr_context;
 	FfxFsr2ContextDescription fsr_desc;
+	// wgodot-changes::begin
+	bool infinite_far = false;
+	// wgodot-changes::end
 
 	~FSR2Context();
 };
@@ -174,7 +177,9 @@ public:
 
 	FSR2Effect();
 	~FSR2Effect();
-	FSR2Context *create_context(Size2i p_internal_size, Size2i p_target_size);
+	// wgodot-changes::begin
+	FSR2Context *create_context(Size2i p_internal_size, Size2i p_target_size, bool p_infinite_far = false);
+	// wgodot-changes::end
 	void upscale(const Parameters &p_params);
 
 private:

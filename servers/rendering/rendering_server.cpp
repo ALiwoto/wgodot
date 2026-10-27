@@ -2938,6 +2938,9 @@ void RenderingServer::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("camera_create"), &RenderingServer::camera_create);
 	ClassDB::bind_method(D_METHOD("camera_set_perspective", "camera", "fovy_degrees", "z_near", "z_far"), &RenderingServer::camera_set_perspective);
+	// wgodot-changes::begin
+	ClassDB::bind_method(D_METHOD("camera_set_infinite_far", "camera", "enabled"), &RenderingServer::camera_set_infinite_far);
+	// wgodot-changes::end
 	ClassDB::bind_method(D_METHOD("camera_set_orthogonal", "camera", "size", "z_near", "z_far"), &RenderingServer::camera_set_orthogonal);
 	ClassDB::bind_method(D_METHOD("camera_set_frustum", "camera", "size", "offset", "z_near", "z_far"), &RenderingServer::camera_set_frustum);
 	ClassDB::bind_method(D_METHOD("camera_set_xr_projections", "camera", "projections", "offsets"), &RenderingServer::camera_set_xr_projections, DEFVAL(TypedArray<Transform3D>()));
@@ -3837,6 +3840,10 @@ void RenderingServer::init() {
 	GLOBAL_DEF_RST("rendering/driver/depth_prepass/disable_for_vendors", "PowerVR,Mali,Adreno,Apple");
 
 	GLOBAL_DEF_RST("rendering/textures/default_filters/use_nearest_mipmap_filter", false);
+// wgodot-changes::begin
+	GLOBAL_DEF_RST(PropertyInfo(Variant::INT, "rendering/textures/screen_distortion/encoding", PROPERTY_HINT_ENUM, "Signed Float16,Packed UNorm8"), 0);
+	GLOBAL_DEF_RST(PropertyInfo(Variant::FLOAT, "rendering/textures/screen_distortion/packed_range", PROPERTY_HINT_RANGE, "0.00001,1,0.00001,or_greater"), 0.25);
+// wgodot-changes::end
 	GLOBAL_DEF(PropertyInfo(Variant::INT, "rendering/textures/default_filters/anisotropic_filtering_level", PROPERTY_HINT_ENUM, String::utf8("Disabled (Fastest),2× (Faster),4× (Fast),8× (Average),16× (Slow)")), 2);
 
 	GLOBAL_DEF(PropertyInfo(Variant::INT, "rendering/camera/depth_of_field/depth_of_field_bokeh_shape", PROPERTY_HINT_ENUM, "Box (Fast),Hexagon (Average),Circle (Slowest)"), 1);

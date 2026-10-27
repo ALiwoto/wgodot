@@ -8,6 +8,10 @@
 #extension GL_EXT_samplerless_texture_functions : enable
 #endif
 
+// wgodot-changes::begin
+#include "../perspective_depth_inc.glsl"
+// wgodot-changes::end
+
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 #define M_PI 3.141592
@@ -172,12 +176,13 @@ vec3 reconstruct_position(ivec2 screen_pos) {
 		vec3 pos;
 		pos.z = texelFetch(sampler2D(depth_buffer, linear_sampler), screen_pos, 0).r;
 
-		pos.z = pos.z * 2.0 - 1.0;
+		// wgodot-changes::begin
 		if (params.orthogonal) {
-			pos.z = -(pos.z * (params.z_far - params.z_near) - (params.z_far + params.z_near)) / 2.0;
+			pos.z = mix(params.z_far, params.z_near, pos.z);
 		} else {
-			pos.z = 2.0 * params.z_near * params.z_far / (params.z_far + params.z_near + pos.z * (params.z_far - params.z_near));
+			pos.z = perspective_view_depth(pos.z, params.z_near, params.z_far);
 		}
+		// wgodot-changes::end
 		pos.z = -pos.z;
 
 		pos.xy = vec2(screen_pos) * params.proj_info.xy + params.proj_info.zw;
@@ -715,9 +720,13 @@ void main() {
 	vec4 ambient_light = vec4(0.0);
 	vec4 reflection_light = vec4(0.0);
 
-	vec3 vertex = reconstruct_position(pos);
-
-	process_gi(pos, vertex, ambient_light, reflection_light);
+	// wgodot-changes::begin
+	// A cleared depth sample is background, not an infinitely distant surface.
+	if (texelFetch(sampler2D(depth_buffer, linear_sampler), pos, 0).r > 0.0) {
+		vec3 vertex = reconstruct_position(pos);
+		process_gi(pos, vertex, ambient_light, reflection_light);
+	}
+	// wgodot-changes::end
 
 	if (sc_half_res) {
 		pos >>= 1;

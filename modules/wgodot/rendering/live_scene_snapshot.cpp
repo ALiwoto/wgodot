@@ -260,7 +260,14 @@ PackedByteArray WLiveSceneProbe::snapshot(Node *p_root, Skeleton3D *p_body) {
 		}
 #endif
 		if (Camera3D *camera = Object::cast_to<Camera3D>(node)) {
-			writer.record(CAMERA, path, {}, { double(camera->is_current()), double(camera->get_projection()), camera->get_fov(), camera->get_size(), camera->get_near(), camera->get_far(), double(camera->get_keep_aspect_mode()) });
+			Vector<double> values = { double(camera->is_current()), double(camera->get_projection()), camera->get_fov(), camera->get_size(), camera->get_near(), camera->get_far(), double(camera->get_keep_aspect_mode()), double(camera->is_infinite_far()) };
+			const Projection projection = camera->get_camera_projection();
+			for (int column = 0; column < 4; column++) {
+				for (int row = 0; row < 4; row++) {
+					values.push_back(projection[column][row]);
+				}
+			}
+			writer.record(CAMERA, path, {}, values);
 		}
 		if (Light3D *light = Object::cast_to<Light3D>(node)) {
 			Vector<double> values = { double(light->has_shadow()), double(light->get_cull_mask()) };

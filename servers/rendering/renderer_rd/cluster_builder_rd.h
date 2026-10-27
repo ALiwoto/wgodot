@@ -118,7 +118,9 @@ class ClusterBuilderSharedDataRD {
 			uint32_t orthogonal;
 			uint32_t max_cluster_element_count_div_32;
 
-			uint32_t pad1;
+			// wgodot-changes::begin
+			uint32_t infinite_far;
+			// wgodot-changes::end
 			uint32_t pad2;
 		};
 
@@ -421,7 +423,9 @@ public:
 	}
 
 	void bake_cluster();
-	void debug(ElementType p_element);
+	// wgodot-changes::begin
+	void debug(ElementType p_element, bool p_infinite_far);
+	// wgodot-changes::end
 
 	RID get_cluster_buffer() const;
 	uint32_t get_cluster_size() const;

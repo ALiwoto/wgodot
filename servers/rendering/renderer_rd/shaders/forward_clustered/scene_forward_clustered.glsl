@@ -1102,7 +1102,11 @@ vec4 fog_process(vec3 vertex) {
 		vec3 sky_fog_color = vec3(0.0);
 		vec3 cube_view = scene_data_block.data.radiance_inverse_xform * vertex;
 		// mip_level always reads from the second mipmap and higher so the fog is always slightly blurred
-		float mip_level = mix(1.0 / MAX_ROUGHNESS_LOD, 1.0, 1.0 - (abs(vertex.z) - scene_data_block.data.z_near) / (scene_data_block.data.z_far - scene_data_block.data.z_near));
+		// wgodot-changes::begin
+		// Visibility may extend beyond the finite fog range.
+		float fog_distance = clamp((abs(vertex.z) - scene_data_block.data.z_near) / (scene_data_block.data.z_far - scene_data_block.data.z_near), 0.0, 1.0);
+		float mip_level = mix(1.0 / MAX_ROUGHNESS_LOD, 1.0, 1.0 - fog_distance);
+		// wgodot-changes::end
 #ifdef USE_RADIANCE_OCTMAP_ARRAY
 		float roughness_lod, blend;
 		blend = modf(mip_level * MAX_ROUGHNESS_LOD, roughness_lod);
@@ -3232,7 +3236,14 @@ void fragment_shader(in SceneData scene_data) {
 
 // wgodot-changes::begin
 #ifdef MODE_SCREEN_DISTORTION
+#ifdef DISTORTION_PACKED_RANGE
+	// Independent positive/negative channels preserve additive cancellation.
+	// The UNORM attachment clamps and quantizes after each blended fragment.
+	vec2 packed_offset = distortion_offset * alpha / DISTORTION_PACKED_RANGE;
+	frag_color = vec4(max(packed_offset, vec2(0.0)), max(-packed_offset, vec2(0.0)));
+#else
 	frag_color = vec4(distortion_offset * alpha, 0.0, 0.0);
+#endif
 #endif
 // wgodot-changes::end
 

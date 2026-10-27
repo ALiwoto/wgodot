@@ -46,6 +46,9 @@
 			<return type="Plane[]" />
 			<description>
 				Returns the camera's frustum planes in world space units as an array of [Plane]s in the following order: near, far, left, top, right, bottom. Not to be confused with [member frustum_offset].
+				<!-- wgodot-changes::begin -->
+				With [member infinite_far], perspective and frustum cameras omit the far plane from this array.
+				<!-- wgodot-changes::end -->
 			</description>
 		</method>
 		<method name="get_pyramid_shape_rid">
@@ -182,6 +185,9 @@
 		</member>
 		<member name="far" type="float" setter="set_far" getter="get_far" default="4000.0">
 			The distance to the far culling boundary for this camera relative to its local Z axis. Higher values allow the camera to see further away, while decreasing [member far] can improve performance if it results in objects being partially or fully culled.
+			<!-- wgodot-changes::begin -->
+			With [member infinite_far], this instead bounds lighting, shadows and fog without clipping visible geometry.
+			<!-- wgodot-changes::end -->
 		</member>
 		<member name="fov" type="float" setter="set_fov" getter="get_fov" default="75.0">
 			The camera's field of view (also known as FOV), as an angle in degrees. Only applicable in perspective mode. Since [member keep_aspect] locks one axis, this property sets the field of view on the other axis.
@@ -198,6 +204,12 @@
 		<member name="h_offset" type="float" setter="set_h_offset" getter="get_h_offset" default="0.0">
 			The horizontal (X) offset of the camera viewport.
 		</member>
+		<!-- wgodot-changes::begin -->
+		<member name="infinite_far" type="bool" setter="set_infinite_far" getter="is_infinite_far" default="false">
+			Removes the far visibility plane for perspective and frustum cameras. [member far] remains a finite range for clustered lighting, shadow cascades, fog defaults and occlusion rays. Geometry beyond that range can still render; per-instance visibility ranges still apply. Orthographic and XR projections are unchanged.
+			The returned camera projection represents infinite far depth; use [member far] for algorithms that need a finite distance. [method get_frustum] returns five planes in this mode.
+		</member>
+		<!-- wgodot-changes::end -->
 		<member name="keep_aspect" type="int" setter="set_keep_aspect_mode" getter="get_keep_aspect_mode" enum="Camera3D.KeepAspect" default="1">
 			The axis to lock during [member fov]/[member size] adjustments. Can be either [constant KEEP_WIDTH] or [constant KEEP_HEIGHT].
 		</member>

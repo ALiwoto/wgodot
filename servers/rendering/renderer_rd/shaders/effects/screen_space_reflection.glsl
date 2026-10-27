@@ -77,6 +77,12 @@ vec3 compute_geometric_normal(ivec2 pixel_pos, float depth_c, vec3 view_c, float
 			texelFetch(source_hiz, pixel_pos + ivec2(0, 1), 0).x,
 			texelFetch(source_hiz, pixel_pos + ivec2(0, 2), 0).x);
 
+	// wgodot-changes::begin
+	// Missing neighbors are background rays, not surface points at infinity.
+	// Extend the center plane for that derivative instead of producing inf/NaN.
+	H = mix(H, vec4(depth_c), equal(H, vec4(0.0)));
+	V = mix(V, vec4(depth_c), equal(V, vec4(0.0)));
+	// wgodot-changes::end
 	vec2 he = abs((2.0 * H.xz - H.yw) - depth_c);
 	vec2 ve = abs((2.0 * V.xz - V.yw) - depth_c);
 

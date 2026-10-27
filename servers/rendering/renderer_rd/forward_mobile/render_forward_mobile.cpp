@@ -2223,7 +2223,9 @@ void RenderForwardMobile::_fill_render_list(RenderListType p_render_list, const 
 
 	Plane near_plane(-p_render_data->scene_data->cam_transform.basis.get_column(Vector3::AXIS_Z), p_render_data->scene_data->cam_transform.origin);
 	near_plane.d += p_render_data->scene_data->cam_projection.get_z_near();
-	float z_max = p_render_data->scene_data->cam_projection.get_z_far() - p_render_data->scene_data->cam_projection.get_z_near();
+	// wgodot-changes::begin
+	float z_max = p_render_data->scene_data->z_far - p_render_data->scene_data->z_near;
+	// wgodot-changes::end
 
 	RenderList *rl = &render_list[p_render_list];
 

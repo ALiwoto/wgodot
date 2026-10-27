@@ -104,6 +104,14 @@ void RendererSceneCull::camera_set_perspective(RID p_camera, float p_fovy_degree
 	camera->projections.clear();
 }
 
+// wgodot-changes::begin
+void RendererSceneCull::camera_set_infinite_far(RID p_camera, bool p_enabled) {
+	Camera *camera = camera_owner.get_or_null(p_camera);
+	ERR_FAIL_NULL(camera);
+	camera->infinite_far = p_enabled;
+}
+// wgodot-changes::end
+
 void RendererSceneCull::camera_set_orthogonal(RID p_camera, float p_size, float p_z_near, float p_z_far) {
 	Camera *camera = camera_owner.get_or_null(p_camera);
 	ERR_FAIL_NULL(camera);
@@ -2837,6 +2845,10 @@ void RendererSceneCull::render_camera(const Ref<RenderSceneBuffers> &p_render_bu
 		ERR_FAIL_MSG("Unsupported camera setup.");
 	}
 
+	// wgodot-changes::begin
+	// XR owns its matrices. Orthographic projection has no infinite perspective limit.
+	camera_data.infinite_far = camera->infinite_far && !is_orthogonal && camera->type != Camera::MULTIVIEW_PROJECTION;
+	// wgodot-changes::end
 	RID environment = _render_get_environment(p_camera, p_scenario);
 	RID compositor = _render_get_compositor(p_camera, p_scenario);
 
@@ -3416,6 +3428,11 @@ void RendererSceneCull::_render_scene(const RendererSceneRender::CameraData *p_c
 	/* STEP 2 - CULL */
 
 	Vector<Plane> planes = p_camera_data->main_projection.get_projection_planes(p_camera_data->main_transform);
+	// wgodot-changes::begin
+	if (p_camera_data->infinite_far) {
+		planes.remove_at(Projection::PLANE_FAR);
+	}
+	// wgodot-changes::end
 	cull.frustum = Frustum(planes);
 
 	Vector<RID> directional_lights;

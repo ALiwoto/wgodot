@@ -309,6 +309,9 @@ public:
 		// flags
 		uint32_t view_count;
 		bool is_orthogonal;
+		// wgodot-changes::begin
+		bool infinite_far = false;
+		// wgodot-changes::end
 		uint32_t visible_layers;
 		bool vaspect;
 

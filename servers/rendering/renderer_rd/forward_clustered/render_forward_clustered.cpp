@@ -104,11 +104,17 @@ void RenderForwardClustered::RenderBufferDataForwardClustered::ensure_voxelgi() 
 	}
 }
 
-void RenderForwardClustered::RenderBufferDataForwardClustered::ensure_fsr2(RendererRD::FSR2Effect *p_effect) {
+// wgodot-changes::begin
+void RenderForwardClustered::RenderBufferDataForwardClustered::ensure_fsr2(RendererRD::FSR2Effect *p_effect, bool p_infinite_far) {
+	if (fsr2_context && fsr2_context->infinite_far != p_infinite_far) {
+		memdelete(fsr2_context);
+		fsr2_context = nullptr;
+	}
 	if (fsr2_context == nullptr) {
-		fsr2_context = p_effect->create_context(render_buffers->get_internal_size(), render_buffers->get_target_size());
+		fsr2_context = p_effect->create_context(render_buffers->get_internal_size(), render_buffers->get_target_size(), p_infinite_far);
 	}
 }
+// wgodot-changes::end
 
 #ifdef METAL_MFXTEMPORAL_ENABLED
 bool RenderForwardClustered::RenderBufferDataForwardClustered::ensure_mfx_temporal(RendererRD::MFXTemporalEffect *p_effect) {
@@ -991,7 +997,9 @@ void RenderForwardClustered::_fill_render_list(RenderListType p_render_list, con
 
 	Plane near_plane = Plane(-p_render_data->scene_data->cam_transform.basis.get_column(Vector3::AXIS_Z), p_render_data->scene_data->cam_transform.origin);
 	near_plane.d += p_render_data->scene_data->cam_projection.get_z_near();
-	float z_max = p_render_data->scene_data->cam_projection.get_z_far() - p_render_data->scene_data->cam_projection.get_z_near();
+	// wgodot-changes::begin
+	float z_max = p_render_data->scene_data->z_far - p_render_data->scene_data->z_near;
+	// wgodot-changes::end
 
 	RenderList *rl = &render_list[p_render_list];
 	_update_dirty_geometry_instances();
@@ -1368,7 +1376,9 @@ void RenderForwardClustered::_update_sdfgi(RenderDataRD *p_render_data) {
 
 /* Debug */
 
-void RenderForwardClustered::_debug_draw_cluster(Ref<RenderSceneBuffersRD> p_render_buffers) {
+// wgodot-changes::begin
+void RenderForwardClustered::_debug_draw_cluster(Ref<RenderSceneBuffersRD> p_render_buffers, bool p_infinite_far) {
+// wgodot-changes::end
 	if (p_render_buffers.is_valid() && current_cluster_builder != nullptr) {
 		RSE::ViewportDebugDraw dd = get_debug_draw_mode();
 
@@ -1393,7 +1403,9 @@ void RenderForwardClustered::_debug_draw_cluster(Ref<RenderSceneBuffersRD> p_ren
 				default: {
 				}
 			}
-			current_cluster_builder->debug(elem_type);
+			// wgodot-changes::begin
+			current_cluster_builder->debug(elem_type, p_infinite_far);
+			// wgodot-changes::end
 		}
 	}
 }
@@ -1787,7 +1799,9 @@ void RenderForwardClustered::_pre_opaque_render(RenderDataRD *p_render_data, boo
 		// This only works as we don't filter our cluster by depth buffer.
 		// If we ever make this optimization we should make it optional and only use it in mono.
 		// What we win by filtering out a few lights, we loose by having to do the work double for stereo.
-		current_cluster_builder->begin(p_render_data->scene_data->cam_transform, p_render_data->scene_data->cam_projection, !p_render_data->reflection_probe.is_valid());
+		// wgodot-changes::begin
+		current_cluster_builder->begin(p_render_data->scene_data->cam_transform, p_render_data->scene_data->get_effects_projection(), !p_render_data->reflection_probe.is_valid());
+		// wgodot-changes::end
 	}
 
 	bool using_shadows = true;
@@ -1815,7 +1829,9 @@ void RenderForwardClustered::_pre_opaque_render(RenderDataRD *p_render_data, boo
 	if (rb_data.is_valid()) {
 		RENDER_TIMESTAMP("Update Volumetric Fog");
 		bool directional_shadows = RendererRD::LightStorage::get_singleton()->has_directional_shadows(directional_light_count);
-		_update_volumetric_fog(rb, p_render_data->environment, p_render_data->scene_data->cam_projection, p_render_data->scene_data->cam_transform, p_render_data->scene_data->prev_cam_transform.affine_inverse(), p_render_data->shadow_atlas, directional_light_count, directional_shadows, positional_light_count, p_render_data->voxel_gi_count, *p_render_data->fog_volumes);
+		// wgodot-changes::begin
+		_update_volumetric_fog(rb, p_render_data->environment, p_render_data->scene_data->get_effects_projection(), p_render_data->scene_data->cam_transform, p_render_data->scene_data->prev_cam_transform.affine_inverse(), p_render_data->shadow_atlas, directional_light_count, directional_shadows, positional_light_count, p_render_data->voxel_gi_count, *p_render_data->fog_volumes);
+		// wgodot-changes::end
 	}
 }
 
@@ -2683,7 +2699,9 @@ void RenderForwardClustered::_render_scene(RenderDataRD *p_render_data, const Co
 
 	if (rb_data.is_valid() && (using_upscaling || using_taa)) {
 		if (scale_type == SCALE_FSR2) {
-			rb_data->ensure_fsr2(fsr2_effect);
+			// wgodot-changes::begin
+			rb_data->ensure_fsr2(fsr2_effect, p_render_data->scene_data->infinite_far);
+			// wgodot-changes::end
 
 			RID exposure;
 			if (RSG::camera_attributes->camera_attributes_uses_auto_exposure(p_render_data->camera_attributes)) {
@@ -2766,7 +2784,9 @@ void RenderForwardClustered::_render_scene(RenderDataRD *p_render_data, const Co
 	}
 
 	if (rb_data.is_valid()) {
-		_debug_draw_cluster(rb);
+		// wgodot-changes::begin
+		_debug_draw_cluster(rb, p_render_data->scene_data->infinite_far);
+		// wgodot-changes::end
 
 		RENDER_TIMESTAMP("Tonemap");
 

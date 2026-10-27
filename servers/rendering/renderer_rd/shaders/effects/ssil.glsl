@@ -24,6 +24,10 @@
 
 #VERSION_DEFINES
 
+// wgodot-changes::begin
+#include "../perspective_depth_inc.glsl"
+// wgodot-changes::end
+
 #define SSIL_MAIN_DISK_SAMPLE_COUNT (32)
 const vec4 sample_pattern[SSIL_MAIN_DISK_SAMPLE_COUNT] = {
 	vec4(0.78488064, 0.56661671, 1.500000, -0.126083), vec4(0.26022232, -0.29575172, 1.500000, -1.064030), vec4(0.10459357, 0.08372527, 1.110000, -2.730563), vec4(-0.68286800, 0.04963045, 1.090000, -0.498827),
@@ -201,7 +205,10 @@ void SSIL_tap_inner(const int p_quality_level, inout vec3 r_color_sum, inout flo
 	}
 
 	// Translate sampling_uv to last screen's coordinates
-	const vec4 sample_pos = projection_constants.reprojection * vec4(p_sampling_uv * 2.0 - 1.0, (viewspace_sample_z - params.z_near) / (params.z_far - params.z_near) * 2.0 - 1.0, 1.0);
+	// wgodot-changes::begin
+	float sample_depth = params.is_orthogonal ? (params.z_far - viewspace_sample_z) / (params.z_far - params.z_near) : perspective_device_depth(viewspace_sample_z, params.z_near, params.z_far);
+	const vec4 sample_pos = projection_constants.reprojection * vec4(p_sampling_uv * 2.0 - 1.0, sample_depth, 1.0);
+	// wgodot-changes::end
 	vec2 reprojected_sampling_uv = (sample_pos.xy / sample_pos.w) * 0.5 + 0.5;
 
 	weight *= p_weight_mod;

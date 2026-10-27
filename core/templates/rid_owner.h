@@ -374,13 +374,20 @@ public:
 	_FORCE_INLINE_ uint32_t get_rid_count() const {
 		return alloc_count;
 	}
-	LocalVector<RID> get_owned_list() const {
+	// wgodot-changes::begin
+	LocalVector<RID> get_owned_list(bool p_initialized_only = false) const {
+	// wgodot-changes::end
 		LocalVector<RID> owned;
 		if constexpr (THREAD_SAFE) {
 			mutex.lock();
 		}
 		for (size_t i = 0; i < max_alloc; i++) {
 			uint64_t validator = chunks[i / elements_in_chunk][i % elements_in_chunk].validator;
+			// wgodot-changes::begin
+			if (p_initialized_only && (validator & 0x80000000)) {
+				continue;
+			}
+			// wgodot-changes::end
 			if (validator != 0xFFFFFFFF) {
 				owned.push_back(_make_from_id((validator << 32) | i));
 			}
@@ -502,9 +509,11 @@ public:
 		return alloc.get_rid_count();
 	}
 
-	_FORCE_INLINE_ LocalVector<RID> get_owned_list() const {
-		return alloc.get_owned_list();
+	// wgodot-changes::begin
+	_FORCE_INLINE_ LocalVector<RID> get_owned_list(bool p_initialized_only = false) const {
+		return alloc.get_owned_list(p_initialized_only);
 	}
+	// wgodot-changes::end
 
 	void fill_owned_buffer(RID *p_rid_buffer) const {
 		alloc.fill_owned_buffer(p_rid_buffer);
@@ -558,9 +567,11 @@ public:
 		return alloc.get_rid_count();
 	}
 
-	_FORCE_INLINE_ LocalVector<RID> get_owned_list() const {
-		return alloc.get_owned_list();
+	// wgodot-changes::begin
+	_FORCE_INLINE_ LocalVector<RID> get_owned_list(bool p_initialized_only = false) const {
+		return alloc.get_owned_list(p_initialized_only);
 	}
+	// wgodot-changes::end
 	void fill_owned_buffer(RID *p_rid_buffer) const {
 		alloc.fill_owned_buffer(p_rid_buffer);
 	}

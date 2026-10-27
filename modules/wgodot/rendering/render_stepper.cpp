@@ -11,6 +11,7 @@
 #include "core/os/thread.h"
 #include "servers/rendering/rendering_device.h"
 #include "servers/rendering/rendering_server.h"
+#include "servers/rendering/renderer_rd/storage_rd/material_storage.h"
 
 WRenderStepper *WRenderStepper::active = nullptr;
 double WRenderStepper::shader_time_override = -1.0;
@@ -19,6 +20,7 @@ void WRenderStepper::_bind_methods() {
 	ClassDB::bind_static_method(get_class_static(), D_METHOD("begin"), &WRenderStepper::begin);
 	ClassDB::bind_method(D_METHOD("request_frame", "step"), &WRenderStepper::request_frame);
 	ClassDB::bind_method(D_METHOD("set_shader_time", "time"), &WRenderStepper::set_shader_time);
+	ClassDB::bind_method(D_METHOD("set_authored_sampler_anisotropy_disabled", "disabled"), &WRenderStepper::set_authored_sampler_anisotropy_disabled);
 	ClassDB::bind_method(D_METHOD("request_processing"), &WRenderStepper::request_processing);
 	ClassDB::bind_method(D_METHOD("finish"), &WRenderStepper::finish);
 }
@@ -63,9 +65,28 @@ double WRenderStepper::shader_time(double p_default_time) {
 	return shader_time_override >= 0.0 ? shader_time_override : p_default_time;
 }
 
+void WRenderStepper::_set_authored_sampler_anisotropy_disabled(bool p_disabled) {
+	RendererRD::MaterialStorage::get_singleton()->set_debug_authored_sampler_anisotropy_disabled(p_disabled);
+}
+
+Error WRenderStepper::set_authored_sampler_anisotropy_disabled(bool p_disabled) {
+	ERR_FAIL_COND_V(!Thread::is_main_thread(), ERR_UNAUTHORIZED);
+	ERR_FAIL_COND_V(active != this, ERR_UNCONFIGURED);
+	ERR_FAIL_NULL_V_MSG(RenderingDevice::get_singleton(), ERR_UNAVAILABLE, "Authored sampler inspection requires an RD renderer.");
+	if (authored_sampler_anisotropy_disabled != p_disabled) {
+		authored_sampler_anisotropy_disabled = p_disabled;
+		RenderingServer::get_singleton()->call_on_render_thread(callable_mp_static(&WRenderStepper::_set_authored_sampler_anisotropy_disabled).bind(p_disabled));
+	}
+	return OK;
+}
+
 void WRenderStepper::finish() {
 	ERR_FAIL_COND(!Thread::is_main_thread());
 	if (active == this) {
+		if (authored_sampler_anisotropy_disabled) {
+			RenderingServer::get_singleton()->call_on_render_thread(callable_mp_static(&WRenderStepper::_set_authored_sampler_anisotropy_disabled).bind(false));
+			authored_sampler_anisotropy_disabled = false;
+		}
 		active = nullptr;
 		RenderingServer::get_singleton()->call_on_render_thread(callable_mp_static(&WRenderStepper::_set_shader_time).bind(-1.0));
 	}
@@ -127,6 +148,9 @@ bool WRenderStepper::should_delay_iteration() {
 
 WRenderStepper::~WRenderStepper() {
 	if (active == this) {
+		if (authored_sampler_anisotropy_disabled) {
+			RenderingServer::get_singleton()->call_on_render_thread(callable_mp_static(&WRenderStepper::_set_authored_sampler_anisotropy_disabled).bind(false));
+		}
 		active = nullptr;
 		RenderingServer::get_singleton()->call_on_render_thread(callable_mp_static(&WRenderStepper::_set_shader_time).bind(-1.0));
 	}

@@ -29,6 +29,9 @@
 /**************************************************************************/
 
 #include "rasterizer_scene_gles3.h"
+// wgodot-changes::begin
+#include "core/math/camera_projection.h"
+// wgodot-changes::end
 
 #ifdef GLES3_ENABLED
 
@@ -1319,7 +1322,9 @@ void RasterizerSceneGLES3::_fill_render_list(RenderListType p_render_list, const
 		near_plane = Plane(-p_render_data->cam_transform.basis.get_column(Vector3::AXIS_Z), p_render_data->cam_transform.origin);
 		near_plane.d += p_render_data->cam_projection.get_z_near();
 	}
-	float z_max = p_render_data->cam_projection.get_z_far() - p_render_data->cam_projection.get_z_near();
+	// wgodot-changes::begin
+	float z_max = p_render_data->z_far - p_render_data->z_near;
+	// wgodot-changes::end
 
 	RenderList *rl = &render_list[p_render_list];
 
@@ -2468,7 +2473,9 @@ void RasterizerSceneGLES3::render_scene(const Ref<RenderSceneBuffers> &p_render_
 		// Our first camera is used by default
 		render_data.cam_transform = p_camera_data->main_transform;
 		render_data.inv_cam_transform = render_data.cam_transform.affine_inverse();
-		render_data.cam_projection = p_camera_data->main_projection;
+		// wgodot-changes::begin
+		render_data.cam_projection = CameraProjection::for_rendering(p_camera_data->main_projection, p_camera_data->infinite_far);
+		// wgodot-changes::end
 		render_data.cam_orthogonal = p_camera_data->is_orthogonal;
 		render_data.camera_visible_layers = p_camera_data->visible_layers;
 		render_data.main_cam_transform = p_camera_data->main_transform;
@@ -2476,7 +2483,9 @@ void RasterizerSceneGLES3::render_scene(const Ref<RenderSceneBuffers> &p_render_
 		render_data.view_count = p_camera_data->view_count;
 		for (uint32_t v = 0; v < p_camera_data->view_count; v++) {
 			render_data.view_eye_offset[v] = p_camera_data->view_offset[v].origin;
-			render_data.view_projection[v] = p_camera_data->view_projection[v];
+			// wgodot-changes::begin
+			render_data.view_projection[v] = CameraProjection::for_rendering(p_camera_data->view_projection[v], p_camera_data->infinite_far);
+			// wgodot-changes::end
 		}
 
 		render_data.z_near = p_camera_data->main_projection.get_z_near();
@@ -2672,7 +2681,10 @@ void RasterizerSceneGLES3::render_scene(const Ref<RenderSceneBuffers> &p_render_
 		// setup sky if used for ambient, reflections, or background
 		if (draw_sky || draw_sky_fog_only || sky_reflections || sky_ambient) {
 			RENDER_TIMESTAMP("Setup Sky");
-			Projection projection = render_data.cam_projection;
+			// wgodot-changes::begin
+			// Sky direction/fog use the bounded camera range, not depth reconstruction.
+			Projection projection = p_camera_data->main_projection;
+			// wgodot-changes::end
 
 			sky_energy_multiplier *= bg_energy_multiplier;
 
@@ -2912,7 +2924,10 @@ void RasterizerSceneGLES3::render_scene(const Ref<RenderSceneBuffers> &p_render_
 		scene_state.set_gl_cull_mode(RSE::CULL_MODE_BACK);
 
 		Transform3D transform = render_data.cam_transform;
-		Projection projection = render_data.cam_projection;
+		// wgodot-changes::begin
+		// Sky direction/fog use the bounded camera range, not depth reconstruction.
+		Projection projection = p_camera_data->main_projection;
+		// wgodot-changes::end
 
 		_draw_sky(render_data.environment, projection, transform, sky_energy_multiplier, render_data.luminance_multiplier, p_camera_data->view_count > 1, flip_y, apply_environment_effects_in_post);
 	}

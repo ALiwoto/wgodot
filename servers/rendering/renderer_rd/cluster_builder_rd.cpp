@@ -545,7 +545,9 @@ void ClusterBuilderRD::bake_cluster() {
 	RD::get_singleton()->draw_command_end_label();
 }
 
-void ClusterBuilderRD::debug(ElementType p_element) {
+// wgodot-changes::begin
+void ClusterBuilderRD::debug(ElementType p_element, bool p_infinite_far) {
+// wgodot-changes::end
 	ERR_FAIL_COND(debug_uniform_set.is_null());
 	RD::ComputeListID compute_list = RD::get_singleton()->compute_list_begin();
 	RD::get_singleton()->compute_list_bind_compute_pipeline(compute_list, shared->cluster_debug.shader_pipeline);
@@ -559,6 +561,9 @@ void ClusterBuilderRD::debug(ElementType p_element) {
 	push_constant.cluster_shift = Math::get_shift_from_power_of_2(cluster_size);
 	push_constant.cluster_type = p_element;
 	push_constant.orthogonal = camera_orthogonal;
+	// wgodot-changes::begin
+	push_constant.infinite_far = p_infinite_far;
+	// wgodot-changes::end
 	push_constant.z_far = z_far;
 	push_constant.z_near = z_near;
 	push_constant.max_cluster_element_count_div_32 = max_elements_by_type / 32;

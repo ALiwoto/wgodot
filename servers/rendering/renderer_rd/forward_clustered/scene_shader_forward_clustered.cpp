@@ -35,6 +35,9 @@
 #include "servers/rendering/renderer_rd/forward_clustered/render_forward_clustered.h"
 #include "servers/rendering/renderer_rd/renderer_compositor_rd.h"
 #include "servers/rendering/renderer_rd/storage_rd/material_storage.h"
+// wgodot-changes::begin
+#include "servers/rendering/renderer_rd/effects/screen_distortion.h"
+// wgodot-changes::end
 
 using namespace RendererSceneRenderImplementation;
 
@@ -220,6 +223,7 @@ void SceneShaderForwardClustered::ShaderData::set_code(const String &p_code) {
 		unshaded = true;
 		uses_depth_prepass_alpha = false;
 		alpha_antialiasing_mode = ALPHA_ANTIALIASING_OFF;
+		gen_code.defines.push_back(RendererRD::ScreenDistortion::encoding_defines());
 	}
 // wgodot-changes::end
 	depth_draw = DepthDraw(depth_drawi);

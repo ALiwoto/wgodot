@@ -4,6 +4,10 @@
 
 #VERSION_DEFINES
 
+// wgodot-changes::begin
+#include "../perspective_depth_inc.glsl"
+// wgodot-changes::end
+
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 #ifdef USE_25_SAMPLES
@@ -148,17 +152,19 @@ void main() {
 		vec2 dir = params.vertical ? vec2(0.0, 1.0) : vec2(1.0, 0.0);
 
 		// Fetch linear depth of current pixel:
-		float depth = texture(source_depth, uv).r * 2.0 - 1.0;
+		// wgodot-changes::begin
+		float depth = texture(source_depth, uv).r;
 		float depth_scale;
 
 		if (params.orthogonal) {
-			depth = -(depth * (params.camera_z_far - params.camera_z_near) - (params.camera_z_far + params.camera_z_near)) / 2.0;
+			depth = mix(params.camera_z_far, params.camera_z_near, depth);
 			depth_scale = params.unit_size; //remember depth is negative by default in OpenGL
 		} else {
-			depth = 2.0 * params.camera_z_near * params.camera_z_far / (params.camera_z_far + params.camera_z_near + depth * (params.camera_z_far - params.camera_z_near));
+			depth = perspective_view_depth(depth, params.camera_z_near, params.camera_z_far);
 			depth_scale = params.unit_size / depth; //remember depth is negative by default in OpenGL
 		}
 
+		// wgodot-changes::end
 		float scale = mix(params.scale, depth_scale, params.depth_scale);
 
 		// Calculate the final step to fetch the surrounding pixels:

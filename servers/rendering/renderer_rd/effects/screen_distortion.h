@@ -15,6 +15,8 @@ class ScreenDistortion {
 	PipelineCacheRD pipeline;
 
 public:
+	static RD::DataFormat offset_format();
+	static String encoding_defines();
 	ScreenDistortion();
 	~ScreenDistortion();
 	static RD::FramebufferFormatID framebuffer_format(RD::TextureSamples p_samples, uint32_t p_views, bool p_storage);

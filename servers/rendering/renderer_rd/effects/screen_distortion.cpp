@@ -1,6 +1,7 @@
 // wgodot-changes::file
 #include "screen_distortion.h"
 
+#include "core/config/project_settings.h"
 #include "servers/rendering/renderer_rd/effects/copy_effects.h"
 #include "servers/rendering/renderer_rd/framebuffer_cache_rd.h"
 #include "servers/rendering/renderer_rd/storage_rd/material_storage.h"
@@ -9,13 +10,25 @@
 using namespace RendererRD;
 
 namespace {
-constexpr RD::DataFormat OFFSET_FORMAT = RD::DATA_FORMAT_R16G16_SFLOAT;
 constexpr uint32_t OFFSET_USAGE = RD::TEXTURE_USAGE_COLOR_ATTACHMENT_BIT | RD::TEXTURE_USAGE_SAMPLING_BIT | RD::TEXTURE_USAGE_CAN_COPY_TO_BIT | RD::TEXTURE_USAGE_CAN_COPY_FROM_BIT;
 constexpr uint32_t OFFSET_MSAA_USAGE = RD::TEXTURE_USAGE_COLOR_ATTACHMENT_BIT | RD::TEXTURE_USAGE_CAN_COPY_FROM_BIT;
 }
 
+RD::DataFormat ScreenDistortion::offset_format() {
+	return GLOBAL_GET_CACHED(int, "rendering/textures/screen_distortion/encoding") == 1 ? RD::DATA_FORMAT_R8G8B8A8_UNORM : RD::DATA_FORMAT_R16G16_SFLOAT;
+}
+
+String ScreenDistortion::encoding_defines() {
+	if (offset_format() != RD::DATA_FORMAT_R8G8B8A8_UNORM) {
+		return String();
+	}
+	const double range = GLOBAL_GET_CACHED(double, "rendering/textures/screen_distortion/packed_range");
+	ERR_FAIL_COND_V_MSG(!Math::is_finite(range) || range <= 0.0, String(), "Packed screen distortion requires a positive finite UV range.");
+	return "#define DISTORTION_PACKED_RANGE " + String::num_real(range) + "\n";
+}
+
 ScreenDistortion::ScreenDistortion() {
-	shader.initialize({ "" });
+	shader.initialize({ encoding_defines() });
 	version = shader.version_create();
 	pipeline.setup(shader.version_get_shader(version, 0), RD::RENDER_PRIMITIVE_TRIANGLES, RD::PipelineRasterizationState(), RD::PipelineMultisampleState(), RD::PipelineDepthStencilState(), RD::PipelineColorBlendState::create_disabled(), 0);
 }
@@ -28,7 +41,7 @@ ScreenDistortion::~ScreenDistortion() {
 RD::FramebufferFormatID ScreenDistortion::framebuffer_format(RD::TextureSamples p_samples, uint32_t p_views, bool p_storage) {
 	bool msaa = p_samples != RD::TEXTURE_SAMPLES_1;
 	RD::AttachmentFormat offsets;
-	offsets.format = OFFSET_FORMAT;
+	offsets.format = offset_format();
 	offsets.samples = p_samples;
 	offsets.usage_flags = msaa ? OFFSET_MSAA_USAGE : OFFSET_USAGE;
 	RD::AttachmentFormat depth;
@@ -41,13 +54,13 @@ RD::FramebufferFormatID ScreenDistortion::framebuffer_format(RD::TextureSamples 
 RID ScreenDistortion::framebuffer(const Ref<RenderSceneBuffersRD> &p_buffers) {
 	const StringName scope = SNAME("ScreenDistortion");
 	if (!p_buffers->has_texture(scope, SNAME("offsets"))) {
-		p_buffers->create_texture(scope, SNAME("offsets"), OFFSET_FORMAT, OFFSET_USAGE);
+		p_buffers->create_texture(scope, SNAME("offsets"), offset_format(), OFFSET_USAGE);
 	}
 	RID offsets = p_buffers->get_texture(scope, SNAME("offsets"));
 	RID depth = p_buffers->get_depth_texture();
 	if (p_buffers->get_msaa_3d() != RSE::VIEWPORT_MSAA_DISABLED) {
 		if (!p_buffers->has_texture(scope, SNAME("offsets_msaa"))) {
-			p_buffers->create_texture(scope, SNAME("offsets_msaa"), OFFSET_FORMAT, OFFSET_MSAA_USAGE, p_buffers->get_texture_samples());
+			p_buffers->create_texture(scope, SNAME("offsets_msaa"), offset_format(), OFFSET_MSAA_USAGE, p_buffers->get_texture_samples());
 		}
 		offsets = p_buffers->get_texture(scope, SNAME("offsets_msaa"));
 		depth = p_buffers->get_depth_msaa();

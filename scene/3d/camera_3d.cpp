@@ -29,6 +29,9 @@
 /**************************************************************************/
 
 #include "camera_3d.h"
+// wgodot-changes::begin
+#include "core/math/camera_projection.h"
+// wgodot-changes::end
 
 #include "core/config/engine.h"
 #include "core/math/projection.h"
@@ -303,7 +306,9 @@ Projection Camera3D::_get_camera_projection(real_t p_near) const {
 
 Projection Camera3D::get_camera_projection() const {
 	ERR_FAIL_COND_V_MSG(!is_inside_tree(), Projection(), "Camera is not inside the scene tree.");
-	return _get_camera_projection(_near);
+	// wgodot-changes::begin
+	return CameraProjection::for_rendering(_get_camera_projection(_near), infinite_far);
+	// wgodot-changes::end
 }
 
 void Camera3D::set_perspective(real_t p_fovy_degrees, real_t p_z_near, real_t p_z_far) {
@@ -715,6 +720,10 @@ void Camera3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_frustum_offset", "offset"), &Camera3D::set_frustum_offset);
 	ClassDB::bind_method(D_METHOD("set_size", "size"), &Camera3D::set_size);
 	ClassDB::bind_method(D_METHOD("set_far", "far"), &Camera3D::set_far);
+	// wgodot-changes::begin
+	ClassDB::bind_method(D_METHOD("set_infinite_far", "enabled"), &Camera3D::set_infinite_far);
+	ClassDB::bind_method(D_METHOD("is_infinite_far"), &Camera3D::is_infinite_far);
+	// wgodot-changes::end
 	ClassDB::bind_method(D_METHOD("set_near", "near"), &Camera3D::set_near);
 	ClassDB::bind_method(D_METHOD("get_projection"), &Camera3D::get_projection);
 	ClassDB::bind_method(D_METHOD("set_projection", "mode"), &Camera3D::set_projection);
@@ -761,6 +770,9 @@ void Camera3D::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::VECTOR2, "frustum_offset", PROPERTY_HINT_NONE, "suffix:m"), "set_frustum_offset", "get_frustum_offset");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "near", PROPERTY_HINT_RANGE, "0.001,10,0.001,or_greater,exp,suffix:m"), "set_near", "get_near");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "far", PROPERTY_HINT_RANGE, "0.01,4000,0.01,or_greater,exp,suffix:m"), "set_far", "get_far");
+	// wgodot-changes::begin
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "infinite_far"), "set_infinite_far", "is_infinite_far");
+	// wgodot-changes::end
 
 	BIND_ENUM_CONSTANT(PROJECTION_PERSPECTIVE);
 	BIND_ENUM_CONSTANT(PROJECTION_ORTHOGONAL);
@@ -835,6 +847,14 @@ void Camera3D::set_far(real_t p_far) {
 	_update_camera_mode();
 }
 
+// wgodot-changes::begin
+void Camera3D::set_infinite_far(bool p_enabled) {
+	infinite_far = p_enabled;
+	RenderingServer::get_singleton()->camera_set_infinite_far(camera, p_enabled);
+	update_gizmos();
+}
+// wgodot-changes::end
+
 void Camera3D::set_cull_mask(uint32_t p_layers) {
 	layers = p_layers;
 	RenderingServer::get_singleton()->camera_set_cull_mask(camera, layers);
@@ -868,7 +888,13 @@ Vector<Plane> Camera3D::get_frustum() const {
 
 	Projection cm = _get_camera_projection(_near);
 
-	return cm.get_projection_planes(get_camera_transform());
+	// wgodot-changes::begin
+	Vector<Plane> planes = cm.get_projection_planes(get_camera_transform());
+	if (infinite_far && mode != PROJECTION_ORTHOGONAL) {
+		planes.remove_at(Projection::PLANE_FAR);
+	}
+	return planes;
+	// wgodot-changes::end
 }
 
 TypedArray<Plane> Camera3D::_get_frustum() const {

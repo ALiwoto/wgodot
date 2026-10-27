@@ -4,6 +4,10 @@
 
 #VERSION_DEFINES
 
+// wgodot-changes::begin
+#include "perspective_depth_inc.glsl"
+// wgodot-changes::end
+
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 const vec3 usage_gradient[33] = vec3[]( // 1 (none) + 32
@@ -51,7 +55,9 @@ layout(push_constant, std430) uniform Params {
 
 	bool orthogonal;
 	uint max_cluster_element_count_div_32;
-	uint pad1;
+	// wgodot-changes::begin
+	bool infinite_far;
+	// wgodot-changes::end
 	uint pad2;
 }
 params;
@@ -78,13 +84,16 @@ void main() {
 	offset *= (params.max_cluster_element_count_div_32 + 32);
 
 	//depth buffers generally can't be accessed via image API
-	float depth = texelFetch(sampler2D(depth_buffer, depth_buffer_sampler), ivec2(screen_pos), 0).r * 2.0 - 1.0;
-
+	// wgodot-changes::begin
+	float depth = texelFetch(sampler2D(depth_buffer, depth_buffer_sampler), ivec2(screen_pos), 0).r;
 	if (params.orthogonal) {
-		depth = ((depth + (params.z_far + params.z_near) / (params.z_far - params.z_near)) * (params.z_far - params.z_near)) / 2.0;
+		depth = mix(params.z_far, params.z_near, depth);
+	} else if (params.infinite_far) {
+		depth = params.z_near / max(depth, 1e-20);
 	} else {
-		depth = 2.0 * params.z_near * params.z_far / (params.z_far + params.z_near - depth * (params.z_far - params.z_near));
+		depth = perspective_view_depth(depth, params.z_near, params.z_far);
 	}
+	// wgodot-changes::end
 	depth /= params.z_far;
 
 	uint slice = uint(clamp(floor(depth * 32.0), 0.0, 31.0));

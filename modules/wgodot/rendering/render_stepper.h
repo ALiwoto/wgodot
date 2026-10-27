@@ -12,6 +12,8 @@ class WRenderStepper : public RefCounted {
 	// Render-thread state; writes are ordered with draw submission.
 	static double shader_time_override;
 	static void _set_shader_time(double p_time);
+	static void _set_authored_sampler_anisotropy_disabled(bool p_disabled);
+	bool authored_sampler_anisotropy_disabled = false;
 	bool requested = false;
 	bool draw_pending = false;
 	bool processing_requested = false;
@@ -25,6 +27,9 @@ public:
 	static Ref<WRenderStepper> begin();
 	Error request_frame(double p_step);
 	void set_shader_time(double p_time);
+	// Explicit shader samplers ignore viewport filtering. Inspection can cap
+	// those too, without rewriting shaders or changing gameplay assets.
+	Error set_authored_sampler_anisotropy_disabled(bool p_disabled);
 	static double shader_time(double p_default_time);
 	// Ready CPU preparation can continue without spending another displayed
 	// frame interval. Waiting for I/O must not request immediate processing.

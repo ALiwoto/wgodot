@@ -61,6 +61,9 @@ public:
 private:
 	bool force_change = false;
 	bool current = false;
+	// wgodot-changes::begin
+	bool infinite_far = false;
+	// wgodot-changes::end
 	Viewport *viewport = nullptr;
 
 	ProjectionType mode = PROJECTION_PERSPECTIVE;
@@ -140,6 +143,10 @@ public:
 	void set_orthogonal(real_t p_size, real_t p_z_near, real_t p_z_far);
 	void set_frustum(real_t p_size, Vector2 p_offset, real_t p_z_near, real_t p_z_far);
 	void set_projection(Camera3D::ProjectionType p_mode);
+	// wgodot-changes::begin
+	void set_infinite_far(bool p_enabled);
+	bool is_infinite_far() const { return infinite_far; }
+	// wgodot-changes::end
 
 	void make_current();
 	void clear_current(bool p_enable_next = true);

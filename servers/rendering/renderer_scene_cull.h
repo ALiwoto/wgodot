@@ -81,6 +81,9 @@ public:
 		Type type;
 		float fov;
 		float znear, zfar;
+		// wgodot-changes::begin
+		bool infinite_far = false;
+		// wgodot-changes::end
 		float size;
 		Vector2 offset;
 		uint32_t visible_layers;
@@ -111,6 +114,9 @@ public:
 	virtual void camera_initialize(RID p_rid);
 
 	virtual void camera_set_perspective(RID p_camera, float p_fovy_degrees, float p_z_near, float p_z_far);
+	// wgodot-changes::begin
+	virtual void camera_set_infinite_far(RID p_camera, bool p_enabled);
+	// wgodot-changes::end
 	virtual void camera_set_orthogonal(RID p_camera, float p_size, float p_z_near, float p_z_far);
 	virtual void camera_set_frustum(RID p_camera, float p_size, Vector2 p_offset, float p_z_near, float p_z_far);
 	virtual void camera_set_xr_projections(RID p_camera, TypedArray<Projection> p_projections, TypedArray<Transform3D> p_offsets = TypedArray<Transform3D>());

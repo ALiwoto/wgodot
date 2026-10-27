@@ -29,6 +29,9 @@
 /**************************************************************************/
 
 #include "renderer_scene_render_rd.h"
+// wgodot-changes::begin
+#include "core/math/camera_projection.h"
+// wgodot-changes::end
 
 // wgodot-changes::begin
 #include "modules/modules_enabled.gen.h"
@@ -1123,7 +1126,9 @@ void RendererSceneRenderRD::_render_buffers_debug_draw(const RenderDataRD *p_ren
 				RID base = light_storage->light_instance_get_base_light(light);
 
 				if (light_storage->light_get_type(base) == RSE::LIGHT_DIRECTIONAL) {
-					debug_effects->draw_shadow_frustum(light, p_render_data->scene_data->cam_projection, p_render_data->scene_data->cam_transform, dest_fb, Rect2(Size2(), size));
+					// wgodot-changes::begin
+					debug_effects->draw_shadow_frustum(light, p_render_data->scene_data->get_effects_projection(), p_render_data->scene_data->cam_transform, dest_fb, Rect2(Size2(), size));
+					// wgodot-changes::end
 				}
 			}
 		}
@@ -1406,6 +1411,11 @@ void RendererSceneRenderRD::render_scene(const Ref<RenderSceneBuffers> &p_render
 		// Our first camera is used by default
 		scene_data.cam_transform = p_camera_data->main_transform;
 		scene_data.cam_projection = p_camera_data->main_projection;
+		// wgodot-changes::begin
+		scene_data.infinite_far = p_camera_data->infinite_far;
+		scene_data.effects_projection = p_camera_data->main_projection;
+		scene_data.cam_projection = CameraProjection::for_rendering(scene_data.cam_projection, scene_data.infinite_far);
+		// wgodot-changes::end
 		scene_data.cam_orthogonal = p_camera_data->is_orthogonal;
 		scene_data.camera_visible_layers = p_camera_data->visible_layers;
 		scene_data.taa_jitter = p_camera_data->taa_jitter;
@@ -1417,14 +1427,23 @@ void RendererSceneRenderRD::render_scene(const Ref<RenderSceneBuffers> &p_render
 		for (uint32_t v = 0; v < p_camera_data->view_count; v++) {
 			scene_data.view_eye_offset[v] = p_camera_data->view_offset[v].origin;
 			scene_data.view_projection[v] = p_camera_data->view_projection[v];
+			// wgodot-changes::begin
+			scene_data.view_projection[v] = CameraProjection::for_rendering(scene_data.view_projection[v], scene_data.infinite_far);
+			// wgodot-changes::end
 		}
 
 		scene_data.prev_cam_transform = p_prev_camera_data->main_transform;
 		scene_data.prev_cam_projection = p_prev_camera_data->main_projection;
+		// wgodot-changes::begin
+		scene_data.prev_cam_projection = CameraProjection::for_rendering(scene_data.prev_cam_projection, p_prev_camera_data->infinite_far);
+		// wgodot-changes::end
 		scene_data.prev_taa_jitter = p_prev_camera_data->taa_jitter;
 
 		for (uint32_t v = 0; v < p_camera_data->view_count; v++) {
 			scene_data.prev_view_projection[v] = p_prev_camera_data->view_projection[v];
+			// wgodot-changes::begin
+			scene_data.prev_view_projection[v] = CameraProjection::for_rendering(scene_data.prev_view_projection[v], p_prev_camera_data->infinite_far);
+			// wgodot-changes::end
 		}
 
 		scene_data.z_near = p_camera_data->main_projection.get_z_near();

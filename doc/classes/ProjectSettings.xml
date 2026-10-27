@@ -3524,6 +3524,14 @@
 			[b]Note:[/b] If [member rendering/scaling_3d/scale] is lower than [code]1.0[/code] (exclusive), [member rendering/textures/default_filters/texture_mipmap_bias] is used to adjust the automatic mipmap bias which is calculated internally based on the scale factor. The formula for this is [code]log2(scaling_3d_scale) + mipmap_bias[/code].
 			[b]Note:[/b] This property is only supported in the Forward+ and Mobile renderers, not Compatibility. In Compatibility, this property is always treated as if it was set to [code]0.0[/code].
 		</member>
+		<!-- wgodot-changes::begin -->
+		<member name="rendering/textures/screen_distortion/encoding" type="int" setter="" getter="" default="0">
+			Encoding of Forward+ [code]screen_distortion[/code] offsets. [code]0[/code] accumulates signed half-floats. [code]1[/code] stores positive X/Y and negative X/Y in separate UNorm8 channels, clamping and rounding after each blended fragment. Use packed encoding when reproducing content authored for a normalized distortion buffer; even small differences in offsets can move samples across bright edges. Requires restart.
+		</member>
+		<member name="rendering/textures/screen_distortion/packed_range" type="float" setter="" getter="" default="0.25">
+			Maximum positive or negative UV offset per axis with packed screen distortion. Must be positive and finite. Quantization step is this range divided by 255. Ignored with signed half-float encoding. Requires restart.
+		</member>
+		<!-- wgodot-changes::end -->
 		<member name="rendering/textures/default_filters/use_nearest_mipmap_filter" type="bool" setter="" getter="" default="false">
 			If [code]true[/code], uses nearest-neighbor mipmap filtering when using mipmaps (also called "bilinear filtering"), which will result in visible seams appearing between mipmap stages. This may increase performance in mobile as less memory bandwidth is used. If [code]false[/code], linear mipmap filtering (also called "trilinear filtering") is used.
 			[b]Note:[/b] This property is only read when the project starts. There is currently no way to change this setting at run-time.

@@ -44,6 +44,11 @@ public:
 
 	Transform3D cam_transform;
 	Projection cam_projection;
+	// wgodot-changes::begin
+	bool infinite_far = false;
+	Projection effects_projection; // Finite clustering/fog/shadow range, independent of visibility.
+	const Projection &get_effects_projection() const { return infinite_far ? effects_projection : cam_projection; }
+	// wgodot-changes::end
 	Vector2 taa_jitter;
 	float taa_frame_count = 0.0f;
 	uint32_t camera_visible_layers;

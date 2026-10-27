@@ -153,7 +153,9 @@ public:
 		RID get_voxelgi(uint32_t p_layer) { return render_buffers->get_texture_slice(RB_SCOPE_FORWARD_CLUSTERED, RB_TEX_VOXEL_GI, p_layer, 0); }
 		RID get_voxelgi_msaa(uint32_t p_layer) { return render_buffers->get_texture_slice(RB_SCOPE_FORWARD_CLUSTERED, RB_TEX_VOXEL_GI_MSAA, p_layer, 0); }
 
-		void ensure_fsr2(RendererRD::FSR2Effect *p_effect);
+		// wgodot-changes::begin
+		void ensure_fsr2(RendererRD::FSR2Effect *p_effect, bool p_infinite_far);
+		// wgodot-changes::end
 		RendererRD::FSR2Context *get_fsr2_context() const { return fsr2_context; }
 
 #ifdef METAL_MFXTEMPORAL_ENABLED
@@ -840,7 +842,9 @@ private:
 	void _process_sss(Ref<RenderSceneBuffersRD> p_render_buffers, const Projection &p_camera);
 
 	/* Debug */
-	void _debug_draw_cluster(Ref<RenderSceneBuffersRD> p_render_buffers);
+	// wgodot-changes::begin
+	void _debug_draw_cluster(Ref<RenderSceneBuffersRD> p_render_buffers, bool p_infinite_far);
+	// wgodot-changes::end
 
 protected:
 	/* setup */

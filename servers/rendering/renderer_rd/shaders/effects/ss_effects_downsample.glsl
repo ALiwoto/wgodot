@@ -62,7 +62,11 @@ vec4 screen_space_to_view_space_depth(vec4 p_depth) {
 	// depth_linearize_mul = ( cameraClipFar * cameraClipNear) / ( cameraClipFar - cameraClipNear );
 	// depth_linearize_add = cameraClipFar / ( cameraClipFar - cameraClipNear );
 
-	return depth_linearize_mul / (depth_linearize_add - p_depth);
+	// wgodot-changes::begin
+	// The destination is R16F. Clear infinite depth must not turn later
+	// neighborhood arithmetic into inf - inf.
+	return -depth_linearize_mul / max(p_depth - depth_linearize_add, vec4(-depth_linearize_mul / 65504.0));
+	// wgodot-changes::end
 }
 
 float screen_space_to_view_space_depth(float p_depth) {
@@ -74,7 +78,11 @@ float screen_space_to_view_space_depth(float p_depth) {
 	float depth_linearize_mul = params.z_near;
 	float depth_linearize_add = params.z_far;
 
-	return depth_linearize_mul / (depth_linearize_add - p_depth);
+	// wgodot-changes::begin
+	// The destination is R16F. Clear infinite depth must not turn later
+	// neighborhood arithmetic into inf - inf.
+	return -depth_linearize_mul / max(p_depth - depth_linearize_add, -depth_linearize_mul / 65504.0);
+	// wgodot-changes::end
 }
 
 #ifdef GENERATE_MIPS

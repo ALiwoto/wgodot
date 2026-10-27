@@ -735,6 +735,9 @@ public:
 
 	FUNCRIDSPLIT(camera)
 	FUNC4(camera_set_perspective, RID, float, float, float)
+	// wgodot-changes::begin
+	FUNC2(camera_set_infinite_far, RID, bool)
+	// wgodot-changes::end
 	FUNC4(camera_set_orthogonal, RID, float, float, float)
 	FUNC5(camera_set_frustum, RID, float, Vector2, float, float)
 	FUNC3(camera_set_xr_projections, RID, TypedArray<Projection>, TypedArray<Transform3D>)

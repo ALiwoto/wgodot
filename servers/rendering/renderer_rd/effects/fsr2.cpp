@@ -800,9 +800,17 @@ FSR2Effect::~FSR2Effect() {
 	}
 }
 
-FSR2Context *FSR2Effect::create_context(Size2i p_internal_size, Size2i p_target_size) {
+// wgodot-changes::begin
+FSR2Context *FSR2Effect::create_context(Size2i p_internal_size, Size2i p_target_size, bool p_infinite_far) {
+// wgodot-changes::end
 	FSR2Context *context = memnew(RendererRD::FSR2Context);
 	context->fsr_desc.flags = FFX_FSR2_ENABLE_HIGH_DYNAMIC_RANGE | FFX_FSR2_ENABLE_DEPTH_INVERTED;
+	// wgodot-changes::begin
+	context->infinite_far = p_infinite_far;
+	if (p_infinite_far) {
+		context->fsr_desc.flags |= FFX_FSR2_ENABLE_DEPTH_INFINITE;
+	}
+	// wgodot-changes::end
 	context->fsr_desc.maxRenderSize.width = p_internal_size.x;
 	context->fsr_desc.maxRenderSize.height = p_internal_size.y;
 	context->fsr_desc.displaySize.width = p_target_size.x;
@@ -863,8 +871,11 @@ void FSR2Effect::upscale(const Parameters &p_params) {
 	dispatch_desc.sharpness = p_params.sharpness;
 	dispatch_desc.frameTimeDelta = p_params.delta_time;
 	dispatch_desc.preExposure = 1.0f;
-	dispatch_desc.cameraNear = p_params.z_near;
-	dispatch_desc.cameraFar = p_params.z_far;
+	// wgodot-changes::begin
+	// FSR2 orders these by device depth when DEPTH_INVERTED is enabled.
+	dispatch_desc.cameraNear = p_params.context->infinite_far ? FLT_MAX : p_params.z_far;
+	dispatch_desc.cameraFar = p_params.z_near;
+	// wgodot-changes::end
 	dispatch_desc.cameraFovAngleVertical = p_params.fovy;
 	dispatch_desc.viewSpaceToMetersFactor = 1.0f;
 	dispatch_desc.enableAutoReactive = false;

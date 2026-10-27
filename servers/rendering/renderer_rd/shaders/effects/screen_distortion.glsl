@@ -22,7 +22,12 @@ layout(push_constant, std430) uniform Params {
 void main() {
 	ivec2 pixel = ivec2(gl_FragCoord.xy);
 	vec2 size = vec2(textureSize(scene_color, 0));
-	vec2 offset = texelFetch(distortion_offsets, pixel, 0).xy;
+	vec4 packed_offset = texelFetch(distortion_offsets, pixel, 0);
+#ifdef DISTORTION_PACKED_RANGE
+	vec2 offset = (packed_offset.xy - packed_offset.zw) * DISTORTION_PACKED_RANGE;
+#else
+	vec2 offset = packed_offset.xy;
+#endif
 	vec2 uv = (vec2(pixel) + 0.5) / size + offset;
 	vec2 lower = (vec2(params.region.xy) + 0.5) / size;
 	vec2 upper = (vec2(params.region.zw) - 0.5) / size;
