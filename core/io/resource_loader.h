@@ -158,7 +158,9 @@ private:
 	static LoadToken *_load_threaded_request_reuse_user_token(const String &p_path);
 	static void _load_threaded_request_setup_user_token(LoadToken *p_token, const String &p_path);
 
-	static Ref<Resource> _load_complete_inner(LoadToken &p_load_token, Error *r_error, MutexLock<SafeBinaryMutex<BINARY_MUTEX_TAG>> &p_thread_load_lock);
+	// wgodot-changes::begin
+	static Ref<Resource> _load_complete_inner(LoadToken &p_load_token, Error *r_error, MutexLock<SafeBinaryMutex<BINARY_MUTEX_TAG>> &p_thread_load_lock, bool p_for_user = false);
+	// wgodot-changes::end
 
 	static Ref<ResourceFormatLoader> loader[MAX_LOADERS];
 	static int loader_count;
@@ -201,8 +203,10 @@ private:
 		CacheMode cache_mode = CACHE_MODE_REUSE;
 		Error error = OK;
 		Ref<Resource> resource;
-		LocalVector<Ref<Resource>> resource_dependencies; // We need to keep these alive for as long as the task is alive at least.
-		ThreadLoadTask *parent_task = nullptr;
+		// wgodot-changes::begin
+		// Async requests can outlive their creator. Connection propagation uses
+		// the active dependency consumer, never a retained parent-task pointer.
+		// wgodot-changes::end
 		HashSet<String> sub_tasks;
 
 		// wgodot-changes::begin
@@ -216,7 +220,10 @@ private:
 		bool connections_propagated : 1;
 
 		struct ResourceChangedConnection {
-			Resource *source = nullptr;
+			// wgodot-changes::begin
+			// Retain the source when a connection moves between loading tasks.
+			Ref<Resource> source;
+			// wgodot-changes::end
 			Callable callable;
 			uint32_t flags = 0;
 		};

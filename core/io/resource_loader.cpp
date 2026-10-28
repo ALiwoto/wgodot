@@ -825,8 +825,10 @@ Ref<ResourceLoader::LoadToken> ResourceLoader::_load_start(const String &p_path,
 			}
 
 			// Task hierarchy
-			if (curr_load_task) {
-				load_task.parent_task = curr_load_task;
+			// wgodot-changes::begin
+			// Public requests are independent, even when issued from a load callback.
+			if (curr_load_task && !p_for_user) {
+			// wgodot-changes::end
 				curr_load_task->sub_tasks.insert(load_task.local_path);
 			}
 
@@ -1001,7 +1003,9 @@ Ref<Resource> ResourceLoader::load_threaded_get(const String &p_path, Error *r_e
 			}
 		}
 
-		res = _load_complete_inner(*load_token, r_error, thread_load_lock);
+		// wgodot-changes::begin
+		res = _load_complete_inner(*load_token, r_error, thread_load_lock, true);
+		// wgodot-changes::end
 
 		load_token->user_rc--;
 		if (load_token->user_rc == 0) {
@@ -1046,7 +1050,9 @@ void ResourceLoader::notify_dependency_error(const String &p_path, const String 
 	}
 }
 
-Ref<Resource> ResourceLoader::_load_complete_inner(LoadToken &p_load_token, Error *r_error, MutexLock<SafeBinaryMutex<BINARY_MUTEX_TAG>> &p_thread_load_lock) {
+// wgodot-changes::begin
+Ref<Resource> ResourceLoader::_load_complete_inner(LoadToken &p_load_token, Error *r_error, MutexLock<SafeBinaryMutex<BINARY_MUTEX_TAG>> &p_thread_load_lock, bool p_for_user) {
+// wgodot-changes::end
 	if (r_error) {
 		*r_error = OK;
 	}
@@ -1148,12 +1154,15 @@ Ref<Resource> ResourceLoader::_load_complete_inner(LoadToken &p_load_token, Erro
 	}
 
 	if (resource.is_valid()) {
-		if (load_task_ptr->parent_task) {
+		// wgodot-changes::begin
+		if (!p_for_user && curr_load_task && curr_load_task != load_task_ptr) {
+		// wgodot-changes::end
 			if (!load_task_ptr->connections_propagated) {
 				// A task awaiting another => Let the awaiter accumulate the resource changed connections.
-				DEV_ASSERT(load_task_ptr->parent_task != load_task_ptr);
 				for (const ThreadLoadTask::ResourceChangedConnection &rcc : load_task_ptr->resource_changed_connections) {
-					load_task_ptr->parent_task->resource_changed_connections.push_back(rcc);
+					// wgodot-changes::begin
+					curr_load_task->resource_changed_connections.push_back(rcc);
+					// wgodot-changes::end
 				}
 				load_task_ptr->connections_propagated = true;
 			}
@@ -1174,7 +1183,7 @@ Ref<Resource> ResourceLoader::_load_complete_inner(LoadToken &p_load_token, Erro
 					for (const ThreadLoadTask::ResourceChangedConnection &rcc : load_task_ptr->resource_changed_connections) {
 						if (rcc.callable.is_valid()) {
 							// wgodot-changes::begin
-							MessageQueue::get_main_singleton()->push_callable(callable_mp_static(&WGodotResourceLoaderLifetime::connect_changed_deferred).bind(Ref<Resource>(rcc.source), rcc.callable, rcc.flags));
+							MessageQueue::get_main_singleton()->push_callable(callable_mp_static(&WGodotResourceLoaderLifetime::connect_changed_deferred).bind(rcc.source, rcc.callable, rcc.flags));
 							// wgodot-changes::end
 						}
 					}
@@ -1211,7 +1220,7 @@ void ResourceLoader::resource_changed_connect(Resource *p_source, const Callable
 
 	for (const ThreadLoadTask::ResourceChangedConnection &rcc : curr_load_task->resource_changed_connections) {
 		// wgodot-changes::begin: preserve reference-counted alias subscriptions.
-		if (!(p_flags & Object::CONNECT_REFERENCE_COUNTED) && unlikely(rcc.source == p_source && *rcc.callable.get_base_comparator() == *p_callable.get_base_comparator())) {
+		if (!(p_flags & Object::CONNECT_REFERENCE_COUNTED) && unlikely(rcc.source.ptr() == p_source && *rcc.callable.get_base_comparator() == *p_callable.get_base_comparator())) {
 		// wgodot-changes::end
 			return;
 		}
@@ -1222,7 +1231,6 @@ void ResourceLoader::resource_changed_connect(Resource *p_source, const Callable
 	rcc.callable = p_callable;
 	rcc.flags = p_flags;
 	curr_load_task->resource_changed_connections.push_back(rcc);
-	curr_load_task->resource_dependencies.push_back(p_source);
 }
 
 void ResourceLoader::resource_changed_disconnect(Resource *p_source, const Callable &p_callable) {
@@ -1233,9 +1241,8 @@ void ResourceLoader::resource_changed_disconnect(Resource *p_source, const Calla
 	for (uint32_t i = 0; i < curr_load_task->resource_changed_connections.size(); ++i) {
 		const ThreadLoadTask::ResourceChangedConnection &rcc = curr_load_task->resource_changed_connections[i];
 		// wgodot-changes::begin: match Object::disconnect's bound-callable semantics.
-		if (unlikely(rcc.source == p_source && *rcc.callable.get_base_comparator() == *p_callable.get_base_comparator())) {
+		if (unlikely(rcc.source.ptr() == p_source && *rcc.callable.get_base_comparator() == *p_callable.get_base_comparator())) {
 		// wgodot-changes::end
-			curr_load_task->resource_dependencies.erase(p_source);
 			curr_load_task->resource_changed_connections.remove_at_unordered(i);
 			return;
 		}
@@ -1257,7 +1264,7 @@ void ResourceLoader::resource_changed_emit(Resource *p_source) {
 	HashSet<Callable> emitted;
 	for (const ThreadLoadTask::ResourceChangedConnection &rcc : curr_load_task->resource_changed_connections) {
 		const Callable &base = *rcc.callable.get_base_comparator();
-		if (unlikely(rcc.source == p_source) && !emitted.has(base) && rcc.callable.is_valid()) {
+		if (unlikely(rcc.source.ptr() == p_source) && !emitted.has(base) && rcc.callable.is_valid()) {
 			emitted.insert(base);
 			rcc.callable.call();
 		}

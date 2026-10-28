@@ -18,6 +18,26 @@ void WGodotResourceLoaderLifetime::disconnect_changed_deferred(const Ref<Resourc
 	p_source->disconnect_changed(p_callable);
 }
 
+WGodotResourceLoaderLifetime::WorkerScope::WorkerScope() :
+		previous_task(ResourceLoader::curr_load_task),
+		previous_nesting(ResourceLoader::load_nesting),
+		previous_import_thread(ResourceLoader::import_thread),
+		previous_overrides(std::move(ResourceLoader::res_ref_overrides)) {
+	ResourceLoader::curr_load_task = nullptr;
+	ResourceLoader::load_nesting = 0;
+	ResourceLoader::import_thread = false;
+}
+
+WGodotResourceLoaderLifetime::WorkerScope::~WorkerScope() {
+	DEV_ASSERT(ResourceLoader::curr_load_task == nullptr);
+	DEV_ASSERT(ResourceLoader::load_nesting == 0);
+	DEV_ASSERT(ResourceLoader::res_ref_overrides.is_empty());
+	ResourceLoader::curr_load_task = previous_task;
+	ResourceLoader::load_nesting = previous_nesting;
+	ResourceLoader::import_thread = previous_import_thread;
+	ResourceLoader::res_ref_overrides = std::move(previous_overrides);
+}
+
 WGodotResourceLoaderLifetime::TaskScope::TaskScope(ResourceLoader::LoadToken *p_token) :
 		token(p_token),
 		previous_task(ResourceLoader::curr_load_task) {

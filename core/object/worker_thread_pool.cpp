@@ -30,6 +30,9 @@
 
 #include "worker_thread_pool.h"
 
+// wgodot-changes::begin
+#include "core/io/wgodot_resource_loader_lifetime.h"
+// wgodot-changes::end
 #include "core/object/class_db.h"
 #include "core/object/message_queue.h"
 #include "core/object/script_language.h"
@@ -55,6 +58,9 @@ thread_local WorkerThreadPool::UnlockableLocks WorkerThreadPool::unlockable_lock
 #endif
 
 void WorkerThreadPool::_process_task(Task *p_task) {
+	// wgodot-changes::begin
+	WGodotResourceLoaderLifetime::WorkerScope loader_scope;
+	// wgodot-changes::end
 #ifdef THREADS_ENABLED
 	int pool_thread_index = thread_ids[Thread::get_caller_id()];
 	ThreadData &curr_thread = threads[pool_thread_index];

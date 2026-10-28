@@ -15,6 +15,21 @@ public:
 	static void connect_changed_deferred(const Ref<Resource> &p_source, const Callable &p_callable, uint32_t p_flags);
 	static void disconnect_changed_deferred(const Ref<Resource> &p_source, const Callable &p_callable);
 
+	// A collaborative wait can execute unrelated pool work on a loading thread.
+	// That work must have its own loader context, just as on a fresh worker.
+	class WorkerScope {
+		ResourceLoader::ThreadLoadTask *previous_task;
+		int previous_nesting;
+		bool previous_import_thread;
+		HashMap<int, HashMap<String, Ref<Resource>>> previous_overrides;
+
+	public:
+		WorkerScope();
+		~WorkerScope();
+		WorkerScope(const WorkerScope &) = delete;
+		WorkerScope &operator=(const WorkerScope &) = delete;
+	};
+
 	class TaskScope {
 		ResourceLoader::LoadToken *token;
 		ResourceLoader::ThreadLoadTask *previous_task;
