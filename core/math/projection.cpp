@@ -362,25 +362,27 @@ Projection Projection ::jitter_offseted(const Vector2 &p_offset) const {
 }
 
 void Projection::set_perspective(real_t p_fovy_degrees, real_t p_aspect, real_t p_z_near, real_t p_z_far, bool p_flip_fov) {
-	if (p_flip_fov) {
-		p_fovy_degrees = get_fovy(p_fovy_degrees, 1.0 / p_aspect);
-	}
-
-	real_t sine, cotangent, deltaZ;
-	real_t radians = Math::deg_to_rad(p_fovy_degrees / 2.0);
-
-	deltaZ = p_z_far - p_z_near;
-	sine = Math::sin(radians);
+	// wgodot-changes::begin
+	// Preserve the supplied axis. Converting horizontal FOV to a rounded
+	// vertical angle and back loses projection precision unnecessarily.
+	const double radians = Math::deg_to_rad(double(p_fovy_degrees) * 0.5);
+	const double sine = Math::sin(radians);
+	const real_t deltaZ = p_z_far - p_z_near;
+	// wgodot-changes::end
 
 	if ((deltaZ == 0) || (sine == 0) || (p_aspect == 0)) {
 		return;
 	}
-	cotangent = Math::cos(radians) / sine;
+	// wgodot-changes::begin
+	const double cotangent = Math::cos(radians) / sine;
+	// wgodot-changes::end
 
 	set_identity();
 
-	columns[0][0] = cotangent / p_aspect;
-	columns[1][1] = cotangent;
+	// wgodot-changes::begin
+	columns[0][0] = p_flip_fov ? cotangent : cotangent / p_aspect;
+	columns[1][1] = p_flip_fov ? cotangent * p_aspect : cotangent;
+	// wgodot-changes::end
 	columns[2][2] = -(p_z_far + p_z_near) / deltaZ;
 	columns[2][3] = -1;
 	columns[3][2] = -2 * p_z_near * p_z_far / deltaZ;
@@ -388,14 +390,13 @@ void Projection::set_perspective(real_t p_fovy_degrees, real_t p_aspect, real_t 
 }
 
 void Projection::set_perspective(real_t p_fovy_degrees, real_t p_aspect, real_t p_z_near, real_t p_z_far, bool p_flip_fov, int p_eye, real_t p_intraocular_dist, real_t p_convergence_dist) {
-	if (p_flip_fov) {
-		p_fovy_degrees = get_fovy(p_fovy_degrees, 1.0 / p_aspect);
-	}
-
 	real_t left, right, modeltranslation, ymax, xmax, frustumshift;
 
-	ymax = p_z_near * std::tan(Math::deg_to_rad(p_fovy_degrees / 2.0));
-	xmax = ymax * p_aspect;
+	// wgodot-changes::begin
+	const double half_extent = p_z_near * std::tan(Math::deg_to_rad(double(p_fovy_degrees) * 0.5));
+	ymax = p_flip_fov ? half_extent / p_aspect : half_extent;
+	xmax = p_flip_fov ? half_extent : half_extent * p_aspect;
+	// wgodot-changes::end
 	frustumshift = (p_intraocular_dist / 2.0) * p_z_near / p_convergence_dist;
 
 	switch (p_eye) {

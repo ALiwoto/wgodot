@@ -481,6 +481,10 @@ void vertex_shader(in vec3 vertex,
 	modelview[3].xyz = mat3(read_view_matrix) * modelview[3].xyz;
 #else
 	mat4 modelview = read_view_matrix * model_matrix;
+	// wgodot-changes::begin
+	// Cancel world origins before rotation, also in single-precision builds.
+	modelview[3].xyz = mat3(read_view_matrix) * (model_matrix[3].xyz - inv_view_matrix[3].xyz);
+	// wgodot-changes::end
 #endif
 	mat3 modelview_normal = mat3(read_view_matrix) * model_normal_matrix;
 	vec2 read_viewport_size = scene_data.viewport_size;

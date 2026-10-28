@@ -741,6 +741,10 @@ void vertex_shader(vec4 vertex_angle_attrib_input,
 	float roughness = 1.0;
 
 	highp mat4 modelview = scene_data_input.view_matrix * model_matrix;
+	// wgodot-changes::begin
+	// Cancel world origins before rotation rather than subtracting large dots.
+	modelview[3].xyz = mat3(scene_data_input.view_matrix) * (model_matrix[3].xyz - scene_data_input.inv_view_matrix[3].xyz);
+	// wgodot-changes::end
 	highp mat3 modelview_normal = mat3(scene_data_input.view_matrix) * model_normal_matrix;
 
 	float point_size = 1.0;
