@@ -23,6 +23,7 @@ struct WGodotAnimationProperty {
 	static void require_native_bindings();
 	static bool native_bindings_required();
 	static bool supports_engine_path(const NodePath &p_path);
+	static bool is_shader_assignment(const NodePath &p_path);
 	static bool supports_engine_value(const NodePath &p_path, WAnimationValueKind p_kind);
 	static WGodotAnimationPropertyBinding bind_engine(Node *p_node, const NodePath &p_path, WAnimationValueKind p_kind);
 	Variant read_variant(Object *p_target) const;

@@ -19,23 +19,16 @@ layout(push_constant, std430) uniform Params {
 	ivec4 region;
 } params;
 
+#include "screen_distortion_inc.glsl"
+
 void main() {
 	ivec2 pixel = ivec2(gl_FragCoord.xy);
 	vec2 size = vec2(textureSize(scene_color, 0));
 	vec4 packed_offset = texelFetch(distortion_offsets, pixel, 0);
-#ifdef DISTORTION_PACKED_RANGE
-	vec2 offset = (packed_offset.xy - packed_offset.zw) * DISTORTION_PACKED_RANGE;
-#else
-	vec2 offset = packed_offset.xy;
-#endif
-	vec2 uv = (vec2(pixel) + 0.5) / size + offset;
-	vec2 lower = (vec2(params.region.xy) + 0.5) / size;
-	vec2 upper = (vec2(params.region.zw) - 0.5) / size;
-	// Neutral/cancelled distortion is an exact identity. Out-of-frame samples
-	// retain the original pixel rather than stretching the viewport's edges.
-	if (any(lessThan(pixel, params.region.xy)) || any(greaterThanEqual(pixel, params.region.zw)) || offset == vec2(0.0) || any(isnan(offset)) || any(isinf(offset)) || any(lessThan(uv, lower)) || any(greaterThan(uv, upper))) {
-		color = texelFetch(scene_color, pixel, 0);
-	} else {
+	vec2 uv;
+	if (screen_distortion_uv(pixel, size, params.region, packed_offset, uv)) {
 		color = textureLod(scene_color, uv, 0.0);
+	} else {
+		color = texelFetch(scene_color, pixel, 0);
 	}
 }

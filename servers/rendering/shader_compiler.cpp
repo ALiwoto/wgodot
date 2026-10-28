@@ -926,6 +926,15 @@ String ShaderCompiler::_dump_node_code(const SL::Node *p_node, int p_level, Gene
 		} break;
 		case SL::Node::NODE_TYPE_VARIABLE: {
 			SL::VariableNode *vnode = (SL::VariableNode *)p_node;
+			// wgodot-changes::begin
+			// The parser has already resolved lexical scope. A local or argument
+			// may shadow a uniform; name-only lookup must not turn it into a UBO
+			// access or mark a same-named built-in as used.
+			if (vnode->is_local) {
+				code = _mkid(vnode->name);
+				break;
+			}
+			// wgodot-changes::end
 			bool use_fragment_varying = false;
 
 			if (!vnode->is_local && !(p_actions.entry_point_stages.has(current_func_name) && p_actions.entry_point_stages[current_func_name] == STAGE_VERTEX)) {
@@ -961,16 +970,8 @@ String ShaderCompiler::_dump_node_code(const SL::Node *p_node, int p_level, Gene
 			if (p_default_actions.renames.has(vnode->name)) {
 				code = p_default_actions.renames[vnode->name];
 			} else {
-				bool param_found = false;
-				if (function) {
-					for (const SL::FunctionNode::Argument &argument : function->arguments) {
-						if (argument.name == vnode->name) {
-							param_found = true;
-							break;
-						}
-					}
-				}
-				if (!param_found && shader->uniforms.has(vnode->name)) {
+				// wgodot-changes: local/argument scope was resolved above.
+				if (shader->uniforms.has(vnode->name)) {
 					//its a uniform!
 					const ShaderLanguage::ShaderNode::Uniform &u = shader->uniforms[vnode->name];
 					if (u.is_texture()) {
@@ -1056,82 +1057,82 @@ String ShaderCompiler::_dump_node_code(const SL::Node *p_node, int p_level, Gene
 		} break;
 		case SL::Node::NODE_TYPE_ARRAY: {
 			SL::ArrayNode *anode = (SL::ArrayNode *)p_node;
-			bool use_fragment_varying = false;
-
-			if (!anode->is_local && !(p_actions.entry_point_stages.has(current_func_name) && p_actions.entry_point_stages[current_func_name] == STAGE_VERTEX)) {
-				if (anode->assign_expression != nullptr && shader->varyings.has(anode->name)) {
-					use_fragment_varying = true;
-				} else {
-					if (p_assigning) {
-						if (shader->varyings.has(anode->name)) {
-							use_fragment_varying = true;
-						}
-					} else {
-						if (fragment_varyings.has(anode->name)) {
-							use_fragment_varying = true;
-						}
-					}
-				}
-			}
-
-			if (p_assigning && p_actions.write_flag_pointers.has(anode->name)) {
-				*p_actions.write_flag_pointers[anode->name] = true;
-			}
-
-			if (p_default_actions.usage_defines.has(anode->name) && !used_name_defines.has(anode->name)) {
-				String define = p_default_actions.usage_defines[anode->name];
-				if (define.begins_with("@")) {
-					define = p_default_actions.usage_defines[define.substr(1)];
-				}
-				r_gen_code.defines.push_back(define);
-				used_name_defines.insert(anode->name);
-			}
-
-			if (p_actions.usage_flag_pointers.has(anode->name) && !used_flag_pointers.has(anode->name)) {
-				*p_actions.usage_flag_pointers[anode->name] = true;
-				used_flag_pointers.insert(anode->name);
-			}
-
-			if (p_default_actions.renames.has(anode->name)) {
-				code = p_default_actions.renames[anode->name];
+			// wgodot-changes::begin
+			if (anode->is_local) {
+				code = _mkid(anode->name);
 			} else {
-				bool param_found = false;
-				if (function) {
-					for (const SL::FunctionNode::Argument &argument : function->arguments) {
-						if (argument.name == anode->name) {
-							param_found = true;
-							break;
-						}
-					}
-				}
-				if (!param_found && shader->uniforms.has(anode->name)) {
-					//its a uniform!
-					const ShaderLanguage::ShaderNode::Uniform &u = shader->uniforms[anode->name];
-					if (u.is_texture()) {
-						code = _mkid(anode->name); //texture, use as is
-					} else {
-						//a scalar or vector
-						if (u.scope == ShaderLanguage::ShaderNode::Uniform::SCOPE_GLOBAL) {
-							code = actions.base_uniform_string + _mkid(anode->name); //texture, use as is
-							//global variable, this means the code points to an index to the global table
-							code = _get_global_shader_uniform_from_type_and_index(p_default_actions.global_buffer_array_variable, code, u.type);
-						} else if (u.scope == ShaderLanguage::ShaderNode::Uniform::SCOPE_INSTANCE) {
-							//instance variable, index it as such
-							code = "(" + p_default_actions.instance_uniform_index_variable + "+" + itos(u.instance_index) + "u)";
-							code = _get_global_shader_uniform_from_type_and_index(p_default_actions.global_buffer_array_variable, code, u.type);
-						} else {
-							//regular uniform, index from UBO
-							code = actions.base_uniform_string + _mkid(anode->name);
-						}
-					}
-				} else {
-					if (use_fragment_varying) {
-						code = "frag_to_light.";
-					}
-					code += _mkid(anode->name);
-				}
-			}
+			// wgodot-changes::end
+				bool use_fragment_varying = false;
 
+				if (!anode->is_local && !(p_actions.entry_point_stages.has(current_func_name) && p_actions.entry_point_stages[current_func_name] == STAGE_VERTEX)) {
+					if (anode->assign_expression != nullptr && shader->varyings.has(anode->name)) {
+						use_fragment_varying = true;
+					} else {
+						if (p_assigning) {
+							if (shader->varyings.has(anode->name)) {
+								use_fragment_varying = true;
+							}
+						} else {
+							if (fragment_varyings.has(anode->name)) {
+								use_fragment_varying = true;
+							}
+						}
+					}
+				}
+
+				if (p_assigning && p_actions.write_flag_pointers.has(anode->name)) {
+					*p_actions.write_flag_pointers[anode->name] = true;
+				}
+
+				if (p_default_actions.usage_defines.has(anode->name) && !used_name_defines.has(anode->name)) {
+					String define = p_default_actions.usage_defines[anode->name];
+					if (define.begins_with("@")) {
+						define = p_default_actions.usage_defines[define.substr(1)];
+					}
+					r_gen_code.defines.push_back(define);
+					used_name_defines.insert(anode->name);
+				}
+
+				if (p_actions.usage_flag_pointers.has(anode->name) && !used_flag_pointers.has(anode->name)) {
+					*p_actions.usage_flag_pointers[anode->name] = true;
+					used_flag_pointers.insert(anode->name);
+				}
+
+				if (p_default_actions.renames.has(anode->name)) {
+					code = p_default_actions.renames[anode->name];
+				} else {
+					// wgodot-changes: local/argument scope was resolved above.
+					if (shader->uniforms.has(anode->name)) {
+						//its a uniform!
+						const ShaderLanguage::ShaderNode::Uniform &u = shader->uniforms[anode->name];
+						if (u.is_texture()) {
+							code = _mkid(anode->name); //texture, use as is
+						} else {
+							//a scalar or vector
+							if (u.scope == ShaderLanguage::ShaderNode::Uniform::SCOPE_GLOBAL) {
+								code = actions.base_uniform_string + _mkid(anode->name); //texture, use as is
+								//global variable, this means the code points to an index to the global table
+								code = _get_global_shader_uniform_from_type_and_index(p_default_actions.global_buffer_array_variable, code, u.type);
+							} else if (u.scope == ShaderLanguage::ShaderNode::Uniform::SCOPE_INSTANCE) {
+								//instance variable, index it as such
+								code = "(" + p_default_actions.instance_uniform_index_variable + "+" + itos(u.instance_index) + "u)";
+								code = _get_global_shader_uniform_from_type_and_index(p_default_actions.global_buffer_array_variable, code, u.type);
+							} else {
+								//regular uniform, index from UBO
+								code = actions.base_uniform_string + _mkid(anode->name);
+							}
+						}
+					} else {
+						if (use_fragment_varying) {
+							code = "frag_to_light.";
+						}
+						code += _mkid(anode->name);
+					}
+				}
+
+			// wgodot-changes::begin
+			}
+			// wgodot-changes::end
 			if (anode->call_expression != nullptr) {
 				code += ".";
 				code += _dump_node_code(anode->call_expression, p_level, r_gen_code, p_actions, p_default_actions, p_assigning, false);
@@ -1144,7 +1145,7 @@ String ShaderCompiler::_dump_node_code(const SL::Node *p_node, int p_level, Gene
 				code += _dump_node_code(anode->assign_expression, p_level, r_gen_code, p_actions, p_default_actions, true, false);
 			}
 
-			if (anode->name == time_name) {
+			if (!anode->is_local && anode->name == time_name) { // wgodot-changes: local names do not use the built-in clock.
 				if (p_actions.entry_point_stages.has(current_func_name) && p_actions.entry_point_stages[current_func_name] == STAGE_VERTEX) {
 					r_gen_code.uses_vertex_time = true;
 				}
@@ -1296,7 +1297,7 @@ String ShaderCompiler::_dump_node_code(const SL::Node *p_node, int p_level, Gene
 										case SL::Node::NODE_TYPE_VARIABLE: {
 											name = static_cast<const SL::VariableNode *>(node)->name;
 											done = true;
-											found = true;
+											found = !static_cast<const SL::VariableNode *>(node)->is_local; // wgodot-changes
 										} break;
 										case SL::Node::NODE_TYPE_MEMBER: {
 											node = static_cast<const SL::MemberNode *>(node)->owner;
@@ -1318,16 +1319,19 @@ String ShaderCompiler::_dump_node_code(const SL::Node *p_node, int p_level, Gene
 							// If we're doing a texture lookup we need to check our texture argument
 							StringName texture_uniform;
 							bool correct_texture_uniform = false;
+							bool texture_is_local = false; // wgodot-changes: preserve lexical sampler ownership.
 
 							switch (onode->arguments[i]->type) {
 								case SL::Node::NODE_TYPE_VARIABLE: {
 									const SL::VariableNode *varnode = static_cast<const SL::VariableNode *>(onode->arguments[i]);
 									texture_uniform = varnode->name;
+									texture_is_local = varnode->is_local; // wgodot-changes
 									correct_texture_uniform = true;
 								} break;
 								case SL::Node::NODE_TYPE_ARRAY: {
 									const SL::ArrayNode *anode = static_cast<const SL::ArrayNode *>(onode->arguments[i]);
 									texture_uniform = anode->name;
+									texture_is_local = anode->is_local; // wgodot-changes
 									correct_texture_uniform = true;
 								} break;
 								default:
@@ -1339,10 +1343,10 @@ String ShaderCompiler::_dump_node_code(const SL::Node *p_node, int p_level, Gene
 								String sampler_name;
 								bool is_depth_texture = false;
 
-								if (actions.custom_samplers.has(texture_uniform)) {
+								if (!texture_is_local && actions.custom_samplers.has(texture_uniform)) { // wgodot-changes
 									sampler_name = actions.custom_samplers[texture_uniform];
 								} else {
-									if (shader->uniforms.has(texture_uniform)) {
+									if (!texture_is_local && shader->uniforms.has(texture_uniform)) { // wgodot-changes
 										const ShaderLanguage::ShaderNode::Uniform &u = shader->uniforms[texture_uniform];
 										if (u.hint == ShaderLanguage::ShaderNode::Uniform::HINT_SCREEN_TEXTURE) {
 											is_screen_texture = true;
@@ -1362,6 +1366,8 @@ String ShaderCompiler::_dump_node_code(const SL::Node *p_node, int p_level, Gene
 												if (function->arguments[j].tex_builtin_check) {
 													ERR_CONTINUE(!actions.custom_samplers.has(function->arguments[j].tex_builtin));
 													sampler_name = actions.custom_samplers[function->arguments[j].tex_builtin];
+													// wgodot-changes: use the resolved argument, not its spelling.
+													is_radiance_texture = function->arguments[j].tex_builtin == SNAME("RADIANCE");
 													found = true;
 													break;
 												}
@@ -1388,7 +1394,7 @@ String ShaderCompiler::_dump_node_code(const SL::Node *p_node, int p_level, Gene
 									}
 								}
 
-								if (texture_uniform == SNAME("RADIANCE")) {
+								if (!texture_is_local && texture_uniform == SNAME("RADIANCE")) { // wgodot-changes
 									is_radiance_texture = true;
 								}
 
@@ -1410,7 +1416,7 @@ String ShaderCompiler::_dump_node_code(const SL::Node *p_node, int p_level, Gene
 							} else if (correct_texture_uniform && RS::get_singleton()->is_low_end()) {
 								// Texture function on low end hardware (i.e. OpenGL).
 
-								if (shader->uniforms.has(texture_uniform)) {
+								if (!texture_is_local && shader->uniforms.has(texture_uniform)) { // wgodot-changes
 									const ShaderLanguage::ShaderNode::Uniform &u = shader->uniforms[texture_uniform];
 									if (actions.check_multiview_samplers) {
 										if (u.hint == ShaderLanguage::ShaderNode::Uniform::HINT_SCREEN_TEXTURE) {

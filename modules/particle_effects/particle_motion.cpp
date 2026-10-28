@@ -85,6 +85,11 @@ Vector3 ParticleMotionProfile3D::rotate_orbit_offset(Vector3 p_offset, Vector3 p
 }
 
 Vector2 ParticleSpriteProfile3D::size_at(double p_relative_age, Vector3 p_initial_size, const Ref<RandomStream32> &p_random, const Ref<RandomStream32> &p_life_random, bool p_spawning, Vector3 p_velocity) const {
+	const Vector3 scale = scale_at(p_relative_age, p_initial_size, p_random, p_life_random, p_spawning, p_velocity);
+	return Vector2(scale.x, square ? scale.x : scale.z);
+}
+
+Vector3 ParticleSpriteProfile3D::scale_at(double p_relative_age, Vector3 p_initial_size, const Ref<RandomStream32> &p_random, const Ref<RandomStream32> &p_life_random, bool p_spawning, Vector3 p_velocity) const {
 	Vector3 scale = p_initial_size;
 	if (get_size_scale().is_valid()) {
 		Vector3 multiplier = get_size_scale()->sample(p_relative_age, p_random);
@@ -93,8 +98,7 @@ Vector2 ParticleSpriteProfile3D::size_at(double p_relative_age, Vector3 p_initia
 		}
 		scale = scale.abs() * multiplier;
 	}
-	scale = scale_size_over_life(scale, p_initial_size, p_relative_age, p_life_random, p_spawning, p_velocity);
-	return Vector2(scale.x, square ? scale.x : scale.z);
+	return scale_size_over_life(scale, p_initial_size, p_relative_age, p_life_random, p_spawning, p_velocity);
 }
 
 double ParticleSpriteProfile3D::angular_velocity_at(double p_relative_age, double p_initial_rate, const Ref<RandomStream32> &p_random) const {

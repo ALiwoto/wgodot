@@ -12,6 +12,9 @@ class ParticleSimulation3D : public RefCounted {
 	TypedArray<ParticleInstance3D> authored;
 	TypedArray<ParticleInstance3D> active;
 	int spawned_count = 0;
+	bool collect_simulation_bounds = false;
+	bool simulation_bounds_valid = false;
+	AABB simulation_bounds;
 	bool legacy_spawning = false;
 	bool follow_sources = false;
 	TypedArray<ParticleBirthRule3D> initial_values;
@@ -51,6 +54,10 @@ public:
 	void bind_source(const Ref<ParticleSpawnContext3D> &p_context, int p_channel) const;
 	int get_active_particle_count() const { return active.size(); }
 	ParticleInstance3D *get_active_particle(int p_index) const;
+	// Opt-in aggregation in the existing update/spawn loop; reads never rescan
+	// particles or observe a later attachment transform.
+	void set_collect_simulation_bounds(bool p_enabled) { collect_simulation_bounds = p_enabled; }
+	AABB get_simulation_aabb() const { return simulation_bounds; }
 	bool has_active_particle(ParticleInstance3D *p_particle) const { return active.has(p_particle); }
 	int get_spawned_count() const { return spawned_count; }
 	double remaining_seconds() const;

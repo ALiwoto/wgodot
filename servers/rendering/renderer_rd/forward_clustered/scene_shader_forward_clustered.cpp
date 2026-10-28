@@ -86,6 +86,7 @@ void SceneShaderForwardClustered::ShaderData::set_code(const String &p_code) {
 	screen_read_current = false;
 	screen_read_after_transparent = false;
 	bool uses_distortion_output = false;
+	bool uses_distortion_uv = false;
 // wgodot-changes::end
 	unshaded = false;
 	uses_vertex = false;
@@ -137,6 +138,7 @@ void SceneShaderForwardClustered::ShaderData::set_code(const String &p_code) {
 	actions.render_mode_flags["screen_read_current"] = &screen_read_current;
 	actions.render_mode_flags["screen_read_after_transparent"] = &screen_read_after_transparent;
 	actions.usage_flag_pointers["SCREEN_DISTORTION"] = &uses_distortion_output;
+	actions.usage_flag_pointers["SCREEN_DISTORTION_UV"] = &uses_distortion_uv;
 // wgodot-changes::end
 	actions.render_mode_flags["wireframe"] = &wireframe;
 	actions.render_mode_flags["particle_trails"] = &uses_particle_trails;
@@ -209,6 +211,7 @@ void SceneShaderForwardClustered::ShaderData::set_code(const String &p_code) {
 
 // wgodot-changes::begin
 	ERR_FAIL_COND_MSG(uses_distortion_output && !screen_distortion, "SCREEN_DISTORTION requires render_mode screen_distortion.");
+	ERR_FAIL_COND_MSG(uses_distortion_uv && !screen_read_after_transparent, "SCREEN_DISTORTION_UV requires render_mode screen_read_after_transparent.");
 	// Late screen effects read the preceding effect's result, after the scene's
 	// transparency, MSAA resolve and distortion have completed.
 	screen_read_current |= screen_read_after_transparent;
@@ -223,6 +226,8 @@ void SceneShaderForwardClustered::ShaderData::set_code(const String &p_code) {
 		unshaded = true;
 		uses_depth_prepass_alpha = false;
 		alpha_antialiasing_mode = ALPHA_ANTIALIASING_OFF;
+	}
+	if (screen_distortion || uses_distortion_uv) {
 		gen_code.defines.push_back(RendererRD::ScreenDistortion::encoding_defines());
 	}
 // wgodot-changes::end
@@ -838,6 +843,8 @@ void SceneShaderForwardClustered::init(const String p_defines) {
 		actions.renames["SCREEN_UV"] = "screen_uv";
 // wgodot-changes::begin
 		actions.renames["SCREEN_DISTORTION"] = "distortion_offset";
+		actions.renames["SCREEN_DISTORTION_UV"] = "distorted_screen_uv";
+		actions.usage_defines["SCREEN_DISTORTION_UV"] = "#define SCREEN_DISTORTION_UV_USED\n";
 // wgodot-changes::end
 		actions.renames["DEPTH"] = "gl_FragDepth";
 		actions.renames["FOG"] = "fog";

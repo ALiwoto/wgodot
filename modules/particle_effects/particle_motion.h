@@ -186,6 +186,7 @@ public:
 	void set_frame_change_interval(double p_value) { frame_change_interval = p_value; }
 	double get_frame_change_interval() const { return frame_change_interval; }
 	Vector2 size_at(double p_relative_age, Vector3 p_initial_size, const Ref<RandomStream32> & p_random, const Ref<RandomStream32> & p_life_random, bool p_spawning, Vector3 p_velocity = Vector3()) const;
+	Vector3 scale_at(double p_relative_age, Vector3 p_initial_size, const Ref<RandomStream32> &p_random, const Ref<RandomStream32> &p_life_random, bool p_spawning, Vector3 p_velocity) const;
 	double angular_velocity_at(double p_relative_age, double p_initial_rate, const Ref<RandomStream32> & p_random) const;
 	double sample_frame(double p_relative_age, const Ref<RandomStream32> & p_random) const;
 };

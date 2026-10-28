@@ -3146,6 +3146,7 @@ void SceneShaderData::set_code(const String &p_code) {
 	actions.render_mode_flags["screen_read_current"] = &screen_read_current;
 	actions.render_mode_flags["screen_read_after_transparent"] = &screen_read_current;
 	actions.usage_flag_pointers["SCREEN_DISTORTION"] = &screen_distortion;
+	actions.usage_flag_pointers["SCREEN_DISTORTION_UV"] = &screen_distortion;
 	// wgodot-changes::end
 	Error err = MaterialStorage::get_singleton()->shaders.compiler_scene.compile(RSE::SHADER_SPATIAL, code, &actions, path, gen_code);
 	// wgodot-changes::begin

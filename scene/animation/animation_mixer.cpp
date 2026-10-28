@@ -627,6 +627,10 @@ void AnimationMixer::_clear_caches(bool p_clear_track_cache) {
 	}
 	track_cache.clear();
 	animation_track_num_to_track_cache.clear();
+	// wgodot-changes::begin
+	animation_shader_tracks.clear();
+	shader_track_caches.clear();
+	// wgodot-changes::end
 	cache_valid = false;
 	// wgodot-changes::begin
 	caches_prepared_for_tree = false;
@@ -695,6 +699,11 @@ void AnimationMixer::_create_track_num_to_track_cache_for_animation(const Ref<An
 			track_num_to_track_cache[i] = nullptr;
 		} else {
 			track_num_to_track_cache[i] = *track_ptr;
+			// wgodot-changes::begin
+			if ((*track_ptr)->type == Animation::TYPE_VALUE && static_cast<TrackCacheValue *>(*track_ptr)->shader_assignment) {
+				animation_shader_tracks[p_animation].push_back(i);
+			}
+			// wgodot-changes::end
 		}
 	}
 }
@@ -835,6 +844,7 @@ bool AnimationMixer::_update_caches() {
 						// wgodot-changes::begin
 						track_value->native_property = native_property;
 						track_value->native_context = native_context;
+						track_value->shader_assignment = native_property && WGodotAnimationProperty::is_shader_assignment(path);
 						// wgodot-changes::end
 
 						track = track_value;
@@ -1086,11 +1096,22 @@ bool AnimationMixer::_update_caches() {
 	}
 
 	animation_track_num_to_track_cache.clear();
+	// wgodot-changes::begin
+	animation_shader_tracks.clear();
+	shader_track_caches.clear();
+	// wgodot-changes::end
 	for (const StringName &E : sname_list) {
 		const Ref<Animation> &anim = get_animation(E);
 		_create_track_num_to_track_cache_for_animation(anim);
 	}
 
+	// wgodot-changes::begin
+	for (const KeyValue<Animation::TrackCacheID, TrackCache *> &entry : track_cache) {
+		if (entry.value->type == Animation::TYPE_VALUE && static_cast<TrackCacheValue *>(entry.value)->shader_assignment) {
+			shader_track_caches.push_back(static_cast<TrackCacheValue *>(entry.value));
+		}
+	}
+	// wgodot-changes::end
 	track_count = idx;
 
 	cache_valid = true;
@@ -1114,7 +1135,9 @@ void AnimationMixer::_process_animation(double p_delta, bool p_update_only) {
 		_blend_calc_total_weight();
 		_blend_process(p_delta, p_update_only);
 		clear_animation_instances();
-		_blend_apply();
+		// wgodot-changes::begin
+		_blend_apply(false); // Shader assignments were published before dependent tracks.
+		// wgodot-changes::end
 		_blend_post_process();
 		emit_signal(SNAME("mixer_applied"));
 	} else {
@@ -1332,6 +1355,7 @@ void AnimationMixer::_blend_process(double p_delta, bool p_update_only) {
 	WGodotGPUProfile::Scope profile_scope("animation.sample_tracks");
 #endif
 	is_GDVIRTUAL_CALL_post_process_key_value = GDVIRTUAL_IS_OVERRIDDEN(_post_process_key_value);
+	_blend_shader_tracks(p_delta);
 	// wgodot-changes::end
 	// Apply value/transform/blend/bezier blends to track caches and execute method/audio/animation tracks.
 #ifdef TOOLS_ENABLED
@@ -1728,44 +1752,9 @@ void AnimationMixer::_blend_process(double p_delta, bool p_update_only) {
 				// wgodot-changes::begin
 				case Animation::TYPE_BEZIER:
 				case Animation::TYPE_VALUE: {
-					if (Math::is_zero_approx(blend)) {
-						continue;
-					}
 					TrackCacheValue *t = static_cast<TrackCacheValue *>(track);
-					bool is_value = ttype == Animation::TYPE_VALUE;
-					bool discrete = is_value && a->value_track_get_update_mode(i) == Animation::UPDATE_DISCRETE;
-					bool force_continuous = callback_mode_discrete == ANIMATION_CALLBACK_MODE_DISCRETE_FORCE_CONTINUOUS;
-					const auto post_process = value_post_process(a, i, t->post_process_object_id());
-					if (!discrete || force_continuous) {
-						t->use_continuous = true;
-						WAnimationSample sample;
-						double bezier = 0;
-						if (!is_value) {
-							bezier = a->bezier_track_interpolate(i, time);
-						} else if (t->values->interpolatable()) {
-							sample = a->value_track_sample(i, time, discrete && force_continuous ? backward : false);
-						} else {
-							sample.from = a->track_find_key(i, time, Animation::FIND_MODE_NEAREST, false, backward);
-						}
-						t->values->accumulate(**a, i, sample, bezier, blend, t->is_using_angle, post_process);
-					} else if (seeked) {
-						int key = a->track_find_key(i, time, is_external_seeking ? Animation::FIND_MODE_NEAREST : Animation::FIND_MODE_EXACT, false, seeked_backward);
-						if (key < 0) {
-							continue;
-						}
-						t->use_discrete = true;
-						if (Object *object = ObjectDB::get_instance(t->object_id)) {
-							WAnimationValueMixer::write_key(object, t->target(), **a, i, key, post_process);
-						}
-					} else {
-						LocalVector<int> indices;
-						a->track_get_key_indices_in_range(i, time, delta, start, end, &indices, looped_flag);
-						for (int key : indices) {
-							t->use_discrete = true;
-							if (Object *object = ObjectDB::get_instance(t->object_id)) {
-								WAnimationValueMixer::write_key(object, t->target(), **a, i, key, post_process);
-							}
-						}
+					if (!t->shader_assignment && !Math::is_zero_approx(blend)) {
+						_blend_value_track(ai, i, t, blend, p_delta);
 					}
 				} break;
 				// wgodot-changes::end
@@ -1981,7 +1970,17 @@ void AnimationMixer::_blend_process(double p_delta, bool p_update_only) {
 
 }
 
-void AnimationMixer::_blend_apply() {
+void AnimationMixer::_blend_apply(bool p_apply_shaders) {
+	// wgodot-changes::begin
+	// Backup restoration has no sampling phase or live cache-index table.
+	if (p_apply_shaders) {
+		for (const KeyValue<Animation::TrackCacheID, TrackCache *> &entry : track_cache) {
+			if (entry.value->type == Animation::TYPE_VALUE && static_cast<TrackCacheValue *>(entry.value)->shader_assignment) {
+				_blend_apply_value(static_cast<TrackCacheValue *>(entry.value));
+			}
+		}
+	}
+	// wgodot-changes::end
 	// wgodot-changes::begin
 #if defined(MODULE_WGODOT_ENABLED) && defined(TOOLS_ENABLED) && defined(DEBUG_ENABLED)
 	WGodotGPUProfile::Scope profile_scope("animation.apply_tracks");
@@ -2061,32 +2060,12 @@ void AnimationMixer::_blend_apply() {
 #endif // _3D_DISABLED
 			} break;
 			case Animation::TYPE_VALUE: {
-				TrackCacheValue *t = static_cast<TrackCacheValue *>(track);
-
-				if (callback_mode_discrete == ANIMATION_CALLBACK_MODE_DISCRETE_FORCE_CONTINUOUS) {
-					t->is_init = false; // Always update in Force Continuous.
-				} else if (!t->use_continuous && (t->use_discrete || !deterministic)) {
-					t->is_init = true; // If there is no continuous value and only disctere value is applied or just started, don't RESET.
-				}
-
-				if ((t->is_init && (is_zero_amount || !t->use_continuous)) ||
-						(callback_mode_discrete != ANIMATION_CALLBACK_MODE_DISCRETE_FORCE_CONTINUOUS &&
-								!is_zero_amount &&
-								callback_mode_discrete == ANIMATION_CALLBACK_MODE_DISCRETE_DOMINANT &&
-								t->use_discrete)) {
-					break; // Don't overwrite the value set by UPDATE_DISCRETE.
-				}
-
-				if (callback_mode_discrete != ANIMATION_CALLBACK_MODE_DISCRETE_FORCE_CONTINUOUS) {
-					t->is_init = !t->use_continuous; // If there is no Continuous in non-Force Continuous type, it means RESET.
-				}
-
 				// wgodot-changes::begin
-				if (Object *object = ObjectDB::get_instance(t->object_id)) {
-					t->values->apply(object, t->target(), track->total_weight);
+				TrackCacheValue *t = static_cast<TrackCacheValue *>(track);
+				if (!t->shader_assignment) {
+					_blend_apply_value(t);
 				}
 				// wgodot-changes::end
-
 			} break;
 			case Animation::TYPE_AUDIO: {
 				TrackCacheAudio *t = static_cast<TrackCacheAudio *>(track);

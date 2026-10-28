@@ -243,7 +243,9 @@ public:
 			if (path.shader_resource) {
 				const Ref<Shader> value = p_value;
 				ERR_FAIL_COND_MSG(p_value.is_valid() && value.is_null(), "A shader animation track requires a Shader resource.");
-				material->set_shader(value);
+				if (material->get_shader() != value) {
+					material->set_shader(value);
+				}
 			} else {
 				const Ref<Texture> value = p_value;
 				ERR_FAIL_COND_MSG(p_value.is_valid() && value.is_null(), "A sampler animation track requires a Texture resource.");
@@ -316,6 +318,10 @@ const WGodotAnimationProperty *descriptor_for(const ShaderPath &p_path, WAnimati
 	}
 }
 } // namespace
+
+bool WGodotAnimationProperty::is_shader_assignment(const NodePath &p_path) {
+	return parse_path(p_path).shader_resource;
+}
 
 bool WGodotAnimationProperty::supports_engine_path(const NodePath &p_path) {
 	return parse_path(p_path).source != Source::Unknown;

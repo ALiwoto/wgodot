@@ -748,6 +748,14 @@ uint32_t RenderForwardClustered::_setup_environment(const RenderDataRD *p_render
 
 	// now do implementation UBO
 
+	// wgodot-changes::begin
+	const Rect2i distortion_region = p_render_data->render_region.has_area() ? Rect2i(p_render_data->render_region) : Rect2i(Point2i(), p_screen_size);
+	scene_state.ubo.screen_distortion_region[0] = distortion_region.position.x;
+	scene_state.ubo.screen_distortion_region[1] = distortion_region.position.y;
+	scene_state.ubo.screen_distortion_region[2] = distortion_region.get_end().x;
+	scene_state.ubo.screen_distortion_region[3] = distortion_region.get_end().y;
+	// wgodot-changes::end
+
 	scene_state.ubo.cluster_shift = Math::get_shift_from_power_of_2(p_render_data->cluster_size);
 	scene_state.ubo.max_cluster_element_count_div_32 = p_render_data->cluster_max_elements / 32;
 	{
@@ -4041,6 +4049,25 @@ RID RenderForwardClustered::_setup_render_pass_uniform_set(RenderListType p_rend
 		uniforms.push_back(u);
 	}
 #endif // MODULE_TEXTURE_STREAMING_ENABLED
+
+	// wgodot-changes::begin
+	{
+		RD::Uniform u;
+		u.binding = 39;
+		u.uniform_type = RD::UNIFORM_TYPE_TEXTURE;
+		RID offsets;
+		// The cached texture can outlive a frame's distortion draws. Never
+		// expose stale offsets, or bind them while still rendering into them.
+		if (p_render_list == RENDER_LIST_SCREEN_EFFECT && rb_data.is_valid() && !render_list[RENDER_LIST_DISTORTION].elements.is_empty()) {
+			offsets = rb->get_texture(SNAME("ScreenDistortion"), SNAME("offsets"));
+		}
+		if (offsets.is_null()) {
+			offsets = texture_storage->texture_rd_get_default(is_multiview ? RendererRD::TextureStorage::DEFAULT_RD_TEXTURE_2D_ARRAY_TRANSPARENT : RendererRD::TextureStorage::DEFAULT_RD_TEXTURE_TRANSPARENT);
+		}
+		u.append_id(offsets);
+		uniforms.push_back(u);
+	}
+	// wgodot-changes::end
 
 	return UniformSetCacheRD::get_singleton()->get_cache_vec(scene_shader.get_default_shader_rd(is_multiview), RENDER_PASS_UNIFORM_SET, uniforms);
 }

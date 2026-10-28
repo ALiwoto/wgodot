@@ -13,6 +13,8 @@ void ParticleSimulation3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("bind_source", "context", "channel"), &ParticleSimulation3D::bind_source);
 	ClassDB::bind_method(D_METHOD("get_active_particle_count"), &ParticleSimulation3D::get_active_particle_count);
 	ClassDB::bind_method(D_METHOD("get_active_particle", "index"), &ParticleSimulation3D::get_active_particle);
+	ClassDB::bind_method(D_METHOD("get_simulation_aabb"), &ParticleSimulation3D::get_simulation_aabb);
+	ClassDB::bind_method(D_METHOD("set_collect_simulation_bounds", "enabled"), &ParticleSimulation3D::set_collect_simulation_bounds);
 	ClassDB::bind_method(D_METHOD("has_active_particle", "particle"), &ParticleSimulation3D::has_active_particle);
 	ClassDB::bind_method(D_METHOD("get_spawned_count"), &ParticleSimulation3D::get_spawned_count);
 	ClassDB::bind_method(D_METHOD("remaining_seconds"), &ParticleSimulation3D::remaining_seconds);
@@ -51,7 +53,13 @@ ParticleInstance3D *ParticleSimulation3D::linked_particle(int p_index) const {
 }
 
 bool ParticleSimulation3D::sample(ParticleInstance3D *p_particle, double p_age, Vector3 p_offset, int p_index) {
-	return p_particle->sample_playback(seconds, delta, random, initial_values, p_age, ground, p_offset, parameter_ratio, emitter_seconds, initial_random, context, linked_particle(p_index));
+	const bool alive = p_particle->sample_playback(seconds, delta, random, initial_values, p_age, ground, p_offset, parameter_ratio, emitter_seconds, initial_random, context, linked_particle(p_index));
+	if (collect_simulation_bounds && alive) {
+		const AABB bounds = p_particle->get_simulation_aabb();
+		simulation_bounds = simulation_bounds_valid ? simulation_bounds.merge(bounds) : bounds;
+		simulation_bounds_valid = true;
+	}
+	return alive;
 }
 
 bool ParticleSimulation3D::advance(double p_seconds, double p_delta, const Ref<RandomStream32> &p_random, double p_parameter_ratio, double p_emitter_seconds, Vector3 p_birth_offset) {
@@ -61,6 +69,8 @@ bool ParticleSimulation3D::advance(double p_seconds, double p_delta, const Ref<R
 	parameter_ratio = p_parameter_ratio;
 	emitter_seconds = p_emitter_seconds;
 	birth_offset = p_birth_offset;
+	simulation_bounds = AABB();
+	simulation_bounds_valid = false;
 #ifdef TOOLS_ENABLED
 	debug_prepare = has_connections(SNAME("debug_particle_prepared"));
 	debug_sample = has_connections(SNAME("debug_particle_sampled"));
@@ -177,6 +187,8 @@ void ParticleSimulation3D::clear() {
 		}
 	}
 	active.clear();
+	simulation_bounds = AABB();
+	simulation_bounds_valid = false;
 }
 
 double ParticleSimulation3D::remaining_seconds() const {

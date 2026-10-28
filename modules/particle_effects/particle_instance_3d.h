@@ -107,6 +107,7 @@ class ParticleInstance3D : public Node3D {
 	bool render_instances_prepared = false;
 	AABB visibility_aabb;
 	Vector2 state_render_size;
+	Vector3 state_bounds_size;
 	double state_camera_offset = 0.0;
 	void update_render_bounds(RenderInstance &p_instance, const Transform3D &p_transform);
 	void collect_render_instances(Node *p_node);
@@ -219,6 +220,7 @@ public:
 	AABB get_visibility_aabb() const { return visibility_aabb; }
 	ParticleInstancePool3D *get_instance_pool() const { return instance_pool; }
 	Transform3D get_particle_transform() const;
+	AABB get_simulation_aabb() const;
 	Transform3D get_render_transform(Node3D *p_node) const;
 	bool is_render_visible(Node3D *p_node) const;
 	static void initialize_defaults();

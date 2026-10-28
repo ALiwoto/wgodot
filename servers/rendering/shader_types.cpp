@@ -153,6 +153,7 @@ ShaderTypes::ShaderTypes() {
 	shader_modes[RSE::SHADER_SPATIAL].functions["fragment"].built_ins["PREMUL_ALPHA_FACTOR"] = ShaderLanguage::TYPE_FLOAT;
 // wgodot-changes::begin
 	shader_modes[RSE::SHADER_SPATIAL].functions["fragment"].built_ins["SCREEN_DISTORTION"] = ShaderLanguage::TYPE_VEC2;
+	shader_modes[RSE::SHADER_SPATIAL].functions["fragment"].built_ins["SCREEN_DISTORTION_UV"] = constt(ShaderLanguage::TYPE_VEC2);
 // wgodot-changes::end
 	shader_modes[RSE::SHADER_SPATIAL].functions["fragment"].built_ins["ALPHA"] = ShaderLanguage::TYPE_FLOAT;
 	shader_modes[RSE::SHADER_SPATIAL].functions["fragment"].built_ins["METALLIC"] = ShaderLanguage::TYPE_FLOAT;

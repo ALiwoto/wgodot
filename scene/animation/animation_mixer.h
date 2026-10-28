@@ -251,6 +251,7 @@ protected:
 		bool use_continuous = false;
 		bool use_discrete = false;
 		bool is_using_angle = false;
+		bool shader_assignment = false;
 
 		TrackCacheValue(const TrackCacheValue &p_other) :
 				TrackCache(p_other),
@@ -261,7 +262,8 @@ protected:
 				is_init(p_other.is_init),
 				use_continuous(p_other.use_continuous),
 				use_discrete(p_other.use_discrete),
-				is_using_angle(p_other.is_using_angle) {}
+				is_using_angle(p_other.is_using_angle),
+				shader_assignment(p_other.shader_assignment) {}
 
 		TrackCacheValue() { type = Animation::TYPE_VALUE; }
 		~TrackCacheValue() {
@@ -324,6 +326,13 @@ protected:
 	RootMotionCache root_motion_cache;
 	AHashMap<Animation::TrackCacheID, TrackCache *, HashHasher> track_cache;
 	AHashMap<Ref<Animation>, LocalVector<TrackCache *>> animation_track_num_to_track_cache;
+	// wgodot-changes::begin
+	AHashMap<Ref<Animation>, LocalVector<int>> animation_shader_tracks;
+	LocalVector<TrackCacheValue *> shader_track_caches;
+	void _blend_shader_tracks(double p_delta);
+	void _blend_value_track(const AnimationInstance &p_instance, int p_index, TrackCacheValue *p_track, real_t p_blend, double p_delta);
+	void _blend_apply_value(TrackCacheValue *p_track);
+	// wgodot-changes::end
 	HashSet<TrackCache *> playing_caches;
 	Vector<Node *> playing_audio_stream_players;
 
@@ -394,7 +403,9 @@ protected:
 	virtual void _blend_capture(double p_delta);
 	void _blend_calc_total_weight(); // For indeterministic blending.
 	void _blend_process(double p_delta, bool p_update_only = false);
-	void _blend_apply();
+	// wgodot-changes::begin
+	void _blend_apply(bool p_apply_shaders = true);
+	// wgodot-changes::end
 	virtual void _blend_post_process();
 	void _call_object(ObjectID p_object_id, const StringName &p_method, const Vector<Variant> &p_params, bool p_deferred);
 

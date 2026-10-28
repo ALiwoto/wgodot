@@ -155,6 +155,11 @@ bool VisualInstance3D::get_layer_mask_value(int p_layer_number) const {
 }
 
 void VisualInstance3D::set_sorting_offset(float p_offset) {
+	// wgodot-changes::begin
+	if (sorting_offset == p_offset) {
+		return;
+	}
+	// wgodot-changes::end
 	sorting_offset = p_offset;
 	RenderingServer::get_singleton()->instance_set_pivot_data(instance, sorting_offset, sorting_use_aabb_center);
 }
@@ -164,6 +169,11 @@ float VisualInstance3D::get_sorting_offset() const {
 }
 
 void VisualInstance3D::set_sorting_use_aabb_center(bool p_enabled) {
+	// wgodot-changes::begin
+	if (sorting_use_aabb_center == p_enabled) {
+		return;
+	}
+	// wgodot-changes::end
 	sorting_use_aabb_center = p_enabled;
 	RenderingServer::get_singleton()->instance_set_pivot_data(instance, sorting_offset, sorting_use_aabb_center);
 }

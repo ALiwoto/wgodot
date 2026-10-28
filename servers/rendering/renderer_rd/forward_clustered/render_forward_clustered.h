@@ -345,6 +345,10 @@ private:
 			float volumetric_fog_inv_length;
 			float volumetric_fog_detail_spread;
 			uint32_t volumetric_fog_pad;
+
+			// wgodot-changes::begin
+			int32_t screen_distortion_region[4];
+			// wgodot-changes::end
 		};
 
 		struct PushConstantUbershader {

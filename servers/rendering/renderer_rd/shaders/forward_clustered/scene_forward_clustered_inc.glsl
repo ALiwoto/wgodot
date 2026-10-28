@@ -352,6 +352,10 @@ struct ImplementationData {
 	float volumetric_fog_inv_length;
 	float volumetric_fog_detail_spread;
 	uint volumetric_fog_pad;
+
+	// wgodot-changes::begin
+	ivec4 screen_distortion_region;
+	// wgodot-changes::end
 };
 
 layout(set = 1, binding = 1, std140) uniform ImplementationDataBlock {
@@ -494,6 +498,14 @@ layout(set = 1, binding = 35) uniform texture2D ssr_buffer;
 layout(set = 1, binding = 36) uniform texture2D ssr_mip_level_buffer;
 layout(set = 1, binding = 37) uniform texture2DArray sscs_buffer;
 #endif // USE_MULTIVIEW
+
+// wgodot-changes::begin
+#ifdef USE_MULTIVIEW
+layout(set = 1, binding = 39) uniform texture2DArray screen_distortion_offsets;
+#else
+layout(set = 1, binding = 39) uniform texture2D screen_distortion_offsets;
+#endif
+// wgodot-changes::end
 
 #endif
 

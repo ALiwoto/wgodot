@@ -916,6 +916,12 @@ void main() {
 #include "../half_inc.glsl"
 #include "scene_forward_clustered_inc.glsl"
 
+// wgodot-changes::begin
+#ifdef SCREEN_DISTORTION_UV_USED
+#include "../effects/screen_distortion_inc.glsl"
+#endif
+// wgodot-changes::end
+
 /* Varyings */
 
 #if defined(TEXTURE_STREAMING) && !defined(MODE_RENDER_DEPTH) && (defined(UV_USED) || defined(STREAMING_UV_USED))
@@ -1297,6 +1303,21 @@ void fragment_shader(in SceneData scene_data) {
 	float normal_map_depth = 1.0;
 
 	vec2 screen_uv = gl_FragCoord.xy * scene_data.screen_pixel_size;
+
+	// wgodot-changes::begin
+#ifdef SCREEN_DISTORTION_UV_USED
+	vec2 distorted_screen_uv = screen_uv;
+#ifndef MODE_RENDER_SDF
+#ifdef USE_MULTIVIEW
+	vec4 packed_distortion = textureLod(sampler2DArray(screen_distortion_offsets, SAMPLER_NEAREST_CLAMP), vec3(screen_uv, ViewIndex), 0.0);
+#else
+	vec4 packed_distortion = textureLod(sampler2D(screen_distortion_offsets, SAMPLER_NEAREST_CLAMP), screen_uv, 0.0);
+#endif
+	vec2 distortion_size = vec2(textureSize(multiviewSampler(color_buffer, SAMPLER_NEAREST_CLAMP), 0).xy);
+	screen_distortion_uv(ivec2(gl_FragCoord.xy), distortion_size, implementation_data.screen_distortion_region, packed_distortion, distorted_screen_uv);
+#endif
+#endif
+	// wgodot-changes::end
 
 	float sss_strength = 0.0;
 

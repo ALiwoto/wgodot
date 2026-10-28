@@ -62,6 +62,29 @@ Transform3D ParticleInstance3D::get_particle_transform() const {
 	return get_render_transform(const_cast<ParticleInstance3D *>(this));
 }
 
+AABB ParticleInstance3D::get_simulation_aabb() const {
+	// Simulation-space bounds deliberately exclude camera-facing rotations and
+	// camera offsets. Capture while advancing the simulation, before attachments
+	// can move again for rendering. These are distinct from render culling bounds.
+	const Transform3D emitter = get_emitter_transform();
+	const Vector3 center = follows_emitter || sprite_motion.is_valid() ? get_particle_transform().xform(state_position) : state_position;
+	const Vector3 scaled_size = (state_bounds_size * emitter.basis.get_scale()).abs();
+	Vector3 extent;
+	if (sprite_motion.is_valid()) {
+		const Vector2 pivot = sprite_motion->get_pivot_offset();
+		const Vector3 pivot_extent = (state_bounds_size * Vector3(pivot.x - 0.5, 0, pivot.y - 0.5)).abs();
+		const Vector3 base_extent = sprite_motion->get_orbit() ? state_orbit_offset.abs() : scaled_size;
+		const real_t radius = base_extent[base_extent.max_axis_index()] + pivot_extent[pivot_extent.max_axis_index()];
+		extent = Vector3(radius, radius, radius);
+	} else {
+		const MeshInstance3D *mesh = Object::cast_to<MeshInstance3D>(geometry);
+		if (mesh && mesh->get_mesh().is_valid()) {
+			extent = mesh->get_mesh()->get_aabb().size * 0.5 * scaled_size;
+		}
+	}
+	return AABB(center - extent, extent * 2);
+}
+
 bool ParticleInstance3D::is_render_visible(Node3D *p_node) const {
 	if (!instance_pool) {
 		return p_node->is_visible_in_tree();

@@ -465,6 +465,7 @@ bool ParticleInstance3D::sample_playback(double p_seconds, double p_delta, const
 	}
 	age = state_inverse_lifetime > 0.0 ? state_relative_age / state_inverse_lifetime : 0.0;
 	state_previous_age = age;
+	state_bounds_size = state_size;
 	if (is_visible()) {
 		const double relative_age = birth_curve_age >= 0.0 ? birth_curve_age : state_relative_age;
 		if (update_camera_offset && !spawned_now) {
@@ -522,6 +523,7 @@ bool ParticleInstance3D::sample_playback(double p_seconds, double p_delta, const
 			}
 			Vector3 location = state_position;
 			Vector3 size = motion->scale_at(source_size_clock ? state_relative_age : relative_age, state_size, size_random, size_life_random, spawned_now, state_velocity);
+			state_bounds_size = size;
 			if (!follows_emitter) {
 				size *= emitter.basis.get_scale();
 			}
@@ -560,7 +562,11 @@ bool ParticleInstance3D::sample_playback(double p_seconds, double p_delta, const
 		}
 		if (light) {
 			light->set_visible(state_light_enabled);
-			light_parameters->apply(light, relative_age, tint, sprite_motion->size_at(relative_age, state_size, size_random, size_life_random, spawned_now, state_velocity), emitter.basis.get_scale(), p_parameter_ratio, color_random, state_light_radius_multiplier);
+			const Vector3 light_size = sprite_motion->scale_at(relative_age, state_size, size_random, size_life_random, spawned_now, state_velocity);
+			if (!geometry) {
+				state_bounds_size = light_size;
+			}
+			light_parameters->apply(light, relative_age, tint, Vector2(light_size.x, sprite_motion->get_square() ? light_size.x : light_size.z), emitter.basis.get_scale(), p_parameter_ratio, color_random, state_light_radius_multiplier);
 		}
 	}
 	if (p_linked_particle) {
