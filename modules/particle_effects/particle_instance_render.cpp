@@ -8,6 +8,7 @@ void ParticleInstance3D::collect_render_instances(Node *p_node) {
 	if (visual) {
 		RenderInstance instance;
 		instance.visual = visual;
+		RenderingServer::get_singleton()->instance_geometry_set_flag(visual->get_instance(), RSE::INSTANCE_FLAG_PARTICLE_EFFECT, true);
 		instance.geometry = Object::cast_to<GeometryInstance3D>(visual);
 		if (instance.geometry) {
 			instance.authored_aabb = instance.geometry->get_custom_aabb();

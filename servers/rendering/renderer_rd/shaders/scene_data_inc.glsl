@@ -81,4 +81,7 @@ struct SceneData {
 	float IBL_exposure_normalization;
 	uint camera_visible_layers;
 	float pass_alpha_multiplier;
+	// wgodot-changes::begin
+	vec4 clip_plane;
+	// wgodot-changes::end
 };

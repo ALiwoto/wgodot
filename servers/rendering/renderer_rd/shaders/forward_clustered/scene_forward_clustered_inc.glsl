@@ -150,6 +150,12 @@ bool sc_use_lightmap_specular() {
 	return ((sc_packed_1() >> 6) & 1U) != 0;
 }
 
+// wgodot-changes::begin
+bool sc_use_clip_plane() {
+	return ((sc_packed_1() >> 8) & 1U) != 0;
+}
+// wgodot-changes::end
+
 bool sc_material_feedback() {
 	return ((sc_packed_1() >> 7) & 1U) != 0;
 }

@@ -311,6 +311,12 @@ public:
 		bool is_orthogonal;
 		// wgodot-changes::begin
 		bool infinite_far = false;
+		bool planar_reflection = false;
+		bool exclude_particles = false;
+		float mesh_lod_scale = 1.0f;
+		Plane clip_plane;
+		float reflection_roughness = 0.0f;
+		float reflection_roughness_distance = 100.0f;
 		// wgodot-changes::end
 		uint32_t visible_layers;
 		bool vaspect;

@@ -54,6 +54,11 @@ protected:
 	LocalVector<float> blend_shape_tracks;
 	HashMap<StringName, int> blend_shape_properties;
 	Vector<Ref<Material>> surface_override_materials;
+	// wgodot-changes::begin
+	Vector<int32_t> surface_override_sources;
+	Ref<Material> _effective_surface_override(int p_surface) const;
+	void _update_surface_override(int p_surface);
+	// wgodot-changes::end
 
 	void _mesh_changed();
 	void _resolve_skeleton_path();

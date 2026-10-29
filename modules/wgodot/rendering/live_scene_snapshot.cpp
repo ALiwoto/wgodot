@@ -5,6 +5,7 @@
 #include "core/io/marshalls.h"
 #include "core/object/callable_mp.h"
 #include "core/os/thread.h"
+#include "core/os/semaphore.h"
 #include "core/templates/hash_set.h"
 #include "render_capture.h"
 #include "scene/3d/camera_3d.h"
@@ -17,6 +18,10 @@
 #include "scene/main/canvas_item.h"
 #include "scene/main/viewport.h"
 #include "scene/resources/material.h"
+#include "scene/resources/mesh_lod_profile.h"
+#include "servers/rendering/rendering_method.h"
+#include "servers/rendering/rendering_server.h"
+#include "servers/rendering/rendering_server_globals.h"
 #include "modules/modules_enabled.gen.h"
 #ifdef MODULE_PARTICLE_EFFECTS_ENABLED
 #include "modules/particle_effects/particle_instance_3d.h"
@@ -27,7 +32,23 @@ namespace {
 // Wire version 2. Records carry typed numbers/strings/raw uniform words, never
 // Variant dictionaries, reflection property lists, texture pixels or vertices.
 // See tools/porting/live/wire.py in the client project's research tooling.
-enum Kind { SPATIAL = 1, SKELETON, MESH, MATERIAL, UNIFORM, PARTICLE, CAMERA, LIGHT, DECAL, AUDIO, ANIMATION, BODY, GEOMETRY, INSTANCE_UNIFORM };
+enum Kind { SPATIAL = 1, SKELETON, MESH, MATERIAL, UNIFORM, PARTICLE, CAMERA, LIGHT, DECAL, AUDIO, ANIMATION, BODY, GEOMETRY, INSTANCE_UNIFORM, MESH_LOD };
+
+struct MeshLevelBatch : public RefCounted {
+	GDSOFTCLASS(MeshLevelBatch, RefCounted);
+
+public:
+	Vector<RID> instances;
+	Vector<int32_t> levels;
+	Semaphore completed;
+	static void read(Ref<MeshLevelBatch> p_batch) {
+		p_batch->levels.resize(p_batch->instances.size());
+		for (int i = 0; i < p_batch->instances.size(); i++) {
+			p_batch->levels.write[i] = RSG::scene->instance_geometry_get_mesh_lod(p_batch->instances[i]);
+		}
+		p_batch->completed.post();
+	}
+};
 
 struct Writer {
 	Ref<StreamPeerBuffer> output;
@@ -171,6 +192,9 @@ PackedByteArray WLiveSceneProbe::snapshot(Node *p_root, Skeleton3D *p_body) {
 		writer.record(BODY, String(p_root->get_path_to(p_body)), {}, {});
 	}
 	Vector<Node *> pending = { p_root };
+	Vector<MeshInstance3D *> meshes;
+	Ref<MeshLevelBatch> mesh_levels;
+	mesh_levels.instantiate();
 	HashSet<ObjectID> visited;
 	while (!pending.is_empty()) {
 		Node *node = pending[pending.size() - 1];
@@ -239,10 +263,8 @@ PackedByteArray WLiveSceneProbe::snapshot(Node *p_root, Skeleton3D *p_body) {
 		if (MeshInstance3D *mesh = Object::cast_to<MeshInstance3D>(node)) {
 			if (mesh->get_mesh().is_valid()) {
 				writer.record(MESH, path, { mesh->get_mesh()->get_path(), mesh->get_mesh()->get_name() }, { double(mesh->get_layer_mask()), double(mesh->get_cast_shadows_setting()), mesh->get_transparency() });
-				for (int i = 0; i < mesh->get_mesh()->get_surface_count(); i++) {
-					writer.material(mesh->get_active_material(i), path + ":" + itos(i));
-				}
-				writer.material(mesh->get_material_overlay(), path + ":overlay");
+				meshes.push_back(mesh);
+				mesh_levels->instances.push_back(mesh->get_instance());
 			}
 		}
 #ifdef MODULE_PARTICLE_EFFECTS_ENABLED
@@ -298,6 +320,30 @@ PackedByteArray WLiveSceneProbe::snapshot(Node *p_root, Skeleton3D *p_body) {
 					{ double(animation->is_playing()), valid ? animation->get_current_animation_position() : 0.0, animation->get_playing_speed(), double(valid) });
 		}
 		ERR_FAIL_COND_V_MSG(writer.output->get_size() > MAX_MESSAGE_BYTES - 8, PackedByteArray(), "Live snapshot exceeded its memory budget. No recording was written.");
+	}
+	if (!meshes.is_empty()) {
+		// One batched fence per explicit inspection, never per mesh or gameplay frame.
+		RenderingServer::get_singleton()->call_on_render_thread(callable_mp_static(&MeshLevelBatch::read).bind(mesh_levels));
+		mesh_levels->completed.wait();
+		for (int i = 0; i < meshes.size(); i++) {
+			MeshInstance3D *mesh = meshes[i];
+			String path = mesh->is_inside_tree() ? String(p_root->get_path_to(mesh)) : "@" + uitos(mesh->get_instance_id());
+			Ref<ArrayMesh> array_mesh = mesh->get_mesh();
+			Ref<MeshLODProfile> profile = array_mesh.is_valid() ? array_mesh->get_lod_profile() : Ref<MeshLODProfile>();
+			const int level = mesh_levels->levels[i];
+			Vector<double> surfaces;
+			for (int surface = 0; surface < mesh->get_mesh()->get_surface_count(); surface++) {
+				if (profile.is_valid() && level >= 0 && profile->get_data().surface_levels[surface] != level) {
+					continue;
+				}
+				surfaces.push_back(surface);
+				writer.material(mesh->get_active_material(surface), path + ":" + itos(surface));
+			}
+			surfaces.insert(0, level);
+			writer.record(MESH_LOD, path, {}, surfaces);
+			writer.material(mesh->get_material_overlay(), path + ":overlay");
+			ERR_FAIL_COND_V_MSG(writer.output->get_size() > MAX_MESSAGE_BYTES - 8, PackedByteArray(), "Live snapshot exceeded its memory budget. No recording was written.");
+		}
 	}
 	Vector<ObjectID> removed;
 	for (const KeyValue<ObjectID, SkeletonPose> &entry : skeleton_poses) {

@@ -4,6 +4,9 @@
 /**************************************************************************/
 
 #include "register_types.h"
+#ifndef _3D_DISABLED
+#include "rendering/planar_reflection_3d.h"
+#endif
 #include "animation/affine_skeleton_2d.h"
 #include "animation/gradient_noise_1d.h"
 #include "animation/skinned_mesh_2d.h"
@@ -58,6 +61,9 @@ void initialize_wgodot_module(ModuleInitializationLevel p_level) {
 		GDREGISTER_CLASS(Skin2D);
 		GDREGISTER_CLASS(SkinnedMesh2D);
 		GDREGISTER_CLASS(WAnimation);
+#ifndef _3D_DISABLED
+		GDREGISTER_CLASS(PlanarReflection3D);
+#endif
 		register_animation_codec();
 		register_curve_codec();
 		register_shader_material_codec();

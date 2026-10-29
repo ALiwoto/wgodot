@@ -3,6 +3,27 @@
 
 #include "core/object/class_db.h"
 
+Ref<MeshLODProfile> MeshLODProfile::scaled(const Vector3 &p_scale) const {
+	Ref<MeshLODProfile> result;
+	result.instantiate();
+	result->data = data;
+	result->surface_override_sources = surface_override_sources;
+	result->data.center *= p_scale;
+	const Vector3 magnitude = p_scale.abs();
+	result->data.radius *= magnitude[magnitude.max_axis_index()];
+	return result;
+}
+
+void MeshLODProfile::set_surface_override_sources(const Vector<int32_t> &p_sources) {
+	for (int i = 0; i < p_sources.size(); i++) {
+		const int source = p_sources[i];
+		ERR_FAIL_COND(source < -1 || source >= p_sources.size());
+		ERR_FAIL_COND(source >= 0 && (source == i || p_sources[source] != -1));
+	}
+	surface_override_sources = p_sources;
+	emit_changed();
+}
+
 void MeshLODProfile::set_surface_levels(const Vector<int32_t> &p_levels) {
 	data.surface_levels = p_levels;
 	emit_changed();
@@ -32,6 +53,9 @@ void MeshLODProfile::set_minimum_level(int p_level) {
 }
 
 void MeshLODProfile::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("set_surface_override_sources", "sources"), &MeshLODProfile::set_surface_override_sources);
+	ClassDB::bind_method(D_METHOD("get_surface_override_sources"), &MeshLODProfile::get_surface_override_sources);
+	ADD_PROPERTY(PropertyInfo(Variant::PACKED_INT32_ARRAY, "surface_override_sources"), "set_surface_override_sources", "get_surface_override_sources");
 	ClassDB::bind_method(D_METHOD("set_surface_levels", "levels"), &MeshLODProfile::set_surface_levels);
 	ClassDB::bind_method(D_METHOD("get_surface_levels"), &MeshLODProfile::get_surface_levels);
 	ClassDB::bind_method(D_METHOD("set_thresholds", "thresholds"), &MeshLODProfile::set_thresholds);

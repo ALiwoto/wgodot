@@ -48,6 +48,9 @@ public:
 		SHADER_GROUP_ADVANCED,
 		SHADER_GROUP_MULTIVIEW,
 		SHADER_GROUP_ADVANCED_MULTIVIEW,
+		// wgodot-changes::begin
+		SHADER_GROUP_CLIPPED,
+		// wgodot-changes::end
 	};
 
 	// Not an enum because these values are constants that are processed as numbers
@@ -130,6 +133,9 @@ public:
 				uint32_t cluster_has_area_light : 1;
 				uint32_t use_lightmap_specular : 1;
 				uint32_t material_feedback : 1;
+				// wgodot-changes::begin
+				uint32_t use_clip_plane : 1;
+				// wgodot-changes::end
 			};
 		};
 
@@ -397,6 +403,9 @@ public:
 	void set_default_specialization(const ShaderSpecialization &p_specialization);
 	void enable_multiview_shader_group();
 	void enable_advanced_shader_group(bool p_needs_multiview = false);
+	// wgodot-changes::begin
+	void enable_clipped_shader_group() { shader.enable_group(SHADER_GROUP_CLIPPED); }
+	// wgodot-changes::end
 	bool is_multiview_shader_group_enabled() const;
 	bool is_advanced_shader_group_enabled(bool p_multiview) const;
 	uint32_t get_pipeline_compilations(RSE::PipelineSource p_source);

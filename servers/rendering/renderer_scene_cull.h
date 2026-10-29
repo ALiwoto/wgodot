@@ -83,6 +83,12 @@ public:
 		float znear, zfar;
 		// wgodot-changes::begin
 		bool infinite_far = false;
+		RID reflection_source;
+		Plane reflection_plane;
+		bool reflection_particles = true;
+		float reflection_roughness = 0.0f;
+		float reflection_roughness_distance = 100.0f;
+		float reflection_lod_scale = 1.0f;
 		// wgodot-changes::end
 		float size;
 		Vector2 offset;
@@ -116,6 +122,7 @@ public:
 	virtual void camera_set_perspective(RID p_camera, float p_fovy_degrees, float p_z_near, float p_z_far);
 	// wgodot-changes::begin
 	virtual void camera_set_infinite_far(RID p_camera, bool p_enabled);
+	virtual void camera_set_planar_reflection(RID p_camera, RID p_source, const Plane &p_plane, bool p_render_particles, float p_prefilter_roughness, float p_roughness_distance, float p_lod_scale);
 	// wgodot-changes::end
 	virtual void camera_set_orthogonal(RID p_camera, float p_size, float p_z_near, float p_z_far);
 	virtual void camera_set_frustum(RID p_camera, float p_size, Vector2 p_offset, float p_z_near, float p_z_far);
@@ -288,6 +295,7 @@ public:
 			FLAG_IGNORE_ALL_CULLING = (1 << 24),
 // wgodot-changes::begin
 			FLAG_AUTHORED_MESH_LOD = (1 << 25),
+			FLAG_PARTICLE_EFFECT = (1 << 26),
 // wgodot-changes::end
 
 		};
@@ -429,6 +437,9 @@ public:
 		float lod_bias;
 
 		bool ignore_occlusion_culling;
+		// wgodot-changes::begin
+		bool particle_effect = false;
+		// wgodot-changes::end
 		bool ignore_all_culling;
 
 		Vector<RID> materials;
@@ -1080,6 +1091,11 @@ public:
 
 	virtual void instance_geometry_set_lightmap(RID p_instance, RID p_lightmap, const Rect2 &p_lightmap_uv_scale, int p_slice_index);
 	virtual void instance_geometry_set_lod_bias(RID p_instance, float p_lod_bias);
+	// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+	int instance_geometry_get_mesh_lod(RID p_instance) const override;
+#endif
+	// wgodot-changes::end
 
 	virtual void instance_geometry_set_shader_parameter(RID p_instance, const StringName &p_parameter, const Variant &p_value);
 	// wgodot-changes::begin
@@ -1101,7 +1117,7 @@ public:
 
 	void _light_instance_setup_directional_shadow(int p_shadow_index, Instance *p_instance, const Transform3D p_cam_transform, const Projection &p_cam_projection, bool p_cam_orthogonal, bool p_cam_vaspect);
 
-	_FORCE_INLINE_ bool _light_instance_update_shadow(Instance *p_instance, const Transform3D p_cam_transform, const Projection &p_cam_projection, bool p_cam_orthogonal, bool p_cam_vaspect, RID p_shadow_atlas, Scenario *p_scenario, float p_screen_mesh_lod_threshold, uint32_t p_visible_layers = 0xFFFFFF);
+	_FORCE_INLINE_ bool _light_instance_update_shadow(Instance *p_instance, const Transform3D p_cam_transform, const Projection &p_cam_projection, bool p_cam_orthogonal, bool p_cam_vaspect, RID p_shadow_atlas, Scenario *p_scenario, float p_screen_mesh_lod_threshold, uint32_t p_visible_layers = 0xFFFFFF, bool p_exclude_particles = false);
 
 	RID _render_get_environment(RID p_camera, RID p_scenario);
 	RID _render_get_compositor(RID p_camera, RID p_scenario);
@@ -1165,6 +1181,10 @@ public:
 		Transform3D cam_transform;
 		uint32_t visible_layers;
 		Instance *render_reflection_probe = nullptr;
+		// wgodot-changes::begin
+		bool exclude_particles = false;
+		float mesh_lod_scale = 1.0f;
+		// wgodot-changes::end
 		const RendererSceneOcclusionCull::HZBuffer *occlusion_buffer;
 		const Projection *camera_matrix;
 		uint64_t visibility_viewport_mask;

@@ -33,6 +33,9 @@
 #include "servers/rendering/renderer_compositor.h"
 #include "servers/rendering/renderer_rd/effects/bokeh_dof.h"
 #include "servers/rendering/renderer_rd/effects/copy_effects.h"
+// wgodot-changes::begin
+#include "servers/rendering/renderer_rd/effects/planar_reflection_filter.h"
+// wgodot-changes::end
 #include "servers/rendering/renderer_rd/effects/debug_effects.h"
 #include "servers/rendering/renderer_rd/effects/fsr.h"
 #include "servers/rendering/renderer_rd/effects/luminance.h"
@@ -62,6 +65,9 @@ protected:
 	RendererRD::ForwardIDStorage *forward_id_storage = nullptr;
 	RendererRD::BokehDOF *bokeh_dof = nullptr;
 	RendererRD::CopyEffects *copy_effects = nullptr;
+	// wgodot-changes::begin
+	RendererRD::PlanarReflectionFilter *planar_reflection_filter = nullptr;
+	// wgodot-changes::end
 	RendererRD::DebugEffects *debug_effects = nullptr;
 	RendererRD::Luminance *luminance = nullptr;
 	RendererRD::SMAA *smaa = nullptr;

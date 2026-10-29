@@ -38,7 +38,23 @@ Error gltf_parse_mesh_lods(const Dictionary &p_extras, const Ref<ImporterMesh> &
 	profile->set_center(origin);
 	profile->set_radius(radius);
 	profile->set_minimum_level(int(minimum_level));
-	ERR_FAIL_COND_V_MSG(!profile->get_data().is_valid(p_mesh->get_surface_count()), ERR_FILE_CORRUPT, "glTF mesh LOD profile does not cover its surfaces.");
+	if (description.has("surface_override_sources")) {
+		const Array sources = description["surface_override_sources"];
+		ERR_FAIL_COND_V(sources.size() != surface_levels.size(), ERR_FILE_CORRUPT);
+		Vector<int32_t> overrides;
+		overrides.resize(sources.size());
+		for (int i = 0; i < sources.size(); i++) {
+			const double source = sources[i];
+			ERR_FAIL_COND_V(!Math::is_finite(source) || source < -1 || source >= sources.size() || source != Math::floor(source), ERR_FILE_CORRUPT);
+			overrides.write[i] = int32_t(source);
+		}
+		for (int i = 0; i < overrides.size(); i++) {
+			const int source = overrides[i];
+			ERR_FAIL_COND_V(source >= 0 && (source == i || overrides[source] != -1), ERR_FILE_CORRUPT);
+		}
+		profile->set_surface_override_sources(overrides);
+	}
+	ERR_FAIL_COND_V_MSG(!profile->is_valid(p_mesh->get_surface_count()), ERR_FILE_CORRUPT, "glTF mesh LOD profile does not cover its surfaces.");
 	p_mesh->set_lod_profile(profile);
 	return OK;
 }

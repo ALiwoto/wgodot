@@ -563,7 +563,13 @@ void SceneShaderForwardClustered::ShaderData::_create_pipeline(PipelineKey p_pip
 	sc.type = RD::PIPELINE_SPECIALIZATION_CONSTANT_TYPE_BOOL;
 	specialization_constants.push_back(sc);
 
-	RID shader_rid = get_shader_variant(p_pipeline_key.version, p_pipeline_key.color_pass_flags, p_pipeline_key.ubershader);
+	// wgodot-changes::begin
+	uint16_t shader_version = _get_shader_version(p_pipeline_key.version, p_pipeline_key.color_pass_flags, p_pipeline_key.ubershader);
+	if (p_pipeline_key.version == PIPELINE_VERSION_COLOR_PASS && p_pipeline_key.shader_specialization.use_clip_plane) {
+		shader_version += SHADER_COLOR_PASS_FLAG_COUNT;
+	}
+	RID shader_rid = _get_shader_variant(shader_version);
+	// wgodot-changes::end
 	ERR_FAIL_COND(shader_rid.is_null());
 
 	RID pipeline = RD::get_singleton()->render_pipeline_create(shader_rid, p_pipeline_key.framebuffer_format_id, p_pipeline_key.vertex_format_id, primitive_rd, raster_state, multisample_state, depth_stencil_state, blend_state, 0, 0, specialization_constants);
@@ -755,6 +761,17 @@ void SceneShaderForwardClustered::init(const String p_defines) {
 
 			shader_versions.push_back(ShaderRD::VariantDefine(group, version, false));
 		}
+
+		// wgodot-changes::begin
+		// Clipped color passes must not write depth/stencil before the clip test.
+		// Keep the normal streaming Early-Z shaders unchanged. These variants are
+		// enabled only when a planar reflection is actually rendered; their vertex
+		// inputs and descriptor layouts are identical to the normal color pass.
+		for (int i = 0; i < SHADER_COLOR_PASS_FLAG_COUNT; i++) {
+			const String version = String::utf8(shader_versions[ShaderVersion::SHADER_VERSION_COLOR_PASS * 2 + i].text.get_data()) + "\n#define VIEW_CLIP_PLANE\n";
+			shader_versions.push_back(ShaderRD::VariantDefine(SHADER_GROUP_CLIPPED, version, false));
+		}
+		// wgodot-changes::end
 
 		Vector<uint64_t> dynamic_buffers;
 		dynamic_buffers.push_back(ShaderRD::DynamicBuffer::encode(RenderForwardClustered::RENDER_PASS_UNIFORM_SET, 2));

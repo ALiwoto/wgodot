@@ -1814,6 +1814,9 @@ void CPUParticles3D::_bind_methods() {
 }
 
 CPUParticles3D::CPUParticles3D() {
+	// wgodot-changes::begin
+	RS::get_singleton()->instance_geometry_set_flag(get_instance(), RSE::INSTANCE_FLAG_PARTICLE_EFFECT, true);
+	// wgodot-changes::end
 	set_notify_transform(true);
 
 	multimesh = RenderingServer::get_singleton()->multimesh_create();

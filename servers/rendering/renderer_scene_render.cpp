@@ -40,6 +40,12 @@ void RendererSceneRender::CameraData::set_camera(const Transform3D p_transform, 
 	is_orthogonal = p_is_orthogonal;
 	// wgodot-changes::begin
 	infinite_far = false;
+	planar_reflection = false;
+	exclude_particles = false;
+	mesh_lod_scale = 1.0f;
+	clip_plane = Plane();
+	reflection_roughness = 0.0f;
+	reflection_roughness_distance = 100.0f;
 	// wgodot-changes::end
 	vaspect = p_vaspect;
 
@@ -62,6 +68,12 @@ void RendererSceneRender::CameraData::set_multiview_camera(const Transform3D &p_
 	is_orthogonal = p_is_orthogonal;
 	// wgodot-changes::begin
 	infinite_far = false;
+	planar_reflection = false;
+	exclude_particles = false;
+	mesh_lod_scale = 1.0f;
+	clip_plane = Plane();
+	reflection_roughness = 0.0f;
+	reflection_roughness_distance = 100.0f;
 	// wgodot-changes::end
 	vaspect = p_vaspect;
 

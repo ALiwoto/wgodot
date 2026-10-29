@@ -129,6 +129,9 @@ public:
 
 	void create_shadow_mesh();
 	Ref<ImporterMesh> get_shadow_mesh() const;
+	// wgodot-changes::begin
+	void set_shadow_mesh(const Ref<ImporterMesh> &p_mesh);
+	// wgodot-changes::end
 
 	Vector<Face3> get_faces() const;
 #ifndef PHYSICS_3D_DISABLED

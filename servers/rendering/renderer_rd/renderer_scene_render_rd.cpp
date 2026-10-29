@@ -490,6 +490,16 @@ void RendererSceneRenderRD::_render_buffers_post_process_and_tonemap(const Rende
 
 	ERR_FAIL_COND_MSG(p_render_data->reflection_probe.is_valid(), "Post processes should not be applied on reflection probes.");
 
+	// wgodot-changes::begin
+	if (p_render_data->scene_data->planar_reflection) {
+		if (!planar_reflection_filter) {
+			planar_reflection_filter = memnew(RendererRD::PlanarReflectionFilter);
+		}
+		RENDER_TIMESTAMP("Planar Reflection Filter");
+		planar_reflection_filter->render(rb, *p_render_data->scene_data, texture_storage->render_target_get_rd_framebuffer(rb->get_render_target()));
+		return; // Scene-linear HDR; no compositor, tone mapping or CPU readback.
+	}
+	// wgodot-changes::end
 	// Glow, auto exposure and DoF (if enabled).
 
 	Size2i target_size = rb->get_target_size();
@@ -1413,6 +1423,10 @@ void RendererSceneRenderRD::render_scene(const Ref<RenderSceneBuffers> &p_render
 		scene_data.cam_projection = p_camera_data->main_projection;
 		// wgodot-changes::begin
 		scene_data.infinite_far = p_camera_data->infinite_far;
+		scene_data.planar_reflection = p_camera_data->planar_reflection;
+		scene_data.clip_plane = p_camera_data->clip_plane;
+		scene_data.reflection_roughness = p_camera_data->reflection_roughness;
+		scene_data.reflection_roughness_distance = p_camera_data->reflection_roughness_distance;
 		scene_data.effects_projection = p_camera_data->main_projection;
 		scene_data.cam_projection = CameraProjection::for_rendering(scene_data.cam_projection, scene_data.infinite_far);
 		// wgodot-changes::end
@@ -1962,6 +1976,11 @@ RendererSceneRenderRD::~RendererSceneRenderRD() {
 
 	memdelete(bokeh_dof);
 	memdelete(copy_effects);
+	// wgodot-changes::begin
+	if (planar_reflection_filter) {
+		memdelete(planar_reflection_filter);
+	}
+	// wgodot-changes::end
 	memdelete(debug_effects);
 	memdelete(luminance);
 	memdelete(smaa);

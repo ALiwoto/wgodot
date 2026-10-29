@@ -57,6 +57,7 @@ public:
 	virtual void camera_set_perspective(RID p_camera, float p_fovy_degrees, float p_z_near, float p_z_far) = 0;
 	// wgodot-changes::begin
 	virtual void camera_set_infinite_far(RID p_camera, bool p_enabled) = 0;
+	virtual void camera_set_planar_reflection(RID p_camera, RID p_source, const Plane &p_plane, bool p_render_particles, float p_prefilter_roughness, float p_roughness_distance, float p_lod_scale) = 0;
 	// wgodot-changes::end
 	virtual void camera_set_orthogonal(RID p_camera, float p_size, float p_z_near, float p_z_far) = 0;
 	virtual void camera_set_frustum(RID p_camera, float p_size, Vector2 p_offset, float p_z_near, float p_z_far) = 0;
@@ -127,6 +128,12 @@ public:
 	virtual void instance_geometry_set_visibility_range(RID p_instance, float p_min, float p_max, float p_min_margin, float p_max_margin, RSE::VisibilityRangeFadeMode p_fade_mode) = 0;
 	virtual void instance_geometry_set_lightmap(RID p_instance, RID p_lightmap, const Rect2 &p_lightmap_uv_scale, int p_slice_index) = 0;
 	virtual void instance_geometry_set_lod_bias(RID p_instance, float p_lod_bias) = 0;
+	// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+	// Render-thread inspection of the submitted authored mesh level; -1 when unavailable.
+	virtual int instance_geometry_get_mesh_lod(RID p_instance) const { return -1; }
+#endif
+	// wgodot-changes::end
 	virtual void instance_geometry_set_shader_parameter(RID p_instance, const StringName &p_parameter, const Variant &p_value) = 0;
 	// wgodot-changes::begin
 	virtual Ref<WInstanceShaderParameters> instance_geometry_get_shader_parameters(RID p_instance) = 0;

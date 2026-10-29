@@ -740,6 +740,7 @@ public:
 	FUNC4(camera_set_perspective, RID, float, float, float)
 	// wgodot-changes::begin
 	FUNC2(camera_set_infinite_far, RID, bool)
+	FUNC7(camera_set_planar_reflection, RID, RID, const Plane &, bool, float, float, float)
 	// wgodot-changes::end
 	FUNC4(camera_set_orthogonal, RID, float, float, float)
 	FUNC5(camera_set_frustum, RID, float, Vector2, float, float)

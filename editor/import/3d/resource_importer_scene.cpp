@@ -293,8 +293,8 @@ String ResourceImporterScene::get_resource_type() const {
 
 int ResourceImporterScene::get_format_version() const {
 	// wgodot-changes::begin
-	// Repack cached meshes with nearest-rounded UNORM16 skin weights.
-	return _scene_import_type == "AnimationLibrary" ? 1 : 2;
+	// Reimport cached scenes that lost authored LOD profiles during rescaling.
+	return _scene_import_type == "AnimationLibrary" ? 1 : 3;
 	// wgodot-changes::end
 }
 
@@ -504,6 +504,15 @@ struct ScalableNodeCollection {
 };
 
 void _rescale_importer_mesh(Vector3 p_scale, Ref<ImporterMesh> p_mesh, bool is_shadow = false) {
+	// wgodot-changes::begin
+	if (p_scale == Vector3(1, 1, 1)) {
+		return;
+	}
+	const Ref<MeshLODProfile> lod_profile = p_mesh->get_lod_profile();
+	const Ref<ImporterMesh> shadow_mesh = p_mesh->get_shadow_mesh();
+	const Vector3 scale_magnitude = p_scale.abs();
+	const float lod_scale = scale_magnitude[scale_magnitude.max_axis_index()];
+	// wgodot-changes::end
 	// MESH and SKIN data divide, to compensate for object position multiplying.
 
 	const int surf_count = p_mesh->get_surface_count();
@@ -532,6 +541,11 @@ void _rescale_importer_mesh(Vector3 p_scale, Ref<ImporterMesh> p_mesh, bool is_s
 		String name = p_mesh->get_surface_name(surf_idx);
 		Dictionary lods;
 		Ref<Material> mat = p_mesh->get_surface_material(surf_idx);
+		// wgodot-changes::begin
+		for (int lod = 0; lod < p_mesh->get_surface_lod_count(surf_idx); lod++) {
+			lods[p_mesh->get_surface_lod_size(surf_idx, lod) * lod_scale] = p_mesh->get_surface_lod_indices(surf_idx, lod);
+		}
+		// wgodot-changes::end
 		{
 			Vector<Vector3> vertex_array = arr[ArrayMesh::ARRAY_VERTEX];
 			for (int vert_arr_i = 0; vert_arr_i < vertex_array.size(); vert_arr_i++) {
@@ -581,9 +595,15 @@ void _rescale_importer_mesh(Vector3 p_scale, Ref<ImporterMesh> p_mesh, bool is_s
 		p_mesh->add_surface(prim, arr, bsarr, lods, mat, name, fmt_compress_flags);
 	}
 
-	if (!is_shadow && p_mesh->get_shadow_mesh() != p_mesh && p_mesh->get_shadow_mesh().is_valid()) {
-		_rescale_importer_mesh(p_scale, p_mesh->get_shadow_mesh(), true);
+	// wgodot-changes::begin
+	if (lod_profile.is_valid()) {
+		p_mesh->set_lod_profile(lod_profile->scaled(p_scale));
 	}
+	if (!is_shadow && shadow_mesh.is_valid() && shadow_mesh != p_mesh) {
+		_rescale_importer_mesh(p_scale, shadow_mesh, true);
+		p_mesh->set_shadow_mesh(shadow_mesh);
+	}
+	// wgodot-changes::end
 }
 
 void _rescale_skin(Vector3 p_scale, Ref<Skin> p_skin) {

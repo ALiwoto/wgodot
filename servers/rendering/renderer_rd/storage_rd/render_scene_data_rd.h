@@ -46,6 +46,10 @@ public:
 	Projection cam_projection;
 	// wgodot-changes::begin
 	bool infinite_far = false;
+	bool planar_reflection = false;
+	Plane clip_plane;
+	float reflection_roughness = 0.0f;
+	float reflection_roughness_distance = 100.0f;
 	Projection effects_projection; // Finite clustering/fog/shadow range, independent of visibility.
 	const Projection &get_effects_projection() const { return infinite_far ? effects_projection : cam_projection; }
 	// wgodot-changes::end
@@ -187,6 +191,9 @@ private:
 		float IBL_exposure_normalization; // Adjusts for baked exposure.
 		uint32_t camera_visible_layers;
 		float pass_alpha_multiplier;
+		// wgodot-changes::begin
+		float clip_plane[4];
+		// wgodot-changes::end
 	};
 
 	struct UBODATA {

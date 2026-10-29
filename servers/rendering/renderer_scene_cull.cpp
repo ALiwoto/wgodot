@@ -105,6 +105,18 @@ void RendererSceneCull::camera_set_perspective(RID p_camera, float p_fovy_degree
 }
 
 // wgodot-changes::begin
+void RendererSceneCull::camera_set_planar_reflection(RID p_camera, RID p_source, const Plane &p_plane, bool p_render_particles, float p_prefilter_roughness, float p_roughness_distance, float p_lod_scale) {
+	Camera *camera = camera_owner.get_or_null(p_camera);
+	ERR_FAIL_NULL(camera);
+	ERR_FAIL_COND(p_camera == p_source);
+	camera->reflection_source = p_source;
+	camera->reflection_plane = p_plane.normalized();
+	camera->reflection_particles = p_render_particles;
+	camera->reflection_roughness = p_prefilter_roughness;
+	camera->reflection_roughness_distance = p_roughness_distance;
+	camera->reflection_lod_scale = p_lod_scale;
+}
+
 void RendererSceneCull::camera_set_infinite_far(RID p_camera, bool p_enabled) {
 	Camera *camera = camera_owner.get_or_null(p_camera);
 	ERR_FAIL_NULL(camera);
@@ -1364,6 +1376,19 @@ void RendererSceneCull::instance_geometry_set_flag(RID p_instance, RSE::Instance
 			}
 
 		} break;
+		// wgodot-changes::begin
+		case RSE::INSTANCE_FLAG_PARTICLE_EFFECT: {
+			instance->particle_effect = p_enabled;
+			if (instance->scenario && instance->array_index >= 0) {
+				InstanceData &idata = instance->scenario->instance_data[instance->array_index];
+				if (p_enabled) {
+					idata.flags |= InstanceData::FLAG_PARTICLE_EFFECT;
+				} else {
+					idata.flags &= ~InstanceData::FLAG_PARTICLE_EFFECT;
+				}
+			}
+		} break;
+		// wgodot-changes::end
 		case RSE::INSTANCE_FLAG_IGNORE_OCCLUSION_CULLING: {
 			instance->ignore_occlusion_culling = p_enabled;
 
@@ -1626,6 +1651,19 @@ void RendererSceneCull::instance_geometry_set_lod_bias(RID p_instance, float p_l
 		geom->geometry_instance->set_lod_bias(p_lod_bias);
 	}
 }
+
+// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+int RendererSceneCull::instance_geometry_get_mesh_lod(RID p_instance) const {
+	const Instance *instance = instance_owner.get_or_null(p_instance);
+	if (!instance || instance->base_type != RSE::INSTANCE_MESH || !instance->base_data || !RSG::mesh_storage->mesh_get_lod_profile(instance->base)) {
+		return -1;
+	}
+	const InstanceGeometryData *geometry = static_cast<const InstanceGeometryData *>(instance->base_data);
+	return geometry->geometry_instance ? geometry->geometry_instance->mesh_lod_level : -1;
+}
+#endif
+// wgodot-changes::end
 
 void RendererSceneCull::instance_geometry_set_shader_parameter(RID p_instance, const StringName &p_parameter, const Variant &p_value) {
 	Instance *instance = instance_owner.get_or_null(p_instance);
@@ -1929,6 +1967,11 @@ void RendererSceneCull::_update_instance(Instance *p_instance) const {
 			idata.flags |= InstanceData::FLAG_AUTHORED_MESH_LOD;
 		}
 // wgodot-changes::end
+		// wgodot-changes::begin
+		if (p_instance->particle_effect || p_instance->base_type == RSE::INSTANCE_PARTICLES) {
+			idata.flags |= InstanceData::FLAG_PARTICLE_EFFECT;
+		}
+		// wgodot-changes::end
 		if (p_instance->ignore_occlusion_culling) {
 			idata.flags |= InstanceData::FLAG_IGNORE_OCCLUSION_CULLING;
 		}
@@ -2460,7 +2503,7 @@ void RendererSceneCull::_light_instance_setup_directional_shadow(int p_shadow_in
 	}
 }
 
-bool RendererSceneCull::_light_instance_update_shadow(Instance *p_instance, const Transform3D p_cam_transform, const Projection &p_cam_projection, bool p_cam_orthogonal, bool p_cam_vaspect, RID p_shadow_atlas, Scenario *p_scenario, float p_screen_mesh_lod_threshold, uint32_t p_visible_layers) {
+bool RendererSceneCull::_light_instance_update_shadow(Instance *p_instance, const Transform3D p_cam_transform, const Projection &p_cam_projection, bool p_cam_orthogonal, bool p_cam_vaspect, RID p_shadow_atlas, Scenario *p_scenario, float p_screen_mesh_lod_threshold, uint32_t p_visible_layers, bool p_exclude_particles) {
 	InstanceLightData *light = static_cast<InstanceLightData *>(p_instance->base_data);
 
 	Transform3D light_transform = p_instance->transform;
@@ -2520,6 +2563,11 @@ bool RendererSceneCull::_light_instance_update_shadow(Instance *p_instance, cons
 
 					for (int j = 0; j < (int)instance_shadow_cull_result.size(); j++) {
 						Instance *instance = instance_shadow_cull_result[j];
+				// wgodot-changes::begin
+				if (p_exclude_particles && (instance->particle_effect || instance->base_type == RSE::INSTANCE_PARTICLES)) {
+					continue;
+				}
+				// wgodot-changes::end
 						const bool is_inactive_particle = (instance->base_type == RSE::INSTANCE_PARTICLES) && RSG::particles_storage->particles_is_inactive(instance->base);
 						if (!instance->visible || !((1 << instance->base_type) & RSE::INSTANCE_GEOMETRY_MASK) || !static_cast<InstanceGeometryData *>(instance->base_data)->can_cast_shadows || !(p_visible_layers & instance->layer_mask & RSG::light_storage->light_get_shadow_caster_mask(p_instance->base)) || is_inactive_particle) {
 							continue;
@@ -2604,6 +2652,11 @@ bool RendererSceneCull::_light_instance_update_shadow(Instance *p_instance, cons
 
 					for (int j = 0; j < (int)instance_shadow_cull_result.size(); j++) {
 						Instance *instance = instance_shadow_cull_result[j];
+				// wgodot-changes::begin
+				if (p_exclude_particles && (instance->particle_effect || instance->base_type == RSE::INSTANCE_PARTICLES)) {
+					continue;
+				}
+				// wgodot-changes::end
 						const bool is_inactive_particle = (instance->base_type == RSE::INSTANCE_PARTICLES) && RSG::particles_storage->particles_is_inactive(instance->base);
 						if (!instance->visible || !((1 << instance->base_type) & RSE::INSTANCE_GEOMETRY_MASK) || !static_cast<InstanceGeometryData *>(instance->base_data)->can_cast_shadows || !(p_visible_layers & instance->layer_mask & RSG::light_storage->light_get_shadow_caster_mask(p_instance->base)) || is_inactive_particle) {
 							continue;
@@ -2673,6 +2726,11 @@ bool RendererSceneCull::_light_instance_update_shadow(Instance *p_instance, cons
 
 			for (int j = 0; j < (int)instance_shadow_cull_result.size(); j++) {
 				Instance *instance = instance_shadow_cull_result[j];
+				// wgodot-changes::begin
+				if (p_exclude_particles && (instance->particle_effect || instance->base_type == RSE::INSTANCE_PARTICLES)) {
+					continue;
+				}
+				// wgodot-changes::end
 				const bool is_inactive_particle = (instance->base_type == RSE::INSTANCE_PARTICLES) && RSG::particles_storage->particles_is_inactive(instance->base);
 				if (!instance->visible || !((1 << instance->base_type) & RSE::INSTANCE_GEOMETRY_MASK) || !static_cast<InstanceGeometryData *>(instance->base_data)->can_cast_shadows || !(p_visible_layers & instance->layer_mask & RSG::light_storage->light_get_shadow_caster_mask(p_instance->base)) || is_inactive_particle) {
 					continue;
@@ -2740,6 +2798,11 @@ bool RendererSceneCull::_light_instance_update_shadow(Instance *p_instance, cons
 
 			for (int j = 0; j < (int)instance_shadow_cull_result.size(); j++) {
 				Instance *instance = instance_shadow_cull_result[j];
+				// wgodot-changes::begin
+				if (p_exclude_particles && (instance->particle_effect || instance->base_type == RSE::INSTANCE_PARTICLES)) {
+					continue;
+				}
+				// wgodot-changes::end
 				const bool is_inactive_particle = (instance->base_type == RSE::INSTANCE_PARTICLES) && RSG::particles_storage->particles_is_inactive(instance->base);
 				if (!instance->visible || !((1 << instance->base_type) & RSE::INSTANCE_GEOMETRY_MASK) || !static_cast<InstanceGeometryData *>(instance->base_data)->can_cast_shadows || !(p_visible_layers & instance->layer_mask & RSG::light_storage->light_get_shadow_caster_mask(p_instance->base)) || is_inactive_particle) {
 					continue;
@@ -2773,6 +2836,17 @@ void RendererSceneCull::render_camera(const Ref<RenderSceneBuffers> &p_render_bu
 	Camera *camera = camera_owner.get_or_null(p_camera);
 	ERR_FAIL_NULL(camera);
 
+	// wgodot-changes::begin
+	Camera *reflection = camera->reflection_source.is_valid() ? camera : nullptr;
+	if (reflection) {
+		camera = camera_owner.get_or_null(reflection->reflection_source);
+		if (!camera || camera->reflection_source.is_valid()) {
+			return; // Source was removed, or would recurse through another reflection.
+		}
+		ERR_FAIL_COND_MSG(camera->type == Camera::MULTIVIEW_PROJECTION, "Planar reflections currently require a single-view camera.");
+		p_jitter_phase_count = 0;
+	}
+	// wgodot-changes::end
 	Vector2 jitter;
 	float taa_frame_count = 0.0f;
 	if (p_jitter_phase_count > 0) {
@@ -2864,15 +2938,41 @@ void RendererSceneCull::render_camera(const Ref<RenderSceneBuffers> &p_render_bu
 	// XR owns its matrices. Orthographic projection has no infinite perspective limit.
 	camera_data.infinite_far = camera->infinite_far && !is_orthogonal && camera->type != Camera::MULTIVIEW_PROJECTION;
 	// wgodot-changes::end
-	RID environment = _render_get_environment(p_camera, p_scenario);
-	RID compositor = _render_get_compositor(p_camera, p_scenario);
+	// wgodot-changes::begin
+	uint32_t visible_layers = camera->visible_layers;
+	RID source_camera = p_camera;
+	if (reflection) {
+		source_camera = reflection->reflection_source;
+		const Plane &plane = reflection->reflection_plane;
+		Transform3D mirror;
+		for (int column = 0; column < 3; column++) {
+			Vector3 axis;
+			axis[column] = 1.0;
+			mirror.basis.set_column(column, axis - 2.0 * plane.normal[column] * plane.normal);
+		}
+		mirror.origin = 2.0 * plane.d * plane.normal;
+		camera_data.main_transform = mirror * camera_data.main_transform;
+		camera_data.planar_reflection = true;
+		camera_data.exclude_particles = !reflection->reflection_particles;
+		camera_data.mesh_lod_scale = reflection->reflection_lod_scale;
+		camera_data.clip_plane = plane;
+		camera_data.reflection_roughness = reflection->reflection_roughness;
+		camera_data.reflection_roughness_distance = reflection->reflection_roughness_distance;
+		visible_layers &= reflection->visible_layers;
+		camera_data.visible_layers = visible_layers;
+		p_screen_mesh_lod_threshold *= reflection->reflection_lod_scale;
+	}
+	RID environment = _render_get_environment(source_camera, p_scenario);
+	// Reflection textures contain scene-linear radiance, before presentation effects.
+	RID compositor = reflection ? RID() : _render_get_compositor(source_camera, p_scenario);
+	// wgodot-changes::end
 
 	RENDER_TIMESTAMP("Update Occlusion Buffer")
 
 	// For now just cull on the first camera
 	RendererSceneOcclusionCull::get_singleton()->buffer_update(p_viewport, camera_data.main_transform, camera_data.main_projection, camera_data.is_orthogonal);
 
-	_render_scene(&camera_data, p_render_buffers, environment, camera->attributes, compositor, camera->visible_layers, p_scenario, p_viewport, p_shadow_atlas, RID(), -1, p_screen_mesh_lod_threshold, p_window_output_max_value, true, r_render_info);
+	_render_scene(&camera_data, p_render_buffers, environment, camera->attributes, compositor, visible_layers, p_scenario, p_viewport, p_shadow_atlas, RID(), -1, p_screen_mesh_lod_threshold, p_window_output_max_value, true, r_render_info);
 #endif
 }
 
@@ -3007,6 +3107,11 @@ void RendererSceneCull::_scene_cull(CullData &cull_data, InstanceCullResult &cul
 		bool mesh_visible = false;
 
 		InstanceData &idata = cull_data.scenario->instance_data[i];
+		// wgodot-changes::begin
+		if (cull_data.exclude_particles && (idata.flags & InstanceData::FLAG_PARTICLE_EFFECT)) {
+			continue;
+		}
+		// wgodot-changes::end
 		uint32_t visibility_flags = idata.flags & (InstanceData::FLAG_VISIBILITY_DEPENDENCY_HIDDEN_CLOSE_RANGE | InstanceData::FLAG_VISIBILITY_DEPENDENCY_HIDDEN | InstanceData::FLAG_VISIBILITY_DEPENDENCY_FADE_CHILDREN);
 		int32_t visibility_check = -1;
 
@@ -3381,7 +3486,7 @@ void RendererSceneCull::_scene_cull(CullData &cull_data, InstanceCullResult &cul
 		if (mesh_visible && (idata.flags & InstanceData::FLAG_AUTHORED_MESH_LOD)) {
 			const MeshLODData *lod = RSG::mesh_storage->mesh_get_lod_profile(idata.base_rid);
 			if (lod) {
-				const int level = lod->select(idata.instance->transform, *cull_data.camera_matrix, cull_data.cam_transform.origin, idata.instance->lod_bias, idata.instance_geometry->mesh_lod_level);
+				const int level = cull_data.mesh_lod_scale == 0.0f ? lod->minimum_level : lod->select(idata.instance->transform, *cull_data.camera_matrix, cull_data.cam_transform.origin, idata.instance->lod_bias / cull_data.mesh_lod_scale, idata.instance_geometry->mesh_lod_level);
 				idata.instance_geometry->mesh_lod_level = level;
 				if (idata.flags & InstanceData::FLAG_USES_MESH_INSTANCE) {
 					RSG::mesh_storage->mesh_instance_select_lod(idata.instance->mesh_instance, level);
@@ -3459,6 +3564,9 @@ void RendererSceneCull::_render_scene(const RendererSceneRender::CameraData *p_c
 	// wgodot-changes::begin
 	if (p_camera_data->infinite_far) {
 		planes.remove_at(Projection::PLANE_FAR);
+	}
+	if (p_camera_data->planar_reflection) {
+		planes.push_back(-p_camera_data->clip_plane);
 	}
 	// wgodot-changes::end
 	cull.frustum = Frustum(planes);
@@ -3539,6 +3647,10 @@ void RendererSceneCull::_render_scene(const RendererSceneRender::CameraData *p_c
 		cull_data.cam_transform = p_camera_data->main_transform;
 		cull_data.visible_layers = p_visible_layers;
 		cull_data.render_reflection_probe = render_reflection_probe;
+		// wgodot-changes::begin
+		cull_data.exclude_particles = p_camera_data->exclude_particles;
+		cull_data.mesh_lod_scale = p_camera_data->mesh_lod_scale;
+		// wgodot-changes::end
 		cull_data.occlusion_buffer = RendererSceneOcclusionCull::get_singleton()->buffer_get_ptr(p_viewport);
 		cull_data.camera_matrix = &p_camera_data->main_projection;
 		cull_data.visibility_viewport_mask = scenario->viewport_visibility_masks.has(p_viewport) ? scenario->viewport_visibility_masks[p_viewport] : 0;
@@ -3743,7 +3855,7 @@ void RendererSceneCull::_render_scene(const RendererSceneRender::CameraData *p_c
 			if (redraw && max_shadows_used < MAX_UPDATE_SHADOWS) {
 				//must redraw!
 				RENDER_TIMESTAMP("> Render Light3D " + itos(i));
-				if (_light_instance_update_shadow(ins, p_camera_data->main_transform, p_camera_data->main_projection, p_camera_data->is_orthogonal, p_camera_data->vaspect, p_shadow_atlas, scenario, p_screen_mesh_lod_threshold, p_visible_layers)) {
+				if (_light_instance_update_shadow(ins, p_camera_data->main_transform, p_camera_data->main_projection, p_camera_data->is_orthogonal, p_camera_data->vaspect, p_shadow_atlas, scenario, p_screen_mesh_lod_threshold, p_visible_layers, p_camera_data->exclude_particles)) {
 					light->make_shadow_dirty();
 				}
 				RENDER_TIMESTAMP("< Render Light3D " + itos(i));

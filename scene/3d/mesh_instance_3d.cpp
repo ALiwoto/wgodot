@@ -389,11 +389,14 @@ void MeshInstance3D::set_surface_override_material(int p_surface, const Ref<Mate
 
 	surface_override_materials.write[p_surface] = p_material;
 
-	if (surface_override_materials[p_surface].is_valid()) {
-		RS::get_singleton()->instance_set_surface_override_material(get_instance(), p_surface, surface_override_materials[p_surface]->get_rid());
-	} else {
-		RS::get_singleton()->instance_set_surface_override_material(get_instance(), p_surface, RID());
+	// wgodot-changes::begin
+	_update_surface_override(p_surface);
+	for (int i = 0; i < surface_override_sources.size(); i++) {
+		if (surface_override_sources[i] == p_surface && surface_override_materials[i].is_null()) {
+			_update_surface_override(i);
+		}
 	}
+	// wgodot-changes::end
 }
 
 Ref<Material> MeshInstance3D::get_surface_override_material(int p_surface) const {
@@ -413,7 +416,10 @@ Ref<Material> MeshInstance3D::get_active_material(int p_surface) const {
 		return Ref<Material>();
 	}
 
-	Ref<Material> surface_material = get_surface_override_material(p_surface);
+	// wgodot-changes::begin
+	ERR_FAIL_INDEX_V(p_surface, surface_override_materials.size(), Ref<Material>());
+	Ref<Material> surface_material = _effective_surface_override(p_surface);
+	// wgodot-changes::end
 	if (surface_material.is_valid()) {
 		return surface_material;
 	}
@@ -426,6 +432,17 @@ void MeshInstance3D::_mesh_changed() {
 	const int surface_count = mesh->get_surface_count();
 
 	surface_override_materials.resize(surface_count);
+	// wgodot-changes::begin
+	surface_override_sources.clear();
+	const Ref<ArrayMesh> array_mesh = mesh;
+	if (array_mesh.is_valid() && array_mesh->get_lod_profile().is_valid()) {
+		const Vector<int32_t> &sources = array_mesh->get_lod_profile()->get_override_sources();
+		if (!sources.is_empty()) {
+			ERR_FAIL_COND(sources.size() != surface_count);
+			surface_override_sources = sources;
+		}
+	}
+	// wgodot-changes::end
 
 	uint32_t initialize_bs_from = blend_shape_tracks.size();
 	blend_shape_tracks.resize(mesh->get_blend_shape_count());
@@ -442,9 +459,9 @@ void MeshInstance3D::_mesh_changed() {
 	}
 
 	for (int surface_index = 0; surface_index < surface_count; ++surface_index) {
-		if (surface_override_materials[surface_index].is_valid()) {
-			RS::get_singleton()->instance_set_surface_override_material(get_instance(), surface_index, surface_override_materials[surface_index]->get_rid());
-		}
+		// wgodot-changes::begin
+		_update_surface_override(surface_index);
+		// wgodot-changes::end
 	}
 
 	update_gizmos();

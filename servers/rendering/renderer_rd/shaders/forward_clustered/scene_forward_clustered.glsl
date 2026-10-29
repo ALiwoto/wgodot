@@ -930,7 +930,9 @@ void main() {
 //
 // To Early-Z, or Not To Early-Z
 //  - https://therealmjp.github.io/posts/to-earlyz-or-not-to-earlyz/#uavsstorage-texturesstorage-buffers
-#if defined(ALPHA_SCISSOR_USED) || defined(ALPHA_HASH_USED) || defined(ENABLE_CLIP_ALPHA) || defined(UBERSHADER) || defined(DISCARD_USED)
+// wgodot-changes::begin
+#if defined(ALPHA_SCISSOR_USED) || defined(ALPHA_HASH_USED) || defined(ENABLE_CLIP_ALPHA) || defined(UBERSHADER) || defined(DISCARD_USED) || defined(VIEW_CLIP_PLANE)
+// wgodot-changes::end
 #define TEXTURE_STREAMING_MAY_DISCARD
 #endif
 
@@ -1214,6 +1216,11 @@ vec3 encode24(vec3 v) {
 #endif // MODE_RENDER_NORMAL_ROUGHNESS
 
 void fragment_shader(in SceneData scene_data) {
+	// wgodot-changes::begin
+	if (sc_use_clip_plane() && dot(scene_data.clip_plane, vec4(vertex_interp, 1.0)) < 0.0) {
+		discard;
+	}
+	// wgodot-changes::end
 	uint instance_index = instance_index_interp;
 
 #ifdef PREMUL_ALPHA_USED

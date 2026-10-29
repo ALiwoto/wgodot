@@ -555,6 +555,7 @@ public:
 	virtual void camera_set_perspective(RID p_camera, float p_fovy_degrees, float p_z_near, float p_z_far) = 0;
 	// wgodot-changes::begin
 	virtual void camera_set_infinite_far(RID p_camera, bool p_enabled) = 0;
+	virtual void camera_set_planar_reflection(RID p_camera, RID p_source, const Plane &p_plane, bool p_render_particles, float p_prefilter_roughness, float p_roughness_distance, float p_lod_scale) = 0;
 	// wgodot-changes::end
 	virtual void camera_set_orthogonal(RID p_camera, float p_size, float p_z_near, float p_z_far) = 0;
 	virtual void camera_set_frustum(RID p_camera, float p_size, Vector2 p_offset, float p_z_near, float p_z_far) = 0;

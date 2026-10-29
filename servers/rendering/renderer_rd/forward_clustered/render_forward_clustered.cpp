@@ -2225,7 +2225,9 @@ void RenderForwardClustered::_render_scene(RenderDataRD *p_render_data, const Co
 				clear_color.b *= bg_energy_multiplier;
 			} break;
 			case RSE::ENV_BG_SKY: {
-				draw_sky = !p_render_data->transparent_bg;
+				// wgodot-changes::begin
+				draw_sky = !p_render_data->transparent_bg || p_render_data->scene_data->planar_reflection;
+				// wgodot-changes::end
 			} break;
 			case RSE::ENV_BG_CANVAS: {
 				if (!is_reflection_probe) {
@@ -2297,6 +2299,12 @@ void RenderForwardClustered::_render_scene(RenderDataRD *p_render_data, const Co
 	bool depth_pre_pass = (force_depth_pre_pass || scene_shader.depth_prepass_enabled) && depth_framebuffer.is_valid();
 
 	SceneShaderForwardClustered::ShaderSpecialization base_specialization = scene_shader.default_specialization;
+	// wgodot-changes::begin
+	base_specialization.use_clip_plane = p_render_data->scene_data->planar_reflection;
+	if (base_specialization.use_clip_plane) {
+		scene_shader.enable_clipped_shader_group();
+	}
+	// wgodot-changes::end
 	base_specialization.use_depth_fog = p_render_data->environment.is_valid() && environment_get_fog_mode(p_render_data->environment) == RSE::EnvironmentFogMode::ENV_FOG_MODE_DEPTH;
 
 	bool using_ssao = depth_pre_pass && !is_reflection_probe && p_render_data->environment.is_valid() && environment_get_ssao_enabled(p_render_data->environment);
