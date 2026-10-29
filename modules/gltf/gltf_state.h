@@ -81,6 +81,7 @@ protected:
 	bool preserve_tangent_frame = false;
 	bool orthonormalize_morph_tangent_frame = false;
 	bool normalize_morph_normal_weights = false;
+	bool componentwise_skeletons = false;
 	// wgodot-changes::end
 	bool import_as_skeleton_bones = false;
 

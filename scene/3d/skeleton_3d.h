@@ -33,6 +33,9 @@
 #include "core/templates/a_hash_map.h"
 #include "scene/3d/node_3d.h"
 #include "scene/resources/3d/skin.h"
+// wgodot-changes::begin
+#include "skeleton_3d_composition.h"
+// wgodot-changes::end
 
 typedef int BoneId;
 
@@ -82,6 +85,12 @@ class Skeleton3D : public Node3D {
 #endif // _DISABLE_DEPRECATED && PHYSICS_3D_DISABLED
 
 public:
+	// wgodot-changes::begin
+	enum PoseComposition {
+		POSE_COMPOSITION_AFFINE,
+		POSE_COMPOSITION_COMPONENTS,
+	};
+	// wgodot-changes::end
 	enum ModifierCallbackModeProcess {
 		MODIFIER_CALLBACK_MODE_PROCESS_PHYSICS,
 		MODIFIER_CALLBACK_MODE_PROCESS_IDLE,
@@ -176,6 +185,12 @@ private:
 	void _skin_changed();
 
 	mutable LocalVector<Bone> bones;
+	// wgodot-changes::begin
+	PoseComposition pose_composition = POSE_COMPOSITION_AFFINE;
+	mutable LocalVector<SkeletonCompositionCache> composition_cache;
+	void _update_component_rest(int p_bone) const;
+	void _update_component_pose(int p_bone) const;
+	// wgodot-changes::end
 	mutable bool process_order_dirty = false;
 
 	mutable Vector<int> parentless_bones;
@@ -277,6 +292,10 @@ public:
 
 	void set_motion_scale(float p_motion_scale);
 	float get_motion_scale() const;
+	// wgodot-changes::begin
+	void set_pose_composition(PoseComposition p_mode);
+	PoseComposition get_pose_composition() const;
+	// wgodot-changes::end
 
 	// bone metadata
 	Variant get_bone_meta(int p_bone, const StringName &p_key) const;
@@ -350,3 +369,6 @@ public:
 };
 
 VARIANT_ENUM_CAST(Skeleton3D::ModifierCallbackModeProcess);
+// wgodot-changes::begin
+VARIANT_ENUM_CAST(Skeleton3D::PoseComposition);
+// wgodot-changes::end

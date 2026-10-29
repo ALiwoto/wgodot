@@ -83,6 +83,9 @@ private:
 		Vector<CharString> custom_defines;
 		Vector<WorkerThreadPool::GroupID> group_compilation_tasks;
 		Vector<bool> group_loaded_from_cache;
+		// wgodot-changes::begin
+		Vector<bool> local_groups_enabled;
+		// wgodot-changes::end
 
 		Vector<Vector<uint8_t>> variant_data;
 		Vector<RID> variants;
@@ -209,7 +212,7 @@ public:
 		if (version->dirty) {
 			_initialize_version(version);
 			for (int i = 0; i < group_enabled.size(); i++) {
-				if (!group_enabled[i]) {
+				if (!group_enabled[i] && !version->local_groups_enabled[i]) { // wgodot-changes
 					_allocate_placeholders(version, i);
 					continue;
 				}
@@ -241,6 +244,10 @@ public:
 
 	// Enable/disable groups for things that might be enabled at run time.
 	void enable_group(int p_group);
+	// wgodot-changes::begin
+	// Opt in one material without recompiling unrelated loaded shaders.
+	void version_enable_group(RID p_version, int p_group);
+	// wgodot-changes::end
 	bool is_group_enabled(int p_group) const;
 	int64_t get_group_count() const;
 	const LocalVector<int> &get_group_to_variants(int p_group) const;

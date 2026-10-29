@@ -347,6 +347,9 @@ void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
 	if (command == "run") {
 		const String mode = options.get("mode", "main");
 		Vector<String> play_args;
+		if (options.get("startup_profile", false)) {
+			play_args.push_back("--wgodot-startup-profile");
+		}
 		if (options.has("native_render_capture")) {
 			play_args.push_back("--native-render-capture");
 			play_args.push_back(options["native_render_capture"]);

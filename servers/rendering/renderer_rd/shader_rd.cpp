@@ -240,6 +240,9 @@ RID ShaderRD::version_create(bool p_embedded) {
 	version.embedded = p_embedded;
 	version.variants.clear();
 	version.variant_data.clear();
+	// wgodot-changes::begin
+	version.local_groups_enabled.resize_initialized(group_enabled.size());
+	// wgodot-changes::end
 
 	version.mutex = memnew(Mutex);
 	RID rid = version_owner.make_rid(version);
@@ -723,7 +726,7 @@ void ShaderRD::_allocate_placeholders(Version *p_version, int p_group) {
 // Try to compile all variants for a given group.
 // Will skip variants that are disabled.
 void ShaderRD::_compile_version_start(Version *p_version, int p_group) {
-	if (!group_enabled[p_group]) {
+	if (!group_enabled[p_group] && !p_version->local_groups_enabled[p_group]) { // wgodot-changes
 		return;
 	}
 
@@ -785,7 +788,7 @@ void ShaderRD::_compile_version_end(Version *p_version, int p_group) {
 	if (!all_valid) {
 		// Clear versions if they exist.
 		for (int i = 0; i < variant_defines.size(); i++) {
-			if (!variants_enabled[i] || !group_enabled[variant_defines[i].group]) {
+			if (!variants_enabled[i] || (!group_enabled[variant_defines[i].group] && !p_version->local_groups_enabled[variant_defines[i].group])) { // wgodot-changes
 				continue; // Disabled.
 			}
 			if (!p_version->variants[i].is_null()) {
@@ -828,7 +831,7 @@ void ShaderRD::_version_set(Version *p_version, const HashMap<String, String> &p
 	if (p_version->initialize_needed) {
 		_initialize_version(p_version);
 		for (int i = 0; i < group_enabled.size(); i++) {
-			if (!group_enabled[i]) {
+			if (!group_enabled[i] && !p_version->local_groups_enabled[i]) { // wgodot-changes
 				_allocate_placeholders(p_version, i);
 				continue;
 			}
@@ -896,7 +899,7 @@ bool ShaderRD::version_is_valid(RID p_version) {
 	if (version->dirty) {
 		_initialize_version(version);
 		for (int i = 0; i < group_enabled.size(); i++) {
-			if (!group_enabled[i]) {
+			if (!group_enabled[i] && !version->local_groups_enabled[i]) { // wgodot-changes
 				_allocate_placeholders(version, i);
 				continue;
 			}
@@ -967,7 +970,11 @@ void ShaderRD::enable_group(int p_group) {
 	for (const RID &version_rid : version_owner.get_owned_list()) {
 		Version *version = version_owner.get_or_null(version_rid);
 		version->mutex->lock();
-		_compile_version_start(version, p_group);
+		// wgodot-changes::begin
+		if (!version->local_groups_enabled[p_group]) {
+			_compile_version_start(version, p_group);
+		}
+		// wgodot-changes::end
 		version->mutex->unlock();
 	}
 }
@@ -975,6 +982,23 @@ void ShaderRD::enable_group(int p_group) {
 bool ShaderRD::is_group_enabled(int p_group) const {
 	return group_enabled[p_group];
 }
+
+// wgodot-changes::begin
+void ShaderRD::version_enable_group(RID p_version, int p_group) {
+	ERR_FAIL_INDEX(p_group, group_enabled.size());
+	Version *version = version_owner.get_or_null(p_version);
+	ERR_FAIL_NULL(version);
+	MutexLock lock(*version->mutex);
+	if (group_enabled[p_group] || version->local_groups_enabled[p_group]) {
+		return;
+	}
+	version->local_groups_enabled.write[p_group] = true;
+	// A dirty version initializes all requested groups when it is first used.
+	if (!version->dirty) {
+		_compile_version_start(version, p_group);
+	}
+}
+// wgodot-changes::end
 
 int64_t ShaderRD::get_group_count() const {
 	return group_enabled.size();

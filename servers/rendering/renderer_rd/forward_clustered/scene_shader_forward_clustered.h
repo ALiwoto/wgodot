@@ -404,7 +404,6 @@ public:
 	void enable_multiview_shader_group();
 	void enable_advanced_shader_group(bool p_needs_multiview = false);
 	// wgodot-changes::begin
-	void enable_clipped_shader_group() { shader.enable_group(SHADER_GROUP_CLIPPED); }
 	// wgodot-changes::end
 	bool is_multiview_shader_group_enabled() const;
 	bool is_advanced_shader_group_enabled(bool p_multiview) const;

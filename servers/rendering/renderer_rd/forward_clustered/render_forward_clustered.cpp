@@ -2301,9 +2301,6 @@ void RenderForwardClustered::_render_scene(RenderDataRD *p_render_data, const Co
 	SceneShaderForwardClustered::ShaderSpecialization base_specialization = scene_shader.default_specialization;
 	// wgodot-changes::begin
 	base_specialization.use_clip_plane = p_render_data->scene_data->planar_reflection;
-	if (base_specialization.use_clip_plane) {
-		scene_shader.enable_clipped_shader_group();
-	}
 	// wgodot-changes::end
 	base_specialization.use_depth_fog = p_render_data->environment.is_valid() && environment_get_fog_mode(p_render_data->environment) == RSE::EnvironmentFogMode::ENV_FOG_MODE_DEPTH;
 

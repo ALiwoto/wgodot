@@ -78,6 +78,9 @@ Node *EditorSceneFormatImporterGLTF::_import_scene(const String &p_path, uint32_
 	if (p_options.has("meshes/normalize_morph_normal_weights") && bool(p_options["meshes/normalize_morph_normal_weights"])) {
 		p_flags |= GLTFDocument::IMPORT_FLAG_NORMALIZE_MORPH_NORMAL_WEIGHTS;
 	}
+	if (p_options.has("skins/componentwise_composition") && bool(p_options["skins/componentwise_composition"])) {
+		p_flags |= GLTFDocument::IMPORT_FLAG_COMPONENTWISE_SKELETONS;
+	}
 	// wgodot-changes::end
 	Error err = gltf_doc->append_from_file(p_path, gltf_state, p_flags);
 	if (err != OK) {
@@ -107,6 +110,7 @@ void EditorSceneFormatImporterGLTF::get_import_options(const String &p_path,
 		r_options->push_back(ResourceImporterScene::ImportOption(PropertyInfo(Variant::BOOL, "meshes/preserve_tangent_frame"), false));
 		r_options->push_back(ResourceImporterScene::ImportOption(PropertyInfo(Variant::BOOL, "meshes/orthonormalize_morph_tangent_frame"), false));
 		r_options->push_back(ResourceImporterScene::ImportOption(PropertyInfo(Variant::BOOL, "meshes/normalize_morph_normal_weights"), false));
+		r_options->push_back(ResourceImporterScene::ImportOption(PropertyInfo(Variant::BOOL, "skins/componentwise_composition"), false));
 		// wgodot-changes::end
 		r_options->push_back(ResourceImporterScene::ImportOption(PropertyInfo(Variant::INT, "gltf/naming_version", PROPERTY_HINT_ENUM, "Godot 4.0 or 4.1,Godot 4.2 to 4.4,Godot 4.5 or later"), 2));
 		r_options->push_back(ResourceImporterScene::ImportOption(PropertyInfo(Variant::INT, "gltf/embedded_image_handling", PROPERTY_HINT_ENUM, "Discard All Textures,Extract Textures,Embed as Basis Universal,Embed as Uncompressed", PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_UPDATE_ALL_IF_MODIFIED), GLTFState::HANDLE_BINARY_IMAGE_MODE_EXTRACT_TEXTURES));

@@ -497,6 +497,9 @@ void RendererSceneRenderRD::_render_buffers_post_process_and_tonemap(const Rende
 		}
 		RENDER_TIMESTAMP("Planar Reflection Filter");
 		planar_reflection_filter->render(rb, *p_render_data->scene_data, texture_storage->render_target_get_rd_framebuffer(rb->get_render_target()));
+		// The filter has filled the target, just as the normal tonemapper does.
+		// Otherwise RendererViewport's final clear erases the completed reflection.
+		texture_storage->render_target_disable_clear_request(rb->get_render_target());
 		return; // Scene-linear HDR; no compositor, tone mapping or CPU readback.
 	}
 	// wgodot-changes::end

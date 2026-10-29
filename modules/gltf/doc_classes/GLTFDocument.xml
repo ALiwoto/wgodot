@@ -189,6 +189,11 @@
 		<constant name="IMPORT_FLAG_NORMALIZE_MORPH_NORMAL_WEIGHTS" value="512" enum="ImportFlags" is_bitfield="true">
 			Enable per-vertex morph normal weight normalization. Requires [constant IMPORT_FLAG_PRESERVE_TANGENT_FRAME]. See [member ResourceImporterScene.meshes/normalize_morph_normal_weights].
 		</constant>
+		<!-- wgodot-changes::begin -->
+		<constant name="IMPORT_FLAG_COMPONENTWISE_SKELETONS" value="1024" enum="ImportFlags" is_bitfield="true">
+			Import skeletons using [constant Skeleton3D.POSE_COMPOSITION_COMPONENTS]. Supplied inverse bind matrices are unchanged.
+		</constant>
+		<!-- wgodot-changes::end -->
 		<constant name="IMPORT_FLAG_ORTHONORMALIZE_MORPH_TANGENT_FRAME" value="256" enum="ImportFlags" is_bitfield="true">
 			Enable tangent-frame orthonormalization after morph blending and before skinning. Requires [constant IMPORT_FLAG_PRESERVE_TANGENT_FRAME]. See [member ResourceImporterScene.meshes/orthonormalize_morph_tangent_frame].
 		</constant>

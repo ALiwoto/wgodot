@@ -2,6 +2,8 @@
 #ifndef _3D_DISABLED
 #include "planar_reflection_3d.h"
 
+#include "core/object/callable_mp.h"
+#include "core/object/class_db.h"
 #include "scene/3d/camera_3d.h"
 #include "servers/rendering/rendering_server.h"
 
@@ -153,7 +155,7 @@ PlanarReflection3D::PlanarReflection3D() {
 }
 
 PlanarReflection3D::~PlanarReflection3D() {
-	RenderingServer::get_singleton()->free(reflection_camera);
+	RenderingServer::get_singleton()->free_rid(reflection_camera);
 }
 
 #endif // _3D_DISABLED

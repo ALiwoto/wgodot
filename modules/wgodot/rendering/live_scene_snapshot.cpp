@@ -8,6 +8,7 @@
 #include "core/os/semaphore.h"
 #include "core/templates/hash_set.h"
 #include "render_capture.h"
+#include "planar_reflection_3d.h"
 #include "scene/3d/camera_3d.h"
 #include "scene/3d/decal.h"
 #include "scene/3d/light_3d.h"
@@ -32,7 +33,7 @@ namespace {
 // Wire version 2. Records carry typed numbers/strings/raw uniform words, never
 // Variant dictionaries, reflection property lists, texture pixels or vertices.
 // See tools/porting/live/wire.py in the client project's research tooling.
-enum Kind { SPATIAL = 1, SKELETON, MESH, MATERIAL, UNIFORM, PARTICLE, CAMERA, LIGHT, DECAL, AUDIO, ANIMATION, BODY, GEOMETRY, INSTANCE_UNIFORM, MESH_LOD };
+enum Kind { SPATIAL = 1, SKELETON, MESH, MATERIAL, UNIFORM, PARTICLE, CAMERA, LIGHT, DECAL, AUDIO, ANIMATION, BODY, GEOMETRY, INSTANCE_UNIFORM, MESH_LOD, PLANAR_REFLECTION };
 
 struct MeshLevelBatch : public RefCounted {
 	GDSOFTCLASS(MeshLevelBatch, RefCounted);
@@ -109,10 +110,15 @@ struct Writer {
 					}
 					Vector<String> strings = { entry.name };
 					Vector<uint8_t> raw;
+					Vector<double> description = { double(entry.type), double(entry.hint), double(entry.count), double(entry.stride), double(entry.texture) };
 					if (entry.texture >= 0) {
 						for (int i = 0; i < entry.count; i++) {
 							Ref<Texture> texture = shader_material->get_shader_texture_at(slot, i);
 							strings.push_back(texture.is_valid() ? texture->get_path() : String());
+							const Texture2D *image = Object::cast_to<Texture2D>(texture.ptr());
+							description.push_back(texture.is_valid() ? 1.0 : 0.0);
+							description.push_back(image ? image->get_width() : 0.0);
+							description.push_back(image ? image->get_height() : 0.0);
 						}
 					} else {
 						WShaderParameterUpdate update = parameters.update(slot);
@@ -123,7 +129,7 @@ struct Writer {
 							encode_uint32(words[i], raw.ptrw() + i * sizeof(uint32_t));
 						}
 					}
-					record(UNIFORM, p_path, strings, { double(entry.type), double(entry.hint), double(entry.count), double(entry.stride), double(entry.texture) }, raw);
+					record(UNIFORM, p_path, strings, description, raw);
 				}
 			}
 		}
@@ -298,6 +304,14 @@ PackedByteArray WLiveSceneProbe::snapshot(Node *p_root, Skeleton3D *p_body) {
 				values.push_back(light->get_param(Light3D::Param(i)));
 			}
 			writer.record(LIGHT, path, {}, values);
+		}
+		if (PlanarReflection3D *reflection = Object::cast_to<PlanarReflection3D>(node)) {
+			const Vector2 size = reflection->get_size();
+			writer.record(PLANAR_REFLECTION, path, {}, {
+				size.x, size.y, reflection->get_resolution_scale(), reflection->get_prefilter_roughness(),
+				reflection->get_roughness_distance(), reflection->get_mesh_lod_scale(),
+				double(reflection->is_rendering_particles()), double(reflection->get_cull_mask()), double(reflection->get_visibility_layers())
+			});
 		}
 		if (Decal *decal = Object::cast_to<Decal>(node)) {
 			Vector<String> textures;

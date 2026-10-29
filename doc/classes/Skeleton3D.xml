@@ -394,6 +394,11 @@
 		</method>
 	</methods>
 	<members>
+		<!-- wgodot-changes::begin -->
+		<member name="pose_composition" type="int" setter="set_pose_composition" getter="get_pose_composition" enum="Skeleton3D.PoseComposition" default="0">
+			Controls how parent and child bone transforms are composed. Choose the model's authored convention at import time. Existing [Skin] inverse bind matrices are preserved.
+		</member>
+		<!-- wgodot-changes::end -->
 		<member name="animate_physical_bones" type="bool" setter="set_animate_physical_bones" getter="get_animate_physical_bones" default="true" deprecated="">
 			If you follow the recommended workflow and explicitly have [PhysicalBoneSimulator3D] as a child of [Skeleton3D], you can control whether it is affected by raycasting without running [method physical_bones_start_simulation], by its [member SkeletonModifier3D.active].
 			However, for old (deprecated) configurations, [Skeleton3D] has an internal virtual [PhysicalBoneSimulator3D] for compatibility. This property controls the internal virtual [PhysicalBoneSimulator3D]'s [member SkeletonModifier3D.active].
@@ -445,6 +450,14 @@
 		</signal>
 	</signals>
 	<constants>
+		<!-- wgodot-changes::begin -->
+		<constant name="POSE_COMPOSITION_AFFINE" value="0" enum="PoseComposition">
+			Multiply full transform matrices. This is Godot's default; rotating beneath nonuniform scale can introduce shear.
+		</constant>
+		<constant name="POSE_COMPOSITION_COMPONENTS" value="1" enum="PoseComposition">
+			Compose rotations and scale components separately, and transform child positions by the parent. Mirrored axes use normalized-axis rotation extraction. The skeleton retains typed component caches only in this mode; animations still store their original local tracks.
+		</constant>
+		<!-- wgodot-changes::end -->
 		<constant name="NOTIFICATION_UPDATE_SKELETON" value="50">
 			Notification received when this skeleton's pose needs to be updated. In that case, this is called only once per frame in a deferred process.
 		</constant>

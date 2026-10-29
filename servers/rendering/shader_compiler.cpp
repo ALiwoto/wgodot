@@ -1455,6 +1455,13 @@ String ShaderCompiler::_dump_node_code(const SL::Node *p_node, int p_level, Gene
 						}
 					}
 					code += ")";
+					// wgodot-changes::begin
+					// Screen/depth/normal textures remain sampler2D in the source
+					// language even when the renderer binds a multiview array.
+					if (multiview_uv_needed && vnode->name == "textureSize") {
+						code += ".xy";
+					}
+					// wgodot-changes::end
 					if (is_screen_texture && !texture_func_returns_data && actions.apply_luminance_multiplier) {
 						if (RS::get_singleton()->is_low_end()) {
 							code = "(" + code + " / vec4(vec3(scene_data_block.data.luminance_multiplier), 1.0))";

@@ -365,8 +365,14 @@ void Skeleton3D::_notification(int p_what) {
 			// Process modifiers.
 
 			LocalVector<BonePoseBackup> bones_backup;
+			// wgodot-changes::begin
+			LocalVector<SkeletonCompositionCache> composition_backup;
+			// wgodot-changes::end
 			_find_modifiers();
 			if (!modifiers.is_empty()) {
+				// wgodot-changes::begin
+				composition_backup = composition_cache;
+				// wgodot-changes::end
 				bones_backup.resize(bones.size());
 				// Store unmodified bone poses.
 				for (uint32_t i = 0; i < bones.size(); i++) {
@@ -457,6 +463,9 @@ void Skeleton3D::_notification(int p_what) {
 				}
 				// Restore dirty flags for global bone poses.
 				bone_global_pose_dirty = bone_global_pose_dirty_backup;
+				// wgodot-changes::begin
+				composition_cache = composition_backup;
+				// wgodot-changes::end
 			}
 
 			updating = false;
@@ -521,6 +530,11 @@ void Skeleton3D::_make_modifiers_dirty() {
 void Skeleton3D::_update_bones_nested_set() const {
 	nested_set_offset_to_bone_index.resize(bones.size());
 	bone_global_pose_dirty.resize(bones.size());
+	// wgodot-changes::begin
+	if (pose_composition == POSE_COMPOSITION_COMPONENTS) {
+		composition_cache.resize(bones.size());
+	}
+	// wgodot-changes::end
 	_make_bone_global_poses_dirty();
 
 	int offset = 0;
@@ -604,6 +618,12 @@ void Skeleton3D::_update_bone_global_pose(int p_bone) const {
 	for (int i = bone_list.size() - 1; i >= 0; i--) {
 		int bone_idx = bone_list[i];
 		Bone &bone = bones[bone_idx];
+		// wgodot-changes::begin
+		if (pose_composition == POSE_COMPOSITION_COMPONENTS) {
+			_update_component_pose(bone_idx);
+			continue;
+		}
+		// wgodot-changes::end
 		bool bone_enabled = bone.enabled && !show_rest_only;
 		Transform3D bone_pose = bone_enabled ? get_bone_pose(bone_idx) : get_bone_rest(bone_idx);
 
@@ -634,6 +654,21 @@ void Skeleton3D::set_bone_global_pose(int p_bone, const Transform3D &p_pose) {
 	if (bones[p_bone].parent >= 0) {
 		pt = get_bone_global_pose(bones[p_bone].parent);
 	}
+	// wgodot-changes::begin
+	if (pose_composition == POSE_COMPOSITION_COMPONENTS) {
+		SkeletonPoseComponents desired;
+		desired.from_basis(p_pose.basis);
+		const int parent = bones[p_bone].parent;
+		if (parent < 0) {
+			set_bone_pose_components(p_bone, p_pose.origin, desired.rotation, desired.scale);
+		} else {
+			const SkeletonPoseComponents &components = composition_cache[parent].pose;
+			const Transform3D local = desired.relative_to(p_pose, pt, components);
+			set_bone_pose_components(p_bone, local.origin, desired.rotation, desired.scale);
+		}
+		return;
+	}
+	// wgodot-changes::end
 	Transform3D t = pt.affine_inverse() * p_pose;
 	set_bone_pose(p_bone, t);
 }
@@ -788,6 +823,14 @@ void Skeleton3D::unparent_bone_and_rest(int p_bone) {
 	ERR_FAIL_INDEX(p_bone, bone_size);
 
 	_update_process_order();
+	// wgodot-changes::begin
+	if (pose_composition == POSE_COMPOSITION_COMPONENTS) {
+		const Transform3D rest = get_bone_global_rest(p_bone);
+		set_bone_parent(p_bone, -1);
+		set_bone_rest(p_bone, rest);
+		return;
+	}
+	// wgodot-changes::end
 
 	int parent = bones[p_bone].parent;
 	while (parent >= 0) {
@@ -880,6 +923,9 @@ bool Skeleton3D::is_show_rest_only() const {
 
 void Skeleton3D::clear_bones() {
 	bones.clear();
+	// wgodot-changes::begin
+	composition_cache.clear();
+	// wgodot-changes::end
 	name_to_bone_index.clear();
 
 	// All these structures contain references to now invalid bone indices.
@@ -1048,6 +1094,24 @@ void Skeleton3D::_update_deferred(UpdateFlag p_update_flag) {
 }
 
 void Skeleton3D::localize_rests() {
+	// wgodot-changes::begin
+	if (pose_composition == POSE_COMPOSITION_COMPONENTS) {
+		// Input rests are global. Read parents before replacing them with locals.
+		_update_process_order();
+		for (int offset = int(bones.size()) - 1; offset >= 0; offset--) {
+			const int index = nested_set_offset_to_bone_index[offset];
+			const Bone &bone = bones[index];
+			if (bone.parent < 0) {
+				continue;
+			}
+			SkeletonPoseComponents child, parent;
+			child.from_basis(bone.rest.basis);
+			parent.from_basis(bones[bone.parent].rest.basis);
+			set_bone_rest(index, child.relative_to(bone.rest, bones[bone.parent].rest, parent));
+		}
+		return;
+	}
+	// wgodot-changes::end
 	Vector<int> bones_to_process = get_parentless_bones();
 	while (bones_to_process.size() > 0) {
 		int current_bone_idx = bones_to_process[0];
@@ -1074,6 +1138,16 @@ Ref<Skin> Skeleton3D::create_skin_from_rest_transforms() {
 
 	skin.instantiate();
 	skin->set_bind_count(bones.size());
+	// wgodot-changes::begin
+	if (pose_composition == POSE_COMPOSITION_COMPONENTS) {
+		_force_update_all_bone_transforms();
+		for (uint32_t i = 0; i < bones.size(); i++) {
+			skin->set_bind_bone(i, i);
+			skin->set_bind_pose(i, bones[i].global_rest.affine_inverse());
+		}
+		return skin;
+	}
+	// wgodot-changes::end
 
 	// Pose changed, rebuild cache of inverses.
 	const Bone *bonesptr = bones.ptr();
@@ -1191,7 +1265,13 @@ void Skeleton3D::_force_update_bone_children_transforms(int p_bone_idx) const {
 		if (rest_dirty) {
 			int current_bone_idx = nested_set_offset_to_bone_index[offset];
 			Bone &b = bonesptr[current_bone_idx];
-			b.global_rest = b.parent >= 0 ? bonesptr[b.parent].global_rest * b.rest : b.rest; // Rest needs update apert from pose.
+			// wgodot-changes::begin
+			if (pose_composition == POSE_COMPOSITION_COMPONENTS) {
+				_update_component_rest(current_bone_idx);
+			} else {
+				b.global_rest = b.parent >= 0 ? bonesptr[b.parent].global_rest * b.rest : b.rest; // Rest needs update apert from pose.
+			}
+			// wgodot-changes::end
 		}
 
 		if (!bone_global_pose_dirty[offset]) {
@@ -1200,6 +1280,17 @@ void Skeleton3D::_force_update_bone_children_transforms(int p_bone_idx) const {
 
 		int current_bone_idx = nested_set_offset_to_bone_index[offset];
 		Bone &b = bonesptr[current_bone_idx];
+		// wgodot-changes::begin
+		if (pose_composition == POSE_COMPOSITION_COMPONENTS) {
+			_update_component_pose(current_bone_idx);
+#ifndef DISABLE_DEPRECATED
+			if (b.global_pose_override_reset) {
+				b.global_pose_override_amount = 0.0;
+			}
+#endif
+			continue;
+		}
+		// wgodot-changes::end
 		bool bone_enabled = b.enabled && !show_rest_only;
 
 		if (bone_enabled) {
@@ -1387,6 +1478,13 @@ void Skeleton3D::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("set_motion_scale", "motion_scale"), &Skeleton3D::set_motion_scale);
 	ClassDB::bind_method(D_METHOD("get_motion_scale"), &Skeleton3D::get_motion_scale);
+	// wgodot-changes::begin
+	ClassDB::bind_method(D_METHOD("set_pose_composition", "mode"), &Skeleton3D::set_pose_composition);
+	ClassDB::bind_method(D_METHOD("get_pose_composition"), &Skeleton3D::get_pose_composition);
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "pose_composition", PROPERTY_HINT_ENUM, "Affine,Components"), "set_pose_composition", "get_pose_composition");
+	BIND_ENUM_CONSTANT(POSE_COMPOSITION_AFFINE);
+	BIND_ENUM_CONSTANT(POSE_COMPOSITION_COMPONENTS);
+	// wgodot-changes::end
 
 	ClassDB::bind_method(D_METHOD("set_show_rest_only", "enabled"), &Skeleton3D::set_show_rest_only);
 	ClassDB::bind_method(D_METHOD("is_show_rest_only"), &Skeleton3D::is_show_rest_only);

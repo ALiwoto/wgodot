@@ -6957,6 +6957,7 @@ void GLTFDocument::_bind_methods() {
 	BIND_BITFIELD_FLAG(IMPORT_FLAG_PRESERVE_TANGENT_FRAME);
 	BIND_BITFIELD_FLAG(IMPORT_FLAG_ORTHONORMALIZE_MORPH_TANGENT_FRAME);
 	BIND_BITFIELD_FLAG(IMPORT_FLAG_NORMALIZE_MORPH_NORMAL_WEIGHTS);
+	BIND_BITFIELD_FLAG(IMPORT_FLAG_COMPONENTWISE_SKELETONS);
 	// wgodot-changes::end
 	BIND_BITFIELD_FLAG(IMPORT_FLAG_USE_NAMED_SKIN_BINDS);
 	BIND_BITFIELD_FLAG(IMPORT_FLAG_DISCARD_MESHES_AND_MATERIALS);
@@ -7137,6 +7138,13 @@ Node *GLTFDocument::_generate_scene_node_tree(Ref<GLTFState> p_state) {
 	Error err = SkinTool::_create_skeletons(p_state->unique_names, p_state->skins, p_state->nodes,
 			skeleton_map, p_state->skeletons, p_state->scene_nodes, _naming_version);
 	ERR_FAIL_COND_V_MSG(err != OK, nullptr, "glTF: Failed to create skeletons.");
+	// wgodot-changes::begin
+	if (p_state->componentwise_skeletons) {
+		for (const Ref<GLTFSkeleton> &skeleton : p_state->skeletons) {
+			skeleton->godot_skeleton->set_pose_composition(Skeleton3D::POSE_COMPOSITION_COMPONENTS);
+		}
+	}
+	// wgodot-changes::end
 	err = _create_skins(p_state);
 	ERR_FAIL_COND_V_MSG(err != OK, nullptr, "glTF: Failed to create skins.");
 	// Run pre-generate for each extension, in case an extension needs to do something before generating the scene.
@@ -7369,6 +7377,7 @@ Error GLTFDocument::append_from_scene(Node *p_node, Ref<GLTFState> p_state, uint
 	p_state->orthonormalize_morph_tangent_frame = p_flags & ImportFlags::IMPORT_FLAG_ORTHONORMALIZE_MORPH_TANGENT_FRAME;
 	ERR_FAIL_COND_V_MSG(p_state->orthonormalize_morph_tangent_frame && !p_state->preserve_tangent_frame, ERR_INVALID_PARAMETER, "Morph tangent frame orthonormalization requires float32 tangent frames.");
 	p_state->normalize_morph_normal_weights = p_flags & ImportFlags::IMPORT_FLAG_NORMALIZE_MORPH_NORMAL_WEIGHTS;
+	p_state->componentwise_skeletons = p_flags & ImportFlags::IMPORT_FLAG_COMPONENTWISE_SKELETONS;
 	ERR_FAIL_COND_V_MSG(p_state->normalize_morph_normal_weights && !p_state->preserve_tangent_frame, ERR_INVALID_PARAMETER, "Morph normal weight normalization requires float32 tangent frames.");
 	// wgodot-changes::end
 	if (!p_state->buffers.size()) {
@@ -7423,6 +7432,7 @@ Error GLTFDocument::append_from_buffer(const PackedByteArray &p_bytes, const Str
 	p_state->orthonormalize_morph_tangent_frame = p_flags & ImportFlags::IMPORT_FLAG_ORTHONORMALIZE_MORPH_TANGENT_FRAME;
 	ERR_FAIL_COND_V_MSG(p_state->orthonormalize_morph_tangent_frame && !p_state->preserve_tangent_frame, ERR_INVALID_PARAMETER, "Morph tangent frame orthonormalization requires float32 tangent frames.");
 	p_state->normalize_morph_normal_weights = p_flags & ImportFlags::IMPORT_FLAG_NORMALIZE_MORPH_NORMAL_WEIGHTS;
+	p_state->componentwise_skeletons = p_flags & ImportFlags::IMPORT_FLAG_COMPONENTWISE_SKELETONS;
 	ERR_FAIL_COND_V_MSG(p_state->normalize_morph_normal_weights && !p_state->preserve_tangent_frame, ERR_INVALID_PARAMETER, "Morph normal weight normalization requires float32 tangent frames.");
 	// wgodot-changes::end
 
@@ -7453,6 +7463,7 @@ Error GLTFDocument::append_from_file(const String &p_path, Ref<GLTFState> p_stat
 	p_state->orthonormalize_morph_tangent_frame = p_flags & ImportFlags::IMPORT_FLAG_ORTHONORMALIZE_MORPH_TANGENT_FRAME;
 	ERR_FAIL_COND_V_MSG(p_state->orthonormalize_morph_tangent_frame && !p_state->preserve_tangent_frame, ERR_INVALID_PARAMETER, "Morph tangent frame orthonormalization requires float32 tangent frames.");
 	p_state->normalize_morph_normal_weights = p_flags & ImportFlags::IMPORT_FLAG_NORMALIZE_MORPH_NORMAL_WEIGHTS;
+	p_state->componentwise_skeletons = p_flags & ImportFlags::IMPORT_FLAG_COMPONENTWISE_SKELETONS;
 	ERR_FAIL_COND_V_MSG(p_state->normalize_morph_normal_weights && !p_state->preserve_tangent_frame, ERR_INVALID_PARAMETER, "Morph normal weight normalization requires float32 tangent frames.");
 	// wgodot-changes::end
 

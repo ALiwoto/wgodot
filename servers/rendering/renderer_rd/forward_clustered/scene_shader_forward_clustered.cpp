@@ -591,6 +591,11 @@ RD::PolygonCullMode SceneShaderForwardClustered::ShaderData::get_cull_mode_from_
 RID SceneShaderForwardClustered::ShaderData::_get_shader_variant(uint16_t p_shader_version) const {
 	if (version.is_valid()) {
 		ERR_FAIL_NULL_V(SceneShaderForwardClustered::singleton, RID());
+		// wgodot-changes::begin
+		if (p_shader_version >= ShaderVersion::SHADER_VERSION_COLOR_PASS * 2 + SHADER_COLOR_PASS_FLAG_COUNT) {
+			SceneShaderForwardClustered::singleton->shader.version_enable_group(version, SHADER_GROUP_CLIPPED);
+		}
+		// wgodot-changes::end
 		return SceneShaderForwardClustered::singleton->shader.version_get_shader(version, p_shader_version);
 	} else {
 		return RID();
@@ -776,6 +781,15 @@ void SceneShaderForwardClustered::init(const String p_defines) {
 		Vector<uint64_t> dynamic_buffers;
 		dynamic_buffers.push_back(ShaderRD::DynamicBuffer::encode(RenderForwardClustered::RENDER_PASS_UNIFORM_SET, 2));
 		shader.initialize(shader_versions, p_defines, Vector<RD::PipelineImmutableSampler>(), dynamic_buffers);
+		// wgodot-changes::begin
+		// Planar reflection cameras are single-view. Do not compile unused XR
+		// variants when the first ordinary reflection enables this group.
+		for (int i = 0; i < SHADER_COLOR_PASS_FLAG_COUNT; i++) {
+			if (i & SHADER_COLOR_PASS_FLAG_MULTIVIEW) {
+				shader.set_variant_enabled(ShaderVersion::SHADER_VERSION_COLOR_PASS * 2 + SHADER_COLOR_PASS_FLAG_COUNT + i, false);
+			}
+		}
+		// wgodot-changes::end
 
 		if (RendererCompositorRD::get_singleton()->is_xr_enabled()) {
 			shader.enable_group(SHADER_GROUP_MULTIVIEW);
