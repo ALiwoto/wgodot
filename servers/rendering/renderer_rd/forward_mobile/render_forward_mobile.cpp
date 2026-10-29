@@ -2325,12 +2325,20 @@ void RenderForwardMobile::_fill_render_list(RenderListType p_render_list, const 
 		}
 
 		while (surf) {
+// wgodot-changes::begin
+			const int authored_level = mesh_storage->mesh_surface_get_lod_level(surf->surface);
+			if (authored_level >= 0 && authored_level != inst->mesh_lod_level) {
+				surf = surf->next;
+				continue;
+			}
+// wgodot-changes::end
+
 			surf->sort.uses_lightmap = 0;
 			surf->sort.uses_lightmap_specular = 0;
 
 			// LOD
 
-			if (p_render_data->scene_data->screen_mesh_lod_threshold > 0.0 && mesh_storage->mesh_surface_has_lod(surf->surface)) {
+			if (authored_level < 0 && p_render_data->scene_data->screen_mesh_lod_threshold > 0.0 && mesh_storage->mesh_surface_has_lod(surf->surface)) {
 				uint32_t indices = 0;
 				surf->sort.lod_index = mesh_storage->mesh_surface_get_lod(surf->surface, inst->lod_model_scale * inst->lod_bias, lod_distance * p_render_data->scene_data->lod_distance_multiplier, p_render_data->scene_data->screen_mesh_lod_threshold, indices);
 				if (p_render_data->render_info) {

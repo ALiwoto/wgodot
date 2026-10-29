@@ -29,6 +29,10 @@
 /**************************************************************************/
 
 #include "gltf_document.h"
+// wgodot-changes::begin
+#include "extensions/gltf_mesh_lods.h"
+// wgodot-changes::end
+
 
 #include "extensions/gltf_document_extension_convert_importer_mesh.h"
 #include "extensions/gltf_spec_gloss.h"
@@ -2038,6 +2042,11 @@ Error GLTFDocument::_parse_meshes(Ref<GLTFState> p_state) {
 		mesh->set_blend_weights(blend_weights);
 		mesh->set_instance_materials(instance_materials);
 		mesh->set_mesh(import_mesh);
+// wgodot-changes::begin
+		const Error lod_error = gltf_parse_mesh_lods(extras, import_mesh);
+		ERR_FAIL_COND_V(lod_error != OK, lod_error);
+// wgodot-changes::end
+
 
 		p_state->meshes.push_back(mesh);
 	}

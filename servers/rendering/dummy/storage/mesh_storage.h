@@ -157,6 +157,9 @@ public:
 		return m->surfaces.size();
 	}
 
+// wgodot-changes::begin
+	virtual void mesh_set_lod_profile(RID p_mesh, const MeshLODData &p_data) override {}
+// wgodot-changes::end
 	virtual void mesh_set_custom_aabb(RID p_mesh, const AABB &p_aabb) override {}
 	virtual AABB mesh_get_custom_aabb(RID p_mesh) const override { return AABB(); }
 	virtual AABB mesh_get_aabb(RID p_mesh, RID p_skeleton = RID()) override { return AABB(); }

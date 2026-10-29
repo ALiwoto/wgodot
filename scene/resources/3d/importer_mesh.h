@@ -74,6 +74,10 @@ class ImporterMesh : public Resource {
 	Mesh::BlendShapeMode blend_shape_mode = Mesh::BLEND_SHAPE_MODE_NORMALIZED;
 
 	Ref<ArrayMesh> mesh;
+// wgodot-changes::begin
+	Ref<MeshLODProfile> lod_profile;
+// wgodot-changes::end
+
 
 	Ref<ImporterMesh> shadow_mesh;
 
@@ -117,6 +121,10 @@ public:
 
 	void optimize_indices();
 
+// wgodot-changes::begin
+	void set_lod_profile(const Ref<MeshLODProfile> &p_profile);
+	Ref<MeshLODProfile> get_lod_profile() const { return lod_profile; }
+// wgodot-changes::end
 	void generate_lods(float p_normal_merge_angle, Array p_skin_pose_transform_array);
 
 	void create_shadow_mesh();

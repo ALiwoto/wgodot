@@ -51,6 +51,9 @@ Ref<ImporterMesh> ImporterMesh::merge_importer_meshes(const TypedArray<ImporterM
 	HashMap<String, Array> names_to_surfaces;
 	for (int mesh_index = 0; mesh_index < mesh_count; mesh_index++) {
 		const Ref<ImporterMesh> importer_mesh = p_importer_meshes[mesh_index];
+// wgodot-changes::begin
+		ERR_FAIL_COND_V_MSG(importer_mesh->get_lod_profile().is_valid(), Ref<ImporterMesh>(), "Meshes with independently selected LODs must remain separate instances.");
+// wgodot-changes::end
 		if (importer_mesh->get_blend_shape_count() > 0) {
 			WARN_PRINT("ImporterMesh.merge_importer_meshes: Mesh " + itos(mesh_index) + " has blend shapes, which are not supported and will be discarded in the merged mesh.");
 		}
@@ -357,6 +360,9 @@ Mesh::BlendShapeMode ImporterMesh::get_blend_shape_mode() const {
 }
 
 void ImporterMesh::add_surface(Mesh::PrimitiveType p_primitive, const Array &p_arrays, const TypedArray<Array> &p_blend_shapes, const Dictionary &p_lods, const Ref<Material> &p_material, const String &p_surface_name, const uint64_t p_flags) {
+// wgodot-changes::begin
+	ERR_FAIL_COND_MSG(lod_profile.is_valid(), "Clear the LOD profile before changing mesh surfaces, then assign the updated profile.");
+// wgodot-changes::end
 	ERR_FAIL_COND(p_blend_shapes.size() != blend_shapes.size());
 	ERR_FAIL_COND(p_arrays.size() != Mesh::ARRAY_MAX);
 	Surface s;
@@ -579,6 +585,12 @@ void ImporterMesh::optimize_indices() {
 	write_array[vert_idx] = transformed_vert;
 
 void ImporterMesh::generate_lods(float p_normal_merge_angle, Array p_bone_transform_array) {
+// wgodot-changes::begin
+	if (lod_profile.is_valid()) {
+		return; // Keep the authored vertex/skin/morph geometry.
+	}
+// wgodot-changes::end
+
 	if (!SurfaceTool::simplify_scale_func) {
 		return;
 	}
@@ -909,6 +921,10 @@ Ref<ArrayMesh> ImporterMesh::get_mesh(const Ref<ArrayMesh> &p_base) {
 		}
 
 		mesh->set_lightmap_size_hint(lightmap_size_hint);
+// wgodot-changes::begin
+		mesh->set_lod_profile(lod_profile);
+// wgodot-changes::end
+
 
 		if (shadow_mesh.is_valid()) {
 			Ref<ArrayMesh> shadow = shadow_mesh->get_mesh();
@@ -952,12 +968,23 @@ Ref<ImporterMesh> ImporterMesh::from_mesh(const Ref<Mesh> &p_mesh) {
 				mat, surface_name, p_mesh->surface_get_format(surface_i));
 	}
 	// Merge metadata.
+// wgodot-changes::begin
+	if (array_mesh.is_valid()) {
+		importer_mesh->set_lod_profile(array_mesh->get_lod_profile());
+	}
+// wgodot-changes::end
+
 	importer_mesh->merge_meta_from(*p_mesh);
 	importer_mesh->set_name(p_mesh->get_name());
 	return importer_mesh;
 }
 
 void ImporterMesh::clear() {
+// wgodot-changes::begin
+	lod_profile.unref();
+	shadow_mesh.unref();
+// wgodot-changes::end
+
 	surfaces.clear();
 	blend_shapes.clear();
 	mesh.unref();
@@ -1056,6 +1083,9 @@ void ImporterMesh::create_shadow_mesh() {
 		shadow_mesh->add_surface(surfaces[i].primitive, new_surface, Array(), lods, Ref<Material>(), surfaces[i].name, surfaces[i].flags & ~uint64_t(Mesh::ARRAY_FLAG_PRESERVE_TANGENT_FRAME | Mesh::ARRAY_FLAG_ORTHONORMALIZE_MORPH_TANGENT_FRAME | Mesh::ARRAY_FLAG_NORMALIZE_MORPH_NORMAL_WEIGHTS));
 		// wgodot-changes::end
 	}
+// wgodot-changes::begin
+	shadow_mesh->set_lod_profile(lod_profile);
+// wgodot-changes::end
 }
 
 Ref<ImporterMesh> ImporterMesh::get_shadow_mesh() const {
@@ -1144,6 +1174,11 @@ Dictionary ImporterMesh::_get_data() const {
 Vector<Face3> ImporterMesh::get_faces() const {
 	Vector<Face3> faces;
 	for (int i = 0; i < surfaces.size(); i++) {
+// wgodot-changes::begin
+		if (lod_profile.is_valid() && !lod_profile->get_data().is_empty() && lod_profile->get_data().surface_levels[i] != lod_profile->get_minimum_level()) {
+			continue;
+		}
+// wgodot-changes::end
 		if (surfaces[i].primitive == Mesh::PRIMITIVE_TRIANGLES) {
 			Vector<Vector3> vertices = surfaces[i].arrays[Mesh::ARRAY_VERTEX];
 			Vector<int> indices = surfaces[i].arrays[Mesh::ARRAY_INDEX];
@@ -1331,6 +1366,9 @@ struct EditorSceneFormatImporterMeshLightmapSurface {
 static const uint32_t custom_shift[RSE::ARRAY_CUSTOM_COUNT] = { Mesh::ARRAY_FORMAT_CUSTOM0_SHIFT, Mesh::ARRAY_FORMAT_CUSTOM1_SHIFT, Mesh::ARRAY_FORMAT_CUSTOM2_SHIFT, Mesh::ARRAY_FORMAT_CUSTOM3_SHIFT };
 
 Error ImporterMesh::lightmap_unwrap_cached(const Transform3D &p_base_transform, float p_texel_size, const Vector<uint8_t> &p_src_cache, Vector<uint8_t> &r_dst_cache) {
+// wgodot-changes::begin
+	ERR_FAIL_COND_V_MSG(lod_profile.is_valid(), ERR_UNAVAILABLE, "Authored mesh LODs retain their source lightmap UVs; unwrap before assigning an LOD profile.");
+// wgodot-changes::end
 	ERR_FAIL_NULL_V(array_mesh_lightmap_unwrap_callback, ERR_UNCONFIGURED);
 	ERR_FAIL_COND_V_MSG(blend_shapes.size() != 0, ERR_UNAVAILABLE, "Can't unwrap mesh with blend shapes.");
 
@@ -1594,4 +1632,10 @@ void ImporterMesh::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_lightmap_size_hint"), &ImporterMesh::get_lightmap_size_hint);
 
 	ADD_PROPERTY(PropertyInfo(Variant::DICTIONARY, "_data", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NO_EDITOR | PROPERTY_USAGE_INTERNAL), "_set_data", "_get_data");
+// wgodot-changes::begin
+	ClassDB::bind_method(D_METHOD("set_lod_profile", "profile"), &ImporterMesh::set_lod_profile);
+	ClassDB::bind_method(D_METHOD("get_lod_profile"), &ImporterMesh::get_lod_profile);
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "lod_profile", PROPERTY_HINT_RESOURCE_TYPE, "MeshLODProfile"), "set_lod_profile", "get_lod_profile");
+// wgodot-changes::end
+
 }

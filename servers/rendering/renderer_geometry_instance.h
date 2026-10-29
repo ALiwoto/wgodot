@@ -40,6 +40,10 @@
 class RenderGeometryInstance {
 public:
 	virtual ~RenderGeometryInstance() {}
+// wgodot-changes::begin
+	int mesh_lod_level = 0;
+// wgodot-changes::end
+
 
 	virtual void _mark_dirty() = 0;
 

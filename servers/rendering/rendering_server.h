@@ -29,6 +29,10 @@
 /**************************************************************************/
 
 #pragma once
+// wgodot-changes::begin
+#include "servers/rendering/mesh_lod.h"
+// wgodot-changes::end
+
 
 // wgodot-changes::begin
 #include "servers/rendering/storage/wgodot_shader_parameters.h"
@@ -252,6 +256,9 @@ public:
 	virtual void mesh_set_path(RID p_mesh, const String &p_path) = 0;
 	virtual String mesh_get_path(RID p_mesh) const = 0;
 
+// wgodot-changes::begin
+	virtual void mesh_set_lod_profile(RID p_mesh, const MeshLODData &p_data) = 0;
+// wgodot-changes::end
 	virtual void mesh_set_shadow_mesh(RID p_mesh, RID p_shadow_mesh) = 0;
 
 	virtual void mesh_surface_remove(RID p_mesh, int p_surface) = 0;

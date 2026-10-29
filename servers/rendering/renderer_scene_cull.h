@@ -286,6 +286,10 @@ public:
 			FLAG_VISIBILITY_DEPENDENCY_FADE_CHILDREN = (1 << 22),
 			FLAG_GEOM_PROJECTOR_SOFTSHADOW_DIRTY = (1 << 23),
 			FLAG_IGNORE_ALL_CULLING = (1 << 24),
+// wgodot-changes::begin
+			FLAG_AUTHORED_MESH_LOD = (1 << 25),
+// wgodot-changes::end
+
 		};
 
 		uint32_t flags = 0;

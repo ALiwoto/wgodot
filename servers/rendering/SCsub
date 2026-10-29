@@ -6,6 +6,7 @@ Import("env")
 env.add_source_files(env.servers_sources, "instance_uniforms.cpp")
 # wgodot-changes::begin
 env.add_source_files(env.servers_sources, "wgodot_instance_uniforms.cpp")
+env.add_source_files(env.servers_sources, "mesh_lod.cpp")
 env.add_source_files(env.servers_sources, "wgodot_shader_samplers.cpp")
 env.add_source_files(env.servers_sources, "wgodot_shader_compiler.cpp")
 env.add_source_files(env.servers_sources, "wgodot_texture_submission.cpp")

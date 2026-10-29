@@ -59,6 +59,9 @@ struct Mesh {
 			GLsizei stride;
 			uint32_t offset;
 		};
+// wgodot-changes::begin
+		int lod_level = -1;
+// wgodot-changes::end
 		RSE::PrimitiveType primitive = RSE::PRIMITIVE_POINTS;
 		uint64_t format = 0;
 
@@ -131,6 +134,9 @@ struct Mesh {
 	uint32_t blend_shape_count = 0;
 	RSE::BlendShapeMode blend_shape_mode = RSE::BLEND_SHAPE_MODE_NORMALIZED;
 
+// wgodot-changes::begin
+	MeshLODData lod_profile;
+// wgodot-changes::end
 	Surface **surfaces = nullptr;
 	uint32_t surface_count = 0;
 
@@ -156,6 +162,10 @@ struct Mesh {
 
 struct MeshInstance {
 	Mesh *mesh = nullptr;
+// wgodot-changes::begin
+	int selected_lod = 0;
+// wgodot-changes::end
+
 	RID skeleton;
 	struct Surface {
 		GLuint blend_shape_vertex_buffers[2] = { 0, 0 };
@@ -336,6 +346,12 @@ public:
 	virtual void mesh_set_path(RID p_mesh, const String &p_path) override;
 	virtual String mesh_get_path(RID p_mesh) const override;
 
+// wgodot-changes::begin
+	virtual void mesh_set_lod_profile(RID p_mesh, const MeshLODData &p_data) override;
+	virtual const MeshLODData *mesh_get_lod_profile(RID p_mesh) const override;
+	virtual void mesh_instance_select_lod(RID p_mesh_instance, int p_level) override;
+	_FORCE_INLINE_ int mesh_surface_get_lod_level(void *p_surface) const { return static_cast<Mesh::Surface *>(p_surface)->lod_level; }
+// wgodot-changes::end
 	virtual void mesh_set_shadow_mesh(RID p_mesh, RID p_shadow_mesh) override;
 
 	virtual void mesh_clear(RID p_mesh) override;

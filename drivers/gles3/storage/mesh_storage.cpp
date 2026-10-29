@@ -110,6 +110,9 @@ bool MeshStorage::mesh_needs_instance(RID p_mesh, bool p_has_skeleton) {
 void MeshStorage::mesh_add_surface(RID p_mesh, const RenderingServerTypes::SurfaceData &p_surface) {
 	Mesh *mesh = mesh_owner.get_or_null(p_mesh);
 	ERR_FAIL_NULL(mesh);
+// wgodot-changes::begin
+	ERR_FAIL_COND_MSG(!mesh->lod_profile.is_empty(), "Clear the mesh LOD profile before changing its surfaces.");
+// wgodot-changes::end
 
 	ERR_FAIL_COND(mesh->surface_count == RSE::MAX_MESH_SURFACES);
 
@@ -874,6 +877,9 @@ void MeshStorage::mesh_set_shadow_mesh(RID p_mesh, RID p_shadow_mesh) {
 void MeshStorage::mesh_clear(RID p_mesh) {
 	Mesh *mesh = mesh_owner.get_or_null(p_mesh);
 	ERR_FAIL_NULL(mesh);
+// wgodot-changes::begin
+	mesh->lod_profile = MeshLODData();
+// wgodot-changes::end
 
 	// Clear instance data before mesh data.
 	for (MeshInstance *mi : mesh->instances) {
@@ -1130,6 +1136,9 @@ void MeshStorage::_mesh_surface_generate_version_for_input_mask(Mesh::Surface::V
 void MeshStorage::mesh_surface_remove(RID p_mesh, int p_surface) {
 	Mesh *mesh = mesh_owner.get_or_null(p_mesh);
 	ERR_FAIL_NULL(mesh);
+// wgodot-changes::begin
+	ERR_FAIL_COND_MSG(!mesh->lod_profile.is_empty(), "Clear the mesh LOD profile before changing its surfaces.");
+// wgodot-changes::end
 	ERR_FAIL_UNSIGNED_INDEX((uint32_t)p_surface, mesh->surface_count);
 
 	// Clear instance data before mesh data.
@@ -1459,6 +1468,12 @@ void MeshStorage::update_mesh_instances() {
 		int frame = RSG::rasterizer->get_frame_number();
 		if (uses_motion_vectors) {
 			for (uint32_t i = 0; i < mi->surfaces.size(); i++) {
+// wgodot-changes::begin
+				const int level = mi->mesh->surfaces[i]->lod_level;
+				if (level >= 0 && level != mi->selected_lod) {
+					continue;
+				}
+// wgodot-changes::end
 				mi->surfaces[i].prev_vertex_buffer = mi->surfaces[i].current_vertex_buffer;
 
 				if (frame - mi->surfaces[i].last_change == 1) {
@@ -1496,6 +1511,12 @@ void MeshStorage::update_mesh_instances() {
 		}
 
 		for (uint32_t i = 0; i < mi->surfaces.size(); i++) {
+// wgodot-changes::begin
+			const int level = mi->mesh->surfaces[i]->lod_level;
+			if (level >= 0 && level != mi->selected_lod) {
+				continue;
+			}
+// wgodot-changes::end
 			if (mi->surfaces[i].vertex_buffers[mi->surfaces[i].current_vertex_buffer] == 0) {
 				continue;
 			}

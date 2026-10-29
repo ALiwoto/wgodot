@@ -431,6 +431,9 @@ public:
 	FUNC2(mesh_set_path, RID, const String &)
 	FUNC1RC(String, mesh_get_path, RID)
 
+// wgodot-changes::begin
+	FUNC2(mesh_set_lod_profile, RID, const MeshLODData &)
+// wgodot-changes::end
 	FUNC2(mesh_set_shadow_mesh, RID, RID)
 
 	FUNC2(mesh_surface_remove, RID, int)

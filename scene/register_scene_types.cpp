@@ -897,6 +897,10 @@ void register_scene_types() {
 	GDREGISTER_VIRTUAL_CLASS(Mesh);
 	GDREGISTER_CLASS(MeshConvexDecompositionSettings);
 	GDREGISTER_CLASS(ArrayMesh);
+// wgodot-changes::begin
+	GDREGISTER_CLASS(MeshLODProfile);
+// wgodot-changes::end
+
 	GDREGISTER_CLASS(PlaceholderMesh);
 	GDREGISTER_CLASS(ImmediateMesh);
 	GDREGISTER_CLASS(MultiMesh);

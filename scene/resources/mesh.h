@@ -31,6 +31,10 @@
 #pragma once
 
 #include "core/io/resource.h"
+// wgodot-changes::begin
+#include "scene/resources/mesh_lod_profile.h"
+// wgodot-changes::end
+
 #include "core/math/face3.h"
 #include "core/math/triangle_mesh.h"
 #include "core/variant/typed_array.h"
@@ -191,6 +195,9 @@ public:
 
 	Vector<Face3> get_faces() const;
 	Vector<Face3> get_surface_faces(int p_surface) const;
+// wgodot-changes::begin
+	virtual bool surface_is_base_lod(int p_surface) const { return true; }
+// wgodot-changes::end
 	Ref<TriangleMesh> generate_triangle_mesh() const;
 	Ref<TriangleMesh> generate_surface_triangle_mesh(int p_surface) const;
 	void generate_debug_mesh_lines(Vector<Vector3> &r_lines);
@@ -313,6 +320,11 @@ class ArrayMesh : public Mesh {
 	Array _get_surfaces() const;
 	void _set_surfaces(const Array &p_data);
 	Ref<ArrayMesh> shadow_mesh;
+// wgodot-changes::begin
+	Ref<MeshLODProfile> lod_profile;
+	void _lod_profile_changed();
+// wgodot-changes::end
+
 
 private:
 	struct Surface {
@@ -412,6 +424,11 @@ public:
 
 	virtual void reload_from_file() override;
 
+// wgodot-changes::begin
+	bool surface_is_base_lod(int p_surface) const override;
+	void set_lod_profile(const Ref<MeshLODProfile> &p_profile);
+	Ref<MeshLODProfile> get_lod_profile() const { return lod_profile; }
+// wgodot-changes::end
 	void set_shadow_mesh(const Ref<ArrayMesh> &p_mesh);
 	Ref<ArrayMesh> get_shadow_mesh() const;
 

@@ -590,6 +590,16 @@ void RendererSceneCull::instance_initialize(RID p_rid) {
 }
 
 void RendererSceneCull::_instance_update_mesh_instance(Instance *p_instance) const {
+// wgodot-changes::begin
+	if (p_instance->scenario && p_instance->array_index >= 0) {
+		InstanceData &idata = p_instance->scenario->instance_data[p_instance->array_index];
+		if (p_instance->base_type == RSE::INSTANCE_MESH && RSG::mesh_storage->mesh_get_lod_profile(p_instance->base)) {
+			idata.flags |= InstanceData::FLAG_AUTHORED_MESH_LOD;
+		} else {
+			idata.flags &= ~InstanceData::FLAG_AUTHORED_MESH_LOD;
+		}
+	}
+// wgodot-changes::end
 	bool needs_instance = RSG::mesh_storage->mesh_needs_instance(p_instance->base, p_instance->skeleton.is_valid());
 	if (needs_instance != p_instance->mesh_instance.is_valid()) {
 		if (needs_instance) {
@@ -1914,6 +1924,11 @@ void RendererSceneCull::_update_instance(Instance *p_instance) const {
 		if (p_instance->mesh_instance.is_valid()) {
 			idata.flags |= InstanceData::FLAG_USES_MESH_INSTANCE;
 		}
+// wgodot-changes::begin
+		if (p_instance->base_type == RSE::INSTANCE_MESH && RSG::mesh_storage->mesh_get_lod_profile(p_instance->base)) {
+			idata.flags |= InstanceData::FLAG_AUTHORED_MESH_LOD;
+		}
+// wgodot-changes::end
 		if (p_instance->ignore_occlusion_culling) {
 			idata.flags |= InstanceData::FLAG_IGNORE_OCCLUSION_CULLING;
 		}
@@ -3362,6 +3377,19 @@ void RendererSceneCull::_scene_cull(CullData &cull_data, InstanceCullResult &cul
 			}
 		}
 
+// wgodot-changes::begin
+		if (mesh_visible && (idata.flags & InstanceData::FLAG_AUTHORED_MESH_LOD)) {
+			const MeshLODData *lod = RSG::mesh_storage->mesh_get_lod_profile(idata.base_rid);
+			if (lod) {
+				const int level = lod->select(idata.instance->transform, *cull_data.camera_matrix, cull_data.cam_transform.origin, idata.instance->lod_bias, idata.instance_geometry->mesh_lod_level);
+				idata.instance_geometry->mesh_lod_level = level;
+				if (idata.flags & InstanceData::FLAG_USES_MESH_INSTANCE) {
+					RSG::mesh_storage->mesh_instance_select_lod(idata.instance->mesh_instance, level);
+				}
+			}
+		}
+
+// wgodot-changes::end
 		if (mesh_visible && cull_data.scenario->instance_data[i].flags & InstanceData::FLAG_USES_MESH_INSTANCE) {
 			cull_result.mesh_instances.push_back(cull_data.scenario->instance_data[i].instance->mesh_instance);
 		}

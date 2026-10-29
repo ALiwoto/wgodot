@@ -295,6 +295,11 @@ Ref<TriangleMesh> Mesh::generate_triangle_mesh() const {
 	int faces_size = 0;
 
 	for (int i = 0; i < get_surface_count(); i++) {
+// wgodot-changes::begin
+		if (!surface_is_base_lod(i)) {
+			continue;
+		}
+// wgodot-changes::end
 		switch (surface_get_primitive_type(i)) {
 			case PRIMITIVE_TRIANGLES: {
 				int len = (surface_get_format(i) & ARRAY_FORMAT_INDEX) ? surface_get_array_index_len(i) : surface_get_array_len(i);
@@ -327,6 +332,11 @@ Ref<TriangleMesh> Mesh::generate_triangle_mesh() const {
 	int widx = 0;
 
 	for (int i = 0; i < get_surface_count(); i++) {
+// wgodot-changes::begin
+		if (!surface_is_base_lod(i)) {
+			continue;
+		}
+// wgodot-changes::end
 		Mesh::PrimitiveType primitive = surface_get_primitive_type(i);
 		if (primitive != PRIMITIVE_TRIANGLES && primitive != PRIMITIVE_TRIANGLE_STRIP) {
 			continue;
@@ -554,6 +564,11 @@ Ref<ConvexPolygonShape3D> Mesh::create_convex_shape(bool p_clean, bool p_simplif
 
 	Vector<Vector3> vertices;
 	for (int i = 0; i < get_surface_count(); i++) {
+// wgodot-changes::begin
+		if (!surface_is_base_lod(i)) {
+			continue;
+		}
+// wgodot-changes::end
 		Array a = surface_get_arrays(i);
 		ERR_FAIL_COND_V(a.is_empty(), Ref<ConvexPolygonShape3D>());
 		Vector<Vector3> v = a[ARRAY_VERTEX];
@@ -1600,6 +1615,9 @@ void ArrayMesh::_create_if_empty() const {
 }
 
 void ArrayMesh::_set_surfaces(const Array &p_surfaces) {
+// wgodot-changes::begin
+	set_lod_profile(Ref<MeshLODProfile>());
+// wgodot-changes::end
 	Vector<RenderingServerTypes::SurfaceData> surface_data;
 	Vector<Ref<Material>> surface_materials;
 	Vector<String> surface_names;
@@ -1762,6 +1780,10 @@ bool ArrayMesh::_get(const StringName &p_name, Variant &r_ret) const {
 }
 
 void ArrayMesh::reset_state() {
+// wgodot-changes::begin
+	set_lod_profile(Ref<MeshLODProfile>());
+// wgodot-changes::end
+
 	clear_surfaces();
 	clear_blend_shapes();
 
@@ -1800,6 +1822,9 @@ void ArrayMesh::_recompute_aabb() {
 
 // TODO: Need to add binding to add_surface using future MeshSurfaceData object.
 void ArrayMesh::add_surface(BitField<ArrayFormat> p_format, PrimitiveType p_primitive, const Vector<uint8_t> &p_array, const Vector<uint8_t> &p_attribute_array, const Vector<uint8_t> &p_skin_array, int p_vertex_count, const Vector<uint8_t> &p_index_array, int p_index_count, const AABB &p_aabb, const Vector<uint8_t> &p_blend_shape_data, const Vector<AABB> &p_bone_aabbs, const Vector<RenderingServerTypes::SurfaceData::LOD> &p_lods, const Vector4 p_uv_scale) {
+// wgodot-changes::begin
+	ERR_FAIL_COND_MSG(lod_profile.is_valid(), "Clear the LOD profile before changing mesh surfaces, then assign the updated profile.");
+// wgodot-changes::end
 	ERR_FAIL_COND(surfaces.size() == RSE::MAX_MESH_SURFACES);
 	_create_if_empty();
 
@@ -1840,6 +1865,9 @@ void ArrayMesh::add_surface(BitField<ArrayFormat> p_format, PrimitiveType p_prim
 }
 
 void ArrayMesh::add_surface_from_arrays(PrimitiveType p_primitive, const Array &p_arrays, const TypedArray<Array> &p_blend_shapes, const Dictionary &p_lods, BitField<ArrayFormat> p_flags) {
+// wgodot-changes::begin
+	ERR_FAIL_COND_MSG(lod_profile.is_valid(), "Clear the LOD profile before changing mesh surfaces, then assign the updated profile.");
+// wgodot-changes::end
 	ERR_FAIL_COND(p_blend_shapes.size() != blend_shapes.size());
 	ERR_FAIL_COND(p_arrays.size() != ARRAY_MAX);
 
@@ -2038,6 +2066,10 @@ AABB ArrayMesh::get_aabb() const {
 }
 
 void ArrayMesh::clear_surfaces() {
+// wgodot-changes::begin
+	set_lod_profile(Ref<MeshLODProfile>());
+// wgodot-changes::end
+
 	if (!mesh.is_valid()) {
 		return;
 	}
@@ -2047,6 +2079,9 @@ void ArrayMesh::clear_surfaces() {
 }
 
 void ArrayMesh::surface_remove(int p_surface) {
+// wgodot-changes::begin
+	ERR_FAIL_COND_MSG(lod_profile.is_valid(), "Clear the LOD profile before changing mesh surfaces, then assign the updated profile.");
+// wgodot-changes::end
 	ERR_FAIL_INDEX(p_surface, surfaces.size());
 	RS::get_singleton()->mesh_surface_remove(mesh, p_surface);
 	surfaces.remove_at(p_surface);
@@ -2081,12 +2116,18 @@ void ArrayMesh::regen_normal_maps() {
 		formats.push_back(surface_get_format(i));
 	}
 
+// wgodot-changes::begin
+	const Ref<MeshLODProfile> saved_lod_profile = lod_profile;
+// wgodot-changes::end
 	clear_surfaces();
 
 	for (int i = 0; i < surfs.size(); i++) {
 		surfs.write[i]->generate_tangents();
 		surfs.write[i]->commit(Ref<ArrayMesh>(this), formats[i]);
 	}
+// wgodot-changes::begin
+	set_lod_profile(saved_lod_profile);
+// wgodot-changes::end
 }
 
 //dirty hack
@@ -2105,6 +2146,9 @@ Error ArrayMesh::lightmap_unwrap(const Transform3D &p_base_transform, float p_te
 }
 
 Error ArrayMesh::lightmap_unwrap_cached(const Transform3D &p_base_transform, float p_texel_size, const Vector<uint8_t> &p_src_cache, Vector<uint8_t> &r_dst_cache, bool p_generate_cache) {
+// wgodot-changes::begin
+	ERR_FAIL_COND_V_MSG(lod_profile.is_valid(), ERR_UNAVAILABLE, "Authored mesh LODs retain their source lightmap UVs; unwrap before assigning an LOD profile.");
+// wgodot-changes::end
 	ERR_FAIL_NULL_V(array_mesh_lightmap_unwrap_callback, ERR_UNCONFIGURED);
 	ERR_FAIL_COND_V_MSG(blend_shapes.size() != 0, ERR_UNAVAILABLE, "Can't unwrap mesh with blend shapes.");
 	ERR_FAIL_COND_V_MSG(p_texel_size <= 0.0f, ERR_PARAMETER_RANGE_ERROR, "Texel size must be greater than 0.");
@@ -2340,6 +2384,10 @@ void ArrayMesh::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_custom_aabb", "aabb"), &ArrayMesh::set_custom_aabb);
 	ClassDB::bind_method(D_METHOD("get_custom_aabb"), &ArrayMesh::get_custom_aabb);
 
+// wgodot-changes::begin
+	ClassDB::bind_method(D_METHOD("set_lod_profile", "profile"), &ArrayMesh::set_lod_profile);
+	ClassDB::bind_method(D_METHOD("get_lod_profile"), &ArrayMesh::get_lod_profile);
+// wgodot-changes::end
 	ClassDB::bind_method(D_METHOD("set_shadow_mesh", "mesh"), &ArrayMesh::set_shadow_mesh);
 	ClassDB::bind_method(D_METHOD("get_shadow_mesh"), &ArrayMesh::get_shadow_mesh);
 
@@ -2354,9 +2402,17 @@ void ArrayMesh::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "blend_shape_mode", PROPERTY_HINT_ENUM, "Normalized,Relative"), "set_blend_shape_mode", "get_blend_shape_mode");
 	ADD_PROPERTY(PropertyInfo(Variant::AABB, "custom_aabb", PROPERTY_HINT_NO_NODEPATH, "suffix:m"), "set_custom_aabb", "get_custom_aabb");
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "shadow_mesh", PROPERTY_HINT_RESOURCE_TYPE, ArrayMesh::get_class_static()), "set_shadow_mesh", "get_shadow_mesh");
+// wgodot-changes::begin
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "lod_profile", PROPERTY_HINT_RESOURCE_TYPE, "MeshLODProfile"), "set_lod_profile", "get_lod_profile");
+// wgodot-changes::end
+
 }
 
 void ArrayMesh::reload_from_file() {
+// wgodot-changes::begin
+	set_lod_profile(Ref<MeshLODProfile>());
+// wgodot-changes::end
+
 	RenderingServer::get_singleton()->mesh_clear(mesh);
 	surfaces.clear();
 	clear_blend_shapes();

@@ -29,6 +29,10 @@
 /**************************************************************************/
 
 #pragma once
+// wgodot-changes::begin
+#include "servers/rendering/mesh_lod.h"
+// wgodot-changes::end
+
 
 #include "core/math/color.h"
 #include "core/math/transform_2d.h"
@@ -81,6 +85,9 @@ public:
 	virtual void mesh_set_path(RID p_mesh, const String &p_path) = 0;
 	virtual String mesh_get_path(RID p_mesh) const = 0;
 
+// wgodot-changes::begin
+	virtual void mesh_set_lod_profile(RID p_mesh, const MeshLODData &p_data) = 0;
+// wgodot-changes::end
 	virtual void mesh_set_shadow_mesh(RID p_mesh, RID p_shadow_mesh) = 0;
 
 	virtual void mesh_surface_remove(RID p_mesh, int p_surface) = 0;
@@ -96,6 +103,10 @@ public:
 	virtual void mesh_instance_free(RID p_rid) = 0;
 	virtual void mesh_instance_set_skeleton(RID p_mesh_instance, RID p_skeleton) = 0;
 	virtual void mesh_instance_set_blend_shape_weight(RID p_mesh_instance, int p_shape, float p_weight) = 0;
+// wgodot-changes::begin
+	virtual const MeshLODData *mesh_get_lod_profile(RID p_mesh) const { return nullptr; }
+	virtual void mesh_instance_select_lod(RID p_mesh_instance, int p_level) {}
+// wgodot-changes::end
 	virtual void mesh_instance_check_for_update(RID p_mesh_instance) = 0;
 	virtual void mesh_instance_set_canvas_item_transform(RID p_mesh_instance, const Transform2D &p_transform) = 0;
 	virtual void update_mesh_instances() = 0;
