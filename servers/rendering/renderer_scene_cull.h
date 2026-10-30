@@ -32,6 +32,10 @@
 
 #include "core/math/dynamic_bvh.h"
 #include "core/math/transform_interpolator.h"
+// wgodot-changes::begin
+#include "core/os/mutex.h"
+#include "servers/rendering/mesh_lod.h"
+// wgodot-changes::end
 #include "core/templates/bin_sorted_array.h"
 #include "core/templates/local_vector.h"
 #include "core/templates/paged_allocator.h"
@@ -435,6 +439,11 @@ public:
 		bool teleported = false;
 
 		float lod_bias;
+		// wgodot-changes::begin
+		RID lod_source;
+		Mutex lod_selection_mutex;
+		uint64_t lod_selection_pass = 0;
+		// wgodot-changes::end
 
 		bool ignore_occlusion_culling;
 		// wgodot-changes::begin
@@ -1092,6 +1101,9 @@ public:
 	virtual void instance_geometry_set_lightmap(RID p_instance, RID p_lightmap, const Rect2 &p_lightmap_uv_scale, int p_slice_index);
 	virtual void instance_geometry_set_lod_bias(RID p_instance, float p_lod_bias);
 	// wgodot-changes::begin
+	virtual void instance_geometry_set_lod_source(RID p_instance, RID p_source) override;
+	// wgodot-changes::end
+	// wgodot-changes::begin
 #ifdef TOOLS_ENABLED
 	int instance_geometry_get_mesh_lod(RID p_instance) const override;
 #endif
@@ -1191,6 +1203,9 @@ public:
 	};
 
 	void _scene_cull_threaded(uint32_t p_thread, CullData *cull_data);
+	// wgodot-changes::begin
+	int _select_mesh_lod(Instance *p_instance, const MeshLODData &p_lod, const CullData &p_cull_data);
+	// wgodot-changes::end
 	void _scene_cull(CullData &cull_data, InstanceCullResult &cull_result, uint64_t p_from, uint64_t p_to);
 	static void _scene_particles_set_view_axis(RID p_particles, const Vector3 &p_axis, const Vector3 &p_up_axis);
 	_FORCE_INLINE_ bool _visibility_parent_check(const CullData &p_cull_data, const InstanceData &p_instance_data);

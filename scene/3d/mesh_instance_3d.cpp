@@ -228,6 +228,21 @@ Ref<SkinReference> MeshInstance3D::get_skin_reference() const {
 	return skin_ref;
 }
 
+// wgodot-changes::begin
+void MeshInstance3D::_resolve_lod_source() {
+	MeshInstance3D *source = lod_source_path.is_empty() ? nullptr : Object::cast_to<MeshInstance3D>(get_node_or_null(lod_source_path));
+	ERR_FAIL_COND_MSG(source == this, "A mesh cannot be its own LOD source.");
+	RenderingServer::get_singleton()->instance_geometry_set_lod_source(get_instance(), source ? source->get_instance() : RID());
+}
+
+void MeshInstance3D::set_lod_source_path(const NodePath &p_source) {
+	lod_source_path = p_source;
+	if (is_inside_tree()) {
+		_resolve_lod_source();
+	}
+}
+// wgodot-changes::end
+
 void MeshInstance3D::set_skeleton_path(const NodePath &p_skeleton) {
 	skeleton_path = p_skeleton;
 	if (!is_inside_tree()) {
@@ -363,12 +378,16 @@ void MeshInstance3D::_notification(int p_what) {
 			}
 #endif
 			_resolve_skeleton_path();
+			// wgodot-changes::begin
+			_resolve_lod_source();
+			// wgodot-changes::end
 		} break;
 		// wgodot-changes::begin
 		case NOTIFICATION_EXIT_TREE: {
 			// A detached mesh can be disposed on a worker while its former
 			// skeleton remains live. Release that binding on the tree thread.
 			RenderingServer::get_singleton()->instance_attach_skeleton(get_instance(), RID());
+			RenderingServer::get_singleton()->instance_geometry_set_lod_source(get_instance(), RID());
 			skin_ref.unref();
 		} break;
 		// wgodot-changes::end
@@ -939,6 +958,8 @@ void MeshInstance3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_skin_reference"), &MeshInstance3D::get_skin_reference);
 	// wgodot-changes::begin
 	ClassDB::bind_method(D_METHOD("get_pose_aabb"), &MeshInstance3D::get_pose_aabb);
+	ClassDB::bind_method(D_METHOD("set_lod_source_path", "source"), &MeshInstance3D::set_lod_source_path);
+	ClassDB::bind_method(D_METHOD("get_lod_source_path"), &MeshInstance3D::get_lod_source_path);
 	ADD_SIGNAL(MethodInfo("mesh_changed"));
 	// wgodot-changes::end
 
@@ -974,6 +995,9 @@ void MeshInstance3D::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "skin", PROPERTY_HINT_RESOURCE_TYPE, Skin::get_class_static()), "set_skin", "get_skin");
 	ADD_PROPERTY(PropertyInfo(Variant::NODE_PATH, "skeleton", PROPERTY_HINT_NODE_PATH_VALID_TYPES, "Skeleton3D"), "set_skeleton_path", "get_skeleton_path");
 	ADD_GROUP("", "");
+	// wgodot-changes::begin
+	ADD_PROPERTY(PropertyInfo(Variant::NODE_PATH, "lod_source", PROPERTY_HINT_NODE_PATH_VALID_TYPES, "MeshInstance3D"), "set_lod_source_path", "get_lod_source_path");
+	// wgodot-changes::end
 
 	// wgodot-changes::begin
 #ifdef TOOLS_ENABLED

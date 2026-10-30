@@ -305,6 +305,10 @@ The `.pck` file(s) also don't contain any string paths; they contain something l
 
 note: if you have a server-side protocol to serve assets in real time to your end-users, that's an entirely different thing, the design in that depends on your network protocol and does not concern the local asset packs.
 
+## Scale-independent tangent frames
+
+Spatial `render_mode tangent_frame_scale_independent` removes object-axis scale from the automatic normal/tangent transform. It preserves mirrored axes and, with `Mesh.ARRAY_FLAG_PRESERVE_TANGENT_FRAME`, authored/skinned vector lengths. Normal mesh/material behavior is unchanged unless selected. Supported in Forward+, Mobile and Compatibility; `skip_vertex_transform` still leaves transforms to the shader. This is a shader variant, with no CPU work or readback during playback.
+
 ## async_preload
 
 in official godot, we have 3 main ways of loading resources:

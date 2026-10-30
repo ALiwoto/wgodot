@@ -1008,6 +1008,9 @@ public:
 	FUNC6(instance_geometry_set_visibility_range, RID, float, float, float, float, RSE::VisibilityRangeFadeMode)
 	FUNC4(instance_geometry_set_lightmap, RID, RID, const Rect2 &, int)
 	FUNC2(instance_geometry_set_lod_bias, RID, float)
+	// wgodot-changes::begin
+	FUNC2(instance_geometry_set_lod_source, RID, RID)
+	// wgodot-changes::end
 	FUNC2(instance_geometry_set_transparency, RID, float)
 	FUNC3(instance_geometry_set_shader_parameter, RID, const StringName &, const Variant &)
 	// wgodot-changes::begin

@@ -9,6 +9,9 @@
 
 /* Include our forward mobile UBOs definitions etc. */
 #include "scene_forward_mobile_inc.glsl"
+// wgodot-changes::begin
+#include "../../../tangent_frame_inc.glsl"
+// wgodot-changes::end
 
 #define SHADER_IS_SRGB false
 #define SHADER_SPACE_FAR 0.0
@@ -437,16 +440,34 @@ void vertex_shader(in vec3 vertex,
 #if !defined(SKIP_TRANSFORM_USED) && defined(VERTEX_WORLD_COORDS_USED)
 
 	vertex = (model_matrix * vec4(vertex, 1.0)).xyz;
+	// wgodot-changes::begin
+#ifdef TANGENT_FRAME_SCALE_INDEPENDENT
+	mat3 frame_transform = scale_independent_tangent_basis(mat3(model_matrix));
+#endif
+	// wgodot-changes::end
 
 #ifdef NORMAL_USED
 	// For correct non-uniform scale handling, normal has to be transformed by normal matrix, but tangent vectors need to use model matrix as is
+	// wgodot-changes::begin
+#ifdef TANGENT_FRAME_SCALE_INDEPENDENT
+	normal_highp = frame_transform * normal_highp;
+#else
 	normal_highp = model_normal_matrix * normal_highp;
+#endif
+	// wgodot-changes::end
 #endif
 
 #if defined(TANGENT_USED) || defined(NORMAL_MAP_USED) || defined(BENT_NORMAL_MAP_USED) || defined(LIGHT_ANISOTROPY_USED)
 	// For non-uniform scale, this produces non-orthogonal TBNs; ideally binormal should be reconstructed in fragment shader with cross
+	// wgodot-changes::begin
+#ifdef TANGENT_FRAME_SCALE_INDEPENDENT
+	tangent_highp = frame_transform * tangent_highp;
+	binormal_highp = frame_transform * binormal_highp;
+#else
 	tangent_highp = mat3(model_matrix) * tangent_highp;
 	binormal_highp = mat3(model_matrix) * binormal_highp;
+#endif
+	// wgodot-changes::end
 #endif
 #endif
 
@@ -507,16 +528,34 @@ void vertex_shader(in vec3 vertex,
 #if !defined(SKIP_TRANSFORM_USED) && !defined(VERTEX_WORLD_COORDS_USED)
 
 	vertex = (modelview * vec4(vertex, 1.0)).xyz;
+	// wgodot-changes::begin
+#ifdef TANGENT_FRAME_SCALE_INDEPENDENT
+	mat3 frame_transform = scale_independent_tangent_basis(mat3(modelview));
+#endif
+	// wgodot-changes::end
 
 #ifdef NORMAL_USED
 	// For correct non-uniform scale handling, normal has to be transformed by normal matrix, but tangent vectors need to use model matrix as is
+	// wgodot-changes::begin
+#ifdef TANGENT_FRAME_SCALE_INDEPENDENT
+	normal_highp = frame_transform * normal_highp;
+#else
 	normal_highp = modelview_normal * normal_highp;
+#endif
+	// wgodot-changes::end
 #endif
 
 #if defined(TANGENT_USED) || defined(NORMAL_MAP_USED) || defined(BENT_NORMAL_MAP_USED) || defined(LIGHT_ANISOTROPY_USED)
 	// For non-uniform scale, this produces non-orthogonal TBNs; ideally binormal should be reconstructed in fragment shader with cross
+	// wgodot-changes::begin
+#ifdef TANGENT_FRAME_SCALE_INDEPENDENT
+	tangent_highp = frame_transform * tangent_highp;
+	binormal_highp = frame_transform * binormal_highp;
+#else
 	tangent_highp = mat3(modelview) * tangent_highp;
 	binormal_highp = mat3(modelview) * binormal_highp;
+#endif
+	// wgodot-changes::end
 #endif
 #endif // !defined(SKIP_TRANSFORM_USED) && !defined(VERTEX_WORLD_COORDS_USED)
 

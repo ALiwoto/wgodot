@@ -133,6 +133,11 @@
 		</method>
 	</methods>
 	<members>
+		<!-- wgodot-changes::begin -->
+		<member name="lod_source" type="NodePath" setter="set_lod_source_path" getter="get_lod_source_path" default="NodePath(&quot;&quot;)">
+			Optional mesh whose authored [MeshLODProfile] selection this mesh follows. The selected level is clamped to this mesh's available levels. Useful for modular bodies and equipment; empty paths preserve independent selection. Selection occurs once per render view, including when the source is offscreen. Cycles are rejected. Both meshes must use authored LOD profiles and belong to the same world.
+		</member>
+		<!-- wgodot-changes::end -->
 		<member name="mesh" type="Mesh" setter="set_mesh" getter="get_mesh">
 			The [Mesh] resource for the instance.
 		</member>

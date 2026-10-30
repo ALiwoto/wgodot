@@ -129,6 +129,9 @@ public:
 	virtual void instance_geometry_set_lightmap(RID p_instance, RID p_lightmap, const Rect2 &p_lightmap_uv_scale, int p_slice_index) = 0;
 	virtual void instance_geometry_set_lod_bias(RID p_instance, float p_lod_bias) = 0;
 	// wgodot-changes::begin
+	virtual void instance_geometry_set_lod_source(RID p_instance, RID p_source) = 0;
+	// wgodot-changes::end
+	// wgodot-changes::begin
 #ifdef TOOLS_ENABLED
 	// Render-thread inspection of the submitted authored mesh level; -1 when unavailable.
 	virtual int instance_geometry_get_mesh_lod(RID p_instance) const { return -1; }

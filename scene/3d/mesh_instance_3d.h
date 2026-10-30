@@ -58,6 +58,8 @@ protected:
 	Vector<int32_t> surface_override_sources;
 	Ref<Material> _effective_surface_override(int p_surface) const;
 	void _update_surface_override(int p_surface);
+	NodePath lod_source_path;
+	void _resolve_lod_source();
 	// wgodot-changes::end
 
 	void _mesh_changed();
@@ -91,6 +93,10 @@ public:
 
 	void set_skeleton_path(const NodePath &p_skeleton);
 	NodePath get_skeleton_path();
+	// wgodot-changes::begin
+	void set_lod_source_path(const NodePath &p_source);
+	NodePath get_lod_source_path() const { return lod_source_path; }
+	// wgodot-changes::end
 
 	Ref<SkinReference> get_skin_reference() const;
 

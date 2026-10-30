@@ -1665,6 +1665,40 @@ int RendererSceneCull::instance_geometry_get_mesh_lod(RID p_instance) const {
 #endif
 // wgodot-changes::end
 
+// wgodot-changes::begin
+void RendererSceneCull::instance_geometry_set_lod_source(RID p_instance, RID p_source) {
+	Instance *instance = instance_owner.get_or_null(p_instance);
+	ERR_FAIL_NULL(instance);
+	Instance *source = instance_owner.get_or_null(p_source);
+	ERR_FAIL_COND(p_source.is_valid() && !source);
+	for (Instance *ancestor = source; ancestor; ancestor = instance_owner.get_or_null(ancestor->lod_source)) {
+		ERR_FAIL_COND_MSG(ancestor == instance, "Mesh LOD sources must not form a cycle.");
+	}
+	instance->lod_source = p_source;
+}
+
+int RendererSceneCull::_select_mesh_lod(Instance *p_instance, const MeshLODData &p_lod, const CullData &p_cull_data) {
+	// A follower may be culled before its source, or on another culling worker.
+	// Select once per view, including offscreen sources, and publish the result
+	// under the instance lock. No scene callbacks or per-frame allocations.
+	MutexLock lock(p_instance->lod_selection_mutex);
+	InstanceGeometryData *geometry = static_cast<InstanceGeometryData *>(p_instance->base_data);
+	int &level = geometry->geometry_instance->mesh_lod_level;
+	if (p_instance->lod_selection_pass == render_pass) {
+		return level;
+	}
+	Instance *source = instance_owner.get_or_null(p_instance->lod_source);
+	const MeshLODData *source_lod = source && source->base_type == RSE::INSTANCE_MESH && source->base_data && source->scenario == p_instance->scenario ? RSG::mesh_storage->mesh_get_lod_profile(source->base) : nullptr;
+	if (source_lod) {
+		level = CLAMP(_select_mesh_lod(source, *source_lod, p_cull_data), p_lod.minimum_level, p_lod.thresholds.size() - 1);
+	} else {
+		level = p_cull_data.mesh_lod_scale == 0.0f ? p_lod.minimum_level : p_lod.select(p_instance->transform, *p_cull_data.camera_matrix, p_cull_data.cam_transform.origin, p_instance->lod_bias / p_cull_data.mesh_lod_scale, level);
+	}
+	p_instance->lod_selection_pass = render_pass;
+	return level;
+}
+// wgodot-changes::end
+
 void RendererSceneCull::instance_geometry_set_shader_parameter(RID p_instance, const StringName &p_parameter, const Variant &p_value) {
 	Instance *instance = instance_owner.get_or_null(p_instance);
 	ERR_FAIL_NULL(instance);
@@ -3486,8 +3520,7 @@ void RendererSceneCull::_scene_cull(CullData &cull_data, InstanceCullResult &cul
 		if (mesh_visible && (idata.flags & InstanceData::FLAG_AUTHORED_MESH_LOD)) {
 			const MeshLODData *lod = RSG::mesh_storage->mesh_get_lod_profile(idata.base_rid);
 			if (lod) {
-				const int level = cull_data.mesh_lod_scale == 0.0f ? lod->minimum_level : lod->select(idata.instance->transform, *cull_data.camera_matrix, cull_data.cam_transform.origin, idata.instance->lod_bias / cull_data.mesh_lod_scale, idata.instance_geometry->mesh_lod_level);
-				idata.instance_geometry->mesh_lod_level = level;
+				const int level = _select_mesh_lod(idata.instance, *lod, cull_data);
 				if (idata.flags & InstanceData::FLAG_USES_MESH_INSTANCE) {
 					RSG::mesh_storage->mesh_instance_select_lod(idata.instance->mesh_instance, level);
 				}
