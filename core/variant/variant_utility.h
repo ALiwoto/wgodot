@@ -38,6 +38,11 @@
 
 struct VariantUtilityFunctions {
 	// Math
+	// wgodot-changes::begin
+	static double float32(double p_value) {
+		return static_cast<double>(static_cast<float>(p_value));
+	}
+	// wgodot-changes::end
 	static double sin(double p_arg);
 	static double cos(double p_arg);
 	static double tan(double p_arg);

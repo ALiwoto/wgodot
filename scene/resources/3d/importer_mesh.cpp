@@ -503,10 +503,13 @@ static void _remap_arrays(Array &r_arrays, const Vector<uint32_t> &p_remap, uint
 	}
 }
 
-void ImporterMesh::optimize_indices() {
-	if (!SurfaceTool::optimize_vertex_cache_func) {
+
+// wgodot-changes::begin
+void ImporterMesh::optimize_indices(bool p_preserve_triangle_order) {
+	if (!p_preserve_triangle_order && !SurfaceTool::optimize_vertex_cache_func) {
 		return;
 	}
+	// wgodot-changes::end
 	if (!SurfaceTool::optimize_vertex_fetch_remap_func || !SurfaceTool::remap_vertex_func || !SurfaceTool::remap_index_func) {
 		return;
 	}
@@ -528,13 +531,23 @@ void ImporterMesh::optimize_indices() {
 
 		// Optimize indices for vertex cache to establish final triangle order.
 		int *indices_ptr = indices.ptrw();
-		SurfaceTool::optimize_vertex_cache_func((unsigned int *)indices_ptr, (const unsigned int *)indices_ptr, index_count, vertex_count);
+		// wgodot-changes::begin
+		// Blending can depend on authored primitive order. Vertex-fetch remapping
+		// below remains safe: it changes vertex addresses, not triangle order.
+		if (!p_preserve_triangle_order) {
+			SurfaceTool::optimize_vertex_cache_func((unsigned int *)indices_ptr, (const unsigned int *)indices_ptr, index_count, vertex_count);
+		}
+		// wgodot-changes::end
 		surfaces.write[i].arrays[RSE::ARRAY_INDEX] = indices;
 
 		for (int j = 0; j < surfaces[i].lods.size(); ++j) {
 			Surface::LOD &lod = surfaces.write[i].lods.write[j];
 			int *lod_indices_ptr = lod.indices.ptrw();
-			SurfaceTool::optimize_vertex_cache_func((unsigned int *)lod_indices_ptr, (const unsigned int *)lod_indices_ptr, lod.indices.size(), vertex_count);
+			// wgodot-changes::begin
+			if (!p_preserve_triangle_order) {
+				SurfaceTool::optimize_vertex_cache_func((unsigned int *)lod_indices_ptr, (const unsigned int *)lod_indices_ptr, lod.indices.size(), vertex_count);
+			}
+			// wgodot-changes::end
 		}
 
 		// Concatenate indices for all LODs in the order of coarse->fine; this establishes the effective order of vertices,

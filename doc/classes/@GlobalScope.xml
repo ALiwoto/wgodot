@@ -406,6 +406,18 @@
 				[/codeblock]
 			</description>
 		</method>
+		<!-- wgodot-changes::begin -->
+		<method name="float32">
+			<return type="float" />
+			<param index="0" name="value" type="float" />
+			<description>
+				Rounds [param value] to 32-bit floating-point precision. The result is still a GDScript [float] (64-bit), containing the converted value. This is a numeric conversion, not a bit reinterpretation or integer rounding. Use it when matching calculations or timestamps stored in single precision.
+				[codeblock]
+				float32(1.4) # Returns 1.399999976158142.
+				[/codeblock]
+			</description>
+		</method>
+		<!-- wgodot-changes::end -->
 		<method name="floor">
 			<return type="Variant" />
 			<param index="0" name="x" type="Variant" />

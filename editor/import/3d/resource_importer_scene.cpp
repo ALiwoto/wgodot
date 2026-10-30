@@ -2353,6 +2353,9 @@ void ResourceImporterScene::get_internal_import_options(InternalImportCategory p
 			r_options->push_back(ImportOption(PropertyInfo(Variant::INT, "generate/shadow_meshes", PROPERTY_HINT_ENUM, "Default,Enable,Disable"), 0));
 			r_options->push_back(ImportOption(PropertyInfo(Variant::INT, "generate/lightmap_uv", PROPERTY_HINT_ENUM, "Default,Enable,Disable"), 0));
 			r_options->push_back(ImportOption(PropertyInfo(Variant::INT, "generate/lods", PROPERTY_HINT_ENUM, "Default,Enable,Disable"), 0));
+			// wgodot-changes::begin
+			r_options->push_back(ImportOption(PropertyInfo(Variant::INT, "optimization/preserve_triangle_order", PROPERTY_HINT_ENUM, "Default,Enable,Disable"), MESH_OVERRIDE_DEFAULT));
+			// wgodot-changes::end
 			r_options->push_back(ImportOption(PropertyInfo(Variant::FLOAT, "lods/normal_merge_angle", PROPERTY_HINT_RANGE, "0,180,1,degrees"), 20.0f));
 		} break;
 		case INTERNAL_IMPORT_CATEGORY_MATERIAL: {
@@ -2707,6 +2710,9 @@ void ResourceImporterScene::get_import_options(const String &p_path, List<Import
 	r_options->push_back(ImportOption(PropertyInfo(Variant::INT, "meshes/light_baking", PROPERTY_HINT_ENUM, "Disabled,Static,Static Lightmaps,Dynamic", PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_UPDATE_ALL_IF_MODIFIED), 1));
 	r_options->push_back(ImportOption(PropertyInfo(Variant::FLOAT, "meshes/lightmap_texel_size", PROPERTY_HINT_RANGE, "0.001,100,0.001"), 0.2));
 	r_options->push_back(ImportOption(PropertyInfo(Variant::BOOL, "meshes/force_disable_compression"), false));
+	// wgodot-changes::begin
+	r_options->push_back(ImportOption(PropertyInfo(Variant::BOOL, "meshes/preserve_triangle_order"), false));
+	// wgodot-changes::end
 	r_options->push_back(ImportOption(PropertyInfo(Variant::BOOL, "skins/use_named_skins"), true));
 	r_options->push_back(ImportOption(PropertyInfo(Variant::BOOL, "animation/import"), true));
 	r_options->push_back(ImportOption(PropertyInfo(Variant::FLOAT, "animation/fps", PROPERTY_HINT_RANGE, "1,120,1"), 30));
@@ -2779,7 +2785,9 @@ Array ResourceImporterScene::_get_skinned_pose_transforms(ImporterMeshInstance3D
 	return skin_pose_transform_array;
 }
 
-Node *ResourceImporterScene::_generate_meshes(Node *p_node, const Dictionary &p_mesh_data, bool p_generate_lods, bool p_create_shadow_meshes, LightBakeMode p_light_bake_mode, float p_lightmap_texel_size, const Vector<uint8_t> &p_src_lightmap_cache, Vector<Vector<uint8_t>> &r_lightmap_caches) {
+// wgodot-changes::begin
+Node *ResourceImporterScene::_generate_meshes(Node *p_node, const Dictionary &p_mesh_data, bool p_generate_lods, bool p_create_shadow_meshes, LightBakeMode p_light_bake_mode, float p_lightmap_texel_size, const Vector<uint8_t> &p_src_lightmap_cache, Vector<Vector<uint8_t>> &r_lightmap_caches, bool p_preserve_triangle_order) {
+	// wgodot-changes::end
 	ImporterMeshInstance3D *src_mesh_node = Object::cast_to<ImporterMeshInstance3D>(p_node);
 	if (src_mesh_node) {
 		//is mesh
@@ -2797,6 +2805,9 @@ Node *ResourceImporterScene::_generate_meshes(Node *p_node, const Dictionary &p_
 				//do mesh processing
 
 				bool generate_lods = p_generate_lods;
+				// wgodot-changes::begin
+				bool preserve_triangle_order = p_preserve_triangle_order;
+				// wgodot-changes::end
 				float merge_angle = 20.0f;
 				bool create_shadow_meshes = p_create_shadow_meshes;
 				bool bake_lightmaps = p_light_bake_mode == LIGHT_BAKE_STATIC_LIGHTMAPS;
@@ -2825,6 +2836,12 @@ Node *ResourceImporterScene::_generate_meshes(Node *p_node, const Dictionary &p_
 							create_shadow_meshes = false;
 						}
 					}
+					// wgodot-changes::begin
+					int preserve_order_override = mesh_settings["optimization/preserve_triangle_order"];
+					if (preserve_order_override != MESH_OVERRIDE_DEFAULT) {
+						preserve_triangle_order = preserve_order_override == MESH_OVERRIDE_ENABLE;
+					}
+					// wgodot-changes::end
 
 					if (mesh_settings.has("generate/lightmap_uv")) {
 						int lightmap_uv = mesh_settings["generate/lightmap_uv"];
@@ -2904,7 +2921,9 @@ Node *ResourceImporterScene::_generate_meshes(Node *p_node, const Dictionary &p_
 					importer_mesh->create_shadow_mesh();
 				}
 
-				importer_mesh->optimize_indices();
+				// wgodot-changes::begin
+				importer_mesh->optimize_indices(preserve_triangle_order);
+				// wgodot-changes::end
 
 				if (!save_to_file.is_empty()) {
 					String save_res_path = ResourceUID::ensure_path(save_to_file);
@@ -2974,7 +2993,9 @@ Node *ResourceImporterScene::_generate_meshes(Node *p_node, const Dictionary &p_
 	}
 
 	for (int i = 0; i < p_node->get_child_count(); i++) {
-		_generate_meshes(p_node->get_child(i), p_mesh_data, p_generate_lods, p_create_shadow_meshes, p_light_bake_mode, p_lightmap_texel_size, p_src_lightmap_cache, r_lightmap_caches);
+		// wgodot-changes::begin
+		_generate_meshes(p_node->get_child(i), p_mesh_data, p_generate_lods, p_create_shadow_meshes, p_light_bake_mode, p_lightmap_texel_size, p_src_lightmap_cache, r_lightmap_caches, p_preserve_triangle_order);
+		// wgodot-changes::end
 	}
 
 	return p_node;
@@ -3419,8 +3440,8 @@ Error ResourceImporterScene::import(ResourceUID::ID p_source_id, const String &p
 		}
 	}
 
-	scene = _generate_meshes(scene, mesh_data, gen_lods, create_shadow_meshes, LightBakeMode(light_bake_mode), lightmap_texel_size, src_lightmap_cache, mesh_lightmap_caches);
 	// wgodot-changes::begin
+	scene = _generate_meshes(scene, mesh_data, gen_lods, create_shadow_meshes, LightBakeMode(light_bake_mode), lightmap_texel_size, src_lightmap_cache, mesh_lightmap_caches, p_options["meshes/preserve_triangle_order"]);
 	trace.phase("custom_and_save");
 	// wgodot-changes::end
 

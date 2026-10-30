@@ -1630,6 +1630,9 @@ static void register_utility_function(const String &p_name, const Vector<String>
 void Variant::_register_variant_utility_functions() {
 	// Math
 
+	// wgodot-changes::begin
+	FUNCBINDR(float32, sarray("value"), Variant::UTILITY_FUNC_TYPE_MATH);
+	// wgodot-changes::end
 	FUNCBINDR(sin, sarray("angle_rad"), Variant::UTILITY_FUNC_TYPE_MATH);
 	FUNCBINDR(cos, sarray("angle_rad"), Variant::UTILITY_FUNC_TYPE_MATH);
 	FUNCBINDR(tan, sarray("angle_rad"), Variant::UTILITY_FUNC_TYPE_MATH);

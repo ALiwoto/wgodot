@@ -119,7 +119,9 @@ public:
 
 	void set_surface_material(int p_surface, const Ref<Material> &p_material);
 
-	void optimize_indices();
+	// wgodot-changes::begin
+	void optimize_indices(bool p_preserve_triangle_order = false);
+	// wgodot-changes::end
 
 // wgodot-changes::begin
 	void set_lod_profile(const Ref<MeshLODProfile> &p_profile);
