@@ -441,6 +441,7 @@ public:
 		float lod_bias;
 		// wgodot-changes::begin
 		RID lod_source;
+		int lod_override = -1;
 		Mutex lod_selection_mutex;
 		uint64_t lod_selection_pass = 0;
 		// wgodot-changes::end
@@ -1102,6 +1103,7 @@ public:
 	virtual void instance_geometry_set_lod_bias(RID p_instance, float p_lod_bias);
 	// wgodot-changes::begin
 	virtual void instance_geometry_set_lod_source(RID p_instance, RID p_source) override;
+	virtual void instance_geometry_set_lod_override(RID p_instance, int p_level) override;
 	// wgodot-changes::end
 	// wgodot-changes::begin
 #ifdef TOOLS_ENABLED

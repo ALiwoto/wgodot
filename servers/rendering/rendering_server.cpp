@@ -3354,6 +3354,7 @@ void RenderingServer::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("instance_geometry_set_lod_bias", "instance", "lod_bias"), &RenderingServer::instance_geometry_set_lod_bias);
 	// wgodot-changes::begin
 	ClassDB::bind_method(D_METHOD("instance_geometry_set_lod_source", "instance", "source"), &RenderingServer::instance_geometry_set_lod_source);
+	ClassDB::bind_method(D_METHOD("instance_geometry_set_lod_override", "instance", "level"), &RenderingServer::instance_geometry_set_lod_override);
 	// wgodot-changes::end
 
 	ClassDB::bind_method(D_METHOD("instance_geometry_set_shader_parameter", "instance", "parameter", "value"), &RenderingServer::instance_geometry_set_shader_parameter);

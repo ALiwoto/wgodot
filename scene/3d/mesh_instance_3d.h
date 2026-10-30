@@ -59,6 +59,9 @@ protected:
 	Ref<Material> _effective_surface_override(int p_surface) const;
 	void _update_surface_override(int p_surface);
 	NodePath lod_source_path;
+	// -1 selects automatically (or follows lod_source); otherwise a zero-based
+	// authored geometry level, clamped to the resident mesh's allowed range.
+	int lod_override = -1;
 	void _resolve_lod_source();
 	// wgodot-changes::end
 
@@ -96,6 +99,8 @@ public:
 	// wgodot-changes::begin
 	void set_lod_source_path(const NodePath &p_source);
 	NodePath get_lod_source_path() const { return lod_source_path; }
+	void set_lod_override(int p_level);
+	int get_lod_override() const { return lod_override; }
 	// wgodot-changes::end
 
 	Ref<SkinReference> get_skin_reference() const;

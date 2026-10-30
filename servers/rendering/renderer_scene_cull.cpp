@@ -1677,6 +1677,13 @@ void RendererSceneCull::instance_geometry_set_lod_source(RID p_instance, RID p_s
 	instance->lod_source = p_source;
 }
 
+void RendererSceneCull::instance_geometry_set_lod_override(RID p_instance, int p_level) {
+	Instance *instance = instance_owner.get_or_null(p_instance);
+	ERR_FAIL_NULL(instance);
+	ERR_FAIL_COND(p_level < -1);
+	instance->lod_override = p_level;
+}
+
 int RendererSceneCull::_select_mesh_lod(Instance *p_instance, const MeshLODData &p_lod, const CullData &p_cull_data) {
 	// A follower may be culled before its source, or on another culling worker.
 	// Select once per view, including offscreen sources, and publish the result
@@ -1689,7 +1696,9 @@ int RendererSceneCull::_select_mesh_lod(Instance *p_instance, const MeshLODData 
 	}
 	Instance *source = instance_owner.get_or_null(p_instance->lod_source);
 	const MeshLODData *source_lod = source && source->base_type == RSE::INSTANCE_MESH && source->base_data && source->scenario == p_instance->scenario ? RSG::mesh_storage->mesh_get_lod_profile(source->base) : nullptr;
-	if (source_lod) {
+	if (p_instance->lod_override >= 0) {
+		level = CLAMP(p_instance->lod_override, p_lod.minimum_level, p_lod.thresholds.size() - 1);
+	} else if (source_lod) {
 		level = CLAMP(_select_mesh_lod(source, *source_lod, p_cull_data), p_lod.minimum_level, p_lod.thresholds.size() - 1);
 	} else {
 		level = p_cull_data.mesh_lod_scale == 0.0f ? p_lod.minimum_level : p_lod.select(p_instance->transform, *p_cull_data.camera_matrix, p_cull_data.cam_transform.origin, p_instance->lod_bias / p_cull_data.mesh_lod_scale, level);

@@ -1010,6 +1010,7 @@ public:
 	FUNC2(instance_geometry_set_lod_bias, RID, float)
 	// wgodot-changes::begin
 	FUNC2(instance_geometry_set_lod_source, RID, RID)
+	FUNC2(instance_geometry_set_lod_override, RID, int)
 	// wgodot-changes::end
 	FUNC2(instance_geometry_set_transparency, RID, float)
 	FUNC3(instance_geometry_set_shader_parameter, RID, const StringName &, const Variant &)

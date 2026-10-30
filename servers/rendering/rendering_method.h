@@ -130,6 +130,7 @@ public:
 	virtual void instance_geometry_set_lod_bias(RID p_instance, float p_lod_bias) = 0;
 	// wgodot-changes::begin
 	virtual void instance_geometry_set_lod_source(RID p_instance, RID p_source) = 0;
+	virtual void instance_geometry_set_lod_override(RID p_instance, int p_level) = 0;
 	// wgodot-changes::end
 	// wgodot-changes::begin
 #ifdef TOOLS_ENABLED
