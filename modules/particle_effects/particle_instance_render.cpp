@@ -198,11 +198,30 @@ void ParticleInstance3D::publish_render_instances() {
 		collect_render_instances(this);
 		render_instances_prepared = true;
 	}
+	const bool emitter_culling = motion.is_valid() && motion->get_emitter_culling();
+	GeometryInstance3D::CullTransform cull_transform = GeometryInstance3D::CULL_TRANSFORM_AUTOMATIC;
+	if (emitter_culling) {
+		// Batched particle winding belongs to the emitter; individual signed
+		// scales may turn a mesh inside out without reversing its raster state.
+		cull_transform = get_emitter_transform().basis.determinant() < 0 ? GeometryInstance3D::CULL_TRANSFORM_NEGATIVE : GeometryInstance3D::CULL_TRANSFORM_POSITIVE;
+	}
 	for (int i = 0; i < render_instances.size(); ++i) {
 		RenderInstance &instance = render_instances.write[i];
 		VisualInstance3D *visual = instance.visual;
 		const bool visible = is_render_visible(visual);
 		if (visible) {
+			if (instance.geometry) {
+				if (emitter_culling) {
+					if (!instance.culling_overridden) {
+						instance.authored_cull_transform = instance.geometry->get_cull_transform();
+						instance.culling_overridden = true;
+					}
+					instance.geometry->set_cull_transform(cull_transform);
+				} else if (instance.culling_overridden) {
+					instance.geometry->set_cull_transform(instance.authored_cull_transform);
+					instance.culling_overridden = false;
+				}
+			}
 			const Transform3D transform = get_render_transform(visual);
 			update_render_bounds(instance, transform);
 			if (instance_pool) {

@@ -110,6 +110,9 @@ private:
 	uint8_t update_flags = UPDATE_FLAG_NONE;
 	bool updating = false; // Is updating now?
 	double update_delta = 0.0;
+	// wgodot-changes::begin
+	double modifier_time_scale = 1.0;
+	// wgodot-changes::end
 
 	struct Bone {
 		String name;
@@ -343,6 +346,8 @@ public:
 	ModifierCallbackModeProcess get_modifier_callback_mode_process() const;
 
 	// wgodot-changes::begin
+	void set_modifier_time_scale(double p_scale);
+	double get_modifier_time_scale() const { return modifier_time_scale; }
 	void advance(double p_delta, bool p_immediate = false);
 	// wgodot-changes::end
 

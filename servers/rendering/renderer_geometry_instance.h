@@ -56,6 +56,7 @@ public:
 	virtual void set_pivot_data(float p_sorting_offset, bool p_use_aabb_center) = 0;
 	// wgodot-changes::begin
 	virtual void set_sorting_priority(int32_t p_priority) = 0;
+	virtual void set_cull_transform(RSE::InstanceCullTransform p_mode) = 0;
 	// wgodot-changes::end
 	virtual void set_lod_bias(float p_lod_bias) = 0;
 	virtual void set_layer_mask(uint32_t p_layer_mask) = 0;
@@ -104,6 +105,7 @@ public:
 	float sorting_offset = 0.0;
 	// wgodot-changes::begin
 	int32_t sorting_priority = 0;
+	RSE::InstanceCullTransform cull_transform = RSE::INSTANCE_CULL_TRANSFORM_AUTOMATIC;
 	// wgodot-changes::end
 	bool use_aabb_center = true;
 
@@ -151,6 +153,7 @@ public:
 	virtual void set_pivot_data(float p_sorting_offset, bool p_use_aabb_center) override;
 	// wgodot-changes::begin
 	virtual void set_sorting_priority(int32_t p_priority) override { sorting_priority = p_priority; }
+	virtual void set_cull_transform(RSE::InstanceCullTransform p_mode) override;
 	// wgodot-changes::end
 	virtual void set_lod_bias(float p_lod_bias) override;
 	virtual void set_layer_mask(uint32_t p_layer_mask) override;

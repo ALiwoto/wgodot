@@ -260,6 +260,8 @@ private:
 	bool velocity_in_world_space = false;
 	Basis velocity_basis;
 	bool velocity_applies_owner_scale = false;
+	Ref<ParticleFloatCurve> radial_velocity;
+	Vector3 velocity_origin;
 	Ref<ParticleSeed> random_seed;
 	int texture_flip = int(TextureFlip::None);
 	double source_velocity_scale = 0.0;
@@ -306,6 +308,10 @@ public:
 	Basis get_velocity_basis() const { return velocity_basis; }
 	void set_velocity_applies_owner_scale(bool p_value) { velocity_applies_owner_scale = p_value; }
 	bool get_velocity_applies_owner_scale() const { return velocity_applies_owner_scale; }
+	void set_radial_velocity(const Ref<ParticleFloatCurve> &p_value) { radial_velocity = p_value; }
+	Ref<ParticleFloatCurve> get_radial_velocity() const { return radial_velocity; }
+	void set_velocity_origin(const Vector3 &p_value) { velocity_origin = p_value; }
+	Vector3 get_velocity_origin() const { return velocity_origin; }
 	void set_random_seed(const Ref<ParticleSeed> & p_value) { random_seed = p_value; }
 	Ref<ParticleSeed> get_random_seed() const { return random_seed; }
 	void set_texture_flip(int p_value) { texture_flip = p_value; }
@@ -326,5 +332,6 @@ public:
 	Vector3 sample_vector(const Ref<RandomStream32> & p_random, double p_emitter_seconds = 0.0) const;
 	Vector3 sample_texture_sign(const Ref<RandomStream32> & p_random) const;
 	Vector3 sample_velocity(const Ref<RandomStream32> & p_random, const Basis & p_emitter_basis, bool p_local_space, double p_emitter_seconds = 0.0) const;
+	Vector3 sample_radial_velocity(const Ref<RandomStream32> &p_random, const Basis &p_emitter_basis, bool p_local_space, const Vector3 &p_position, double p_emitter_seconds = 0.0) const;
 	Vector3 sample_parent_velocity(const Ref<RandomStream32> &p_random, const Basis &p_emitter_basis, bool p_local_space, const Vector3 &p_world_velocity, double p_emitter_seconds = 0.0) const;
 };

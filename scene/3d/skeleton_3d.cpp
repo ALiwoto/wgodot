@@ -481,6 +481,11 @@ void Skeleton3D::_notification(int p_what) {
 }
 
 // wgodot-changes::begin
+void Skeleton3D::set_modifier_time_scale(double p_scale) {
+	ERR_FAIL_COND_MSG(!Math::is_finite(p_scale) || p_scale < 0.0, "Modifier time scale must be finite and nonnegative.");
+	modifier_time_scale = p_scale;
+}
+
 void Skeleton3D::advance(double p_delta, bool p_immediate) {
 	ERR_FAIL_COND_MSG(p_immediate && updating, "Cannot advance a skeleton recursively during its update.");
 	_find_modifiers();
@@ -1352,6 +1357,11 @@ void Skeleton3D::_find_modifiers() {
 }
 
 void Skeleton3D::_process_modifiers() {
+	// wgodot-changes::begin
+	// Sample the owning actor's rate when evaluating the pose. Internal idle
+	// notifications may have queued the delta before gameplay changed its rate.
+	const double modifier_delta = update_delta * modifier_time_scale;
+	// wgodot-changes::end
 	for (const ObjectID &oid : modifiers) {
 		Object *t_obj = ObjectDB::get_instance(oid);
 		if (!t_obj) {
@@ -1369,7 +1379,9 @@ void Skeleton3D::_process_modifiers() {
 		real_t influence = mod->get_influence();
 		if (influence < 1.0) {
 			modifier_updating = true;
-			mod->process_modification(update_delta);
+			// wgodot-changes::begin
+			mod->process_modification(modifier_delta);
+			// wgodot-changes::end
 			modifier_updating = false;
 			for (int i = 0; i < get_bone_count(); i++) {
 				if (!bones[i].modifier_applied) {
@@ -1383,7 +1395,9 @@ void Skeleton3D::_process_modifiers() {
 				bones[i].modifier_applied = false;
 			}
 		} else {
-			mod->process_modification(update_delta);
+			// wgodot-changes::begin
+			mod->process_modification(modifier_delta);
+			// wgodot-changes::end
 		}
 		force_update_all_dirty_bones();
 	}
@@ -1494,6 +1508,8 @@ void Skeleton3D::_bind_methods() {
 
 	// wgodot-changes::begin
 	ClassDB::bind_method(D_METHOD("advance", "delta", "immediate"), &Skeleton3D::advance, DEFVAL(false));
+	ClassDB::bind_method(D_METHOD("set_modifier_time_scale", "scale"), &Skeleton3D::set_modifier_time_scale);
+	ClassDB::bind_method(D_METHOD("get_modifier_time_scale"), &Skeleton3D::get_modifier_time_scale);
 	// wgodot-changes::end
 
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "motion_scale", PROPERTY_HINT_RANGE, "0.001,10,0.001,or_greater"), "set_motion_scale", "get_motion_scale");
@@ -1501,6 +1517,9 @@ void Skeleton3D::_bind_methods() {
 
 	ADD_GROUP("Modifier", "modifier_");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "modifier_callback_mode_process", PROPERTY_HINT_ENUM, "Physics,Idle,Manual"), "set_modifier_callback_mode_process", "get_modifier_callback_mode_process");
+	// wgodot-changes::begin
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "modifier_time_scale", PROPERTY_HINT_RANGE, "0,4,0.01,or_greater"), "set_modifier_time_scale", "get_modifier_time_scale");
+	// wgodot-changes::end
 
 	ADD_SIGNAL(MethodInfo("rest_updated"));
 	ADD_SIGNAL(MethodInfo("pose_updated"));

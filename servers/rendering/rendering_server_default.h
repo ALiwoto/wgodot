@@ -977,6 +977,7 @@ public:
 	FUNC3(instance_set_pivot_data, RID, float, bool)
 	// wgodot-changes::begin
 	FUNC2(instance_geometry_set_sorting_priority, RID, int32_t)
+	FUNC2(instance_geometry_set_cull_transform, RID, RSE::InstanceCullTransform)
 	// wgodot-changes::end
 	FUNC2(instance_set_transform, RID, const Transform3D &)
 	FUNC2(instance_attach_object_instance_id, RID, ObjectID)

@@ -218,6 +218,25 @@ Vector3 ParticleBirthRule3D::sample_velocity(const Ref<RandomStream32> &p_random
 	return p_local_space ? velocity : rotation.inverse().xform(velocity);
 }
 
+Vector3 ParticleBirthRule3D::sample_radial_velocity(const Ref<RandomStream32> &p_random, const Basis &p_emitter_basis, bool p_local_space, const Vector3 &p_position, double p_emitter_seconds) const {
+	if (radial_velocity.is_null()) {
+		return Vector3();
+	}
+	// Sample even at the origin or with a zero range: authored random curves
+	// still advance their stream before subsequent birth rules.
+	const real_t speed = radial_velocity->sample(p_emitter_seconds, 0.0, p_random);
+	if (speed == 0.0) {
+		return Vector3();
+	}
+	const Basis rotation = p_emitter_basis.orthonormalized();
+	const Vector3 offset = p_position - velocity_origin;
+	Vector3 velocity = (p_local_space ? offset : rotation.xform(offset)).normalized() * speed;
+	if (velocity_applies_owner_scale) {
+		velocity *= p_emitter_basis.get_scale();
+	}
+	return p_local_space ? velocity : rotation.inverse().xform(velocity);
+}
+
 Vector3 ParticleBirthRule3D::sample_parent_velocity(const Ref<RandomStream32> &p_random, const Basis &p_emitter_basis, bool p_local_space, const Vector3 &p_world_velocity, double p_emitter_seconds) const {
 	Vector3 velocity = p_local_space ? p_emitter_basis.inverse().xform(p_world_velocity) : p_world_velocity;
 	velocity *= sample_vector(p_random, p_emitter_seconds);

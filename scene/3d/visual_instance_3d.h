@@ -98,6 +98,13 @@ class GeometryInstance3D : public VisualInstance3D {
 
 public:
 	static constexpr AncestralClass static_ancestral_class = AncestralClass::GEOMETRY_INSTANCE_3D;
+	// wgodot-changes::begin
+	enum CullTransform {
+		CULL_TRANSFORM_AUTOMATIC = RSE::INSTANCE_CULL_TRANSFORM_AUTOMATIC,
+		CULL_TRANSFORM_POSITIVE = RSE::INSTANCE_CULL_TRANSFORM_POSITIVE,
+		CULL_TRANSFORM_NEGATIVE = RSE::INSTANCE_CULL_TRANSFORM_NEGATIVE,
+	};
+	// wgodot-changes::end
 
 	enum ShadowCastingSetting {
 		SHADOW_CASTING_SETTING_OFF = RSE::SHADOW_CASTING_SETTING_OFF,
@@ -127,6 +134,9 @@ public:
 	};
 
 private:
+	// wgodot-changes::begin
+	CullTransform cull_transform = CULL_TRANSFORM_AUTOMATIC;
+	// wgodot-changes::end
 	ShadowCastingSetting shadow_casting_setting = SHADOW_CASTING_SETTING_ON;
 	Ref<Material> material_override;
 	Ref<Material> material_overlay;
@@ -190,6 +200,8 @@ public:
 	// wgodot-changes::begin
 	void set_sorting_priority(int32_t p_priority);
 	int32_t get_sorting_priority() const { return sorting_priority; }
+	void set_cull_transform(CullTransform p_mode);
+	CullTransform get_cull_transform() const { return cull_transform; }
 	// wgodot-changes::end
 	Ref<Material> get_material_override() const;
 
@@ -263,6 +275,9 @@ public:
 };
 
 VARIANT_ENUM_CAST(GeometryInstance3D::ShadowCastingSetting);
+// wgodot-changes::begin
+VARIANT_ENUM_CAST(GeometryInstance3D::CullTransform);
+// wgodot-changes::end
 VARIANT_ENUM_CAST(GeometryInstance3D::GIMode);
 VARIANT_ENUM_CAST(GeometryInstance3D::LightmapScale);
 VARIANT_ENUM_CAST(GeometryInstance3D::VisibilityRangeFadeMode);

@@ -102,6 +102,8 @@ class ParticleInstance3D : public Node3D {
 		GeometryInstance3D *geometry = nullptr;
 		AABB authored_aabb;
 		bool bounds_overridden = false;
+		GeometryInstance3D::CullTransform authored_cull_transform = GeometryInstance3D::CULL_TRANSFORM_AUTOMATIC;
+		bool culling_overridden = false;
 	};
 	Vector<RenderInstance> render_instances;
 	bool render_instances_prepared = false;

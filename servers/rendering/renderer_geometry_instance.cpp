@@ -66,7 +66,9 @@ void RenderGeometryInstanceBase::set_mesh_instance(RID p_mesh_instance) {
 
 void RenderGeometryInstanceBase::set_transform(const Transform3D &p_transform, const AABB &p_aabb, const AABB &p_transformed_aabb) {
 	transform = p_transform;
-	mirror = p_transform.basis.determinant() < 0;
+	// wgodot-changes::begin
+	mirror = cull_transform == RSE::INSTANCE_CULL_TRANSFORM_AUTOMATIC ? p_transform.basis.determinant() < 0 : cull_transform == RSE::INSTANCE_CULL_TRANSFORM_NEGATIVE;
+	// wgodot-changes::end
 	data->aabb = p_aabb;
 	transformed_aabb = p_transformed_aabb;
 
@@ -79,6 +81,13 @@ void RenderGeometryInstanceBase::set_transform(const Transform3D &p_transform, c
 
 	lod_model_scale = max_scale;
 }
+
+// wgodot-changes::begin
+void RenderGeometryInstanceBase::set_cull_transform(RSE::InstanceCullTransform p_mode) {
+	cull_transform = p_mode;
+	mirror = p_mode == RSE::INSTANCE_CULL_TRANSFORM_AUTOMATIC ? transform.basis.determinant() < 0 : p_mode == RSE::INSTANCE_CULL_TRANSFORM_NEGATIVE;
+}
+// wgodot-changes::end
 
 void RenderGeometryInstanceBase::set_pivot_data(float p_sorting_offset, bool p_use_aabb_center) {
 	sorting_offset = p_sorting_offset;

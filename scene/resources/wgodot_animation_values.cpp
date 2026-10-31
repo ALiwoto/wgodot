@@ -211,6 +211,14 @@ WAnimationSample WAnimationValues::ease_sample(WAnimationSample s, bool p_backwa
 	double low = 0;
 	double high = 1;
 	double t = x;
+	// Hermite curves have uniformly spaced time controls. Their parameter is
+	// already x; no Bezier time inversion is needed on each animation sample.
+	if (curve.x == real_t(1.0 / 3.0) && curve.z == real_t(2.0 / 3.0)) {
+		const double u = 1.0 - x;
+		const double y = 3 * u * u * x * curve.y + 3 * u * x * x * curve.w + x * x * x;
+		s.weight = p_backward ? 1 - y : y;
+		return s;
+	}
 	// Monotonic time controls: bounded inversion, including flat end tangents.
 	for (int i = 0; i < 20; i++) {
 		double u = 1 - t;

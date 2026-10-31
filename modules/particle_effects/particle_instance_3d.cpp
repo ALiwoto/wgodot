@@ -204,6 +204,7 @@ bool ParticleInstance3D::sample_playback(double p_seconds, double p_delta, const
 			state_velocity = motion->get_velocity();
 			if (motion->get_initial_velocity().is_valid()) {
 				state_velocity += motion->get_initial_velocity()->sample_velocity(p_random, get_particle_transform().basis, follows_emitter);
+				state_velocity += motion->get_initial_velocity()->sample_radial_velocity(p_random, get_particle_transform().basis, follows_emitter, state_position, p_emitter_seconds);
 			}
 		} else if (sprite_motion.is_valid()) {
 			state_size = sprite_motion->get_size();
@@ -212,6 +213,7 @@ bool ParticleInstance3D::sample_playback(double p_seconds, double p_delta, const
 			state_velocity = sprite_motion->get_velocity();
 			if (sprite_motion->get_initial_velocity().is_valid()) {
 				state_velocity += sprite_motion->get_initial_velocity()->sample_velocity(p_random, get_particle_transform().basis, follows_emitter);
+				state_velocity += sprite_motion->get_initial_velocity()->sample_radial_velocity(p_random, get_particle_transform().basis, follows_emitter, state_position, p_emitter_seconds);
 			}
 		}
 		state_angle = sprite_motion.is_valid() ? sprite_motion->get_rotation() : 0.0;
@@ -338,6 +340,7 @@ bool ParticleInstance3D::sample_playback(double p_seconds, double p_delta, const
 					break;
 				case Target::Velocity:
 					state_velocity += initial->sample_velocity(birth_random, get_particle_transform().basis, follows_emitter, p_emitter_seconds);
+					state_velocity += initial->sample_radial_velocity(birth_random, get_particle_transform().basis, follows_emitter, state_position, p_emitter_seconds);
 					break;
 				case Target::ParentVelocity:
 					state_velocity += initial->sample_parent_velocity(birth_random, get_particle_transform().basis, follows_emitter, p_birth_source.is_valid() ? p_birth_source->get_emitter_velocity() : Vector3(), p_emitter_seconds);

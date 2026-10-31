@@ -410,6 +410,11 @@
 			Multiplies the 3D position track animation.
 			[b]Note:[/b] Unless this value is [code]1.0[/code], the key value in animation will not match the actual position value.
 		</member>
+		<!-- wgodot-changes::begin -->
+		<member name="modifier_time_scale" type="float" setter="set_modifier_time_scale" getter="get_modifier_time_scale" default="1.0">
+			Scales elapsed time passed to this skeleton's modifiers when the pose is evaluated, including manual [method advance]. Animation tracks are unaffected. Use this to keep secondary motion on an actor's local clock. The value must be finite and nonnegative.
+		</member>
+		<!-- wgodot-changes::end -->
 		<member name="show_rest_only" type="bool" setter="set_show_rest_only" getter="is_show_rest_only" default="false">
 			If [code]true[/code], forces the bones in their default rest pose, regardless of their values. In the editor, this also prevents the bones from being edited.
 		</member>

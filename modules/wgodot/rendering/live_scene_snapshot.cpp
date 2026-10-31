@@ -243,7 +243,7 @@ PackedByteArray WLiveSceneProbe::snapshot(Node *p_root, Skeleton3D *p_body) {
 			writer.record(SPATIAL, path, { spatial->get_class(), spatial->get_scene_file_path(), parent_path }, values);
 		}
 		if (GeometryInstance3D *geometry = Object::cast_to<GeometryInstance3D>(node)) {
-			writer.record(GEOMETRY, path, {}, { double(geometry->get_sorting_priority()), geometry->get_sorting_offset(), double(geometry->is_sorting_use_aabb_center()) });
+			writer.record(GEOMETRY, path, {}, { double(geometry->get_sorting_priority()), geometry->get_sorting_offset(), double(geometry->is_sorting_use_aabb_center()), double(geometry->get_cull_transform()) });
 			for (const WInstanceShaderParameters::Item &item : geometry->get_instance_shader_parameters()->snapshot()) {
 				if (item.gpu_index < 0) {
 					continue;

@@ -510,6 +510,7 @@ public:
 		float sorting_offset = 0.0;
 		// wgodot-changes::begin
 		int32_t sorting_priority = 0;
+		RSE::InstanceCullTransform cull_transform = RSE::INSTANCE_CULL_TRANSFORM_AUTOMATIC;
 		// wgodot-changes::end
 		bool use_aabb_center = true;
 
@@ -1064,6 +1065,7 @@ public:
 	virtual void instance_set_pivot_data(RID p_instance, float p_sorting_offset, bool p_use_aabb_center);
 	// wgodot-changes::begin
 	virtual void instance_geometry_set_sorting_priority(RID p_instance, int32_t p_priority) override;
+	virtual void instance_geometry_set_cull_transform(RID p_instance, RSE::InstanceCullTransform p_mode) override;
 	// wgodot-changes::end
 	virtual void instance_set_transform(RID p_instance, const Transform3D &p_transform);
 	virtual void instance_attach_object_instance_id(RID p_instance, ObjectID p_id);

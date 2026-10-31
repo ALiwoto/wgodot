@@ -796,6 +796,7 @@ void RendererSceneCull::instance_set_base(RID p_instance, RID p_base) {
 				geom->geometry_instance->set_pivot_data(instance->sorting_offset, instance->use_aabb_center);
 				// wgodot-changes::begin
 				geom->geometry_instance->set_sorting_priority(instance->sorting_priority);
+				geom->geometry_instance->set_cull_transform(instance->cull_transform);
 				// wgodot-changes::end
 				geom->geometry_instance->set_lod_bias(instance->lod_bias);
 				geom->geometry_instance->set_transparency(instance->transparency);
@@ -1050,6 +1051,17 @@ void RendererSceneCull::instance_geometry_set_transparency(RID p_instance, float
 }
 
 // wgodot-changes::begin
+void RendererSceneCull::instance_geometry_set_cull_transform(RID p_instance, RSE::InstanceCullTransform p_mode) {
+	ERR_FAIL_COND(p_mode < RSE::INSTANCE_CULL_TRANSFORM_AUTOMATIC || p_mode > RSE::INSTANCE_CULL_TRANSFORM_NEGATIVE);
+	Instance *instance = instance_owner.get_or_null(p_instance);
+	ERR_FAIL_NULL(instance);
+	instance->cull_transform = p_mode;
+	if (((1 << instance->base_type) & RSE::INSTANCE_GEOMETRY_MASK) && instance->base_data) {
+		InstanceGeometryData *geometry = static_cast<InstanceGeometryData *>(instance->base_data);
+		geometry->geometry_instance->set_cull_transform(p_mode);
+	}
+}
+
 void RendererSceneCull::instance_geometry_set_sorting_priority(RID p_instance, int32_t p_priority) {
 	Instance *instance = instance_owner.get_or_null(p_instance);
 	ERR_FAIL_NULL(instance);

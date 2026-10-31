@@ -177,6 +177,9 @@ void ParticleMeshProfile3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_faces_camera", "value"), &ParticleMeshProfile3D::set_faces_camera);
 	ClassDB::bind_method(D_METHOD("get_faces_camera"), &ParticleMeshProfile3D::get_faces_camera);
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "faces_camera"), "set_faces_camera", "get_faces_camera");
+	ClassDB::bind_method(D_METHOD("set_emitter_culling", "value"), &ParticleMeshProfile3D::set_emitter_culling);
+	ClassDB::bind_method(D_METHOD("get_emitter_culling"), &ParticleMeshProfile3D::get_emitter_culling);
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "emitter_culling"), "set_emitter_culling", "get_emitter_culling");
 	ClassDB::bind_method(D_METHOD("set_spin_angle", "value"), &ParticleMeshProfile3D::set_spin_angle);
 	ClassDB::bind_method(D_METHOD("get_spin_angle"), &ParticleMeshProfile3D::get_spin_angle);
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "spin_angle"), "set_spin_angle", "get_spin_angle");

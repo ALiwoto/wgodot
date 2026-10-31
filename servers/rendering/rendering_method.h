@@ -96,6 +96,7 @@ public:
 	virtual void instance_set_pivot_data(RID p_instance, float p_sorting_offset, bool p_use_aabb_center) = 0;
 	// wgodot-changes::begin
 	virtual void instance_geometry_set_sorting_priority(RID p_instance, int32_t p_priority) = 0;
+	virtual void instance_geometry_set_cull_transform(RID p_instance, RSE::InstanceCullTransform p_mode) = 0;
 	// wgodot-changes::end
 	virtual void instance_set_transform(RID p_instance, const Transform3D &p_transform) = 0;
 	virtual void instance_attach_object_instance_id(RID p_instance, ObjectID p_id) = 0;

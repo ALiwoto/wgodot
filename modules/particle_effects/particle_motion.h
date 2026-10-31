@@ -196,6 +196,7 @@ class ParticleMeshProfile3D : public ParticleMotionProfile3D {
 
 	Vector3 rotation;
 	bool faces_camera = false;
+	bool emitter_culling = false;
 	double spin_angle = 0.0;
 	double spin_speed = 0.0;
 	Ref<ParticleFloatCurve> spin_over_life;
@@ -214,6 +215,8 @@ public:
 	Vector3 get_rotation() const { return rotation; }
 	void set_faces_camera(bool p_value) { faces_camera = p_value; }
 	bool get_faces_camera() const { return faces_camera; }
+	void set_emitter_culling(bool p_value) { emitter_culling = p_value; }
+	bool get_emitter_culling() const { return emitter_culling; }
 	void set_spin_angle(double p_value) { spin_angle = p_value; }
 	double get_spin_angle() const { return spin_angle; }
 	void set_spin_speed(double p_value) { spin_speed = p_value; }

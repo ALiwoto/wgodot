@@ -191,6 +191,12 @@ void ParticleBirthRule3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_velocity_applies_owner_scale", "value"), &ParticleBirthRule3D::set_velocity_applies_owner_scale);
 	ClassDB::bind_method(D_METHOD("get_velocity_applies_owner_scale"), &ParticleBirthRule3D::get_velocity_applies_owner_scale);
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "velocity_applies_owner_scale"), "set_velocity_applies_owner_scale", "get_velocity_applies_owner_scale");
+	ClassDB::bind_method(D_METHOD("set_radial_velocity", "value"), &ParticleBirthRule3D::set_radial_velocity);
+	ClassDB::bind_method(D_METHOD("get_radial_velocity"), &ParticleBirthRule3D::get_radial_velocity);
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "radial_velocity", PROPERTY_HINT_RESOURCE_TYPE, "ParticleFloatCurve"), "set_radial_velocity", "get_radial_velocity");
+	ClassDB::bind_method(D_METHOD("set_velocity_origin", "value"), &ParticleBirthRule3D::set_velocity_origin);
+	ClassDB::bind_method(D_METHOD("get_velocity_origin"), &ParticleBirthRule3D::get_velocity_origin);
+	ADD_PROPERTY(PropertyInfo(Variant::VECTOR3, "velocity_origin"), "set_velocity_origin", "get_velocity_origin");
 	ClassDB::bind_method(D_METHOD("set_random_seed", "value"), &ParticleBirthRule3D::set_random_seed);
 	ClassDB::bind_method(D_METHOD("get_random_seed"), &ParticleBirthRule3D::get_random_seed);
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "random_seed", PROPERTY_HINT_RESOURCE_TYPE, "ParticleSeed"), "set_random_seed", "get_random_seed");
@@ -222,5 +228,6 @@ void ParticleBirthRule3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("sample_vector", "random", "emitter_seconds"), &ParticleBirthRule3D::sample_vector, DEFVAL(0.0));
 	ClassDB::bind_method(D_METHOD("sample_texture_sign", "random"), &ParticleBirthRule3D::sample_texture_sign);
 	ClassDB::bind_method(D_METHOD("sample_velocity", "random", "emitter_basis", "local_space", "emitter_seconds"), &ParticleBirthRule3D::sample_velocity, DEFVAL(0.0));
+	ClassDB::bind_method(D_METHOD("sample_radial_velocity", "random", "emitter_basis", "local_space", "position", "emitter_seconds"), &ParticleBirthRule3D::sample_radial_velocity, DEFVAL(0.0));
 	ClassDB::bind_method(D_METHOD("sample_parent_velocity", "random", "emitter_basis", "local_space", "world_velocity", "emitter_seconds"), &ParticleBirthRule3D::sample_parent_velocity, DEFVAL(0.0));
 }

@@ -126,6 +126,7 @@ double ParticleEmissionBatch3D::emit(int p_count, double p_age, double p_interva
 				} break;
 				case Target::Velocity:
 					velocity += birth_transform.basis.xform(rule->sample_velocity(stream, emitter_transform.basis, local_space, emitter_seconds));
+					velocity += rule->sample_radial_velocity(stream, emitter_transform.basis, local_space, position, emitter_seconds);
 					break;
 				case Target::ParentVelocity:
 					velocity += rule->sample_parent_velocity(stream, emitter_transform.basis, local_space, emitter_velocity, emitter_seconds);

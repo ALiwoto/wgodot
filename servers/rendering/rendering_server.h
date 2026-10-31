@@ -770,6 +770,7 @@ public:
 	virtual void instance_set_pivot_data(RID p_instance, float p_sorting_offset, bool p_use_aabb_center) = 0;
 	// wgodot-changes::begin
 	virtual void instance_geometry_set_sorting_priority(RID p_instance, int32_t p_priority) = 0;
+	virtual void instance_geometry_set_cull_transform(RID p_instance, RSE::InstanceCullTransform p_mode) = 0;
 	// wgodot-changes::end
 	virtual void instance_set_transform(RID p_instance, const Transform3D &p_transform) = 0;
 	virtual void instance_attach_object_instance_id(RID p_instance, ObjectID p_id) = 0;
@@ -1205,6 +1206,9 @@ VARIANT_ENUM_CAST_EXT(RSE::DOFBokehShape, RenderingServer::DOFBokehShape);
 VARIANT_ENUM_CAST_EXT(RSE::ShadowQuality, RenderingServer::ShadowQuality);
 VARIANT_ENUM_CAST_EXT(RSE::InstanceType, RenderingServer::InstanceType);
 VARIANT_ENUM_CAST_EXT(RSE::InstanceFlags, RenderingServer::InstanceFlags);
+// wgodot-changes::begin
+VARIANT_ENUM_CAST_EXT(RSE::InstanceCullTransform, RenderingServer::InstanceCullTransform);
+// wgodot-changes::end
 VARIANT_ENUM_CAST_EXT(RSE::ShadowCastingSetting, RenderingServer::ShadowCastingSetting);
 VARIANT_ENUM_CAST_EXT(RSE::VisibilityRangeFadeMode, RenderingServer::VisibilityRangeFadeMode);
 VARIANT_ENUM_CAST_EXT(RSE::NinePatchAxisMode, RenderingServer::NinePatchAxisMode);

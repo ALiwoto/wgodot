@@ -3328,6 +3328,10 @@ void RenderingServer::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("instance_set_pivot_data", "instance", "sorting_offset", "use_aabb_center"), &RenderingServer::instance_set_pivot_data);
 	// wgodot-changes::begin
 	ClassDB::bind_method(D_METHOD("instance_geometry_set_sorting_priority", "instance", "priority"), &RenderingServer::instance_geometry_set_sorting_priority);
+	ClassDB::bind_method(D_METHOD("instance_geometry_set_cull_transform", "instance", "mode"), &RenderingServer::instance_geometry_set_cull_transform);
+	BIND_ENUM_CONSTANT(RSE::INSTANCE_CULL_TRANSFORM_AUTOMATIC);
+	BIND_ENUM_CONSTANT(RSE::INSTANCE_CULL_TRANSFORM_POSITIVE);
+	BIND_ENUM_CONSTANT(RSE::INSTANCE_CULL_TRANSFORM_NEGATIVE);
 	// wgodot-changes::end
 	ClassDB::bind_method(D_METHOD("instance_set_transform", "instance", "transform"), &RenderingServer::instance_set_transform);
 	ClassDB::bind_method(D_METHOD("instance_attach_object_instance_id", "instance", "id"), &RenderingServer::instance_attach_object_instance_id);

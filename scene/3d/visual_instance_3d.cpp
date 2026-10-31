@@ -249,6 +249,15 @@ void GeometryInstance3D::set_sorting_priority(int32_t p_priority) {
 	sorting_priority = p_priority;
 	RS::get_singleton()->instance_geometry_set_sorting_priority(get_instance(), p_priority);
 }
+
+void GeometryInstance3D::set_cull_transform(CullTransform p_mode) {
+	ERR_FAIL_COND(p_mode < CULL_TRANSFORM_AUTOMATIC || p_mode > CULL_TRANSFORM_NEGATIVE);
+	if (cull_transform == p_mode) {
+		return;
+	}
+	cull_transform = p_mode;
+	RS::get_singleton()->instance_geometry_set_cull_transform(get_instance(), RSE::InstanceCullTransform(p_mode));
+}
 // wgodot-changes::end
 
 Ref<Material> GeometryInstance3D::get_material_override() const {
@@ -560,6 +569,12 @@ void GeometryInstance3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_sorting_priority", "priority"), &GeometryInstance3D::set_sorting_priority);
 	ClassDB::bind_method(D_METHOD("get_sorting_priority"), &GeometryInstance3D::get_sorting_priority);
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "sorting_priority"), "set_sorting_priority", "get_sorting_priority");
+	ClassDB::bind_method(D_METHOD("set_cull_transform", "mode"), &GeometryInstance3D::set_cull_transform);
+	ClassDB::bind_method(D_METHOD("get_cull_transform"), &GeometryInstance3D::get_cull_transform);
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "cull_transform", PROPERTY_HINT_ENUM, "Automatic,Positive,Negative"), "set_cull_transform", "get_cull_transform");
+	BIND_ENUM_CONSTANT(CULL_TRANSFORM_AUTOMATIC);
+	BIND_ENUM_CONSTANT(CULL_TRANSFORM_POSITIVE);
+	BIND_ENUM_CONSTANT(CULL_TRANSFORM_NEGATIVE);
 	// wgodot-changes::end
 	// wgodot-changes::begin
 	_bind_typed_instance_shader_parameters();
