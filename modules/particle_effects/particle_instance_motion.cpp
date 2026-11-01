@@ -39,6 +39,41 @@ bool ParticleInstance3D::project_ground(ParticleGroundProjector3D *p_ground, dou
 	return true;
 }
 
+void ParticleInstance3D::orient_to_surface(ParticleGroundProjector3D *p_ray) {
+	// Sample once in authored birth-rule order. Keep the world-space axes for
+	// the particle's lifetime, even when its emitter subsequently moves.
+	Transform3D frame = get_particle_transform();
+	if (!follows_emitter) {
+		frame.orthonormalize();
+	}
+	Vector3 down;
+	Vector3 right;
+	if (p_ray->project(frame.xform(state_position))) {
+		const Vector3 normal = p_ray->get_collision_normal();
+		if (Math::abs(normal.y) > 0.0001) {
+			const Basis axes = follows_emitter ? get_emitter_transform().basis.orthonormalized() : Basis();
+			down = -axes.get_column(0);
+			right = axes.get_column(2);
+			// Project each authored axis independently. Gram-Schmidt would
+			// change sprite UVs on slopes: the source preserves this skew.
+			down -= normal * (down.dot(normal) / normal.length_squared());
+			right -= normal * (right.dot(normal) / normal.length_squared());
+			if (down.length_squared() < 1e-10) {
+				down = normal.cross(right);
+			}
+			if (right.length_squared() < 1e-10) {
+				right = down.cross(normal);
+			}
+			down.normalize();
+			right.normalize();
+			// Repeated authored modules overwrite on a hit, retain prior axes
+			// on a miss, just like the other ordered birth operations.
+			uniform(bindings()->particle_orientation_x, right);
+			uniform(bindings()->particle_orientation_y, -down);
+		}
+	}
+}
+
 void ParticleInstance3D::set_frame(double p_frame) {
 	uniform(bindings()->sprite_frame, p_frame);
 	if (!sprite_motion->get_frames().is_empty()) {

@@ -146,6 +146,9 @@ void ParticleSpawnShape3D::_bind_methods() {
 }
 
 void ParticleBirthRule3D::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("set_surface_check_height", "value"), &ParticleBirthRule3D::set_surface_check_height);
+	ClassDB::bind_method(D_METHOD("get_surface_check_height"), &ParticleBirthRule3D::get_surface_check_height);
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "surface_check_height"), "set_surface_check_height", "get_surface_check_height");
 	ClassDB::bind_method(D_METHOD("set_target", "value"), &ParticleBirthRule3D::set_target);
 	ClassDB::bind_method(D_METHOD("get_target"), &ParticleBirthRule3D::get_target);
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "target"), "set_target", "get_target");

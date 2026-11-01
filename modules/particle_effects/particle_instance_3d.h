@@ -16,15 +16,15 @@ public:
 	StringName camera_offset = "camera_offset";
 	void set_camera_offset(const StringName &p_name) { camera_offset = p_name; }
 	StringName get_camera_offset() const { return camera_offset; }
-	StringName mesh_pre_rotation_x = "mesh_pre_rotation_x";
-	void set_mesh_pre_rotation_x(const StringName &p_name) { mesh_pre_rotation_x = p_name; }
-	StringName get_mesh_pre_rotation_x() const { return mesh_pre_rotation_x; }
-	StringName mesh_pre_rotation_y = "mesh_pre_rotation_y";
-	void set_mesh_pre_rotation_y(const StringName &p_name) { mesh_pre_rotation_y = p_name; }
-	StringName get_mesh_pre_rotation_y() const { return mesh_pre_rotation_y; }
-	StringName mesh_pre_rotation_z = "mesh_pre_rotation_z";
-	void set_mesh_pre_rotation_z(const StringName &p_name) { mesh_pre_rotation_z = p_name; }
-	StringName get_mesh_pre_rotation_z() const { return mesh_pre_rotation_z; }
+	StringName particle_orientation_x = "particle_orientation_x";
+	void set_particle_orientation_x(const StringName &p_name) { particle_orientation_x = p_name; }
+	StringName get_particle_orientation_x() const { return particle_orientation_x; }
+	StringName particle_orientation_y = "particle_orientation_y";
+	void set_particle_orientation_y(const StringName &p_name) { particle_orientation_y = p_name; }
+	StringName get_particle_orientation_y() const { return particle_orientation_y; }
+	StringName particle_orientation_z = "particle_orientation_z";
+	void set_particle_orientation_z(const StringName &p_name) { particle_orientation_z = p_name; }
+	StringName get_particle_orientation_z() const { return particle_orientation_z; }
 	StringName sprite_uv_flip = "sprite_uv_flip";
 	void set_sprite_uv_flip(const StringName &p_name) { sprite_uv_flip = p_name; }
 	StringName get_sprite_uv_flip() const { return sprite_uv_flip; }
@@ -67,6 +67,7 @@ class ParticleSpawnContext3D : public RefCounted {
 	double ground_offset = 0.0;
 	Vector3 emitter_velocity;
 	RayCast3D *surface_ray = nullptr;
+	ParticleGroundProjector3D *orientation_ray = nullptr;
 	Vector3 surface_origin_offset;
 	Vector4 surface_plane;
 	bool surface_plane_changed = false;
@@ -82,6 +83,8 @@ public:
 	Vector3 get_emitter_velocity() const { return emitter_velocity; }
 	void set_surface_ray(RayCast3D *p_value) { surface_ray = p_value; }
 	RayCast3D *get_surface_ray() const { return surface_ray; }
+	void set_orientation_ray(ParticleGroundProjector3D *p_value) { orientation_ray = p_value; }
+	ParticleGroundProjector3D *get_orientation_ray() const { return orientation_ray; }
 	void set_surface_origin_offset(const Vector3 &p_value) { surface_origin_offset = p_value; }
 	Vector3 get_surface_origin_offset() const { return surface_origin_offset; }
 	void set_surface_plane(const Vector4 &p_value) { surface_plane_changed |= surface_plane != p_value; surface_plane = p_value; }
@@ -203,6 +206,7 @@ class ParticleInstance3D : public Node3D {
 	void inherit_particle(ParticleInstance3D *p_source, const Ref<ParticleBirthRule3D> &p_initial);
 	void copy_source_state(ParticleInstance3D *p_source, bool p_spawning);
 	bool project_ground(ParticleGroundProjector3D *p_ground, double p_task_ratio, bool p_spawning = false);
+	void orient_to_surface(ParticleGroundProjector3D *p_ray);
 	void set_frame(double p_frame);
 	void prepare_orbit(const Ref<ParticleMotionProfile3D> &p_trajectory, double p_emitter_seconds);
 	Vector3 advance_orbit(const Ref<ParticleMotionProfile3D> &p_trajectory, double p_relative_age, double p_delta, bool p_spawned_now, double p_emitter_seconds);

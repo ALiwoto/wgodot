@@ -10,15 +10,15 @@ void ParticleShaderBindings::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_camera_offset", "name"), &ParticleShaderBindings::set_camera_offset);
 	ClassDB::bind_method(D_METHOD("get_camera_offset"), &ParticleShaderBindings::get_camera_offset);
 	ADD_PROPERTY(PropertyInfo(Variant::STRING_NAME, "camera_offset"), "set_camera_offset", "get_camera_offset");
-	ClassDB::bind_method(D_METHOD("set_mesh_pre_rotation_x", "name"), &ParticleShaderBindings::set_mesh_pre_rotation_x);
-	ClassDB::bind_method(D_METHOD("get_mesh_pre_rotation_x"), &ParticleShaderBindings::get_mesh_pre_rotation_x);
-	ADD_PROPERTY(PropertyInfo(Variant::STRING_NAME, "mesh_pre_rotation_x"), "set_mesh_pre_rotation_x", "get_mesh_pre_rotation_x");
-	ClassDB::bind_method(D_METHOD("set_mesh_pre_rotation_y", "name"), &ParticleShaderBindings::set_mesh_pre_rotation_y);
-	ClassDB::bind_method(D_METHOD("get_mesh_pre_rotation_y"), &ParticleShaderBindings::get_mesh_pre_rotation_y);
-	ADD_PROPERTY(PropertyInfo(Variant::STRING_NAME, "mesh_pre_rotation_y"), "set_mesh_pre_rotation_y", "get_mesh_pre_rotation_y");
-	ClassDB::bind_method(D_METHOD("set_mesh_pre_rotation_z", "name"), &ParticleShaderBindings::set_mesh_pre_rotation_z);
-	ClassDB::bind_method(D_METHOD("get_mesh_pre_rotation_z"), &ParticleShaderBindings::get_mesh_pre_rotation_z);
-	ADD_PROPERTY(PropertyInfo(Variant::STRING_NAME, "mesh_pre_rotation_z"), "set_mesh_pre_rotation_z", "get_mesh_pre_rotation_z");
+	ClassDB::bind_method(D_METHOD("set_particle_orientation_x", "name"), &ParticleShaderBindings::set_particle_orientation_x);
+	ClassDB::bind_method(D_METHOD("get_particle_orientation_x"), &ParticleShaderBindings::get_particle_orientation_x);
+	ADD_PROPERTY(PropertyInfo(Variant::STRING_NAME, "particle_orientation_x"), "set_particle_orientation_x", "get_particle_orientation_x");
+	ClassDB::bind_method(D_METHOD("set_particle_orientation_y", "name"), &ParticleShaderBindings::set_particle_orientation_y);
+	ClassDB::bind_method(D_METHOD("get_particle_orientation_y"), &ParticleShaderBindings::get_particle_orientation_y);
+	ADD_PROPERTY(PropertyInfo(Variant::STRING_NAME, "particle_orientation_y"), "set_particle_orientation_y", "get_particle_orientation_y");
+	ClassDB::bind_method(D_METHOD("set_particle_orientation_z", "name"), &ParticleShaderBindings::set_particle_orientation_z);
+	ClassDB::bind_method(D_METHOD("get_particle_orientation_z"), &ParticleShaderBindings::get_particle_orientation_z);
+	ADD_PROPERTY(PropertyInfo(Variant::STRING_NAME, "particle_orientation_z"), "set_particle_orientation_z", "get_particle_orientation_z");
 	ClassDB::bind_method(D_METHOD("set_sprite_uv_flip", "name"), &ParticleShaderBindings::set_sprite_uv_flip);
 	ClassDB::bind_method(D_METHOD("get_sprite_uv_flip"), &ParticleShaderBindings::get_sprite_uv_flip);
 	ADD_PROPERTY(PropertyInfo(Variant::STRING_NAME, "sprite_uv_flip"), "set_sprite_uv_flip", "get_sprite_uv_flip");
@@ -49,6 +49,9 @@ void ParticleShaderBindings::_bind_methods() {
 }
 
 void ParticleSpawnContext3D::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("set_orientation_ray", "value"), &ParticleSpawnContext3D::set_orientation_ray);
+	ClassDB::bind_method(D_METHOD("get_orientation_ray"), &ParticleSpawnContext3D::get_orientation_ray);
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "orientation_ray", PROPERTY_HINT_NODE_TYPE, "ParticleGroundProjector3D"), "set_orientation_ray", "get_orientation_ray");
 	ClassDB::bind_method(D_METHOD("set_surface_ray", "value"), &ParticleSpawnContext3D::set_surface_ray);
 	ClassDB::bind_method(D_METHOD("get_surface_ray"), &ParticleSpawnContext3D::get_surface_ray);
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "surface_ray", PROPERTY_HINT_NODE_TYPE, "RayCast3D"), "set_surface_ray", "get_surface_ray");

@@ -228,6 +228,7 @@ public:
 		ParentVelocity,
 		SurfacePlane,
 		WorldOffset,
+		SurfaceOrientation,
 	};
 
 private:
@@ -271,6 +272,7 @@ private:
 	Ref<ParticleVelocityRule3D> acceleration;
 	Vector3i color_order = Vector3i(0, 1, 2);
 	Vector3 rotation_axis = Vector3(0, 1, 0);
+	double surface_check_height = 0.0;
 
 protected:
 	static void _bind_methods();
@@ -280,6 +282,8 @@ public:
 	void set_rotation_axis(const Vector3 &p_value) { rotation_axis = p_value; }
 	Vector3 get_rotation_axis() const { return rotation_axis; }
 	int get_target() const { return target; }
+	void set_surface_check_height(double p_value) { surface_check_height = p_value; }
+	double get_surface_check_height() const { return surface_check_height; }
 	void set_value(const Vector3 & p_value) { value = p_value; }
 	Vector3 get_value() const { return value; }
 	void set_value_curve(const Ref<ParticleVectorCurve3D> & p_value) { value_curve = p_value; }

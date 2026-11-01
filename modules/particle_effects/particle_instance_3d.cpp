@@ -228,6 +228,10 @@ bool ParticleInstance3D::sample_playback(double p_seconds, double p_delta, const
 		state_position.y += state_emitter_ground_offset;
 		state_color = initial_color;
 		accelerations.clear();
+		if (p_birth_source.is_valid() && p_birth_source->get_orientation_ray()) {
+			uniform(bindings()->particle_orientation_x, Vector3());
+			uniform(bindings()->particle_orientation_y, Vector3());
+		}
 		Node3D *projector = decal ? static_cast<Node3D *>(decal) : geometry;
 		for (int index = 0; index < p_initial_values.size(); ++index) {
 			const Ref<ParticleBirthRule3D> initial = p_initial_values[index];
@@ -272,6 +276,13 @@ bool ParticleInstance3D::sample_playback(double p_seconds, double p_delta, const
 						p_birth_source->capture_surface_plane(particle_transform.xform(state_position));
 						publish_surface_plane(p_birth_source->get_surface_plane());
 					}
+					break;
+				case Target::SurfaceOrientation:
+					ERR_FAIL_COND_V_MSG(p_birth_source.is_null() || !p_birth_source->get_orientation_ray(), false,
+							"Surface-oriented particles require an orientation ray in their spawn context.");
+					p_birth_source->get_orientation_ray()->set_check_height(initial->get_surface_check_height());
+					p_birth_source->get_orientation_ray()->set_target_position(Vector3(0, -initial->get_surface_check_height(), 0));
+					orient_to_surface(p_birth_source->get_orientation_ray());
 					break;
 				case Target::Acceleration: {
 					Vector3 acceleration = initial->sample_vector(acceleration_random, p_emitter_seconds);
@@ -387,9 +398,9 @@ bool ParticleInstance3D::sample_playback(double p_seconds, double p_delta, const
 				const Basis basis = Basis::from_euler(motion->get_pre_orientation()->sample(get_orientation_random()), EulerOrder::YZX);
 				geometry->set_basis(basis);
 				if (motion->get_faces_camera() || !motion->get_flattened_axes().is_empty() || (follows_emitter && camera_offset.is_valid())) {
-					uniform(bindings()->mesh_pre_rotation_x, basis.get_column(0));
-					uniform(bindings()->mesh_pre_rotation_y, basis.get_column(1));
-					uniform(bindings()->mesh_pre_rotation_z, basis.get_column(2));
+					uniform(bindings()->particle_orientation_x, basis.get_column(0));
+					uniform(bindings()->particle_orientation_y, basis.get_column(1));
+					uniform(bindings()->particle_orientation_z, basis.get_column(2));
 				}
 			}
 		}
