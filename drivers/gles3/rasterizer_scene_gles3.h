@@ -741,8 +741,8 @@ private:
 				if (A->owner->sorting_subpriority != B->owner->sorting_subpriority) {
 					return A->owner->sorting_subpriority < B->owner->sorting_subpriority;
 				}
+				return A->owner->sorts_before_at_equal_priority(B->owner);
 				// wgodot-changes::end
-				return A->owner->depth > B->owner->depth;
 			}
 		};
 

@@ -42,6 +42,9 @@ public:
 	virtual ~RenderGeometryInstance() {}
 // wgodot-changes::begin
 	int mesh_lod_level = 0;
+	// Scene-instance identity survives material/mesh cache rebuilds. Equal-depth
+	// transparency must not depend on culling traversal or allocator addresses.
+	uint64_t sorting_id = 0;
 // wgodot-changes::end
 
 
@@ -94,6 +97,14 @@ public:
 
 	// used during rendering
 	float depth = 0;
+	// wgodot-changes::begin
+	_FORCE_INLINE_ bool sorts_before_at_equal_priority(const RenderGeometryInstanceBase *p_other) const {
+		if (depth != p_other->depth) {
+			return depth > p_other->depth;
+		}
+		return sorting_id < p_other->sorting_id;
+	}
+	// wgodot-changes::end
 
 	RID mesh_instance;
 

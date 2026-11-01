@@ -795,6 +795,7 @@ void RendererSceneCull::instance_set_base(RID p_instance, RID p_base) {
 				geom->geometry_instance->set_layer_mask(instance->layer_mask);
 				geom->geometry_instance->set_pivot_data(instance->sorting_offset, instance->use_aabb_center);
 				// wgodot-changes::begin
+				geom->geometry_instance->sorting_id = instance->self.get_id();
 				geom->geometry_instance->set_sorting_priority(instance->sorting_priority);
 				geom->geometry_instance->set_sorting_subpriority(instance->sorting_subpriority);
 				geom->geometry_instance->set_cull_transform(instance->cull_transform);
