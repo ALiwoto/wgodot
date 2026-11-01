@@ -796,6 +796,7 @@ void RendererSceneCull::instance_set_base(RID p_instance, RID p_base) {
 				geom->geometry_instance->set_pivot_data(instance->sorting_offset, instance->use_aabb_center);
 				// wgodot-changes::begin
 				geom->geometry_instance->set_sorting_priority(instance->sorting_priority);
+				geom->geometry_instance->set_sorting_subpriority(instance->sorting_subpriority);
 				geom->geometry_instance->set_cull_transform(instance->cull_transform);
 				// wgodot-changes::end
 				geom->geometry_instance->set_lod_bias(instance->lod_bias);
@@ -1069,6 +1070,16 @@ void RendererSceneCull::instance_geometry_set_sorting_priority(RID p_instance, i
 	if (((1 << instance->base_type) & RSE::INSTANCE_GEOMETRY_MASK) && instance->base_data) {
 		InstanceGeometryData *geometry = static_cast<InstanceGeometryData *>(instance->base_data);
 		geometry->geometry_instance->set_sorting_priority(p_priority);
+	}
+}
+
+void RendererSceneCull::instance_geometry_set_sorting_subpriority(RID p_instance, int32_t p_priority) {
+	Instance *instance = instance_owner.get_or_null(p_instance);
+	ERR_FAIL_NULL(instance);
+	instance->sorting_subpriority = p_priority;
+	if (((1 << instance->base_type) & RSE::INSTANCE_GEOMETRY_MASK) && instance->base_data) {
+		InstanceGeometryData *geometry = static_cast<InstanceGeometryData *>(instance->base_data);
+		geometry->geometry_instance->set_sorting_subpriority(p_priority);
 	}
 }
 // wgodot-changes::end

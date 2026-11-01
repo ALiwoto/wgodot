@@ -94,6 +94,7 @@ class GeometryInstance3D : public VisualInstance3D {
 	GDCLASS(GeometryInstance3D, VisualInstance3D);
 	// wgodot-changes::begin
 	int32_t sorting_priority = 0;
+	int32_t sorting_subpriority = 0;
 	// wgodot-changes::end
 
 public:
@@ -199,7 +200,9 @@ public:
 	void set_material_override(const Ref<Material> &p_material);
 	// wgodot-changes::begin
 	void set_sorting_priority(int32_t p_priority);
+	void set_sorting_subpriority(int32_t p_priority);
 	int32_t get_sorting_priority() const { return sorting_priority; }
+	int32_t get_sorting_subpriority() const { return sorting_subpriority; }
 	void set_cull_transform(CullTransform p_mode);
 	CullTransform get_cull_transform() const { return cull_transform; }
 	// wgodot-changes::end

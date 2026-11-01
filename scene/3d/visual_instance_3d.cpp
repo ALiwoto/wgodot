@@ -250,6 +250,14 @@ void GeometryInstance3D::set_sorting_priority(int32_t p_priority) {
 	RS::get_singleton()->instance_geometry_set_sorting_priority(get_instance(), p_priority);
 }
 
+void GeometryInstance3D::set_sorting_subpriority(int32_t p_priority) {
+	if (sorting_subpriority == p_priority) {
+		return;
+	}
+	sorting_subpriority = p_priority;
+	RS::get_singleton()->instance_geometry_set_sorting_subpriority(get_instance(), p_priority);
+}
+
 void GeometryInstance3D::set_cull_transform(CullTransform p_mode) {
 	ERR_FAIL_COND(p_mode < CULL_TRANSFORM_AUTOMATIC || p_mode > CULL_TRANSFORM_NEGATIVE);
 	if (cull_transform == p_mode) {
@@ -567,8 +575,11 @@ void GeometryInstance3D::_validate_property(PropertyInfo &p_property) const {
 void GeometryInstance3D::_bind_methods() {
 	// wgodot-changes::begin
 	ClassDB::bind_method(D_METHOD("set_sorting_priority", "priority"), &GeometryInstance3D::set_sorting_priority);
+	ClassDB::bind_method(D_METHOD("set_sorting_subpriority", "priority"), &GeometryInstance3D::set_sorting_subpriority);
 	ClassDB::bind_method(D_METHOD("get_sorting_priority"), &GeometryInstance3D::get_sorting_priority);
+	ClassDB::bind_method(D_METHOD("get_sorting_subpriority"), &GeometryInstance3D::get_sorting_subpriority);
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "sorting_priority"), "set_sorting_priority", "get_sorting_priority");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "sorting_subpriority"), "set_sorting_subpriority", "get_sorting_subpriority");
 	ClassDB::bind_method(D_METHOD("set_cull_transform", "mode"), &GeometryInstance3D::set_cull_transform);
 	ClassDB::bind_method(D_METHOD("get_cull_transform"), &GeometryInstance3D::get_cull_transform);
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "cull_transform", PROPERTY_HINT_ENUM, "Automatic,Positive,Negative"), "set_cull_transform", "get_cull_transform");
