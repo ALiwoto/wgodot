@@ -247,7 +247,11 @@ void RenderSceneDataRD::update_ubo(RID p_uniform_buffer, RSE::ViewportDebugDraw 
 	}
 
 	// wgodot-changes::begin
-	const Color geometry_fade = p_env.is_valid() ? render_scene_render->environment_get_geometry_fade_color(p_env) : Color(0, 0, 0, 0);
+	// View presentation fades apply after reflection radiance is sampled by
+	// the receiving surface. Capturing the fade here would apply it twice,
+	// or bake a transient cinematic fade into a reflection probe.
+	const bool reflection_view = planar_reflection || p_reflection_probe_instance.is_valid();
+	const Color geometry_fade = p_env.is_valid() && !reflection_view ? render_scene_render->environment_get_geometry_fade_color(p_env) : Color(0, 0, 0, 0);
 	for (int i = 0; i < 4; i++) {
 		ubo.geometry_fade_color[i] = geometry_fade[i];
 		ubo.geometry_fade_layers[i] = 0;
