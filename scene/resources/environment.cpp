@@ -1265,6 +1265,10 @@ bool Environment::_set(const StringName &p_name, const Variant &p_value) {
 #endif
 
 void Environment::_bind_methods() {
+	// wgodot-changes::begin
+	_bind_geometry_fade_methods();
+	// wgodot-changes::end
+
 	// Background
 
 	ClassDB::bind_method(D_METHOD("set_background", "mode"), &Environment::set_background);

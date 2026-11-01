@@ -193,6 +193,8 @@ private:
 		float pass_alpha_multiplier;
 		// wgodot-changes::begin
 		float clip_plane[4];
+		float geometry_fade_color[4];
+		uint32_t geometry_fade_layers[4];
 		// wgodot-changes::end
 	};
 

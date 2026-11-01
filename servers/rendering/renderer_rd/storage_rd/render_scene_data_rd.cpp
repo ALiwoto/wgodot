@@ -246,6 +246,17 @@ void RenderSceneDataRD::update_ubo(RID p_uniform_buffer, RSE::ViewportDebugDraw 
 		}
 	}
 
+	// wgodot-changes::begin
+	const Color geometry_fade = p_env.is_valid() ? render_scene_render->environment_get_geometry_fade_color(p_env) : Color(0, 0, 0, 0);
+	for (int i = 0; i < 4; i++) {
+		ubo.geometry_fade_color[i] = geometry_fade[i];
+		ubo.geometry_fade_layers[i] = 0;
+	}
+	if (p_env.is_valid()) {
+		ubo.geometry_fade_layers[0] = render_scene_render->environment_get_geometry_fade_excluded_layers(p_env);
+	}
+	// wgodot-changes::end
+
 	if (p_camera_attributes.is_valid()) {
 		ubo.emissive_exposure_normalization = RSG::camera_attributes->camera_attributes_get_exposure_normalization_factor(p_camera_attributes);
 		ubo.IBL_exposure_normalization = 1.0;

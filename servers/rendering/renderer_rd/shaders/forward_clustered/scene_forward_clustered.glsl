@@ -3286,6 +3286,13 @@ void fragment_shader(in SceneData scene_data) {
 	diffuse_buffer.rgb = diffuse_buffer.rgb * fog.a + fog.rgb;
 	specular_buffer.rgb = specular_buffer.rgb * fog.a;
 #endif //!FOG_DISABLED
+// wgodot-changes::begin
+	if (scene_data.geometry_fade_color.a != 0.0 && (instances.data[instance_index].layer_mask & scene_data.geometry_fade_layers.x) == 0u) {
+		diffuse_buffer.rgb = mix(diffuse_buffer.rgb, scene_data.geometry_fade_color.rgb, scene_data.geometry_fade_color.a);
+		specular_buffer.rgb *= 1.0 - scene_data.geometry_fade_color.a;
+	}
+// wgodot-changes::end
+
 
 #else //MODE_SEPARATE_SPECULAR
 
@@ -3301,6 +3308,14 @@ void fragment_shader(in SceneData scene_data) {
 #ifndef FOG_DISABLED
 	frag_color.rgb = frag_color.rgb * fog.a + fog.rgb;
 #endif //!FOG_DISABLED
+// wgodot-changes::begin
+#ifndef MODE_SCREEN_DISTORTION
+	if (scene_data.geometry_fade_color.a != 0.0 && (instances.data[instance_index].layer_mask & scene_data.geometry_fade_layers.x) == 0u) {
+		frag_color.rgb = mix(frag_color.rgb, scene_data.geometry_fade_color.rgb, scene_data.geometry_fade_color.a);
+	}
+#endif
+// wgodot-changes::end
+
 
 #if defined(PREMUL_ALPHA_USED) && !defined(MODE_RENDER_DEPTH)
 	frag_color.rgb *= premul_alpha;

@@ -240,6 +240,12 @@ public:
 	virtual float environment_get_fog_sky_affect(RID p_env) const = 0;
 
 	// Depth Fog
+	// wgodot-changes::begin
+	virtual void environment_set_geometry_fade(RID p_env, const Color &p_color, uint32_t p_excluded_layers) = 0;
+	virtual Color environment_get_geometry_fade_color(RID p_env) const = 0;
+	virtual uint32_t environment_get_geometry_fade_excluded_layers(RID p_env) const = 0;
+
+	// wgodot-changes::end
 	virtual void environment_set_fog_depth(RID p_env, float p_curve, float p_begin, float p_end) = 0;
 
 	virtual float environment_get_fog_depth_curve(RID p_env) const = 0;

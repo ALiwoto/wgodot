@@ -94,6 +94,12 @@ public:
 
 private:
 	RID environment;
+	// wgodot-changes::begin
+	Color geometry_fade_color = Color(0, 0, 0, 0);
+	uint32_t geometry_fade_excluded_layers = 0;
+	static void _bind_geometry_fade_methods();
+	// wgodot-changes::end
+
 
 	// Background
 	BGMode bg_mode = BG_CLEAR_COLOR;
@@ -243,6 +249,13 @@ public:
 	virtual RID get_rid() const override;
 
 	// Background
+	// wgodot-changes::begin
+	void set_geometry_fade_color(const Color &p_color);
+	Color get_geometry_fade_color() const { return geometry_fade_color; }
+	void set_geometry_fade_excluded_layers(uint32_t p_layers);
+	uint32_t get_geometry_fade_excluded_layers() const { return geometry_fade_excluded_layers; }
+	// wgodot-changes::end
+
 	void set_background(BGMode p_bg);
 	BGMode get_background() const;
 	void set_sky(const Ref<Sky> &p_sky);

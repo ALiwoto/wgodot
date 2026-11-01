@@ -83,5 +83,7 @@ struct SceneData {
 	float pass_alpha_multiplier;
 	// wgodot-changes::begin
 	vec4 clip_plane;
+	vec4 geometry_fade_color;
+	uvec4 geometry_fade_layers;
 	// wgodot-changes::end
 };

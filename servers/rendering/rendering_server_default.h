@@ -912,6 +912,9 @@ public:
 
 	FUNC11(environment_set_fog, RID, bool, const Color &, float, float, float, float, float, float, float, RSE::EnvironmentFogMode)
 
+	// wgodot-changes::begin
+	FUNC3(environment_set_geometry_fade, RID, const Color &, uint32_t)
+	// wgodot-changes::end
 	FUNC4(environment_set_fog_depth, RID, float, float, float)
 	FUNC14(environment_set_volumetric_fog, RID, bool, float, const Color &, const Color &, float, float, float, float, float, bool, float, float, float)
 

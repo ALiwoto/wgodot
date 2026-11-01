@@ -75,6 +75,11 @@ private:
 		float sky_custom_fov = 0.0;
 		Basis sky_orientation;
 		Color bg_color;
+		// wgodot-changes::begin
+		Color geometry_fade_color = Color(0, 0, 0, 0);
+		uint32_t geometry_fade_excluded_layers = 0;
+		// wgodot-changes::end
+
 		float bg_energy_multiplier = 1.0;
 		float bg_intensity = 1.0; // Measured in nits or candela/m^2. Default to 1.0 so this doesn't impact rendering when Physical Light Units disabled.
 		int canvas_max_layer = 0;
@@ -256,6 +261,12 @@ public:
 	float environment_get_fog_aerial_perspective(RID p_env) const;
 
 	// Depth Fog
+	// wgodot-changes::begin
+	void environment_set_geometry_fade(RID p_env, const Color &p_color, uint32_t p_excluded_layers);
+	Color environment_get_geometry_fade_color(RID p_env) const;
+	uint32_t environment_get_geometry_fade_excluded_layers(RID p_env) const;
+
+	// wgodot-changes::end
 	void environment_set_fog_depth(RID p_env, float p_curve, float p_begin, float p_end);
 	float environment_get_fog_depth_curve(RID p_env) const;
 	float environment_get_fog_depth_begin(RID p_env) const;

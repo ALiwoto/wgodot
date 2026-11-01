@@ -1330,6 +1330,11 @@ public:
 	PASS1(environment_set_volumetric_fog_filter_active, bool)
 
 	// Depth Fog
+	// wgodot-changes::begin
+	PASS3(environment_set_geometry_fade, RID, const Color &, uint32_t)
+	PASS1RC(Color, environment_get_geometry_fade_color, RID)
+	PASS1RC(uint32_t, environment_get_geometry_fade_excluded_layers, RID)
+	// wgodot-changes::end
 	PASS4(environment_set_fog_depth, RID, float, float, float)
 	PASS1RC(float, environment_get_fog_depth_curve, RID)
 	PASS1RC(float, environment_get_fog_depth_begin, RID)

@@ -163,6 +163,12 @@ public:
 	float environment_get_fog_aerial_perspective(RID p_env) const;
 
 	// Depth Fog
+	// wgodot-changes::begin
+	void environment_set_geometry_fade(RID p_env, const Color &p_color, uint32_t p_excluded_layers);
+	Color environment_get_geometry_fade_color(RID p_env) const;
+	uint32_t environment_get_geometry_fade_excluded_layers(RID p_env) const;
+
+	// wgodot-changes::end
 	void environment_set_fog_depth(RID p_env, float p_curve, float p_begin, float p_end);
 	float environment_get_fog_depth_curve(RID p_env) const;
 	float environment_get_fog_depth_begin(RID p_env) const;

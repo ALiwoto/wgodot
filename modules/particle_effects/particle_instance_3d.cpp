@@ -103,6 +103,7 @@ void ParticleInstance3D::reset_random_streams() {
 }
 
 void ParticleInstance3D::reset_playback() {
+	reset_projector();
 	reset_random_streams();
 	state_previous_age = 0.0;
 	state_relative_age = 0.0;
@@ -360,6 +361,7 @@ bool ParticleInstance3D::sample_playback(double p_seconds, double p_delta, const
 					break;
 			}
 		}
+		prepare_projector();
 		if (camera_offset.is_valid()) {
 			double offset = camera_offset->sample(state_relative_age, p_parameter_ratio, camera_random);
 			if (!follows_emitter) {
@@ -576,6 +578,7 @@ bool ParticleInstance3D::sample_playback(double p_seconds, double p_delta, const
 		state_previous_age = state_inverse_lifetime > 0.0 ? state_relative_age / state_inverse_lifetime : 0.0;
 		uniform(bindings()->age, state_previous_age);
 	}
+	update_projector();
 	publish_render_instances();
 	return is_visible() || age < 0.0;
 }

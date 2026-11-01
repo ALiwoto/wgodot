@@ -101,6 +101,9 @@ void ParticleInstance3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_decal_modulate", "value"), &ParticleInstance3D::set_decal_modulate);
 	ClassDB::bind_method(D_METHOD("get_decal_modulate"), &ParticleInstance3D::get_decal_modulate);
 	ADD_PROPERTY(PropertyInfo(Variant::COLOR, "decal_modulate"), "set_decal_modulate", "get_decal_modulate");
+	ClassDB::bind_method(D_METHOD("set_projector_scale_axes", "axes"), &ParticleInstance3D::set_projector_scale_axes);
+	ClassDB::bind_method(D_METHOD("get_projector_scale_axes"), &ParticleInstance3D::get_projector_scale_axes);
+	ADD_PROPERTY(PropertyInfo(Variant::VECTOR3I, "projector_scale_axes"), "set_projector_scale_axes", "get_projector_scale_axes");
 	ClassDB::bind_method(D_METHOD("set_initial_color", "value"), &ParticleInstance3D::set_initial_color);
 	ClassDB::bind_method(D_METHOD("get_initial_color"), &ParticleInstance3D::get_initial_color);
 	ADD_PROPERTY(PropertyInfo(Variant::COLOR, "initial_color"), "set_initial_color", "get_initial_color");

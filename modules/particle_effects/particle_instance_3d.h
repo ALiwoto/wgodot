@@ -127,6 +127,12 @@ class ParticleInstance3D : public Node3D {
 	GeometryInstance3D * geometry = nullptr;
 	Decal *decal = nullptr;
 	Color decal_modulate = Color(1, 1, 1, 1);
+	Vector3i projector_scale_axes = Vector3i(-1, -1, -1);
+	Transform3D projector_local_transform;
+	bool projector_prepared = false;
+	void prepare_projector();
+	void update_projector();
+	void reset_projector();
 	Color initial_color = Color(1, 1, 1, 1);
 	Ref<Gradient> color_over_life;
 	Ref<ParticleColorCurve> color_over_life_variation;
@@ -251,6 +257,8 @@ public:
 	Decal *get_decal() const { return decal; }
 	void set_decal_modulate(const Color &p_value) { decal_modulate = p_value; }
 	Color get_decal_modulate() const { return decal_modulate; }
+	void set_projector_scale_axes(const Vector3i &p_axes);
+	Vector3i get_projector_scale_axes() const { return projector_scale_axes; }
 	void set_initial_color(const Color & p_value) { initial_color = p_value; }
 	Color get_initial_color() const { return initial_color; }
 	void set_color_over_life(const Ref<Gradient> & p_value) { color_over_life = p_value; }
