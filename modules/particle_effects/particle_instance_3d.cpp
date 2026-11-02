@@ -95,6 +95,14 @@ void ParticleInstance3D::set_random_vector_order(const Vector3i &p_order) {
 	random_vector_order = p_order;
 }
 
+void ParticleInstance3D::set_light_position_reference(Node3D *p_value) {
+	light_position_reference = p_value ? p_value->get_instance_id() : ObjectID();
+}
+
+Node3D *ParticleInstance3D::get_light_position_reference() const {
+	return Object::cast_to<Node3D>(ObjectDB::get_instance(light_position_reference));
+}
+
 void ParticleInstance3D::reset_random_streams() {
 	Ref<RandomStream32> streams[] = { color_random, color_life_random, size_random, size_life_random, location_random, drag_random, attraction_random, rotation_random, frame_random, ground_random, acceleration_random, camera_random, orientation_random };
 	for (const Ref<RandomStream32> &stream : streams) {

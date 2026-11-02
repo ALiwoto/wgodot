@@ -114,6 +114,10 @@ Vector3 ParticleInstance3D::advance_orbit(const Ref<ParticleMotionProfile3D> &p_
 }
 
 void ParticleInstance3D::set_light_pose_position(const Vector3 &p_position) {
+	if (get_light_position_reference()) {
+		light->set_position(p_position);
+		return;
+	}
 	Node3D *pose_parent = pose->get_parent_node_3d();
 	Node3D *light_parent = light->get_parent_node_3d();
 	if (pose_parent == light_parent) {

@@ -122,6 +122,9 @@ void ParticleInstance3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_light", "value"), &ParticleInstance3D::set_light);
 	ClassDB::bind_method(D_METHOD("get_light"), &ParticleInstance3D::get_light);
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "light", PROPERTY_HINT_NODE_TYPE, "OmniLight3D"), "set_light", "get_light");
+	ClassDB::bind_method(D_METHOD("set_light_position_reference", "value"), &ParticleInstance3D::set_light_position_reference);
+	ClassDB::bind_method(D_METHOD("get_light_position_reference"), &ParticleInstance3D::get_light_position_reference);
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "light_position_reference", PROPERTY_HINT_NODE_TYPE, "Node3D"), "set_light_position_reference", "get_light_position_reference");
 	ClassDB::bind_method(D_METHOD("set_light_parameters", "value"), &ParticleInstance3D::set_light_parameters);
 	ClassDB::bind_method(D_METHOD("get_light_parameters"), &ParticleInstance3D::get_light_parameters);
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "light_parameters", PROPERTY_HINT_RESOURCE_TYPE, "ParticleLightProfile3D"), "set_light_parameters", "get_light_parameters");

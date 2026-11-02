@@ -142,6 +142,7 @@ class ParticleInstance3D : public Node3D {
 	TypedArray<ParticleColorCurve> color_scales;
 	OmniLight3D * light = nullptr;
 	Ref<ParticleLightProfile3D> light_parameters;
+	ObjectID light_position_reference;
 	bool advance_on_spawn = true;
 	Ref<ParticleMeshProfile3D> motion;
 	Ref<ParticleSpriteProfile3D> sprite_motion;
@@ -257,6 +258,8 @@ public:
 	double get_lifetime() const { return lifetime; }
 	void set_geometry(GeometryInstance3D * p_value) { geometry = p_value; }
 	GeometryInstance3D * get_geometry() const { return geometry; }
+	void set_light_position_reference(Node3D *p_value);
+	Node3D *get_light_position_reference() const;
 	void set_decal(Decal *p_value) { decal = p_value; }
 	Decal *get_decal() const { return decal; }
 	void set_decal_modulate(const Color &p_value) { decal_modulate = p_value; }

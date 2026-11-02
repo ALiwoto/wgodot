@@ -38,6 +38,14 @@ Transform3D ParticleInstance3D::get_emitter_transform() const {
 }
 
 Transform3D ParticleInstance3D::get_render_transform(Node3D *p_node) const {
+	if (p_node == light) {
+		Node3D *reference = get_light_position_reference();
+		if (reference) {
+			// A light can interpret its position in an independently moving frame
+			// while the particle geometry retains its simulation transform.
+			return reference->get_global_transform() * light->get_transform();
+		}
+	}
 	if (!instance_pool) {
 		return p_node->get_global_transform();
 	}
@@ -224,7 +232,13 @@ void ParticleInstance3D::publish_render_instances() {
 			}
 			const Transform3D transform = get_render_transform(visual);
 			update_render_bounds(instance, transform);
-			if (instance_pool) {
+			const bool referenced_light = visual == light && get_light_position_reference();
+			if (!instance_pool && referenced_light) {
+				// Consume the node's pending automatic update before publishing its
+				// explicit reference frame, also for particles inside SceneTree.
+				light->force_update_transform();
+			}
+			if (instance_pool || referenced_light) {
 				RenderingServer::get_singleton()->instance_set_transform(visual->get_instance(), transform);
 			}
 		}
