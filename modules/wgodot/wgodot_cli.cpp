@@ -291,7 +291,7 @@ void print_cli_help() {
 	print_line("  pause_physics                     Pause fixed physics ticks only.");
 	print_line("  resume_physics                    Resume physics-only pausing.");
 	print_line("  step_physics [--count <number>]   Advance paused physics ticks.");
-	print_line("  check                             Refresh editor assets, then check all GDScript files.");
+	print_line("  check                             Refresh assets; check GDScript and scene/resource syntax.");
 	print_line("  format [paths...] [options]       Format GDScript using the running editor (--check, --diff).");
 	print_line("  help                              Show this help.");
 }

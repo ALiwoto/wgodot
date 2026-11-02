@@ -958,9 +958,12 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 
 			String type = r_token.value;
 
-			Object *obj = ClassDB::instantiate(type);
+			// wgodot-changes::begin
+			const bool syntax_only = p_res_parser && p_res_parser->syntax_only;
+			Object *obj = syntax_only ? nullptr : ClassDB::instantiate(type);
 
-			if (!obj) {
+			if (!syntax_only && !obj) {
+				// wgodot-changes::end
 				r_err_str = vformat("Can't instantiate Object() of type '%s'", type);
 				return ERR_PARSE_ERROR;
 			}
@@ -1019,7 +1022,11 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 
 					Variant v;
 					RETURN_IF_ERROR(parse_value(r_token, v, p_stream, r_line, r_err_str, p_res_parser));
-					obj->set(key, v);
+					// wgodot-changes::begin
+					if (obj) {
+						obj->set(key, v);
+					}
+					// wgodot-changes::end
 					need_comma = true;
 					at_key = true;
 				}
@@ -1088,6 +1095,16 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 					}
 
 					Ref<Resource> res;
+					// wgodot-changes::begin
+					if (p_res_parser && p_res_parser->syntax_only) {
+						if (r_token.type != TK_PARENTHESIS_CLOSE) {
+							r_err_str = "Expected ')'";
+							return ERR_PARSE_ERROR;
+						}
+						r_value = res;
+						return OK;
+					}
+					// wgodot-changes::end
 					if (!uid_string.is_empty()) {
 						ResourceUID::ID uid = ResourceUID::get_singleton()->text_to_id(uid_string);
 						if (uid != ResourceUID::INVALID_ID && ResourceUID::get_singleton()->has_id(uid)) {
@@ -1131,12 +1148,16 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 				return ERR_PARSE_ERROR;
 			}
 
-			static HashMap<StringName, Variant::Type> builtin_types;
-			if (builtin_types.is_empty()) {
+			// wgodot-changes::begin
+			// Resource loading and syntax checks can enter the parser concurrently.
+			static const HashMap<StringName, Variant::Type> builtin_types = [] {
+				HashMap<StringName, Variant::Type> types;
 				for (int i = 1; i < Variant::VARIANT_MAX; i++) {
-					builtin_types[Variant::get_type_name((Variant::Type)i)] = (Variant::Type)i;
+					types[Variant::get_type_name((Variant::Type)i)] = (Variant::Type)i;
 				}
-			}
+				return types;
+			}();
+			// wgodot-changes::end
 
 			Dictionary dict;
 			Variant::Type key_type = Variant::NIL;
@@ -1309,12 +1330,15 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 				return ERR_PARSE_ERROR;
 			}
 
-			static HashMap<String, Variant::Type> builtin_types;
-			if (builtin_types.is_empty()) {
+			// wgodot-changes::begin
+			static const HashMap<String, Variant::Type> builtin_types = [] {
+				HashMap<String, Variant::Type> types;
 				for (int i = 1; i < Variant::VARIANT_MAX; i++) {
-					builtin_types[Variant::get_type_name((Variant::Type)i)] = (Variant::Type)i;
+					types[Variant::get_type_name((Variant::Type)i)] = (Variant::Type)i;
 				}
-			}
+				return types;
+			}();
+			// wgodot-changes::end
 
 			Array array = Array();
 			bool got_bracket_token = false;

@@ -102,6 +102,7 @@ public:
 		ParseResourceFunc sub_func = nullptr;
 		// wgodot-changes::begin
 		bool skip_class_loading = false;
+		bool syntax_only = false;
 		WGodotNamedTypes::Resolver *named_types = nullptr;
 		// wgodot-changes::end
 	};

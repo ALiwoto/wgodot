@@ -2,9 +2,16 @@
 #include "editor_file_system.h"
 
 #include "core/io/wgodot_resource_trace.h"
+#include "modules/modules_enabled.gen.h"
+#ifdef MODULE_WGODOT_ENABLED
+#include "modules/wgodot/editor/wgodot_resource_check.h"
+#endif
 
 bool EditorFileSystem::_prepare_changed_directories(bool p_use_notifications) {
 	WGodotFileSystemWatcher::Changes changes = file_watcher.take_changes();
+#ifdef MODULE_WGODOT_ENABLED
+	WGodotResourceCheck::invalidate(changes.paths, !changes.available || changes.rescan_all);
+#endif
 	filtered_change_scan = p_use_notifications && changes.available && !changes.rescan_all;
 	changed_directories.clear();
 	changed_directory_ancestors.clear();
