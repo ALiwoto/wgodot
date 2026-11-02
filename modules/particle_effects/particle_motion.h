@@ -124,11 +124,11 @@ public:
 	bool get_orbit_rate_emitter_clock() const { return orbit_rate_emitter_clock; }
 	void set_orbit_rotation_threshold(double p_value) { orbit_rotation_threshold = p_value; }
 	double get_orbit_rotation_threshold() const { return orbit_rotation_threshold; }
-	double direct_velocity_at(double p_relative_age) const;
-	Vector3 scale_size_over_life(Vector3 p_size, Vector3 p_initial_size, double p_relative_age, const Ref<RandomStream32> &p_random, bool p_spawning, Vector3 p_velocity) const;
-	Vector3 sample_orbit_offset(const Ref<RandomStream32> &p_random, double p_emitter_seconds = 0.0) const;
-	Vector3 sample_orbit_rotation(const Ref<RandomStream32> & p_random, double p_emitter_seconds) const;
-	Vector3 sample_orbit_rate(double p_time, const Ref<RandomStream32> & p_random) const;
+	double direct_velocity_at(double p_relative_age, double p_task_ratio = 0.0) const;
+	Vector3 scale_size_over_life(Vector3 p_size, Vector3 p_initial_size, double p_relative_age, const Ref<RandomStream32> &p_random, bool p_spawning, Vector3 p_velocity, double p_task_ratio = 0.0) const;
+	Vector3 sample_orbit_offset(const Ref<RandomStream32> &p_random, double p_emitter_seconds = 0.0, double p_task_ratio = 0.0) const;
+	Vector3 sample_orbit_rotation(const Ref<RandomStream32> & p_random, double p_emitter_seconds, double p_task_ratio = 0.0) const;
+	Vector3 sample_orbit_rate(double p_time, const Ref<RandomStream32> & p_random, double p_task_ratio = 0.0) const;
 	Vector3 rotate_orbit_offset(Vector3 p_offset, Vector3 p_turns) const;
 };
 
@@ -185,10 +185,10 @@ public:
 	bool get_change_random_frame() const { return change_random_frame; }
 	void set_frame_change_interval(double p_value) { frame_change_interval = p_value; }
 	double get_frame_change_interval() const { return frame_change_interval; }
-	Vector2 size_at(double p_relative_age, Vector3 p_initial_size, const Ref<RandomStream32> & p_random, const Ref<RandomStream32> & p_life_random, bool p_spawning, Vector3 p_velocity = Vector3()) const;
-	Vector3 scale_at(double p_relative_age, Vector3 p_initial_size, const Ref<RandomStream32> &p_random, const Ref<RandomStream32> &p_life_random, bool p_spawning, Vector3 p_velocity) const;
-	double angular_velocity_at(double p_relative_age, double p_initial_rate, const Ref<RandomStream32> & p_random) const;
-	double sample_frame(double p_relative_age, const Ref<RandomStream32> & p_random) const;
+	Vector2 size_at(double p_relative_age, Vector3 p_initial_size, const Ref<RandomStream32> & p_random, const Ref<RandomStream32> & p_life_random, bool p_spawning, Vector3 p_velocity = Vector3(), double p_task_ratio = 0.0) const;
+	Vector3 scale_at(double p_relative_age, Vector3 p_initial_size, const Ref<RandomStream32> &p_random, const Ref<RandomStream32> &p_life_random, bool p_spawning, Vector3 p_velocity, double p_task_ratio = 0.0) const;
+	double angular_velocity_at(double p_relative_age, double p_initial_rate, const Ref<RandomStream32> & p_random, double p_task_ratio = 0.0) const;
+	double sample_frame(double p_relative_age, const Ref<RandomStream32> & p_random, double p_task_ratio = 0.0) const;
 };
 
 class ParticleMeshProfile3D : public ParticleMotionProfile3D {
@@ -236,6 +236,6 @@ public:
 	void set_pre_orientation(const Ref<ParticleOrientation3D> & p_value) { pre_orientation = p_value; }
 	Ref<ParticleOrientation3D> get_pre_orientation() const { return pre_orientation; }
 	Vector3 velocity_rotation(Vector3 p_direction_velocity) const;
-	Vector3 scale_at(double p_relative_age, Vector3 p_initial_size, const Ref<RandomStream32> & p_random, const Ref<RandomStream32> & p_life_random, bool p_spawning, Vector3 p_velocity = Vector3()) const;
-	Vector3 angular_velocity_at(double p_relative_age, Vector3 p_initial_rate) const;
+	Vector3 scale_at(double p_relative_age, Vector3 p_initial_size, const Ref<RandomStream32> & p_random, const Ref<RandomStream32> & p_life_random, bool p_spawning, Vector3 p_velocity = Vector3(), double p_task_ratio = 0.0) const;
+	Vector3 angular_velocity_at(double p_relative_age, Vector3 p_initial_rate, double p_task_ratio = 0.0) const;
 };

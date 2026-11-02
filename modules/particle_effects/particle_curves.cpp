@@ -98,11 +98,22 @@ Vector3 ParticleVectorCurve3D::sample_value(double p_time) const {
 			z.is_valid() ? z->sample(p_time) : value.z);
 }
 
-Vector3 ParticleVectorCurve3D::sample(double p_time, const Ref<RandomStream32> &p_random) const {
+Vector3 ParticleVectorCurve3D::sample(double p_time, const Ref<RandomStream32> &p_random, double p_task_ratio) const {
 	Vector3 result = sample_value(p_time);
+	// Scalar channels share task clocks and remapping with scalar/color curves.
+	// Ordinary vector lookup tables retain their existing sampling path.
+	if (x_channel.is_valid()) {
+		result.x = x_channel->sample(p_time, p_task_ratio, p_random);
+	}
+	if (y_channel.is_valid()) {
+		result.y = y_channel->sample(p_time, p_task_ratio, p_random);
+	}
+	if (z_channel.is_valid()) {
+		result.z = z_channel->sample(p_time, p_task_ratio, p_random);
+	}
 	if (maximum.is_valid()) {
 		ERR_FAIL_COND_V(p_random.is_null(), result);
-		const Vector3 spread = maximum->sample(p_time) - result;
+		const Vector3 spread = maximum->sample(p_time, Ref<RandomStream32>(), p_task_ratio) - result;
 		if (random_extreme) {
 			result += spread * real_t(p_random->next_float() > 0.5);
 		} else {
@@ -172,6 +183,15 @@ void ParticleVectorCurve3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_z", "value"), &ParticleVectorCurve3D::set_z);
 	ClassDB::bind_method(D_METHOD("get_z"), &ParticleVectorCurve3D::get_z);
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "z", PROPERTY_HINT_RESOURCE_TYPE, "Curve"), "set_z", "get_z");
+	ClassDB::bind_method(D_METHOD("set_x_channel", "value"), &ParticleVectorCurve3D::set_x_channel);
+	ClassDB::bind_method(D_METHOD("get_x_channel"), &ParticleVectorCurve3D::get_x_channel);
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "x_channel", PROPERTY_HINT_RESOURCE_TYPE, "ParticleFloatCurve"), "set_x_channel", "get_x_channel");
+	ClassDB::bind_method(D_METHOD("set_y_channel", "value"), &ParticleVectorCurve3D::set_y_channel);
+	ClassDB::bind_method(D_METHOD("get_y_channel"), &ParticleVectorCurve3D::get_y_channel);
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "y_channel", PROPERTY_HINT_RESOURCE_TYPE, "ParticleFloatCurve"), "set_y_channel", "get_y_channel");
+	ClassDB::bind_method(D_METHOD("set_z_channel", "value"), &ParticleVectorCurve3D::set_z_channel);
+	ClassDB::bind_method(D_METHOD("get_z_channel"), &ParticleVectorCurve3D::get_z_channel);
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "z_channel", PROPERTY_HINT_RESOURCE_TYPE, "ParticleFloatCurve"), "set_z_channel", "get_z_channel");
 	ClassDB::bind_method(D_METHOD("set_maximum", "value"), &ParticleVectorCurve3D::set_maximum);
 	ClassDB::bind_method(D_METHOD("get_maximum"), &ParticleVectorCurve3D::get_maximum);
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "maximum", PROPERTY_HINT_RESOURCE_TYPE, "ParticleVectorCurve3D"), "set_maximum", "get_maximum");
@@ -190,6 +210,6 @@ void ParticleVectorCurve3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_samples_per_second", "value"), &ParticleVectorCurve3D::set_samples_per_second);
 	ClassDB::bind_method(D_METHOD("get_samples_per_second"), &ParticleVectorCurve3D::get_samples_per_second);
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "samples_per_second"), "set_samples_per_second", "get_samples_per_second");
-	ClassDB::bind_method(D_METHOD("sample", "time", "random"), &ParticleVectorCurve3D::sample, DEFVAL(Ref<RandomStream32>()));
+	ClassDB::bind_method(D_METHOD("sample", "time", "random", "task_ratio"), &ParticleVectorCurve3D::sample, DEFVAL(Ref<RandomStream32>()), DEFVAL(0.0));
 }
 

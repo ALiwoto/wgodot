@@ -204,8 +204,8 @@ bool ParticleInstance3D::sample_playback(double p_seconds, double p_delta, const
 			state_position = motion->get_position();
 			state_velocity = motion->get_velocity();
 			if (motion->get_initial_velocity().is_valid()) {
-				state_velocity += motion->get_initial_velocity()->sample_velocity(p_random, get_particle_transform().basis, follows_emitter);
-				state_velocity += motion->get_initial_velocity()->sample_radial_velocity(p_random, get_particle_transform().basis, follows_emitter, state_position, p_emitter_seconds);
+				state_velocity += motion->get_initial_velocity()->sample_velocity(p_random, get_particle_transform().basis, follows_emitter, p_parameter_ratio);
+				state_velocity += motion->get_initial_velocity()->sample_radial_velocity(p_random, get_particle_transform().basis, follows_emitter, state_position, p_emitter_seconds, p_parameter_ratio);
 			}
 		} else if (sprite_motion.is_valid()) {
 			state_size = sprite_motion->get_size();
@@ -213,8 +213,8 @@ bool ParticleInstance3D::sample_playback(double p_seconds, double p_delta, const
 			state_position = sprite_motion->get_position();
 			state_velocity = sprite_motion->get_velocity();
 			if (sprite_motion->get_initial_velocity().is_valid()) {
-				state_velocity += sprite_motion->get_initial_velocity()->sample_velocity(p_random, get_particle_transform().basis, follows_emitter);
-				state_velocity += sprite_motion->get_initial_velocity()->sample_radial_velocity(p_random, get_particle_transform().basis, follows_emitter, state_position, p_emitter_seconds);
+				state_velocity += sprite_motion->get_initial_velocity()->sample_velocity(p_random, get_particle_transform().basis, follows_emitter, p_parameter_ratio);
+				state_velocity += sprite_motion->get_initial_velocity()->sample_radial_velocity(p_random, get_particle_transform().basis, follows_emitter, state_position, p_emitter_seconds, p_parameter_ratio);
 			}
 		}
 		state_angle = sprite_motion.is_valid() ? sprite_motion->get_rotation() : 0.0;
@@ -245,14 +245,14 @@ bool ParticleInstance3D::sample_playback(double p_seconds, double p_delta, const
 					vformat("Particle '%s' has a geometry birth rule but no geometry or decal binding.", get_name()));
 			switch (target) {
 				case Target::GeometryPosition:
-					projector->set_position(initial->sample_vector(orientation_random, p_emitter_seconds));
+					projector->set_position(initial->sample_vector(orientation_random, p_emitter_seconds, p_parameter_ratio));
 					break;
 				case Target::GeometryRotation: {
-					const Basis rotation(initial->get_rotation_axis(), initial->sample_scalar(orientation_random, p_emitter_seconds));
+					const Basis rotation(initial->get_rotation_axis(), initial->sample_scalar(orientation_random, p_emitter_seconds, p_parameter_ratio));
 					projector->set_basis(rotation.scaled_local(projector->get_scale()));
 				} break;
 				case Target::GeometryScale:
-					projector->set_scale(initial->sample_vector(orientation_random, p_emitter_seconds));
+					projector->set_scale(initial->sample_vector(orientation_random, p_emitter_seconds, p_parameter_ratio));
 					break;
 				case Target::Ground:
 					if (!p_ground->get_targets_emitter()) {
@@ -285,7 +285,7 @@ bool ParticleInstance3D::sample_playback(double p_seconds, double p_delta, const
 					orient_to_surface(p_birth_source->get_orientation_ray());
 					break;
 				case Target::Acceleration: {
-					Vector3 acceleration = initial->sample_vector(acceleration_random, p_emitter_seconds);
+					Vector3 acceleration = initial->sample_vector(acceleration_random, p_emitter_seconds, p_parameter_ratio);
 					if (initial->get_acceleration()->get_apply_owner_scale()) {
 						acceleration *= get_particle_transform().basis.get_scale();
 					}
@@ -305,68 +305,71 @@ bool ParticleInstance3D::sample_playback(double p_seconds, double p_delta, const
 					}
 				} break;
 				case Target::Lifetime:
-					state_lifetime += initial->sample_scalar(birth_random, p_emitter_seconds);
+					state_lifetime += initial->sample_scalar(birth_random, p_emitter_seconds, p_parameter_ratio);
 					// A later lifetime rule cannot revive an already expired birth.
 					if (advance_on_spawn && state_relative_age <= 1.0) {
 						state_relative_age = state_lifetime > 0.0 ? float(age / state_lifetime) : 0.0;
 					}
 					break;
 				case Target::Size:
-					state_size = initial->sample_vector(birth_random, p_emitter_seconds);
+					state_size = initial->sample_vector(birth_random, p_emitter_seconds, p_parameter_ratio);
 					state_base_size = state_size * initial->sample_texture_sign(birth_random);
 					break;
 				case Target::Position:
-					state_position += initial->sample_vector(birth_random, p_emitter_seconds);
+					state_position += initial->sample_vector(birth_random, p_emitter_seconds, p_parameter_ratio);
 					break;
 				case Target::WorldOffset: {
 					const Basis basis = follows_emitter ? emitter.basis : emitter.basis.orthonormalized();
-					state_position += basis.inverse().xform(initial->sample_vector(birth_random, p_emitter_seconds));
+					state_position += basis.inverse().xform(initial->sample_vector(birth_random, p_emitter_seconds, p_parameter_ratio));
 				} break;
 				case Target::Alpha:
-					state_color.a = initial->sample_scalar(birth_random, p_emitter_seconds);
+					state_color.a = initial->sample_scalar(birth_random, p_emitter_seconds, p_parameter_ratio);
 					break;
 				case Target::Color: {
-					const Vector3 color = initial->sample_vector(birth_random, p_emitter_seconds);
+					const Vector3 color = initial->sample_vector(birth_random, p_emitter_seconds, p_parameter_ratio);
 					const Vector3i order = initial->get_color_order();
 					state_color.r = color[order.x];
 					state_color.g = color[order.y];
 					state_color.b = color[order.z];
 				} break;
 				case Target::Rotation:
-					state_angle = initial->sample_scalar(birth_random, p_emitter_seconds);
+					state_angle = initial->sample_scalar(birth_random, p_emitter_seconds, p_parameter_ratio);
+					break;
+				case Target::RotationOffset:
+					state_angle += initial->sample_scalar(birth_random, p_emitter_seconds, p_parameter_ratio);
 					break;
 				case Target::SpriteFrame:
-					frame = int(initial->sample_scalar(birth_random, p_emitter_seconds));
+					frame = int(initial->sample_scalar(birth_random, p_emitter_seconds, p_parameter_ratio));
 					state_last_frame_change = state_relative_age;
 					break;
 				case Target::MeshRotation:
-					state_rotation_degrees = initial->sample_vector(birth_random, p_emitter_seconds) * (180.0 / Math::PI);
+					state_rotation_degrees = initial->sample_vector(birth_random, p_emitter_seconds, p_parameter_ratio) * (180.0 / Math::PI);
 					birth_rotation_degrees += state_rotation_degrees;
 					has_birth_rotation = true;
 					break;
 				case Target::MeshAngularVelocity:
-					state_angular_velocity = initial->sample_vector(birth_random, p_emitter_seconds);
+					state_angular_velocity = initial->sample_vector(birth_random, p_emitter_seconds, p_parameter_ratio);
 					break;
 				case Target::AngularVelocity:
-					state_angular_speed = initial->sample_scalar(birth_random, p_emitter_seconds);
+					state_angular_speed = initial->sample_scalar(birth_random, p_emitter_seconds, p_parameter_ratio);
 					break;
 				case Target::Velocity:
-					state_velocity += initial->sample_velocity(birth_random, get_particle_transform().basis, follows_emitter, p_emitter_seconds);
-					state_velocity += initial->sample_radial_velocity(birth_random, get_particle_transform().basis, follows_emitter, state_position, p_emitter_seconds);
+					state_velocity += initial->sample_velocity(birth_random, get_particle_transform().basis, follows_emitter, p_emitter_seconds, p_parameter_ratio);
+					state_velocity += initial->sample_radial_velocity(birth_random, get_particle_transform().basis, follows_emitter, state_position, p_emitter_seconds, p_parameter_ratio);
 					break;
 				case Target::ParentVelocity:
-					state_velocity += initial->sample_parent_velocity(birth_random, get_particle_transform().basis, follows_emitter, p_birth_source.is_valid() ? p_birth_source->get_emitter_velocity() : Vector3(), p_emitter_seconds);
+					state_velocity += initial->sample_parent_velocity(birth_random, get_particle_transform().basis, follows_emitter, p_birth_source.is_valid() ? p_birth_source->get_emitter_velocity() : Vector3(), p_emitter_seconds, p_parameter_ratio);
 					break;
 				case Target::Shape: {
 					const Ref<ParticleSpawnShape3D> shape = initial->get_shape();
-					const ParticleSpawnShape3D::Sample spawn = shape->sample(birth_random, p_emitter_seconds, spawn_index);
+					const ParticleSpawnShape3D::Sample spawn = shape->sample(birth_random, p_emitter_seconds, spawn_index, p_parameter_ratio);
 					state_position += shape->get_basis().xform(spawn.position);
 					if (shape->get_velocity()) {
-						state_velocity += shape->get_basis().xform(shape->velocity_at(spawn.velocity_offset, birth_random, p_emitter_seconds));
+						state_velocity += shape->get_basis().xform(shape->velocity_at(spawn.velocity_offset, birth_random, p_emitter_seconds, p_parameter_ratio));
 					}
 				} break;
 				case Target::MaterialParameter:
-					state_material_parameters[initial->get_material_channel()] = initial->sample_scalar(birth_random, p_emitter_seconds);
+					state_material_parameters[initial->get_material_channel()] = initial->sample_scalar(birth_random, p_emitter_seconds, p_parameter_ratio);
 					break;
 				default:
 					break;
@@ -429,7 +432,7 @@ bool ParticleInstance3D::sample_playback(double p_seconds, double p_delta, const
 			state_base_velocity = state_velocity;
 		}
 		const Ref<ParticleMotionProfile3D> orbit_motion = motion.is_valid() ? Ref<ParticleMotionProfile3D>(motion) : Ref<ParticleMotionProfile3D>(sprite_motion);
-		prepare_orbit(orbit_motion, p_emitter_seconds);
+		prepare_orbit(orbit_motion, p_emitter_seconds, p_parameter_ratio);
 		state_inverse_lifetime = state_lifetime > 0.0 ? float(1.0 / state_lifetime) : 0.0;
 		state_base_velocity = state_velocity;
 		if (birth_curve_age >= 0.0) {
@@ -514,21 +517,21 @@ bool ParticleInstance3D::sample_playback(double p_seconds, double p_delta, const
 				update_motion_velocity(relative_age, p_delta, p_emitter_seconds, p_parameter_ratio);
 			}
 			if (motion->get_source_movement().is_valid()) {
-				inherit_source_movement(motion->get_source_movement(), relative_age, p_delta);
+				inherit_source_movement(motion->get_source_movement(), relative_age, p_delta, p_parameter_ratio);
 			}
 			if (p_linked_particle && !spawned_now) {
 				copy_source_state(p_linked_particle, false);
 			}
 			const double birth_step = birth_age + (advance_on_spawn ? p_delta : 0.0);
 			if (motion->get_position_over_life().is_valid() && !p_linked_particle) {
-				Vector3 next = motion->get_position_over_life()->sample(relative_age, location_random);
+				Vector3 next = motion->get_position_over_life()->sample(relative_age, location_random, p_parameter_ratio);
 				next.y += state_emitter_ground_offset;
 				if (!follows_emitter) {
 					next = emitter.xform(next);
 				}
 				next += motion->get_position_offset();
 				if (!spawned_now) {
-					state_velocity = p_delta > 0.0 ? (next - state_position) * motion->direct_velocity_at(relative_age) / p_delta : Vector3();
+					state_velocity = p_delta > 0.0 ? (next - state_position) * motion->direct_velocity_at(relative_age, p_parameter_ratio) / p_delta : Vector3();
 				}
 				state_position = next;
 				if (spawned_now) {
@@ -538,12 +541,12 @@ bool ParticleInstance3D::sample_playback(double p_seconds, double p_delta, const
 				state_position += state_velocity * (spawned_now ? birth_step : p_delta);
 			}
 			Vector3 location = state_position;
-			Vector3 size = motion->scale_at(source_size_clock ? state_relative_age : relative_age, state_size, size_random, size_life_random, spawned_now, state_velocity);
+			Vector3 size = motion->scale_at(source_size_clock ? state_relative_age : relative_age, state_size, size_random, size_life_random, spawned_now, state_velocity, p_parameter_ratio);
 			state_bounds_size = size;
 			if (!follows_emitter) {
 				size *= emitter.basis.get_scale();
 			}
-			location += advance_orbit(motion, relative_age, p_delta, spawned_now, p_emitter_seconds);
+			location += advance_orbit(motion, relative_age, p_delta, spawned_now, p_emitter_seconds, p_parameter_ratio);
 			// Birth rotation rules accumulate in the initial pose. The last rule
 			// initializes the angular state used by subsequent simulation steps.
 			Vector3 angles = (has_birth_rotation ? birth_rotation_degrees : state_rotation_degrees) * (Math::PI / 180.0);
@@ -558,7 +561,7 @@ bool ParticleInstance3D::sample_playback(double p_seconds, double p_delta, const
 				uniform(bindings()->mesh_scale, size);
 			}
 			if (motion->get_faces_camera()) {
-				const double spin_scale = motion->get_spin_over_life().is_valid() ? motion->get_spin_over_life()->sample(relative_age, 0.0, rotation_random) : 1.0;
+				const double spin_scale = motion->get_spin_over_life().is_valid() ? motion->get_spin_over_life()->sample(relative_age, p_parameter_ratio, rotation_random) : 1.0;
 				state_angle += state_angular_speed * spin_scale * (spawned_now ? birth_age : p_delta);
 				Vector3 direction = state_velocity;
 				if (follows_emitter) {
@@ -568,7 +571,7 @@ bool ParticleInstance3D::sample_playback(double p_seconds, double p_delta, const
 				uniform(bindings()->velocity_direction, direction.normalized());
 			}
 			// Rotation velocity affects the next pose, after this pose is published.
-			const Vector3 angular_velocity = motion->angular_velocity_at(relative_age, state_angular_velocity) * (180.0 / Math::PI);
+			const Vector3 angular_velocity = motion->angular_velocity_at(relative_age, state_angular_velocity, p_parameter_ratio) * (180.0 / Math::PI);
 			state_rotation_degrees += angular_velocity * p_delta;
 		} else if (sprite_motion.is_valid()) {
 			advance_sprite(relative_age, spawned_now ? birth_age : p_delta, spawned_now, p_delta, p_random, p_linked_particle, p_emitter_seconds, p_parameter_ratio, has_birth_light_position ? &birth_light_position : nullptr);
@@ -578,7 +581,7 @@ bool ParticleInstance3D::sample_playback(double p_seconds, double p_delta, const
 		}
 		if (light) {
 			light->set_visible(state_light_enabled);
-			const Vector3 light_size = sprite_motion->scale_at(relative_age, state_size, size_random, size_life_random, spawned_now, state_velocity);
+			const Vector3 light_size = sprite_motion->scale_at(relative_age, state_size, size_random, size_life_random, spawned_now, state_velocity, p_parameter_ratio);
 			if (!geometry) {
 				state_bounds_size = light_size;
 			}

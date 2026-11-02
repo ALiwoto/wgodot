@@ -82,32 +82,32 @@ void ParticleInstance3D::set_frame(double p_frame) {
 	}
 }
 
-void ParticleInstance3D::prepare_orbit(const Ref<ParticleMotionProfile3D> &p_trajectory, double p_emitter_seconds) {
+void ParticleInstance3D::prepare_orbit(const Ref<ParticleMotionProfile3D> &p_trajectory, double p_emitter_seconds, double p_parameter_ratio) {
 	sprite_random->reset(use_fixed_seed ? random_seed : Math::rand());
 	state_render_orbit_offset = Vector3();
 	if (p_trajectory.is_null() || !p_trajectory->get_orbit()) {
 		return;
 	}
-	state_orbit_offset = p_trajectory->sample_orbit_offset(sprite_random, p_emitter_seconds);
-	state_orbit_rotation = p_trajectory->sample_orbit_rotation(sprite_random, p_emitter_seconds);
+	state_orbit_offset = p_trajectory->sample_orbit_offset(sprite_random, p_emitter_seconds, p_parameter_ratio);
+	state_orbit_rotation = p_trajectory->sample_orbit_rotation(sprite_random, p_emitter_seconds, p_parameter_ratio);
 	state_base_orbit_rate = Vector3();
 	if (p_trajectory->get_orbit_rate_on_spawn()) {
-		state_base_orbit_rate = p_trajectory->sample_orbit_rate(p_trajectory->get_orbit_rate_emitter_clock() ? p_emitter_seconds : state_relative_age, sprite_random);
+		state_base_orbit_rate = p_trajectory->sample_orbit_rate(p_trajectory->get_orbit_rate_emitter_clock() ? p_emitter_seconds : state_relative_age, sprite_random, p_parameter_ratio);
 	}
 }
 
-Vector3 ParticleInstance3D::advance_orbit(const Ref<ParticleMotionProfile3D> &p_trajectory, double p_relative_age, double p_delta, bool p_spawned_now, double p_emitter_seconds) {
+Vector3 ParticleInstance3D::advance_orbit(const Ref<ParticleMotionProfile3D> &p_trajectory, double p_relative_age, double p_delta, bool p_spawned_now, double p_emitter_seconds, double p_parameter_ratio) {
 	if (!p_trajectory->get_orbit()) {
 		return Vector3();
 	}
 	state_orbit_rate = state_base_orbit_rate;
 	if (!p_spawned_now && p_trajectory->get_orbit_rate_on_update()) {
-		state_orbit_rate += p_trajectory->sample_orbit_rate(p_trajectory->get_orbit_rate_emitter_clock() ? p_emitter_seconds : p_relative_age, sprite_random);
+		state_orbit_rate += p_trajectory->sample_orbit_rate(p_trajectory->get_orbit_rate_emitter_clock() ? p_emitter_seconds : p_relative_age, sprite_random, p_parameter_ratio);
 	}
 	state_orbit_rotation += state_orbit_rate * p_delta;
 	Vector3 orbit_offset = state_orbit_offset;
 	if (!p_spawned_now && p_trajectory->get_orbit_offset_over_life().is_valid()) {
-		orbit_offset += p_trajectory->get_orbit_offset_over_life()->sample(p_relative_age);
+		orbit_offset += p_trajectory->get_orbit_offset_over_life()->sample(p_relative_age, Ref<RandomStream32>(), p_parameter_ratio);
 	}
 	state_render_orbit_offset = p_trajectory->rotate_orbit_offset(orbit_offset, state_orbit_rotation);
 	return state_render_orbit_offset;
@@ -139,7 +139,7 @@ void ParticleInstance3D::advance_sprite(double p_relative_age, double p_delta, b
 	const double step = p_spawned_now && !advance_on_spawn ? 0.0 : p_simulation_delta;
 	Vector3 displacement = state_velocity * step;
 	if (sprite_motion->get_position_over_life().is_valid() && !p_linked_particle) {
-		Vector3 next = sprite_motion->get_position_over_life()->sample(p_relative_age, location_random);
+		Vector3 next = sprite_motion->get_position_over_life()->sample(p_relative_age, location_random, p_parameter_ratio);
 		next.y += state_emitter_ground_offset;
 		if (!follows_emitter) {
 			next = get_particle_transform().affine_inverse().xform(get_emitter_transform().xform(next) + sprite_motion->get_position_offset());
@@ -148,7 +148,7 @@ void ParticleInstance3D::advance_sprite(double p_relative_age, double p_delta, b
 		}
 		displacement = next - state_position;
 		if (!p_spawned_now) {
-			state_velocity = p_delta > 0.0 ? displacement * sprite_motion->direct_velocity_at(p_relative_age) / p_delta : Vector3();
+			state_velocity = p_delta > 0.0 ? displacement * sprite_motion->direct_velocity_at(p_relative_age, p_parameter_ratio) / p_delta : Vector3();
 		}
 		state_position = next;
 		if (p_spawned_now) {
@@ -159,16 +159,16 @@ void ParticleInstance3D::advance_sprite(double p_relative_age, double p_delta, b
 	}
 	// Keep the simulation phase in binary32, like its shader input. Wrapping
 	// each step avoids losing the visible phase after many fast revolutions.
-	const float angular_velocity = sprite_motion->angular_velocity_at(p_relative_age, state_angular_speed, rotation_random);
+	const float angular_velocity = sprite_motion->angular_velocity_at(p_relative_age, state_angular_speed, rotation_random, p_parameter_ratio);
 	const float angle = float(state_angle) + angular_velocity * float(step);
 	const float turns = std::trunc(angle / float(Math::TAU));
 	const float whole_turns = turns * float(Math::TAU);
 	state_angle = angle - (Math::abs(whole_turns) > Math::abs(angle) ? angle : whole_turns);
 	if (sprite_motion->get_source_movement().is_valid()) {
-		inherit_source_movement(sprite_motion->get_source_movement(), p_relative_age, p_simulation_delta);
+		inherit_source_movement(sprite_motion->get_source_movement(), p_relative_age, p_simulation_delta, p_parameter_ratio);
 	}
 	const Vector3 previous_orbit = state_render_orbit_offset;
-	const Vector3 orbit_position = advance_orbit(sprite_motion, p_relative_age, p_simulation_delta, p_spawned_now, p_emitter_seconds);
+	const Vector3 orbit_position = advance_orbit(sprite_motion, p_relative_age, p_simulation_delta, p_spawned_now, p_emitter_seconds, p_parameter_ratio);
 	displacement += orbit_position - previous_orbit;
 	pose->set_position(state_position + orbit_position);
 	if (light && light_parameters->get_high_quality()) {
@@ -181,12 +181,12 @@ void ParticleInstance3D::advance_sprite(double p_relative_age, double p_delta, b
 	if (!geometry) {
 		return;
 	}
-	state_bounds_size = sprite_motion->scale_at(source_size_clock ? state_relative_age : p_relative_age, state_size, size_random, size_life_random, p_spawned_now, state_velocity);
+	state_bounds_size = sprite_motion->scale_at(source_size_clock ? state_relative_age : p_relative_age, state_size, size_random, size_life_random, p_spawned_now, state_velocity, p_parameter_ratio);
 	state_render_size = Vector2(state_bounds_size.x, sprite_motion->get_square() ? state_bounds_size.x : state_bounds_size.z);
 	uniform(bindings()->sprite_size, state_render_size);
 	uniform(bindings()->angle, state_angle);
 	if (sprite_motion->get_frame_over_life().is_valid() && (p_spawned_now || p_relative_age <= 1.0)) {
-		set_frame(sprite_motion->sample_frame(p_relative_age, frame_random));
+		set_frame(sprite_motion->sample_frame(p_relative_age, frame_random, p_parameter_ratio));
 	} else if (sprite_motion->get_change_random_frame() && !p_spawned_now && p_relative_age <= 1.0) {
 		if (sprite_motion->get_frame_change_interval() == 0.0 || state_last_frame_change == 0.0 || p_relative_age - state_last_frame_change > sprite_motion->get_frame_change_interval()) {
 			const double frame_range = float(double(sprite_motion->get_random_frame_count()) - 0.00001);
@@ -199,13 +199,13 @@ void ParticleInstance3D::advance_sprite(double p_relative_age, double p_delta, b
 	}
 }
 
-void ParticleInstance3D::inherit_source_movement(const Ref<ParticleVectorCurve3D> &p_curve, double p_relative_age, double p_delta) {
+void ParticleInstance3D::inherit_source_movement(const Ref<ParticleVectorCurve3D> &p_curve, double p_relative_age, double p_delta, double p_parameter_ratio) {
 	const Transform3D emitter = get_emitter_transform();
 	Vector3 movement = emitter.origin - state_previous_emitter_position;
 	state_previous_emitter_position = emitter.origin;
 	const Vector2 ages(p_relative_age, (p_delta + p_delta) * state_inverse_lifetime);
 	if (ages.x > ages.y) {
-		movement *= p_curve->sample(p_relative_age);
+		movement *= p_curve->sample(p_relative_age, Ref<RandomStream32>(), p_parameter_ratio);
 		state_position += follows_emitter || motion.is_valid() ? movement : get_particle_transform().basis.inverse().xform(movement);
 	}
 }
@@ -252,13 +252,13 @@ void ParticleInstance3D::update_motion_velocity(double p_relative_age, double p_
 				add_acceleration(acceleration_in_simulation(modifier->get_constant(), modifier->get_world_space()), p_delta);
 				break;
 			case Operation::AccelerationOverLife:
-				add_acceleration(acceleration_in_simulation(modifier->get_vector()->sample(p_relative_age), modifier->get_world_space()), p_delta);
+				add_acceleration(acceleration_in_simulation(modifier->get_vector()->sample(p_relative_age, Ref<RandomStream32>(), p_parameter_ratio), modifier->get_world_space()), p_delta);
 				break;
 			case Operation::Scale:
-				update_velocity(modifier->sample_scale(p_relative_age, get_emitter_transform().basis, follows_emitter));
+				update_velocity(modifier->sample_scale(p_relative_age, get_emitter_transform().basis, follows_emitter, p_parameter_ratio));
 				break;
 			case Operation::Drag: {
-				const double coefficient = modifier->get_scalar()->sample(p_relative_age, 0.0, drag_random);
+				const double coefficient = modifier->get_scalar()->sample(p_relative_age, p_parameter_ratio, drag_random);
 				const Vector3 change = (state_velocity * -coefficient) * p_delta;
 				state_velocity += change;
 				state_base_velocity += change;
@@ -273,7 +273,7 @@ void ParticleInstance3D::update_motion_velocity(double p_relative_age, double p_
 }
 
 void ParticleInstance3D::apply_point_attraction(const Ref<ParticleVelocityRule3D> &p_rule, double p_delta, double p_emitter_seconds, double p_parameter_ratio) {
-	Vector3 target = p_rule->get_vector()->sample(p_emitter_seconds);
+	Vector3 target = p_rule->get_vector()->sample(p_emitter_seconds, Ref<RandomStream32>(), p_parameter_ratio);
 	Vector3 position = state_position;
 	Vector3 scale(1, 1, 1);
 	const bool transform_target = !follows_emitter && !p_rule->get_world_space();

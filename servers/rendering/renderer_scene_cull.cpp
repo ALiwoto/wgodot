@@ -1683,6 +1683,11 @@ int RendererSceneCull::instance_geometry_get_mesh_lod(RID p_instance) const {
 	if (!instance || instance->base_type != RSE::INSTANCE_MESH || !instance->base_data || !RSG::mesh_storage->mesh_get_lod_profile(instance->base)) {
 		return -1;
 	}
+	// A culled instance retains an older view's LOD. Do not publish that
+	// cached selection as geometry submitted by the latest rendered view.
+	if (instance->lod_selection_pass != render_pass) {
+		return -2;
+	}
 	const InstanceGeometryData *geometry = static_cast<const InstanceGeometryData *>(instance->base_data);
 	return geometry->geometry_instance ? geometry->geometry_instance->mesh_lod_level : -1;
 }

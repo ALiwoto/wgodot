@@ -68,6 +68,9 @@ class ParticleVectorCurve3D : public Resource {
 	Ref<Curve> x;
 	Ref<Curve> y;
 	Ref<Curve> z;
+	Ref<ParticleFloatCurve> x_channel;
+	Ref<ParticleFloatCurve> y_channel;
+	Ref<ParticleFloatCurve> z_channel;
 	Ref<ParticleVectorCurve3D> maximum;
 	int axis_lock = 1;
 	bool random_extreme = false;
@@ -89,6 +92,12 @@ public:
 	Ref<Curve> get_y() const { return y; }
 	void set_z(const Ref<Curve> &p_value) { z = p_value; }
 	Ref<Curve> get_z() const { return z; }
+	void set_x_channel(const Ref<ParticleFloatCurve> &p_value) { x_channel = p_value; }
+	Ref<ParticleFloatCurve> get_x_channel() const { return x_channel; }
+	void set_y_channel(const Ref<ParticleFloatCurve> &p_value) { y_channel = p_value; }
+	Ref<ParticleFloatCurve> get_y_channel() const { return y_channel; }
+	void set_z_channel(const Ref<ParticleFloatCurve> &p_value) { z_channel = p_value; }
+	Ref<ParticleFloatCurve> get_z_channel() const { return z_channel; }
 	void set_maximum(const Ref<ParticleVectorCurve3D> &p_value) { maximum = p_value; }
 	Ref<ParticleVectorCurve3D> get_maximum() const { return maximum; }
 	void set_axis_lock(int p_value) { axis_lock = p_value; }
@@ -101,6 +110,6 @@ public:
 	double get_sample_start() const { return sample_start; }
 	void set_samples_per_second(double p_value) { samples_per_second = p_value; }
 	double get_samples_per_second() const { return samples_per_second; }
-	Vector3 sample(double p_time, const Ref<RandomStream32> &p_random = Ref<RandomStream32>()) const;
+	Vector3 sample(double p_time, const Ref<RandomStream32> &p_random = Ref<RandomStream32>(), double p_task_ratio = 0.0) const;
 };
 

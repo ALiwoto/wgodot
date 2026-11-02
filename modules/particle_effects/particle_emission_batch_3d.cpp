@@ -10,7 +10,7 @@ void ParticleEmissionBatch3D::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "ground", PROPERTY_HINT_NODE_TYPE, "ParticleGroundProjector3D"), "set_ground", "get_ground");
 	ClassDB::bind_method(D_METHOD("configure", "rules", "birth_transform", "local_space", "world_unit_scale", "position_offset", "position_variation", "attribute_minimum", "attribute_maximum", "inverse_lifetime_mantissa_bits"), &ParticleEmissionBatch3D::configure, DEFVAL(23));
 	ClassDB::bind_method(D_METHOD("set_rule_streams", "streams"), &ParticleEmissionBatch3D::set_rule_streams);
-	ClassDB::bind_method(D_METHOD("begin_frame", "particles", "emitter_transform", "emitter_seconds", "random", "attribute_random", "movement_offset", "emitter_velocity"), &ParticleEmissionBatch3D::begin_frame, DEFVAL(Vector3()));
+	ClassDB::bind_method(D_METHOD("begin_frame", "particles", "emitter_transform", "emitter_seconds", "random", "attribute_random", "movement_offset", "emitter_velocity", "task_ratio"), &ParticleEmissionBatch3D::begin_frame, DEFVAL(Vector3()), DEFVAL(0.0));
 	ClassDB::bind_method(D_METHOD("emit", "count", "age", "interval", "start_index"), &ParticleEmissionBatch3D::emit, DEFVAL(0.0), DEFVAL(0.0), DEFVAL(0));
 }
 
@@ -25,6 +25,7 @@ Error ParticleEmissionBatch3D::configure(const TypedArray<ParticleBirthRule3D> &
 			case Target::Lifetime:
 			case Target::Size:
 			case Target::Rotation:
+			case Target::RotationOffset:
 			case Target::AngularVelocity:
 			case Target::Position:
 			case Target::WorldOffset:
@@ -60,12 +61,13 @@ void ParticleEmissionBatch3D::set_rule_streams(const TypedArray<RandomStream32> 
 	}
 }
 
-void ParticleEmissionBatch3D::begin_frame(RID p_particles, const Transform3D &p_emitter_transform, double p_emitter_seconds, const Ref<RandomStream32> &p_random, const Ref<RandomStream32> &p_attribute_random, const Vector3 &p_movement_offset, const Vector3 &p_emitter_velocity) {
+void ParticleEmissionBatch3D::begin_frame(RID p_particles, const Transform3D &p_emitter_transform, double p_emitter_seconds, const Ref<RandomStream32> &p_random, const Ref<RandomStream32> &p_attribute_random, const Vector3 &p_movement_offset, const Vector3 &p_emitter_velocity, double p_task_ratio) {
 	ERR_FAIL_COND(rule_streams.size() != rules.size());
 	ERR_FAIL_COND(p_random.is_null() || p_attribute_random.is_null());
 	particles = p_particles;
 	emitter_transform = p_emitter_transform;
 	emitter_seconds = p_emitter_seconds;
+	task_ratio = p_task_ratio;
 	random = p_random;
 	attribute_random = p_attribute_random;
 	movement_offset = p_movement_offset;
@@ -96,24 +98,25 @@ double ParticleEmissionBatch3D::emit(int p_count, double p_age, double p_interva
 			using Target = ParticleBirthRule3D::Target;
 			switch (Target(rule->get_target())) {
 				case Target::Lifetime:
-					lifetime = float(double(lifetime) + rule->sample_scalar(stream, emitter_seconds));
+					lifetime = float(double(lifetime) + rule->sample_scalar(stream, emitter_seconds, task_ratio));
 					break;
 				case Target::Size:
-					size = rule->sample_vector(stream, emitter_seconds);
+					size = rule->sample_vector(stream, emitter_seconds, task_ratio);
 					size *= rule->sample_texture_sign(stream);
 					break;
 				case Target::Rotation:
-					angle += rule->sample_scalar(stream, emitter_seconds);
+				case Target::RotationOffset:
+					angle += rule->sample_scalar(stream, emitter_seconds, task_ratio);
 					break;
 				case Target::AngularVelocity:
-					angular_velocity += rule->sample_scalar(stream, emitter_seconds);
+					angular_velocity += rule->sample_scalar(stream, emitter_seconds, task_ratio);
 					break;
 				case Target::Position:
-					position += birth_transform.basis.xform(rule->sample_vector(stream, emitter_seconds));
+					position += birth_transform.basis.xform(rule->sample_vector(stream, emitter_seconds, task_ratio));
 					break;
 				case Target::WorldOffset: {
 					const Basis basis = local_space ? emitter_transform.basis : world_rotation;
-					position += basis.inverse().xform(rule->sample_vector(stream, emitter_seconds));
+					position += basis.inverse().xform(rule->sample_vector(stream, emitter_seconds, task_ratio));
 				} break;
 				case Target::Ground: {
 					ERR_FAIL_NULL_V(ground, remaining);
@@ -125,18 +128,18 @@ double ParticleEmissionBatch3D::emit(int p_count, double p_age, double p_interva
 					}
 				} break;
 				case Target::Velocity:
-					velocity += birth_transform.basis.xform(rule->sample_velocity(stream, emitter_transform.basis, local_space, emitter_seconds));
-					velocity += rule->sample_radial_velocity(stream, emitter_transform.basis, local_space, position, emitter_seconds);
+					velocity += birth_transform.basis.xform(rule->sample_velocity(stream, emitter_transform.basis, local_space, emitter_seconds, task_ratio));
+					velocity += rule->sample_radial_velocity(stream, emitter_transform.basis, local_space, position, emitter_seconds, task_ratio);
 					break;
 				case Target::ParentVelocity:
-					velocity += rule->sample_parent_velocity(stream, emitter_transform.basis, local_space, emitter_velocity, emitter_seconds);
+					velocity += rule->sample_parent_velocity(stream, emitter_transform.basis, local_space, emitter_velocity, emitter_seconds, task_ratio);
 					break;
 				case Target::Shape: {
 					const Ref<ParticleSpawnShape3D> shape = rule->get_shape();
-					const ParticleSpawnShape3D::Sample spawn = shape->sample(stream, emitter_seconds, p_start_index + particle);
+					const ParticleSpawnShape3D::Sample spawn = shape->sample(stream, emitter_seconds, p_start_index + particle, task_ratio);
 					position += birth_transform.basis.xform(spawn.position);
 					if (shape->get_velocity()) {
-						velocity += birth_transform.basis.xform(shape->velocity_at(spawn.velocity_offset, stream, emitter_seconds));
+						velocity += birth_transform.basis.xform(shape->velocity_at(spawn.velocity_offset, stream, emitter_seconds, task_ratio));
 					}
 				} break;
 				default:

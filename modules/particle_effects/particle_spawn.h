@@ -88,7 +88,7 @@ public:
 	Vector3i get_negative() const { return negative; }
 	void set_normalization_threshold_squared(double p_value) { normalization_threshold_squared = p_value; }
 	double get_normalization_threshold_squared() const { return normalization_threshold_squared; }
-	Vector3 sample_scale(double p_relative_age, Basis p_emitter_basis, bool p_local_space) const;
+	Vector3 sample_scale(double p_relative_age, Basis p_emitter_basis, bool p_local_space, double p_task_ratio = 0.0) const;
 };
 
 class ParticleSpawnShape3D : public Resource {
@@ -192,10 +192,10 @@ public:
 	Ref<ParticleFloatCurve> get_velocity_scale_curve() const { return velocity_scale_curve; }
 	void set_direction_order(const Vector3i & p_value) { direction_order = p_value; }
 	Vector3i get_direction_order() const { return direction_order; }
-	Vector3 sample_center(const Ref<RandomStream32> & p_random, double p_emitter_seconds) const;
-	Sample sample(const Ref<RandomStream32> &p_random, double p_emitter_seconds, int64_t p_index) const;
-	Vector3 sample_offset(const Ref<RandomStream32> & p_random, double p_emitter_seconds = 0.0, int64_t p_index = 0) const;
-	Vector3 velocity_at(Vector3 p_offset, const Ref<RandomStream32> & p_random, double p_emitter_seconds = 0.0) const;
+	Vector3 sample_center(const Ref<RandomStream32> & p_random, double p_emitter_seconds, double p_task_ratio = 0.0) const;
+	Sample sample(const Ref<RandomStream32> &p_random, double p_emitter_seconds, int64_t p_index, double p_task_ratio = 0.0) const;
+	Vector3 sample_offset(const Ref<RandomStream32> & p_random, double p_emitter_seconds = 0.0, int64_t p_index = 0, double p_task_ratio = 0.0) const;
+	Vector3 velocity_at(Vector3 p_offset, const Ref<RandomStream32> & p_random, double p_emitter_seconds = 0.0, double p_task_ratio = 0.0) const;
 };
 
 class ParticleBirthRule3D : public Resource {
@@ -229,6 +229,7 @@ public:
 		SurfacePlane,
 		WorldOffset,
 		SurfaceOrientation,
+		RotationOffset,
 	};
 
 private:
@@ -332,10 +333,10 @@ public:
 	Ref<ParticleVelocityRule3D> get_acceleration() const { return acceleration; }
 	void set_color_order(const Vector3i & p_value) { color_order = p_value; }
 	Vector3i get_color_order() const { return color_order; }
-	double sample_scalar(const Ref<RandomStream32> & p_random, double p_emitter_seconds = 0.0) const;
-	Vector3 sample_vector(const Ref<RandomStream32> & p_random, double p_emitter_seconds = 0.0) const;
+	double sample_scalar(const Ref<RandomStream32> & p_random, double p_emitter_seconds = 0.0, double p_task_ratio = 0.0) const;
+	Vector3 sample_vector(const Ref<RandomStream32> & p_random, double p_emitter_seconds = 0.0, double p_task_ratio = 0.0) const;
 	Vector3 sample_texture_sign(const Ref<RandomStream32> & p_random) const;
-	Vector3 sample_velocity(const Ref<RandomStream32> & p_random, const Basis & p_emitter_basis, bool p_local_space, double p_emitter_seconds = 0.0) const;
-	Vector3 sample_radial_velocity(const Ref<RandomStream32> &p_random, const Basis &p_emitter_basis, bool p_local_space, const Vector3 &p_position, double p_emitter_seconds = 0.0) const;
-	Vector3 sample_parent_velocity(const Ref<RandomStream32> &p_random, const Basis &p_emitter_basis, bool p_local_space, const Vector3 &p_world_velocity, double p_emitter_seconds = 0.0) const;
+	Vector3 sample_velocity(const Ref<RandomStream32> & p_random, const Basis & p_emitter_basis, bool p_local_space, double p_emitter_seconds = 0.0, double p_task_ratio = 0.0) const;
+	Vector3 sample_radial_velocity(const Ref<RandomStream32> &p_random, const Basis &p_emitter_basis, bool p_local_space, const Vector3 &p_position, double p_emitter_seconds = 0.0, double p_task_ratio = 0.0) const;
+	Vector3 sample_parent_velocity(const Ref<RandomStream32> &p_random, const Basis &p_emitter_basis, bool p_local_space, const Vector3 &p_world_velocity, double p_emitter_seconds = 0.0, double p_task_ratio = 0.0) const;
 };

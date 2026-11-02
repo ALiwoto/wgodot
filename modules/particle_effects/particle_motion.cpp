@@ -16,11 +16,11 @@ void orbit_sin_cos(float p_turns, float &r_sin, float &r_cos) {
 
 } // namespace
 
-double ParticleMotionProfile3D::direct_velocity_at(double p_relative_age) const {
-	return direct_velocity_scale.is_valid() ? direct_velocity_scale->sample(p_relative_age) : 1.0;
+double ParticleMotionProfile3D::direct_velocity_at(double p_relative_age, double p_task_ratio) const {
+	return direct_velocity_scale.is_valid() ? direct_velocity_scale->sample(p_relative_age, p_task_ratio) : 1.0;
 }
 
-Vector3 ParticleMotionProfile3D::scale_size_over_life(Vector3 p_size, Vector3 p_initial_size, double p_relative_age, const Ref<RandomStream32> &p_random, bool p_spawning, Vector3 p_velocity) const {
+Vector3 ParticleMotionProfile3D::scale_size_over_life(Vector3 p_size, Vector3 p_initial_size, double p_relative_age, const Ref<RandomStream32> &p_random, bool p_spawning, Vector3 p_velocity, double p_task_ratio) const {
 	for (int index = 0; index <= size_over_life.size(); ++index) {
 		if (size_by_speed && !p_spawning && index == size_speed_life_start) {
 			const real_t speed = p_velocity.length();
@@ -32,7 +32,7 @@ Vector3 ParticleMotionProfile3D::scale_size_over_life(Vector3 p_size, Vector3 p_
 			break;
 		}
 		const Ref<ParticleVectorCurve3D> curve = size_over_life[index];
-		const Vector3 multiplier = curve->sample(p_relative_age, p_random);
+		const Vector3 multiplier = curve->sample(p_relative_age, p_random, p_task_ratio);
 		if (!p_spawning || index >= size_life_spawn_start) {
 			p_size *= multiplier;
 		}
@@ -40,9 +40,9 @@ Vector3 ParticleMotionProfile3D::scale_size_over_life(Vector3 p_size, Vector3 p_
 	return p_size;
 }
 
-Vector3 ParticleMotionProfile3D::sample_orbit_offset(const Ref<RandomStream32> &p_random, double p_emitter_seconds) const {
+Vector3 ParticleMotionProfile3D::sample_orbit_offset(const Ref<RandomStream32> &p_random, double p_emitter_seconds, double p_task_ratio) const {
 	if (orbit_offset_over_emission.is_valid()) {
-		return orbit_offset_over_emission->sample(p_emitter_seconds, p_random);
+		return orbit_offset_over_emission->sample(p_emitter_seconds, p_random, p_task_ratio);
 	}
 	if (!random_orbit_offset) {
 		return orbit_offset;
@@ -50,9 +50,9 @@ Vector3 ParticleMotionProfile3D::sample_orbit_offset(const Ref<RandomStream32> &
 	return orbit_offset + orbit_offset_variation * p_random->next_weight(orbit_offset_axis_lock);
 }
 
-Vector3 ParticleMotionProfile3D::sample_orbit_rotation(const Ref<RandomStream32> &p_random, double p_emitter_seconds) const {
+Vector3 ParticleMotionProfile3D::sample_orbit_rotation(const Ref<RandomStream32> &p_random, double p_emitter_seconds, double p_task_ratio) const {
 	if (orbit_rotation_over_emission.is_valid()) {
-		return orbit_rotation_over_emission->sample(p_emitter_seconds, p_random);
+		return orbit_rotation_over_emission->sample(p_emitter_seconds, p_random, p_task_ratio);
 	}
 	if (!random_orbit_rotation) {
 		return orbit_rotation;
@@ -60,12 +60,12 @@ Vector3 ParticleMotionProfile3D::sample_orbit_rotation(const Ref<RandomStream32>
 	return orbit_rotation + orbit_rotation_variation * p_random->next_weight(orbit_rotation_axis_lock);
 }
 
-Vector3 ParticleMotionProfile3D::sample_orbit_rate(double p_time, const Ref<RandomStream32> &p_random) const {
-	const Vector3 minimum = orbit_rate->sample(p_time, p_random);
+Vector3 ParticleMotionProfile3D::sample_orbit_rate(double p_time, const Ref<RandomStream32> &p_random, double p_task_ratio) const {
+	const Vector3 minimum = orbit_rate->sample(p_time, p_random, p_task_ratio);
 	if (!random_orbit_rate) {
 		return minimum;
 	}
-	return minimum + (orbit_rate_maximum->sample(p_time) - minimum) * p_random->next_weight(orbit_rate_axis_lock);
+	return minimum + (orbit_rate_maximum->sample(p_time, Ref<RandomStream32>(), p_task_ratio) - minimum) * p_random->next_weight(orbit_rate_axis_lock);
 }
 
 Vector3 ParticleMotionProfile3D::rotate_orbit_offset(Vector3 p_offset, Vector3 p_turns) const {
@@ -84,31 +84,31 @@ Vector3 ParticleMotionProfile3D::rotate_orbit_offset(Vector3 p_offset, Vector3 p
 	return rotation.xform(p_offset);
 }
 
-Vector2 ParticleSpriteProfile3D::size_at(double p_relative_age, Vector3 p_initial_size, const Ref<RandomStream32> &p_random, const Ref<RandomStream32> &p_life_random, bool p_spawning, Vector3 p_velocity) const {
-	const Vector3 scale = scale_at(p_relative_age, p_initial_size, p_random, p_life_random, p_spawning, p_velocity);
+Vector2 ParticleSpriteProfile3D::size_at(double p_relative_age, Vector3 p_initial_size, const Ref<RandomStream32> &p_random, const Ref<RandomStream32> &p_life_random, bool p_spawning, Vector3 p_velocity, double p_task_ratio) const {
+	const Vector3 scale = scale_at(p_relative_age, p_initial_size, p_random, p_life_random, p_spawning, p_velocity, p_task_ratio);
 	return Vector2(scale.x, square ? scale.x : scale.z);
 }
 
-Vector3 ParticleSpriteProfile3D::scale_at(double p_relative_age, Vector3 p_initial_size, const Ref<RandomStream32> &p_random, const Ref<RandomStream32> &p_life_random, bool p_spawning, Vector3 p_velocity) const {
+Vector3 ParticleSpriteProfile3D::scale_at(double p_relative_age, Vector3 p_initial_size, const Ref<RandomStream32> &p_random, const Ref<RandomStream32> &p_life_random, bool p_spawning, Vector3 p_velocity, double p_task_ratio) const {
 	Vector3 scale = p_initial_size;
 	if (get_size_scale().is_valid()) {
-		Vector3 multiplier = get_size_scale()->sample(p_relative_age, p_random);
+		Vector3 multiplier = get_size_scale()->sample(p_relative_age, p_random, p_task_ratio);
 		if (size_scale_maximum.is_valid()) {
-			multiplier += (size_scale_maximum->sample(p_relative_age) - multiplier) * p_random->next_weight(size_scale_axis_lock);
+			multiplier += (size_scale_maximum->sample(p_relative_age, Ref<RandomStream32>(), p_task_ratio) - multiplier) * p_random->next_weight(size_scale_axis_lock);
 		}
 		scale = scale.abs() * multiplier;
 	}
-	return scale_size_over_life(scale, p_initial_size, p_relative_age, p_life_random, p_spawning, p_velocity);
+	return scale_size_over_life(scale, p_initial_size, p_relative_age, p_life_random, p_spawning, p_velocity, p_task_ratio);
 }
 
-double ParticleSpriteProfile3D::angular_velocity_at(double p_relative_age, double p_initial_rate, const Ref<RandomStream32> &p_random) const {
-	return p_initial_rate * angular_velocity_over_life->sample(p_relative_age, 0.0, p_random);
+double ParticleSpriteProfile3D::angular_velocity_at(double p_relative_age, double p_initial_rate, const Ref<RandomStream32> &p_random, double p_task_ratio) const {
+	return p_initial_rate * angular_velocity_over_life->sample(p_relative_age, p_task_ratio, p_random);
 }
 
-double ParticleSpriteProfile3D::sample_frame(double p_relative_age, const Ref<RandomStream32> &p_random) const {
-	double frame = frame_over_life->sample(p_relative_age);
+double ParticleSpriteProfile3D::sample_frame(double p_relative_age, const Ref<RandomStream32> &p_random, double p_task_ratio) const {
+	double frame = frame_over_life->sample(p_relative_age, p_task_ratio);
 	if (frame_over_life_maximum.is_valid()) {
-		frame = Math::lerp(frame, frame_over_life_maximum->sample(p_relative_age), p_random->next_float());
+		frame = Math::lerp(frame, frame_over_life_maximum->sample(p_relative_age, p_task_ratio), p_random->next_float());
 	}
 	return fractional_frame ? frame : double(int(frame));
 }
@@ -120,18 +120,18 @@ Vector3 ParticleMeshProfile3D::velocity_rotation(Vector3 p_direction_velocity) c
 	return Basis(orientation).get_euler(EulerOrder::YZX);
 }
 
-Vector3 ParticleMeshProfile3D::scale_at(double p_relative_age, Vector3 p_initial_size, const Ref<RandomStream32> &p_random, const Ref<RandomStream32> &p_life_random, bool p_spawning, Vector3 p_velocity) const {
+Vector3 ParticleMeshProfile3D::scale_at(double p_relative_age, Vector3 p_initial_size, const Ref<RandomStream32> &p_random, const Ref<RandomStream32> &p_life_random, bool p_spawning, Vector3 p_velocity, double p_task_ratio) const {
 	Vector3 scale = p_initial_size;
 	if (get_size_scale().is_valid()) {
-		scale = scale.abs() * get_size_scale()->sample(p_relative_age, p_random);
+		scale = scale.abs() * get_size_scale()->sample(p_relative_age, p_random, p_task_ratio);
 	}
-	scale = scale_size_over_life(scale, p_initial_size, p_relative_age, p_life_random, p_spawning, p_velocity);
+	scale = scale_size_over_life(scale, p_initial_size, p_relative_age, p_life_random, p_spawning, p_velocity, p_task_ratio);
 	for (int axis : flattened_axes) {
 		scale[axis] = 1.0;
 	}
 	return scale;
 }
 
-Vector3 ParticleMeshProfile3D::angular_velocity_at(double p_relative_age, Vector3 p_initial_rate) const {
-	return rotation_rate_over_life.is_valid() ? p_initial_rate * rotation_rate_over_life->sample(p_relative_age) : p_initial_rate;
+Vector3 ParticleMeshProfile3D::angular_velocity_at(double p_relative_age, Vector3 p_initial_rate, double p_task_ratio) const {
+	return rotation_rate_over_life.is_valid() ? p_initial_rate * rotation_rate_over_life->sample(p_relative_age, Ref<RandomStream32>(), p_task_ratio) : p_initial_rate;
 }

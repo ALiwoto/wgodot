@@ -111,11 +111,11 @@ void ParticleMotionProfile3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_orbit_rotation_threshold", "value"), &ParticleMotionProfile3D::set_orbit_rotation_threshold);
 	ClassDB::bind_method(D_METHOD("get_orbit_rotation_threshold"), &ParticleMotionProfile3D::get_orbit_rotation_threshold);
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "orbit_rotation_threshold"), "set_orbit_rotation_threshold", "get_orbit_rotation_threshold");
-	ClassDB::bind_method(D_METHOD("direct_velocity_at", "relative_age"), &ParticleMotionProfile3D::direct_velocity_at);
-	ClassDB::bind_method(D_METHOD("scale_size_over_life", "size", "relative_age", "random", "spawning"), &ParticleMotionProfile3D::scale_size_over_life);
-	ClassDB::bind_method(D_METHOD("sample_orbit_offset", "random", "emitter_seconds"), &ParticleMotionProfile3D::sample_orbit_offset, DEFVAL(0.0));
-	ClassDB::bind_method(D_METHOD("sample_orbit_rotation", "random", "emitter_seconds"), &ParticleMotionProfile3D::sample_orbit_rotation);
-	ClassDB::bind_method(D_METHOD("sample_orbit_rate", "time", "random"), &ParticleMotionProfile3D::sample_orbit_rate);
+	ClassDB::bind_method(D_METHOD("direct_velocity_at", "relative_age", "task_ratio"), &ParticleMotionProfile3D::direct_velocity_at, DEFVAL(0.0));
+	ClassDB::bind_method(D_METHOD("scale_size_over_life", "size", "initial_size", "relative_age", "random", "spawning", "velocity", "task_ratio"), &ParticleMotionProfile3D::scale_size_over_life, DEFVAL(0.0));
+	ClassDB::bind_method(D_METHOD("sample_orbit_offset", "random", "emitter_seconds", "task_ratio"), &ParticleMotionProfile3D::sample_orbit_offset, DEFVAL(0.0), DEFVAL(0.0));
+	ClassDB::bind_method(D_METHOD("sample_orbit_rotation", "random", "emitter_seconds", "task_ratio"), &ParticleMotionProfile3D::sample_orbit_rotation, DEFVAL(0.0));
+	ClassDB::bind_method(D_METHOD("sample_orbit_rate", "time", "random", "task_ratio"), &ParticleMotionProfile3D::sample_orbit_rate, DEFVAL(0.0));
 	ClassDB::bind_method(D_METHOD("rotate_orbit_offset", "offset", "turns"), &ParticleMotionProfile3D::rotate_orbit_offset);
 }
 
@@ -165,9 +165,9 @@ void ParticleSpriteProfile3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_frame_change_interval", "value"), &ParticleSpriteProfile3D::set_frame_change_interval);
 	ClassDB::bind_method(D_METHOD("get_frame_change_interval"), &ParticleSpriteProfile3D::get_frame_change_interval);
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "frame_change_interval"), "set_frame_change_interval", "get_frame_change_interval");
-	ClassDB::bind_method(D_METHOD("size_at", "relative_age", "initial_size", "random", "life_random", "spawning", "velocity"), &ParticleSpriteProfile3D::size_at, DEFVAL(Vector3()));
-	ClassDB::bind_method(D_METHOD("angular_velocity_at", "relative_age", "initial_rate", "random"), &ParticleSpriteProfile3D::angular_velocity_at);
-	ClassDB::bind_method(D_METHOD("sample_frame", "relative_age", "random"), &ParticleSpriteProfile3D::sample_frame);
+	ClassDB::bind_method(D_METHOD("size_at", "relative_age", "initial_size", "random", "life_random", "spawning", "velocity", "task_ratio"), &ParticleSpriteProfile3D::size_at, DEFVAL(Vector3()), DEFVAL(0.0));
+	ClassDB::bind_method(D_METHOD("angular_velocity_at", "relative_age", "initial_rate", "random", "task_ratio"), &ParticleSpriteProfile3D::angular_velocity_at, DEFVAL(0.0));
+	ClassDB::bind_method(D_METHOD("sample_frame", "relative_age", "random", "task_ratio"), &ParticleSpriteProfile3D::sample_frame, DEFVAL(0.0));
 }
 
 void ParticleMeshProfile3D::_bind_methods() {
@@ -208,6 +208,6 @@ void ParticleMeshProfile3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_pre_orientation"), &ParticleMeshProfile3D::get_pre_orientation);
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "pre_orientation", PROPERTY_HINT_RESOURCE_TYPE, "ParticleOrientation3D"), "set_pre_orientation", "get_pre_orientation");
 	ClassDB::bind_method(D_METHOD("velocity_rotation", "direction_velocity"), &ParticleMeshProfile3D::velocity_rotation);
-	ClassDB::bind_method(D_METHOD("scale_at", "relative_age", "initial_size", "random", "life_random", "spawning", "velocity"), &ParticleMeshProfile3D::scale_at, DEFVAL(Vector3()));
-	ClassDB::bind_method(D_METHOD("angular_velocity_at", "relative_age", "initial_rate"), &ParticleMeshProfile3D::angular_velocity_at);
+	ClassDB::bind_method(D_METHOD("scale_at", "relative_age", "initial_size", "random", "life_random", "spawning", "velocity", "task_ratio"), &ParticleMeshProfile3D::scale_at, DEFVAL(Vector3()), DEFVAL(0.0));
+	ClassDB::bind_method(D_METHOD("angular_velocity_at", "relative_age", "initial_rate", "task_ratio"), &ParticleMeshProfile3D::angular_velocity_at, DEFVAL(0.0));
 }

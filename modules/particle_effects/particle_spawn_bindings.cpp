@@ -19,7 +19,7 @@ void ParticleSeed::_bind_methods() {
 }
 
 void ParticleVelocityRule3D::_bind_methods() {
-	ClassDB::bind_method(D_METHOD("sample_scale", "relative_age", "emitter_basis", "local_space"), &ParticleVelocityRule3D::sample_scale);
+	ClassDB::bind_method(D_METHOD("sample_scale", "relative_age", "emitter_basis", "local_space", "task_ratio"), &ParticleVelocityRule3D::sample_scale, DEFVAL(0.0));
 	ClassDB::bind_method(D_METHOD("set_operation", "value"), &ParticleVelocityRule3D::set_operation);
 	ClassDB::bind_method(D_METHOD("get_operation"), &ParticleVelocityRule3D::get_operation);
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "operation"), "set_operation", "get_operation");
@@ -140,9 +140,9 @@ void ParticleSpawnShape3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_direction_order", "value"), &ParticleSpawnShape3D::set_direction_order);
 	ClassDB::bind_method(D_METHOD("get_direction_order"), &ParticleSpawnShape3D::get_direction_order);
 	ADD_PROPERTY(PropertyInfo(Variant::VECTOR3I, "direction_order"), "set_direction_order", "get_direction_order");
-	ClassDB::bind_method(D_METHOD("sample_center", "random", "emitter_seconds"), &ParticleSpawnShape3D::sample_center);
-	ClassDB::bind_method(D_METHOD("sample_offset", "random", "emitter_seconds", "index"), &ParticleSpawnShape3D::sample_offset, DEFVAL(0.0), DEFVAL(0));
-	ClassDB::bind_method(D_METHOD("velocity_at", "offset", "random", "emitter_seconds"), &ParticleSpawnShape3D::velocity_at, DEFVAL(0.0));
+	ClassDB::bind_method(D_METHOD("sample_center", "random", "emitter_seconds", "task_ratio"), &ParticleSpawnShape3D::sample_center, DEFVAL(0.0));
+	ClassDB::bind_method(D_METHOD("sample_offset", "random", "emitter_seconds", "index", "task_ratio"), &ParticleSpawnShape3D::sample_offset, DEFVAL(0.0), DEFVAL(0), DEFVAL(0.0));
+	ClassDB::bind_method(D_METHOD("velocity_at", "offset", "random", "emitter_seconds", "task_ratio"), &ParticleSpawnShape3D::velocity_at, DEFVAL(0.0), DEFVAL(0.0));
 }
 
 void ParticleBirthRule3D::_bind_methods() {
@@ -227,10 +227,10 @@ void ParticleBirthRule3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_rotation_axis", "value"), &ParticleBirthRule3D::set_rotation_axis);
 	ClassDB::bind_method(D_METHOD("get_rotation_axis"), &ParticleBirthRule3D::get_rotation_axis);
 	ADD_PROPERTY(PropertyInfo(Variant::VECTOR3, "rotation_axis"), "set_rotation_axis", "get_rotation_axis");
-	ClassDB::bind_method(D_METHOD("sample_scalar", "random", "emitter_seconds"), &ParticleBirthRule3D::sample_scalar, DEFVAL(0.0));
-	ClassDB::bind_method(D_METHOD("sample_vector", "random", "emitter_seconds"), &ParticleBirthRule3D::sample_vector, DEFVAL(0.0));
+	ClassDB::bind_method(D_METHOD("sample_scalar", "random", "emitter_seconds", "task_ratio"), &ParticleBirthRule3D::sample_scalar, DEFVAL(0.0), DEFVAL(0.0));
+	ClassDB::bind_method(D_METHOD("sample_vector", "random", "emitter_seconds", "task_ratio"), &ParticleBirthRule3D::sample_vector, DEFVAL(0.0), DEFVAL(0.0));
 	ClassDB::bind_method(D_METHOD("sample_texture_sign", "random"), &ParticleBirthRule3D::sample_texture_sign);
-	ClassDB::bind_method(D_METHOD("sample_velocity", "random", "emitter_basis", "local_space", "emitter_seconds"), &ParticleBirthRule3D::sample_velocity, DEFVAL(0.0));
-	ClassDB::bind_method(D_METHOD("sample_radial_velocity", "random", "emitter_basis", "local_space", "position", "emitter_seconds"), &ParticleBirthRule3D::sample_radial_velocity, DEFVAL(0.0));
-	ClassDB::bind_method(D_METHOD("sample_parent_velocity", "random", "emitter_basis", "local_space", "world_velocity", "emitter_seconds"), &ParticleBirthRule3D::sample_parent_velocity, DEFVAL(0.0));
+	ClassDB::bind_method(D_METHOD("sample_velocity", "random", "emitter_basis", "local_space", "emitter_seconds", "task_ratio"), &ParticleBirthRule3D::sample_velocity, DEFVAL(0.0), DEFVAL(0.0));
+	ClassDB::bind_method(D_METHOD("sample_radial_velocity", "random", "emitter_basis", "local_space", "position", "emitter_seconds", "task_ratio"), &ParticleBirthRule3D::sample_radial_velocity, DEFVAL(0.0), DEFVAL(0.0));
+	ClassDB::bind_method(D_METHOD("sample_parent_velocity", "random", "emitter_basis", "local_space", "world_velocity", "emitter_seconds", "task_ratio"), &ParticleBirthRule3D::sample_parent_velocity, DEFVAL(0.0), DEFVAL(0.0));
 }
