@@ -1139,6 +1139,13 @@ float Viewport::get_oversampling_override() const {
 	return font_oversampling_override;
 }
 
+// wgodot-changes::begin
+void Viewport::_set_render_target_size(const Size2i &p_size, int p_view_count) {
+	render_target_size = p_size;
+	RS::get_singleton()->viewport_set_size(viewport, p_size.width, p_size.height, p_view_count);
+}
+// wgodot-changes::end
+
 bool Viewport::_set_size(const Size2i &p_size, const int p_view_count, const Size2 &p_size_2d_override, bool p_allocated) {
 	Transform2D stretch_transform_new = Transform2D();
 	float new_font_oversampling = 1.0;
@@ -1180,9 +1187,13 @@ bool Viewport::_set_size(const Size2i &p_size, const int p_view_count, const Siz
 	font_oversampling = new_font_oversampling;
 
 	if (p_allocated) {
-		RS::get_singleton()->viewport_set_size(viewport, size.width, size.height, view_count);
+		// wgodot-changes::begin
+		_set_render_target_size(size, view_count);
+		// wgodot-changes::end
 	} else {
-		RS::get_singleton()->viewport_set_size(viewport, 0, 0, 0);
+		// wgodot-changes::begin
+		_set_render_target_size(Size2i(), 0);
+		// wgodot-changes::end
 	}
 
 	_update_global_transform();
@@ -5864,7 +5875,9 @@ void SubViewport::_validate_property(PropertyInfo &p_property) const {
 }
 
 SubViewport::SubViewport() {
-	RS::get_singleton()->viewport_set_size(get_viewport_rid(), get_size().width, get_size().height, get_view_count());
+	// wgodot-changes::begin
+	_set_render_target_size(get_size(), get_view_count());
+	// wgodot-changes::end
 }
 
 /////////////////////////////////

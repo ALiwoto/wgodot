@@ -307,10 +307,12 @@ PackedByteArray WLiveSceneProbe::snapshot(Node *p_root, Skeleton3D *p_body) {
 		}
 		if (PlanarReflection3D *reflection = Object::cast_to<PlanarReflection3D>(node)) {
 			const Vector2 size = reflection->get_size();
+			const Size2i pixels = reflection->get_render_target_size();
 			writer.record(PLANAR_REFLECTION, path, {}, {
 				size.x, size.y, reflection->get_resolution_scale(), reflection->get_prefilter_roughness(),
 				reflection->get_roughness_distance(), reflection->get_mesh_lod_scale(),
-				double(reflection->is_rendering_particles()), double(reflection->get_cull_mask()), double(reflection->get_visibility_layers())
+				double(reflection->is_rendering_particles()), double(reflection->get_cull_mask()), double(reflection->get_visibility_layers()),
+				double(pixels.x), double(pixels.y)
 			});
 		}
 		if (Decal *decal = Object::cast_to<Decal>(node)) {

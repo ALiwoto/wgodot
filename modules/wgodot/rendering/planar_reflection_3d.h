@@ -44,6 +44,7 @@ public:
 	void set_render_particles(bool p_enabled) { render_particles = p_enabled; }
 	bool is_rendering_particles() const { return render_particles; }
 	Ref<ViewportTexture> get_texture() const;
+	Size2i get_render_target_size() const { return reflection_view->get_render_target_size(); }
 
 	PackedStringArray get_configuration_warnings() const override;
 	PlanarReflection3D();

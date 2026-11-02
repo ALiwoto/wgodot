@@ -260,6 +260,10 @@ private:
 	Transform2D stretch_transform;
 
 	Size2i size = Size2i(512, 512);
+	// wgodot-changes::begin
+	// Actual output pixels, including embedded-window scaling, not canvas coordinates.
+	Size2i render_target_size;
+	// wgodot-changes::end
 	int view_count = 1;
 	Size2 size_2d_override;
 	bool size_allocated = false;
@@ -517,6 +521,9 @@ private:
 	void _window_start_resize(SubWindowResize p_edge, Window *p_window);
 
 protected:
+	// wgodot-changes::begin
+	void _set_render_target_size(const Size2i &p_size, int p_view_count);
+	// wgodot-changes::end
 	bool _set_size(const Size2i &p_size, const int p_view_count, const Size2 &p_size_2d_override, bool p_allocated);
 	void _check_xr_size();
 
@@ -547,6 +554,10 @@ public:
 	void update_canvas_items();
 
 	Rect2 get_visible_rect() const;
+	// wgodot-changes::begin
+	// Native accessor; no render-thread query. Final output size, independent of internal 3D scaling.
+	Size2i get_render_target_size() const { return render_target_size; }
+	// wgodot-changes::end
 	RID get_viewport_rid() const;
 
 	void set_world_2d(const Ref<World2D> &p_world_2d);

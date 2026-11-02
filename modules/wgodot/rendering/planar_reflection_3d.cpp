@@ -38,8 +38,14 @@ void PlanarReflection3D::_update_view() {
 	if (!active) {
 		return;
 	}
-	const Size2 viewport_size = parent_view->get_visible_rect().size;
-	reflection_view->set_size(Size2i(MAX(1, int(Math::round(viewport_size.x * resolution_scale))), MAX(1, int(Math::round(viewport_size.y * resolution_scale)))));
+	// Canvas stretch can expose logical UI dimensions larger than the actual image.
+	// Size reflections from output pixels, including embedded-window scaling.
+	const Size2i viewport_size = parent_view->get_render_target_size();
+	if (viewport_size.x <= 0 || viewport_size.y <= 0) {
+		reflection_view->set_update_mode(SubViewport::UPDATE_DISABLED);
+		return;
+	}
+	reflection_view->set_size(Size2i(MAX(2, int(Math::ceil(viewport_size.x * resolution_scale))), MAX(2, int(Math::ceil(viewport_size.y * resolution_scale)))));
 	reflection_view->set_world_3d(get_world_3d());
 	if (reflection_view->get_mesh_lod_threshold() != parent_view->get_mesh_lod_threshold()) {
 		reflection_view->set_mesh_lod_threshold(parent_view->get_mesh_lod_threshold());
