@@ -38,6 +38,11 @@ String WGodotCppEmitter::interface_value_traits(const String &p_name) const {
 
 void WGodotCppEmitter::emit_native_interface(const WGodotNativeInterfaces::Descriptor &p_interface) {
 	const String name = native_interface_name(p_interface.name);
+	Parser::ClassNode origin;
+	WGodotCppProject::Class native_context{ p_interface.cpp_header, name, &origin };
+	const auto *previous_class = current_class;
+	current_class = &native_context;
+	function_failed = false;
 	class_native_headers.clear();
 	class_dependencies.clear();
 	String signals;
@@ -68,13 +73,19 @@ void WGodotCppEmitter::emit_native_interface(const WGodotNativeInterfaces::Descr
 	header += value + signals + signal_definitions;
 	header += "}\n" + interface_value_traits(name);
 	store_file(name + ".h", header);
+	current_class = previous_class;
 }
 
 String WGodotCppEmitter::native_interface_signal_type(const MethodInfo &p_signal) {
-	GDScriptAnalyzer analyzer(project.find_parser(current_class->script_path));
+	// Native signal metadata has no owning project script or parser.
+	Parser parser;
+	GDScriptAnalyzer analyzer(&parser);
 	Vector<String> arguments;
 	for (const PropertyInfo &argument : p_signal.arguments) {
 		arguments.push_back(type(analyzer.type_from_property(argument, true, current_class->node), current_class->node));
+	}
+	for (const auto &error : parser.get_errors()) {
+		diagnostics.push_back(vformat("%s: native interface signal '%s': %s", current_class->script_path, p_signal.name, error.message));
 	}
 	class_native_headers.insert("modules/wgodot/native/wgodot_native_signal.h");
 	return "WGodotNative::WSignal<" + String(", ").join(arguments) + ">";

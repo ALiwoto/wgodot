@@ -136,12 +136,22 @@ WGodotResourceSyntax::Result WGodotResourceSyntax::check(const Ref<FileAccess> &
 				result.message = "Unexpected property assignment outside a resource or node.";
 				return result;
 			}
+			if (assignment == "script") {
+				result.error = ERR_PARSE_ERROR;
+				result.line = record_line;
+				result.message = "Script assignments are forbidden. Directly use the class_name name on the type attribute.";
+				return result;
+			}
 			continue;
 		}
 		allows_properties = false;
 		assignment_type = StringName();
 		if (tag.name == "ext_resource" && !main_resource && !internal_resources) {
 			result.error = require_fields(tag, { "type", "path", "id" }, result.message);
+			if (result.error == OK && WGodotNamedTypes::is_script_reference(tag.fields["type"], tag.fields["path"])) {
+				result.error = ERR_PARSE_ERROR;
+				result.message = "Script ext_resource declarations are forbidden. Directly use the class_name name on the type attribute.";
+			}
 		} else if (tag.name == "sub_resource" && !main_resource) {
 			internal_resources = true;
 			result.error = require_fields(tag, { "type", "id" }, result.message);

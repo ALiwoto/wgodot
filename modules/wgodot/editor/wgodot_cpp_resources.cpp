@@ -837,7 +837,7 @@ class WGodotCppResources {
 		}
 	}
 
-	void prepare_factory(const String &p_path, const Ref<Resource> &p_resource) {
+	void prepare_factory(const String &p_path, const Ref<Resource> &p_resource, bool p_script_autoload) {
 		source_path = p_path;
 		embedded.clear();
 		graph.clear();
@@ -854,9 +854,13 @@ class WGodotCppResources {
 			const Ref<PackedScene> packed = graph[i];
 			if (packed.is_valid()) {
 				const Ref<SceneState> state = scenes.filter(packed);
-				const String type_error = WGodotSceneTypes::validate(state);
-				if (!type_error.is_empty()) {
-					error(type_error);
+				// The synthesized autoload root uses its generated native class,
+				// so it needs no public class_name for text scene serialization.
+				if (!p_script_autoload || i != 0) {
+					const String type_error = WGodotSceneTypes::validate(state);
+					if (!type_error.is_empty()) {
+						error(type_error);
+					}
 				}
 
 				prepared_scenes.insert(packed.ptr(), state);
@@ -1195,12 +1199,12 @@ class WGodotCppResources {
 				last_progress = now;
 			}
 		};
-		auto queue = [&](const String &p_path, const Ref<Resource> &p_resource) {
+		auto queue = [&](const String &p_path, const Ref<Resource> &p_resource, bool p_script_autoload = false) {
 			const uint64_t started = OS::get_singleton()->get_ticks_msec();
 			WGodotCppResources *factory = memnew(WGodotCppResources(*emitter));
 			HashSet<String> previous_paths;
 			SWAP(emitter->unit_resource_paths, previous_paths);
-			factory->prepare_factory(p_path, p_resource);
+			factory->prepare_factory(p_path, p_resource, p_script_autoload);
 			factory->preparation_paths = emitter->unit_resource_paths;
 			SWAP(emitter->unit_resource_paths, previous_paths);
 			WGodotCppMemoryProfile::sample("factory-prepared", p_path, factory->graph.size());
@@ -1252,7 +1256,7 @@ class WGodotCppResources {
 					continue;
 				}
 				if (const Ref<Resource> *synthetic = definitions.getptr(path)) {
-					queue(path, *synthetic);
+					queue(path, *synthetic, true);
 					continue;
 				}
 				if (!FileAccess::exists(path) && !ResourceLoader::exists(path)) {

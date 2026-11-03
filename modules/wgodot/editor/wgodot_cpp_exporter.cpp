@@ -218,7 +218,10 @@ Dictionary WGodotCppExporter::execute(const Dictionary &p_options) {
 	const bool analyze_only = p_options.get("analyze_only", false);
 	const bool trace_enabled = p_options.get("trace", false);
 	const Variant requested_jobs = p_options.get("jobs", 0);
-	if (requested_jobs.get_type() != Variant::INT || int64_t(requested_jobs) < 0 || int64_t(requested_jobs) > INT32_MAX) {
+	// Editor requests pass through JSON, whose numeric values are doubles.
+	if ((requested_jobs.get_type() != Variant::INT && requested_jobs.get_type() != Variant::FLOAT) ||
+			!Math::is_finite(double(requested_jobs)) || double(requested_jobs) < 0 || double(requested_jobs) > INT32_MAX ||
+			double(requested_jobs) != int64_t(requested_jobs)) {
 		return failure("jobs must be a nonnegative integer (0 = available worker threads).");
 	}
 	const int available_jobs = WorkerThreadPool::get_singleton()->get_thread_count();
