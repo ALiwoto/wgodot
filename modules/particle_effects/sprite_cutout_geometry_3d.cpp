@@ -48,6 +48,14 @@ void SpriteCutoutMesh3D::_validate_property(PropertyInfo &p_property) const {
 	}
 }
 
+void SpriteCutoutMesh3D::reset_state() {
+	// Cached reloads clear ArrayMesh surfaces before reapplying properties.
+	// Reset the source fields too, so unchanged values rebuild the surface.
+	set_geometry(Ref<SpriteCutoutGeometry3D>());
+	frame = -1;
+	ArrayMesh::reset_state();
+}
+
 void SpriteCutoutMesh3D::set_geometry(const Ref<SpriteCutoutGeometry3D> &p_geometry) {
 	if (geometry == p_geometry) {
 		return;

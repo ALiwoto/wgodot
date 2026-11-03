@@ -113,6 +113,8 @@ class ParticleInstance3D : public Node3D {
 	AABB visibility_aabb;
 	Vector2 state_render_size;
 	Vector3 state_bounds_size;
+	Vector3 state_surface_normal;
+	Transform3D align_mesh_to_surface(const Transform3D &p_transform) const;
 	double state_camera_offset = 0.0;
 	void update_render_bounds(RenderInstance &p_instance, const Transform3D &p_transform);
 	void collect_render_instances(Node *p_node);
@@ -211,6 +213,8 @@ class ParticleInstance3D : public Node3D {
 	void set_frame(double p_frame);
 	void prepare_orbit(const Ref<ParticleMotionProfile3D> &p_trajectory, double p_emitter_seconds, double p_parameter_ratio);
 	Vector3 advance_orbit(const Ref<ParticleMotionProfile3D> &p_trajectory, double p_relative_age, double p_delta, bool p_spawned_now, double p_emitter_seconds, double p_parameter_ratio);
+	void advance_frame(const Ref<ParticleMotionProfile3D> &p_profile, double p_relative_age, bool p_spawned_now, const Ref<RandomStream32> &p_random, double p_parameter_ratio);
+	void advance_rotation(double p_angular_velocity, double p_delta);
 	void advance_sprite(double p_relative_age, double p_delta, bool p_spawned_now, double p_simulation_delta, const Ref<RandomStream32> &p_random, ParticleInstance3D *p_linked_particle, double p_emitter_seconds, double p_parameter_ratio, const Vector3 *p_birth_light_position);
 	void set_light_pose_position(const Vector3 &p_position);
 	void inherit_source_movement(const Ref<ParticleVectorCurve3D> &p_curve, double p_relative_age, double p_delta, double p_parameter_ratio);

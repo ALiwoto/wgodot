@@ -37,6 +37,23 @@ Transform3D ParticleInstance3D::get_emitter_transform() const {
 	return emitter->get_global_transform();
 }
 
+Transform3D ParticleInstance3D::align_mesh_to_surface(const Transform3D &p_transform) const {
+	if (motion.is_null() || state_surface_normal == Vector3()) {
+		return p_transform;
+	}
+	// Surface orientation is fixed at birth, but a local-space emitter can
+	// move afterward. Resolve its normal in the current emitter frame when
+	// publishing geometry, independently of the particle simulation clock.
+	const Basis emitter = follows_emitter ? get_particle_transform().basis : Basis();
+	const Basis inverse_emitter = emitter.inverse();
+	const Vector3 normal = inverse_emitter.xform(state_surface_normal).normalized();
+	const Vector3 mesh_up = (pose->get_basis() * geometry->get_basis()).get_column(1).normalized();
+	const Basis alignment = Basis(normal, -state_angle) * Basis(Quaternion(mesh_up, normal));
+	Transform3D result = p_transform;
+	result.basis = emitter * alignment * inverse_emitter * result.basis;
+	return result;
+}
+
 Transform3D ParticleInstance3D::get_render_transform(Node3D *p_node) const {
 	if (p_node == light) {
 		Node3D *reference = get_light_position_reference();
@@ -47,7 +64,8 @@ Transform3D ParticleInstance3D::get_render_transform(Node3D *p_node) const {
 		}
 	}
 	if (!instance_pool) {
-		return p_node->get_global_transform();
+		const Transform3D result = p_node->get_global_transform();
+		return p_node == geometry ? align_mesh_to_surface(result) : result;
 	}
 	Transform3D result;
 	const Node *current = p_node;
@@ -56,11 +74,12 @@ Transform3D ParticleInstance3D::get_render_transform(Node3D *p_node) const {
 		if (transform) {
 			result = transform->get_transform() * result;
 			if (transform->is_set_as_top_level()) {
-				return result;
+				return p_node == geometry ? align_mesh_to_surface(result) : result;
 			}
 		}
 		if (current == this) {
-			return instance_pool->get_global_transform() * result;
+			result = instance_pool->get_global_transform() * result;
+			return p_node == geometry ? align_mesh_to_surface(result) : result;
 		}
 		current = current->get_parent();
 	}
@@ -233,12 +252,13 @@ void ParticleInstance3D::publish_render_instances() {
 			const Transform3D transform = get_render_transform(visual);
 			update_render_bounds(instance, transform);
 			const bool referenced_light = visual == light && get_light_position_reference();
-			if (!instance_pool && referenced_light) {
+			const bool aligned_mesh = visual == geometry && motion.is_valid() && state_surface_normal != Vector3();
+			if (!instance_pool && (referenced_light || aligned_mesh)) {
 				// Consume the node's pending automatic update before publishing its
 				// explicit reference frame, also for particles inside SceneTree.
-				light->force_update_transform();
+				visual->force_update_transform();
 			}
-			if (instance_pool || referenced_light) {
+			if (instance_pool || referenced_light || aligned_mesh) {
 				RenderingServer::get_singleton()->instance_set_transform(visual->get_instance(), transform);
 			}
 		}

@@ -7,15 +7,17 @@
 uint32_t WGodotResourceLoaderLifetime::active_runs = 0;
 
 void WGodotResourceLoaderLifetime::connect_changed_deferred(const Ref<Resource> &p_source, const Callable &p_callable, uint32_t p_flags) {
-	// A discarded intermediate resource can die between enqueue and dispatch.
-	// Connections are weak: do not reconnect a receiver that no longer exists.
-	if (p_callable.is_valid()) {
+	// Canceled intermediate subscriptions can have an empty source at dispatch.
+	// The receiver remains weak and must still exist when the callback runs.
+	if (p_source.is_valid() && p_callable.is_valid()) {
 		p_source->connect_changed(p_callable, p_flags);
 	}
 }
 
 void WGodotResourceLoaderLifetime::disconnect_changed_deferred(const Ref<Resource> &p_source, const Callable &p_callable) {
-	p_source->disconnect_changed(p_callable);
+	if (p_source.is_valid()) {
+		p_source->disconnect_changed(p_callable);
+	}
 }
 
 WGodotResourceLoaderLifetime::WorkerScope::WorkerScope() :

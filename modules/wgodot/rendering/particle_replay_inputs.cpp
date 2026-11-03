@@ -38,6 +38,7 @@ void WParticleReplayInputs::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("configure", "recording"), &WParticleReplayInputs::configure);
 	ClassDB::bind_method(D_METHOD("replace_inputs", "recording"), &WParticleReplayInputs::replace_inputs);
 	ClassDB::bind_method(D_METHOD("apply_birth", "particle", "frame", "step", "random"), &WParticleReplayInputs::apply_birth);
+	ClassDB::bind_method(D_METHOD("apply_birth_stream", "identity", "frame", "step", "random"), &WParticleReplayInputs::apply_birth_stream);
 	ClassDB::bind_method(D_METHOD("bind_particle", "particle", "identity"), &WParticleReplayInputs::bind_particle);
 	ClassDB::bind_method(D_METHOD("apply", "particle", "frame", "step"), &WParticleReplayInputs::apply);
 	ClassDB::bind_method(D_METHOD("apply_active", "simulation", "frame", "step"), &WParticleReplayInputs::apply_active);
@@ -156,11 +157,15 @@ Error WParticleReplayInputs::apply(ParticleInstance3D *p_particle, uint32_t p_fr
 Error WParticleReplayInputs::apply_birth(ParticleInstance3D *p_particle, uint32_t p_frame, uint32_t p_step, const Ref<RandomStream32> &p_random) {
 	ERR_FAIL_NULL_V(p_particle, ERR_INVALID_PARAMETER);
 	const String *identity = bindings.getptr(p_particle->get_instance_id());
+	return identity ? apply_birth_stream(*identity, p_frame, p_step, p_random) : OK;
+}
+
+Error WParticleReplayInputs::apply_birth_stream(const String &p_identity, uint32_t p_frame, uint32_t p_step, const Ref<RandomStream32> &p_random) {
 	auto *sample = inputs.getptr(sample_key(p_frame, p_step));
-	if (!identity || !sample) {
+	if (!sample) {
 		return OK;
 	}
-	Vector<Reset> *resets = sample->getptr(*identity);
+	Vector<Reset> *resets = sample->getptr(p_identity);
 	if (resets) {
 		for (Reset &reset : *resets) {
 			if (channels[reset.channel].target == Channel::BIRTH) {

@@ -36,6 +36,7 @@ void KawaiiBoneSimulator3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_chains"), &KawaiiBoneSimulator3D::get_chains);
 	ClassDB::bind_method(D_METHOD("set_wind_velocity", "velocity"), &KawaiiBoneSimulator3D::set_wind_velocity);
 	ClassDB::bind_method(D_METHOD("get_wind_velocity"), &KawaiiBoneSimulator3D::get_wind_velocity);
+	ClassDB::bind_method(D_METHOD("get_last_simulation_delta"), &KawaiiBoneSimulator3D::get_last_simulation_delta);
 	ClassDB::bind_method(D_METHOD("reset"), &KawaiiBoneSimulator3D::reset);
 	ClassDB::bind_method(D_METHOD("capture_state"), &KawaiiBoneSimulator3D::capture_state);
 	ClassDB::bind_method(D_METHOD("restore_state", "state", "frame_change"), &KawaiiBoneSimulator3D::restore_state, DEFVAL(Transform3D()));
@@ -463,6 +464,7 @@ void KawaiiBoneSimulator3D::_process_modification(double p_delta) {
 	if (!skeleton || p_delta <= 0.0) {
 		return;
 	}
+	last_simulation_delta = p_delta;
 	if (dirty) {
 		_build();
 	}

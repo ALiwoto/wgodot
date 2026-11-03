@@ -5,6 +5,7 @@
 
 #include "register_types.h"
 #ifndef _3D_DISABLED
+#include "animation/bone_lag_modifier_3d.h"
 #include "rendering/planar_reflection_3d.h"
 #endif
 #include "animation/affine_skeleton_2d.h"
@@ -62,6 +63,8 @@ void initialize_wgodot_module(ModuleInitializationLevel p_level) {
 		GDREGISTER_CLASS(SkinnedMesh2D);
 		GDREGISTER_CLASS(WAnimation);
 #ifndef _3D_DISABLED
+		GDREGISTER_CLASS(BoneLagSimulationState);
+		GDREGISTER_CLASS(BoneLagModifier3D);
 		GDREGISTER_CLASS(PlanarReflection3D);
 #endif
 		register_animation_codec();

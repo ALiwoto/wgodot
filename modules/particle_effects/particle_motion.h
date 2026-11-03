@@ -11,6 +11,12 @@
 class ParticleMotionProfile3D : public Resource {
 	GDCLASS(ParticleMotionProfile3D, Resource);
 
+	Ref<ParticleFloatCurve> frame_over_life;
+	Ref<ParticleFloatCurve> frame_over_life_maximum;
+	bool fractional_frame = false;
+	int random_frame_count = 0;
+	bool change_random_frame = false;
+	double frame_change_interval = 0.0;
 	Vector3 position;
 	Ref<ParticleVectorCurve3D> position_over_life;
 	Vector3 position_offset;
@@ -52,6 +58,19 @@ protected:
 	static void _bind_methods();
 
 public:
+	void set_frame_over_life(const Ref<ParticleFloatCurve> & p_value) { frame_over_life = p_value; }
+	Ref<ParticleFloatCurve> get_frame_over_life() const { return frame_over_life; }
+	void set_frame_over_life_maximum(const Ref<ParticleFloatCurve> & p_value) { frame_over_life_maximum = p_value; }
+	Ref<ParticleFloatCurve> get_frame_over_life_maximum() const { return frame_over_life_maximum; }
+	void set_fractional_frame(bool p_value) { fractional_frame = p_value; }
+	bool get_fractional_frame() const { return fractional_frame; }
+	void set_random_frame_count(int p_value) { random_frame_count = p_value; }
+	int get_random_frame_count() const { return random_frame_count; }
+	void set_change_random_frame(bool p_value) { change_random_frame = p_value; }
+	bool get_change_random_frame() const { return change_random_frame; }
+	void set_frame_change_interval(double p_value) { frame_change_interval = p_value; }
+	double get_frame_change_interval() const { return frame_change_interval; }
+	double sample_frame(double p_relative_age, const Ref<RandomStream32> & p_random, double p_task_ratio = 0.0) const;
 	void set_position(const Vector3 & p_value) { position = p_value; }
 	Vector3 get_position() const { return position; }
 	void set_position_over_life(const Ref<ParticleVectorCurve3D> & p_value) { position_over_life = p_value; }
@@ -144,12 +163,7 @@ class ParticleSpriteProfile3D : public ParticleMotionProfile3D {
 	bool square = false;
 	Vector2 pivot_offset;
 	TypedArray<Mesh> frames;
-	Ref<ParticleFloatCurve> frame_over_life;
-	Ref<ParticleFloatCurve> frame_over_life_maximum;
-	bool fractional_frame = false;
-	int random_frame_count = 0;
-	bool change_random_frame = false;
-	double frame_change_interval = 0.0;
+
 
 protected:
 	static void _bind_methods();
@@ -173,22 +187,9 @@ public:
 	Vector2 get_pivot_offset() const { return pivot_offset; }
 	void set_frames(const TypedArray<Mesh> & p_value) { frames = p_value; }
 	TypedArray<Mesh> get_frames() const { return frames; }
-	void set_frame_over_life(const Ref<ParticleFloatCurve> & p_value) { frame_over_life = p_value; }
-	Ref<ParticleFloatCurve> get_frame_over_life() const { return frame_over_life; }
-	void set_frame_over_life_maximum(const Ref<ParticleFloatCurve> & p_value) { frame_over_life_maximum = p_value; }
-	Ref<ParticleFloatCurve> get_frame_over_life_maximum() const { return frame_over_life_maximum; }
-	void set_fractional_frame(bool p_value) { fractional_frame = p_value; }
-	bool get_fractional_frame() const { return fractional_frame; }
-	void set_random_frame_count(int p_value) { random_frame_count = p_value; }
-	int get_random_frame_count() const { return random_frame_count; }
-	void set_change_random_frame(bool p_value) { change_random_frame = p_value; }
-	bool get_change_random_frame() const { return change_random_frame; }
-	void set_frame_change_interval(double p_value) { frame_change_interval = p_value; }
-	double get_frame_change_interval() const { return frame_change_interval; }
 	Vector2 size_at(double p_relative_age, Vector3 p_initial_size, const Ref<RandomStream32> & p_random, const Ref<RandomStream32> & p_life_random, bool p_spawning, Vector3 p_velocity = Vector3(), double p_task_ratio = 0.0) const;
 	Vector3 scale_at(double p_relative_age, Vector3 p_initial_size, const Ref<RandomStream32> &p_random, const Ref<RandomStream32> &p_life_random, bool p_spawning, Vector3 p_velocity, double p_task_ratio = 0.0) const;
 	double angular_velocity_at(double p_relative_age, double p_initial_rate, const Ref<RandomStream32> & p_random, double p_task_ratio = 0.0) const;
-	double sample_frame(double p_relative_age, const Ref<RandomStream32> & p_random, double p_task_ratio = 0.0) const;
 };
 
 class ParticleMeshProfile3D : public ParticleMotionProfile3D {
@@ -199,6 +200,7 @@ class ParticleMeshProfile3D : public ParticleMotionProfile3D {
 	bool emitter_culling = false;
 	double spin_angle = 0.0;
 	double spin_speed = 0.0;
+	Vector3 spin_euler_axes;
 	Ref<ParticleFloatCurve> spin_over_life;
 	bool inherit_emitter_rotation = false;
 	Vector3 angular_velocity;
@@ -221,6 +223,8 @@ public:
 	double get_spin_angle() const { return spin_angle; }
 	void set_spin_speed(double p_value) { spin_speed = p_value; }
 	double get_spin_speed() const { return spin_speed; }
+	void set_spin_euler_axes(const Vector3 &p_value) { spin_euler_axes = p_value; }
+	Vector3 get_spin_euler_axes() const { return spin_euler_axes; }
 	void set_spin_over_life(const Ref<ParticleFloatCurve> & p_value) { spin_over_life = p_value; }
 	Ref<ParticleFloatCurve> get_spin_over_life() const { return spin_over_life; }
 	void set_inherit_emitter_rotation(bool p_value) { inherit_emitter_rotation = p_value; }

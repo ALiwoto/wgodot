@@ -3,6 +3,25 @@
 #include "core/object/class_db.h"
 
 void ParticleMotionProfile3D::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("set_frame_over_life", "value"), &ParticleMotionProfile3D::set_frame_over_life);
+	ClassDB::bind_method(D_METHOD("get_frame_over_life"), &ParticleMotionProfile3D::get_frame_over_life);
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "frame_over_life", PROPERTY_HINT_RESOURCE_TYPE, "ParticleFloatCurve"), "set_frame_over_life", "get_frame_over_life");
+	ClassDB::bind_method(D_METHOD("set_frame_over_life_maximum", "value"), &ParticleMotionProfile3D::set_frame_over_life_maximum);
+	ClassDB::bind_method(D_METHOD("get_frame_over_life_maximum"), &ParticleMotionProfile3D::get_frame_over_life_maximum);
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "frame_over_life_maximum", PROPERTY_HINT_RESOURCE_TYPE, "ParticleFloatCurve"), "set_frame_over_life_maximum", "get_frame_over_life_maximum");
+	ClassDB::bind_method(D_METHOD("set_fractional_frame", "value"), &ParticleMotionProfile3D::set_fractional_frame);
+	ClassDB::bind_method(D_METHOD("get_fractional_frame"), &ParticleMotionProfile3D::get_fractional_frame);
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "fractional_frame"), "set_fractional_frame", "get_fractional_frame");
+	ClassDB::bind_method(D_METHOD("set_random_frame_count", "value"), &ParticleMotionProfile3D::set_random_frame_count);
+	ClassDB::bind_method(D_METHOD("get_random_frame_count"), &ParticleMotionProfile3D::get_random_frame_count);
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "random_frame_count"), "set_random_frame_count", "get_random_frame_count");
+	ClassDB::bind_method(D_METHOD("set_change_random_frame", "value"), &ParticleMotionProfile3D::set_change_random_frame);
+	ClassDB::bind_method(D_METHOD("get_change_random_frame"), &ParticleMotionProfile3D::get_change_random_frame);
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "change_random_frame"), "set_change_random_frame", "get_change_random_frame");
+	ClassDB::bind_method(D_METHOD("set_frame_change_interval", "value"), &ParticleMotionProfile3D::set_frame_change_interval);
+	ClassDB::bind_method(D_METHOD("get_frame_change_interval"), &ParticleMotionProfile3D::get_frame_change_interval);
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "frame_change_interval"), "set_frame_change_interval", "get_frame_change_interval");
+	ClassDB::bind_method(D_METHOD("sample_frame", "relative_age", "random", "task_ratio"), &ParticleMotionProfile3D::sample_frame, DEFVAL(0.0));
 	ClassDB::bind_method(D_METHOD("set_position", "value"), &ParticleMotionProfile3D::set_position);
 	ClassDB::bind_method(D_METHOD("get_position"), &ParticleMotionProfile3D::get_position);
 	ADD_PROPERTY(PropertyInfo(Variant::VECTOR3, "position"), "set_position", "get_position");
@@ -147,27 +166,8 @@ void ParticleSpriteProfile3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_frames", "value"), &ParticleSpriteProfile3D::set_frames);
 	ClassDB::bind_method(D_METHOD("get_frames"), &ParticleSpriteProfile3D::get_frames);
 	ADD_PROPERTY(PropertyInfo(Variant::ARRAY, "frames", PROPERTY_HINT_ARRAY_TYPE, "Mesh"), "set_frames", "get_frames");
-	ClassDB::bind_method(D_METHOD("set_frame_over_life", "value"), &ParticleSpriteProfile3D::set_frame_over_life);
-	ClassDB::bind_method(D_METHOD("get_frame_over_life"), &ParticleSpriteProfile3D::get_frame_over_life);
-	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "frame_over_life", PROPERTY_HINT_RESOURCE_TYPE, "ParticleFloatCurve"), "set_frame_over_life", "get_frame_over_life");
-	ClassDB::bind_method(D_METHOD("set_frame_over_life_maximum", "value"), &ParticleSpriteProfile3D::set_frame_over_life_maximum);
-	ClassDB::bind_method(D_METHOD("get_frame_over_life_maximum"), &ParticleSpriteProfile3D::get_frame_over_life_maximum);
-	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "frame_over_life_maximum", PROPERTY_HINT_RESOURCE_TYPE, "ParticleFloatCurve"), "set_frame_over_life_maximum", "get_frame_over_life_maximum");
-	ClassDB::bind_method(D_METHOD("set_fractional_frame", "value"), &ParticleSpriteProfile3D::set_fractional_frame);
-	ClassDB::bind_method(D_METHOD("get_fractional_frame"), &ParticleSpriteProfile3D::get_fractional_frame);
-	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "fractional_frame"), "set_fractional_frame", "get_fractional_frame");
-	ClassDB::bind_method(D_METHOD("set_random_frame_count", "value"), &ParticleSpriteProfile3D::set_random_frame_count);
-	ClassDB::bind_method(D_METHOD("get_random_frame_count"), &ParticleSpriteProfile3D::get_random_frame_count);
-	ADD_PROPERTY(PropertyInfo(Variant::INT, "random_frame_count"), "set_random_frame_count", "get_random_frame_count");
-	ClassDB::bind_method(D_METHOD("set_change_random_frame", "value"), &ParticleSpriteProfile3D::set_change_random_frame);
-	ClassDB::bind_method(D_METHOD("get_change_random_frame"), &ParticleSpriteProfile3D::get_change_random_frame);
-	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "change_random_frame"), "set_change_random_frame", "get_change_random_frame");
-	ClassDB::bind_method(D_METHOD("set_frame_change_interval", "value"), &ParticleSpriteProfile3D::set_frame_change_interval);
-	ClassDB::bind_method(D_METHOD("get_frame_change_interval"), &ParticleSpriteProfile3D::get_frame_change_interval);
-	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "frame_change_interval"), "set_frame_change_interval", "get_frame_change_interval");
 	ClassDB::bind_method(D_METHOD("size_at", "relative_age", "initial_size", "random", "life_random", "spawning", "velocity", "task_ratio"), &ParticleSpriteProfile3D::size_at, DEFVAL(Vector3()), DEFVAL(0.0));
 	ClassDB::bind_method(D_METHOD("angular_velocity_at", "relative_age", "initial_rate", "random", "task_ratio"), &ParticleSpriteProfile3D::angular_velocity_at, DEFVAL(0.0));
-	ClassDB::bind_method(D_METHOD("sample_frame", "relative_age", "random", "task_ratio"), &ParticleSpriteProfile3D::sample_frame, DEFVAL(0.0));
 }
 
 void ParticleMeshProfile3D::_bind_methods() {
@@ -186,6 +186,9 @@ void ParticleMeshProfile3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_spin_speed", "value"), &ParticleMeshProfile3D::set_spin_speed);
 	ClassDB::bind_method(D_METHOD("get_spin_speed"), &ParticleMeshProfile3D::get_spin_speed);
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "spin_speed"), "set_spin_speed", "get_spin_speed");
+	ClassDB::bind_method(D_METHOD("set_spin_euler_axes", "value"), &ParticleMeshProfile3D::set_spin_euler_axes);
+	ClassDB::bind_method(D_METHOD("get_spin_euler_axes"), &ParticleMeshProfile3D::get_spin_euler_axes);
+	ADD_PROPERTY(PropertyInfo(Variant::VECTOR3, "spin_euler_axes"), "set_spin_euler_axes", "get_spin_euler_axes");
 	ClassDB::bind_method(D_METHOD("set_spin_over_life", "value"), &ParticleMeshProfile3D::set_spin_over_life);
 	ClassDB::bind_method(D_METHOD("get_spin_over_life"), &ParticleMeshProfile3D::get_spin_over_life);
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "spin_over_life", PROPERTY_HINT_RESOURCE_TYPE, "ParticleFloatCurve"), "set_spin_over_life", "get_spin_over_life");

@@ -33,7 +33,7 @@ namespace {
 // Wire version 2. Records carry typed numbers/strings/raw uniform words, never
 // Variant dictionaries, reflection property lists, texture pixels or vertices.
 // See tools/porting/live/wire.py in the client project's research tooling.
-enum Kind { SPATIAL = 1, SKELETON, MESH, MATERIAL, UNIFORM, PARTICLE, CAMERA, LIGHT, DECAL, AUDIO, ANIMATION, BODY, GEOMETRY, INSTANCE_UNIFORM, MESH_LOD, PLANAR_REFLECTION };
+enum Kind { SPATIAL = 1, SKELETON, MESH, MATERIAL, UNIFORM, PARTICLE, CAMERA, LIGHT, DECAL, AUDIO, ANIMATION, BODY, GEOMETRY, INSTANCE_UNIFORM, MESH_LOD, PLANAR_REFLECTION, NUMERIC };
 
 struct MeshLevelBatch : public RefCounted {
 	GDSOFTCLASS(MeshLevelBatch, RefCounted);
@@ -268,7 +268,9 @@ PackedByteArray WLiveSceneProbe::snapshot(Node *p_root, Skeleton3D *p_body) {
 		}
 		if (MeshInstance3D *mesh = Object::cast_to<MeshInstance3D>(node)) {
 			if (mesh->get_mesh().is_valid()) {
-				writer.record(MESH, path, { mesh->get_mesh()->get_path(), mesh->get_mesh()->get_name() }, { double(mesh->get_layer_mask()), double(mesh->get_cast_shadows_setting()), mesh->get_transparency() });
+				Skeleton3D *skeleton = mesh->get_skeleton_path().is_empty() ? nullptr : Object::cast_to<Skeleton3D>(mesh->get_node_or_null(mesh->get_skeleton_path()));
+				String skeleton_path = skeleton ? String(p_root->get_path_to(skeleton)) : String();
+				writer.record(MESH, path, { mesh->get_mesh()->get_path(), mesh->get_mesh()->get_name(), skeleton_path }, { double(mesh->get_layer_mask()), double(mesh->get_cast_shadows_setting()), mesh->get_transparency() });
 				meshes.push_back(mesh);
 				mesh_levels->instances.push_back(mesh->get_instance());
 			}
@@ -373,6 +375,25 @@ PackedByteArray WLiveSceneProbe::snapshot(Node *p_root, Skeleton3D *p_body) {
 	}
 	for (ObjectID id : removed) {
 		skeleton_poses.erase(id);
+	}
+	return writer.output->get_data_array();
+}
+
+PackedByteArray WLiveSceneProbe::append_numeric_records(const PackedByteArray &p_snapshot, const String &p_topic, const PackedStringArray &p_paths, const TypedArray<PackedFloat64Array> &p_values) {
+	ERR_FAIL_COND_V(p_snapshot.size() < 4 || decode_uint32(p_snapshot.ptr()) != 0x324c5357, PackedByteArray());
+	ERR_FAIL_COND_V(p_paths.size() != p_values.size() || p_topic.is_empty(), PackedByteArray());
+	int64_t size = p_snapshot.size();
+	for (int i = 0; i < p_paths.size(); i++) {
+		PackedFloat64Array values = p_values[i];
+		size += 22 + p_paths[i].utf8().length() + p_topic.utf8().length() + int64_t(values.size()) * 8;
+	}
+	ERR_FAIL_COND_V(size > MAX_MESSAGE_BYTES, PackedByteArray());
+	Writer writer;
+	writer.output->set_data_array(p_snapshot);
+	writer.output->seek(p_snapshot.size());
+	for (int i = 0; i < p_paths.size(); i++) {
+		PackedFloat64Array values = p_values[i];
+		writer.record(NUMERIC, p_paths[i], { p_topic }, values);
 	}
 	return writer.output->get_data_array();
 }

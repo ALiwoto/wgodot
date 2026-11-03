@@ -34,6 +34,7 @@ public:
 	Error configure(const Ref<ConfigFile> &p_recording);
 	Error replace_inputs(const Ref<ConfigFile> &p_recording);
 	Error apply_birth(ParticleInstance3D *p_particle, uint32_t p_frame, uint32_t p_step, const Ref<RandomStream32> &p_random);
+	Error apply_birth_stream(const String &p_identity, uint32_t p_frame, uint32_t p_step, const Ref<RandomStream32> &p_random);
 	void bind_particle(ParticleInstance3D *p_particle, const String &p_identity);
 	Error apply(ParticleInstance3D *p_particle, uint32_t p_frame, uint32_t p_step);
 	Error apply_active(const Ref<ParticleSimulation3D> &p_simulation, uint32_t p_frame, uint32_t p_step);

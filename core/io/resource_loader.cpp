@@ -1167,20 +1167,27 @@ Ref<Resource> ResourceLoader::_load_complete_inner(LoadToken &p_load_token, Erro
 				load_task_ptr->connections_propagated = true;
 			}
 		} else {
+			// wgodot-changes::begin
+			// Keep the handoff's sources and callables owned while queuing or
+			// invoking them outside the lock that protects the task collection.
+			const LocalVector<ThreadLoadTask::ResourceChangedConnection> connections(load_task_ptr->resource_changed_connections);
+			// wgodot-changes::end
 			p_thread_load_lock.temp_unlock();
 
 			// A leaf task being awaited => Propagate the resource changed connections.
 			if (Thread::is_main_thread()) {
 				// On the main thread it's safe to migrate the connections to the standard signal mechanism.
-				for (const ThreadLoadTask::ResourceChangedConnection &rcc : load_task_ptr->resource_changed_connections) {
-					if (rcc.callable.is_valid()) {
-						rcc.source->connect_changed(rcc.callable, rcc.flags);
-					}
+				// wgodot-changes::begin
+				for (const ThreadLoadTask::ResourceChangedConnection &rcc : connections) {
+					WGodotResourceLoaderLifetime::connect_changed_deferred(rcc.source, rcc.callable, rcc.flags);
+					// wgodot-changes::end
 				}
 			} else {
 				// On non-main threads, we have to queue and call it done when processed.
-				if (!load_task_ptr->resource_changed_connections.is_empty()) {
-					for (const ThreadLoadTask::ResourceChangedConnection &rcc : load_task_ptr->resource_changed_connections) {
+				// wgodot-changes::begin
+				if (!connections.is_empty()) {
+					for (const ThreadLoadTask::ResourceChangedConnection &rcc : connections) {
+						// wgodot-changes::end
 						if (rcc.callable.is_valid()) {
 							// wgodot-changes::begin
 							MessageQueue::get_main_singleton()->push_callable(callable_mp_static(&WGodotResourceLoaderLifetime::connect_changed_deferred).bind(rcc.source, rcc.callable, rcc.flags));

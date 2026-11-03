@@ -111,6 +111,7 @@ void ParticleInstance3D::reset_random_streams() {
 }
 
 void ParticleInstance3D::reset_playback() {
+	state_surface_normal = Vector3();
 	reset_projector();
 	reset_random_streams();
 	state_previous_age = 0.0;
@@ -235,6 +236,7 @@ bool ParticleInstance3D::sample_playback(double p_seconds, double p_delta, const
 		state_emitter_ground_offset = p_birth_source.is_valid() ? p_birth_source->get_ground_offset() : 0.0;
 		state_position.y += state_emitter_ground_offset;
 		state_color = initial_color;
+		state_surface_normal = Vector3();
 		accelerations.clear();
 		if (p_birth_source.is_valid() && p_birth_source->get_orientation_ray()) {
 			uniform(bindings()->particle_orientation_x, Vector3());
@@ -415,15 +417,15 @@ bool ParticleInstance3D::sample_playback(double p_seconds, double p_delta, const
 				}
 			}
 		}
+		if (geometry) {
+			set_frame(frame);
+		}
 		if (sprite_motion.is_valid()) {
 			uniform(bindings()->sprite_uv_flip, Vector2(double(state_base_size.x < 0.0), double(state_base_size.z < 0.0)));
 			state_previous_emitter_position = emitter.origin;
 			if (sprite_motion->get_inherit_parent_rotation() && !follows_emitter) {
 				const Basis basis = get_particle_transform().basis.orthonormalized();
 				state_angle += Math::atan2(double(basis.get_column(0).z), double(basis.get_column(0).x));
-			}
-			if (geometry) {
-				set_frame(frame);
 			}
 			if (!follows_emitter) {
 				const Transform3D frozen_transform = get_particle_transform();
@@ -558,19 +560,26 @@ bool ParticleInstance3D::sample_playback(double p_seconds, double p_delta, const
 			// Birth rotation rules accumulate in the initial pose. The last rule
 			// initializes the angular state used by subsequent simulation steps.
 			Vector3 angles = (has_birth_rotation ? birth_rotation_degrees : state_rotation_degrees) * (Math::PI / 180.0);
+			if (motion->get_faces_camera() || motion->get_spin_euler_axes() != Vector3()) {
+				const double spin_scale = motion->get_spin_over_life().is_valid() ? motion->get_spin_over_life()->sample(relative_age, p_parameter_ratio, rotation_random) : 1.0;
+				const double spin_step = spawned_now && !advance_on_spawn ? 0.0 : p_delta;
+				advance_rotation(state_angular_speed * spin_scale, spin_step);
+				if (state_surface_normal == Vector3()) {
+					angles += motion->get_spin_euler_axes() * state_angle;
+				}
+			}
 			if (motion->get_align_to_velocity() && state_base_velocity.length_squared() > 0.0) {
 				angles += motion->velocity_rotation(state_base_velocity);
 			}
 			// The shader constructs camera-facing rotation in world space. Keep
 			// its input basis free of the independent mesh-rotation payload.
-			pose->set_transform(Transform3D(motion->get_faces_camera() ? Basis() : Basis::from_euler(angles, EulerOrder::YZX), location));
+			pose->set_transform(Transform3D(motion->get_faces_camera() && state_surface_normal == Vector3() ? Basis() : Basis::from_euler(angles, EulerOrder::YZX), location));
 			stretch->set_scale(size);
+			advance_frame(motion, relative_age, spawned_now, p_random, p_parameter_ratio);
 			if (motion->get_faces_camera() || (follows_emitter && camera_offset.is_valid())) {
 				uniform(bindings()->mesh_scale, size);
 			}
 			if (motion->get_faces_camera()) {
-				const double spin_scale = motion->get_spin_over_life().is_valid() ? motion->get_spin_over_life()->sample(relative_age, p_parameter_ratio, rotation_random) : 1.0;
-				state_angle += state_angular_speed * spin_scale * (spawned_now ? birth_age : p_delta);
 				Vector3 direction = state_velocity;
 				if (follows_emitter) {
 					direction = emitter.basis.inverse().transposed().xform(direction);

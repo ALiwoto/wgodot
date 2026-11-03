@@ -42,6 +42,7 @@ class KawaiiBoneSimulator3D : public SkeletonModifier3D {
 	LocalVector<Chain> simulation;
 	LocalVector<Transform3D> poses;
 	Vector3 wind_velocity;
+	double last_simulation_delta = 0.0;
 	RandomPCG wind_random;
 	bool dirty = true;
 	bool teleport_detection_enabled = true;
@@ -66,6 +67,7 @@ public:
 	TypedArray<KawaiiBoneChain> get_chains() const;
 	void set_wind_velocity(const Vector3 &p_velocity);
 	Vector3 get_wind_velocity() const;
+	double get_last_simulation_delta() const { return last_simulation_delta; }
 	void set_teleport_detection_enabled(bool p_enabled);
 	bool is_teleport_detection_enabled() const;
 	void reset();

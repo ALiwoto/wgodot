@@ -36,6 +36,7 @@ protected:
 	void _validate_property(PropertyInfo &p_property) const;
 
 public:
+	void reset_state() override;
 	void set_geometry(const Ref<SpriteCutoutGeometry3D> &p_geometry);
 	Ref<SpriteCutoutGeometry3D> get_geometry() const { return geometry; }
 	void set_frame(int p_frame);

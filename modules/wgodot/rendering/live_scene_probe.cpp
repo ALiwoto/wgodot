@@ -14,6 +14,7 @@ void WLiveSceneProbe::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("reply", "id", "bytes"), &WLiveSceneProbe::reply);
 	ClassDB::bind_method(D_METHOD("fail", "id", "message"), &WLiveSceneProbe::fail);
 	ClassDB::bind_method(D_METHOD("snapshot", "root", "body"), &WLiveSceneProbe::snapshot, DEFVAL(Variant()));
+	ClassDB::bind_method(D_METHOD("append_numeric_records", "snapshot", "topic", "paths", "values"), &WLiveSceneProbe::append_numeric_records);
 	ADD_SIGNAL(MethodInfo("command_received", PropertyInfo(Variant::INT, "id"), PropertyInfo(Variant::INT, "command"), PropertyInfo(Variant::PACKED_BYTE_ARRAY, "payload")));
 	ADD_SIGNAL(MethodInfo("controller_disconnected"));
 }

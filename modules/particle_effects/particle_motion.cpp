@@ -105,7 +105,7 @@ double ParticleSpriteProfile3D::angular_velocity_at(double p_relative_age, doubl
 	return p_initial_rate * angular_velocity_over_life->sample(p_relative_age, p_task_ratio, p_random);
 }
 
-double ParticleSpriteProfile3D::sample_frame(double p_relative_age, const Ref<RandomStream32> &p_random, double p_task_ratio) const {
+double ParticleMotionProfile3D::sample_frame(double p_relative_age, const Ref<RandomStream32> &p_random, double p_task_ratio) const {
 	double frame = frame_over_life->sample(p_relative_age, p_task_ratio);
 	if (frame_over_life_maximum.is_valid()) {
 		frame = Math::lerp(frame, frame_over_life_maximum->sample(p_relative_age, p_task_ratio), p_random->next_float());

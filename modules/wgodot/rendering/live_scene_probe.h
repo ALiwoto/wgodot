@@ -6,6 +6,7 @@
 #include "core/io/tcp_server.h"
 #include "scene/main/node.h"
 #include "core/math/transform_3d.h"
+#include "core/variant/typed_array.h"
 
 class Skeleton3D;
 
@@ -46,6 +47,7 @@ public:
 	void reply(uint32_t p_id, const PackedByteArray &p_bytes);
 	void fail(uint32_t p_id, const String &p_message);
 	PackedByteArray snapshot(Node *p_root, Skeleton3D *p_body = nullptr);
+	PackedByteArray append_numeric_records(const PackedByteArray &p_snapshot, const String &p_topic, const PackedStringArray &p_paths, const TypedArray<PackedFloat64Array> &p_values);
 	WLiveSceneProbe();
 	~WLiveSceneProbe();
 };

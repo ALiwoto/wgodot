@@ -66,6 +66,7 @@ void ParticleInstance3D::orient_to_surface(ParticleGroundProjector3D *p_ray) {
 			}
 			down.normalize();
 			right.normalize();
+			state_surface_normal = down.cross(right).normalized();
 			// Repeated authored modules overwrite on a hit, retain prior axes
 			// on a miss, just like the other ordered birth operations.
 			uniform(bindings()->particle_orientation_x, right);
@@ -76,7 +77,7 @@ void ParticleInstance3D::orient_to_surface(ParticleGroundProjector3D *p_ray) {
 
 void ParticleInstance3D::set_frame(double p_frame) {
 	uniform(bindings()->sprite_frame, p_frame);
-	if (!sprite_motion->get_frames().is_empty()) {
+	if (sprite_motion.is_valid() && !sprite_motion->get_frames().is_empty()) {
 		MeshInstance3D *mesh = Object::cast_to<MeshInstance3D>(geometry);
 		mesh->set_mesh(sprite_motion->get_frames()[int(p_frame)]);
 	}
@@ -130,6 +131,27 @@ void ParticleInstance3D::set_light_pose_position(const Vector3 &p_position) {
 	light->set_position(light_parent ? get_render_transform(light_parent).affine_inverse().xform(world) : world);
 }
 
+void ParticleInstance3D::advance_frame(const Ref<ParticleMotionProfile3D> &p_profile, double p_relative_age, bool p_spawned_now, const Ref<RandomStream32> &p_random, double p_parameter_ratio) {
+	if (p_profile->get_frame_over_life().is_valid() && (p_spawned_now || p_relative_age <= 1.0)) {
+		set_frame(p_profile->sample_frame(p_relative_age, frame_random, p_parameter_ratio));
+	} else if (p_profile->get_change_random_frame() && !p_spawned_now && p_relative_age <= 1.0) {
+		if (p_profile->get_frame_change_interval() == 0.0 || state_last_frame_change == 0.0 || p_relative_age - state_last_frame_change > p_profile->get_frame_change_interval()) {
+			const double frame_range = float(double(p_profile->get_random_frame_count()) - 0.00001);
+			set_frame(int(p_random->next_float() * frame_range));
+			state_last_frame_change = p_relative_age;
+		}
+	}
+}
+
+void ParticleInstance3D::advance_rotation(double p_angular_velocity, double p_delta) {
+	// Keep the simulation phase in binary32, like its shader input. Wrapping
+	// each step avoids losing the visible phase after many fast revolutions.
+	const float angle = float(state_angle) + float(p_angular_velocity) * float(p_delta);
+	const float turns = std::trunc(angle / float(Math::TAU));
+	const float whole_turns = turns * float(Math::TAU);
+	state_angle = angle - (Math::abs(whole_turns) > Math::abs(angle) ? angle : whole_turns);
+}
+
 void ParticleInstance3D::advance_sprite(double p_relative_age, double p_delta, bool p_spawned_now, double p_simulation_delta, const Ref<RandomStream32> &p_random, ParticleInstance3D *p_linked_particle, double p_emitter_seconds, double p_parameter_ratio, const Vector3 *p_birth_light_position) {
 	const Vector3 position_before_motion = state_position;
 	if (!p_spawned_now) {
@@ -161,13 +183,7 @@ void ParticleInstance3D::advance_sprite(double p_relative_age, double p_delta, b
 	} else {
 		state_position += spawn_displacement + displacement;
 	}
-	// Keep the simulation phase in binary32, like its shader input. Wrapping
-	// each step avoids losing the visible phase after many fast revolutions.
-	const float angular_velocity = sprite_motion->angular_velocity_at(p_relative_age, state_angular_speed, rotation_random, p_parameter_ratio);
-	const float angle = float(state_angle) + angular_velocity * float(step);
-	const float turns = std::trunc(angle / float(Math::TAU));
-	const float whole_turns = turns * float(Math::TAU);
-	state_angle = angle - (Math::abs(whole_turns) > Math::abs(angle) ? angle : whole_turns);
+	advance_rotation(sprite_motion->angular_velocity_at(p_relative_age, state_angular_speed, rotation_random, p_parameter_ratio), step);
 	if (sprite_motion->get_source_movement().is_valid()) {
 		inherit_source_movement(sprite_motion->get_source_movement(), p_relative_age, p_simulation_delta, p_parameter_ratio);
 	}
@@ -189,15 +205,7 @@ void ParticleInstance3D::advance_sprite(double p_relative_age, double p_delta, b
 	state_render_size = Vector2(state_bounds_size.x, sprite_motion->get_square() ? state_bounds_size.x : state_bounds_size.z);
 	uniform(bindings()->sprite_size, state_render_size);
 	uniform(bindings()->angle, state_angle);
-	if (sprite_motion->get_frame_over_life().is_valid() && (p_spawned_now || p_relative_age <= 1.0)) {
-		set_frame(sprite_motion->sample_frame(p_relative_age, frame_random, p_parameter_ratio));
-	} else if (sprite_motion->get_change_random_frame() && !p_spawned_now && p_relative_age <= 1.0) {
-		if (sprite_motion->get_frame_change_interval() == 0.0 || state_last_frame_change == 0.0 || p_relative_age - state_last_frame_change > sprite_motion->get_frame_change_interval()) {
-			const double frame_range = float(double(sprite_motion->get_random_frame_count()) - 0.00001);
-			set_frame(int(p_random->next_float() * frame_range));
-			state_last_frame_change = p_relative_age;
-		}
-	}
+	advance_frame(sprite_motion, p_relative_age, p_spawned_now, p_random, p_parameter_ratio);
 	if (sprite_motion->get_align_to_velocity()) {
 		uniform(bindings()->velocity_direction, displacement);
 	}
