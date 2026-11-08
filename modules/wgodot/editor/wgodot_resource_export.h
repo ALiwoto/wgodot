@@ -38,4 +38,5 @@ public:
 	Variant rewrite_value(const Variant &p_value, const PropertyInfo &p_property = PropertyInfo());
 	Error export_file(String &r_path, Vector<uint8_t> &r_data);
 	Error finish(Vector<uint8_t> &r_catalog);
+	Vector<uint8_t> source_paths() const;
 };

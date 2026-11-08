@@ -691,14 +691,18 @@ void ResourceLoader::_run_load_task(void *p_userdata) {
 }
 
 String ResourceLoader::_validate_local_path(const String &p_path) {
+	// wgodot-changes::begin: source names and WResPath share one cache identity.
+	String local_path;
 	ResourceUID::ID uid = ResourceUID::get_singleton()->text_to_id(p_path);
 	if (uid != ResourceUID::INVALID_ID) {
-		return ResourceUID::get_singleton()->get_id_path(uid);
+		local_path = ResourceUID::get_singleton()->get_id_path(uid);
 	} else if (p_path.is_relative_path()) {
-		return ("res://" + p_path).simplify_path();
+		local_path = ("res://" + p_path).simplify_path();
 	} else {
-		return ProjectSettings::get_singleton()->localize_path(p_path);
+		local_path = ProjectSettings::get_singleton()->localize_path(p_path);
 	}
+	return WGodotResourcePaths::resolve_source(local_path);
+	// wgodot-changes::end
 }
 
 Error ResourceLoader::load_threaded_request(const String &p_path, const String &p_type_hint, bool p_use_sub_threads, CacheMode p_cache_mode) {
@@ -1454,8 +1458,9 @@ void ResourceLoader::get_classes_used(const String &p_path, HashSet<StringName> 
 
 String ResourceLoader::get_resource_type(const String &p_path) {
 	// wgodot-changes::begin
-	if (WGodotResourcePaths::is_opaque(p_path)) {
-		return WGodotResourcePaths::resource_type(p_path);
+	const String native_path = _validate_local_path(p_path);
+	if (WGodotResourcePaths::is_opaque(native_path)) {
+		return WGodotResourcePaths::resource_type(native_path);
 	}
 	// wgodot-changes::end
 	String local_path = _validate_local_path(p_path);
@@ -1562,6 +1567,7 @@ String ResourceLoader::_path_remap(const String &p_path, bool *r_translation_rem
 
 	// Usually, there's no remap file and FileAccess::exists() is faster than FileAccess::open().
 	// wgodot-changes::begin
+	new_path = WGodotResourcePaths::resolve_source(ResourceUID::ensure_path(new_path));
 	if (WGodotResourcePaths::is_opaque(new_path)) {
 		return WGodotResourcePaths::remap(new_path);
 	}

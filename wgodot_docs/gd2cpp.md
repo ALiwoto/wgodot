@@ -15,6 +15,16 @@ So your entire game project will be split into two parts:
   - Engine AND your translated code -> compiled into machine code
   - resources: as .pck file (which can be embedded into your executable as well. however, there is no guarantee that they won't be decompiled/reverse-engineered)
 
+## Resource values
+
+Native resource factories keep typed constructors, setters, references and scene wiring in C++. Scalar/math values, packed arrays, animation keys and Curve points live in indexed `resource_<id>.wgp` files beside the generated module; native export packs them at `res://.wgodot/payload/<id>.wgp`. There is no embedded-value generation mode. Keep these files with `main_game.json` when staging templates. Old generated modules/templates must be regenerated and rebuilt.
+
+The runtime reader validates record bounds/types and reads numeric packed arrays directly into their owned Godot storage. Arrays remain writable/COW; physics and navigation may build additional engine structures. Resource factories open only their own payload when loaded. Payloads use little-endian components and record the engine's real-number precision.
+
+Regenerate after editing source resources. Value changes and packed-array/key counts can update payloads without changing factory C++ or template generation; repack with the existing template in that case. Changing classes, property sets, scene topology, resource references or structural containers can still require compilation. Payloads do not enter the native code fingerprint or get a separate content hash; existing source dependency checks still apply.
+
+`wgodot/gdscript/enforce_resource_paths` defaults to `true`. Set it to `false` for ordinary runtime String resource paths; exports include a source-name index only in that mode. Explicit WResPath values retain their compact native identity. `export-cpp --enforce-resource-paths on|off` can override analysis in a standalone process; packaging must use the same project setting. Dynamically constructed paths must still refer to resources selected for export.
+
 ## Embedded resources
 
 Resources embedded in native factories are anonymous: their `resource_path` is empty. Factories connect them through typed references and do not assign synthetic `res://owner::index` paths or invoke path-change hooks for them. Do not use embedded resource paths as identity; use resource references or explicit application identifiers. Root/external resources keep their normal loader/catalog identities. Editor loading of source assets is unchanged.

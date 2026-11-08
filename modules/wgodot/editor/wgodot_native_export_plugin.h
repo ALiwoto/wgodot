@@ -13,6 +13,8 @@ class WGodotNativeExportPlugin : public EditorExportPlugin {
 	bool validated = false;
 	Dictionary manifest;
 	Dictionary autoloads;
+	HashSet<int64_t> exported_payloads;
+	void export_payload(const String &p_source);
 	WGodotResourceExport resources;
 	WGodotExportTarget target;
 	WGodotNativeResourceSelection selection;

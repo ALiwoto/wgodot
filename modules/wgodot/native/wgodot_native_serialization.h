@@ -2,10 +2,11 @@
 #pragma once
 
 #include "wgodot_native_calls.h"
+
+#include "core/variant/typed_array.h"
 #include "scene/main/node.h"
 #include "scene/resources/wgodot_scene_construction.h"
-#include "core/variant/typed_array.h"
-#include <algorithm>
+
 #include <limits>
 
 namespace WGodotNative {
@@ -14,34 +15,14 @@ Node *scene_node() {
 	return memnew(T);
 }
 
-template <class T, size_t Count>
-WArray<ObjectValue<T>> scene_nodes(const WGodotSceneContext &p_context, const int (&p_indices)[Count]) {
+template <class T>
+WArray<ObjectValue<T>> scene_nodes(const WGodotSceneContext &p_context, const PackedInt32Array &p_indices) {
+	const int64_t count = p_indices.size();
 	WArray<ObjectValue<T>> result;
-	ERR_FAIL_COND_V(result.resize(Count) != OK, result);
-	for (size_t i = 0; i < Count; i++) {
+	ERR_FAIL_COND_V(result.resize(count) != OK, result);
+	for (int64_t i = 0; i < count; i++) {
 		result.set(i, p_context.node<T>(p_indices[i]));
 	}
-	return result;
-}
-
-template <size_t Count>
-PackedStringArray packed_strings(const char *const (&p_data)[Count]) {
-	PackedStringArray result;
-	result.resize(Count);
-	String *values = result.ptrw();
-	for (size_t i = 0; i < Count; i++) {
-		if (p_data[i][0]) {
-			values[i] = String::utf8(p_data[i]);
-		}
-	}
-	return result;
-}
-
-template <class Packed, class Element, size_t Count>
-Packed packed_data(const Element (&p_data)[Count]) {
-	Packed result;
-	result.resize(Count);
-	std::copy_n(p_data, Count, result.ptrw());
 	return result;
 }
 

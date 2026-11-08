@@ -11,6 +11,7 @@ void register_project_settings() {
 	GLOBAL_DEF("wgodot/gdscript/strict_override_checking", true);
 	GLOBAL_DEF("wgodot/gdscript/disable_strict_override_checking_for_addons", true);
 	GLOBAL_DEF("wgodot/gdscript/strict_type_checking", true);
+	GLOBAL_DEF("wgodot/gdscript/enforce_resource_paths", true);
 	GLOBAL_DEF("wgodot/gdscript/disable_strict_type_checking_for_addons", true);
 	GLOBAL_DEF("wgodot/gdscript/strict_signal_callable_checking", true);
 	GLOBAL_DEF("wgodot/export/deconst_exports", true);

@@ -3,8 +3,8 @@
 
 #include "wgodot_export_target.h"
 #include "wgodot_native_resource_policy.h"
-#include "wgodot_resource_rewrite.h"
 #include "wgodot_resource_identity.h"
+#include "wgodot_resource_rewrite.h"
 
 #include "core/config/project_settings.h"
 #include "core/io/config_file.h"
@@ -306,4 +306,22 @@ Error WGodotResourceExport::finish(Vector<uint8_t> &r_catalog) {
 	}
 	r_catalog = buffer->get_data_array();
 	return OK;
+}
+
+Vector<uint8_t> WGodotResourceExport::source_paths() const {
+	Vector<String> names;
+	for (const KeyValue<String, int64_t> &entry : ids) {
+		if (entries.has(entry.value)) {
+			names.push_back(entry.key);
+		}
+	}
+	names.sort();
+	Ref<StreamPeerBuffer> index;
+	index.instantiate();
+	index->put_u32(names.size());
+	for (const String &name : names) {
+		index->put_utf8_string(name);
+		index->put_u64(ids[name]);
+	}
+	return index->get_data_array();
 }

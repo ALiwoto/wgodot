@@ -1,8 +1,11 @@
 // wgodot-changes::file
 #pragma once
 
+#include "core/io/file_access.h"
 #include "core/io/resource.h"
 #include "core/variant/variant_parser.h"
+
+#include <functional>
 
 enum class WAnimationValueKind;
 
@@ -13,6 +16,7 @@ public:
 	class NativeWriter {
 	public:
 		virtual String value(const Variant &p_value) = 0;
+		virtual String payload(const String &p_type, uint32_t p_schema, const std::function<void(FileAccess &)> &p_write) = 0;
 		virtual String symbol() = 0;
 		virtual void include(const String &p_header) = 0;
 		virtual void line(const String &p_line) = 0;

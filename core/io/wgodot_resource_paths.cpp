@@ -15,10 +15,14 @@ struct Entry {
 	Vector<Pair<String, int64_t>> variants;
 };
 
+struct Catalog;
+Catalog *loaded_catalog = nullptr;
+
 struct Catalog {
 	HashMap<int64_t, Entry> entries;
 
 	Catalog() {
+		loaded_catalog = this;
 		Ref<FileAccess> file = FileAccess::open(CATALOG_PATH, FileAccess::READ);
 		ERR_FAIL_COND_MSG(file.is_null(), "Native resource catalog is missing.");
 		ERR_FAIL_COND_MSG(file->get_32() != CATALOG_MAGIC, "Invalid native resource catalog.");
@@ -49,10 +53,48 @@ const Entry *find(const String &p_path) {
 	}
 	// C++ local static initialization is synchronized. The catalog is immutable
 	// afterwards, including when Godot loads resource dependencies on workers.
-	static const Catalog catalog;
+	static Catalog catalog;
 	return catalog.entries.getptr(id);
 }
 } // namespace
+
+void clear() {
+	// Native shutdown has joined resource loads. Release interned type names
+	// before StringName cleanup, not during process-static destruction.
+	if (loaded_catalog) {
+		loaded_catalog->entries.clear();
+	}
+}
+
+String resolve_source(const String &p_path) {
+	if (!p_path.begins_with("res://") || is_opaque(p_path) || !FileAccess::exists(SOURCE_PATHS)) {
+		return p_path;
+	}
+	// A single optional name index supports ordinary runtime String paths.
+	// Opaque WResPath clients do not package or allocate this table.
+	static const HashMap<String, int64_t> sources = []() {
+		HashMap<String, int64_t> result;
+		const Ref<FileAccess> file = FileAccess::open(SOURCE_PATHS, FileAccess::READ);
+		ERR_FAIL_COND_V(file.is_null() || file->get_length() < 4, result);
+		const uint32_t count = file->get_32();
+		ERR_FAIL_COND_V(count > file->get_length() / 12, result);
+		for (uint32_t i = 0; i < count; i++) {
+			const String path = file->get_pascal_string();
+			const int64_t id = file->get_64();
+			ERR_FAIL_COND_V(file->get_error() != OK || id <= 0 || result.has(path), (HashMap<String, int64_t>()));
+			result.insert(path, id);
+		}
+		return result;
+	}();
+	const int64_t *id = sources.getptr(p_path);
+	return id ? to_path(*id) : p_path;
+}
+
+int64_t from_source(const String &p_path) {
+	const int64_t id = from_path(resolve_source(p_path));
+	ERR_FAIL_COND_V_MSG(!p_path.is_empty() && id == 0, 0, "Resource path is absent from the native package: " + p_path);
+	return id;
+}
 
 String to_path(int64_t p_id) {
 	return p_id == 0 ? String() : "res://" + itos(p_id);

@@ -1,12 +1,13 @@
 // wgodot-changes::file
 #include "wgodot_cpp_emitter.h"
-#include "wgodot_cpp_memory_profile.h"
-#include "wgodot_cpp_cache.h"
 
+#include "wgodot_cpp_cache.h"
+#include "wgodot_cpp_memory_profile.h"
 #include "wgodot_cpp_names.h"
 #include "wgodot_cpp_native_headers.gen.h"
 
 #include "core/config/engine.h"
+#include "core/config/project_settings.h"
 #include "core/io/dir_access.h"
 #include "core/io/file_access.h"
 #include "core/io/json.h"
@@ -22,7 +23,8 @@
 using Parser = GDScriptParser;
 using namespace WGodotCppNames;
 
-WGodotCppEmitter::WGodotCppEmitter(const WGodotCppProject &p_project, bool p_trace_enabled) : project(p_project), trace_enabled(p_trace_enabled), signatures(p_project) {
+WGodotCppEmitter::WGodotCppEmitter(const WGodotCppProject &p_project, bool p_trace_enabled) :
+		project(p_project), trace_enabled(p_trace_enabled), signatures(p_project) {
 	for (const auto &entry : native_cpp_headers) {
 		native_headers.insert(entry.name, entry.header);
 		native_cpp_names.insert(entry.name, entry.cpp_type);
@@ -364,7 +366,7 @@ String WGodotCppEmitter::literal(const Variant &p_value, const Parser::Node *p_o
 			return number;
 		}
 		case Variant::STRING:
-			if (String(p_value).begins_with("res://") || String(p_value).begins_with("uid://")) {
+			if (GLOBAL_GET("wgodot/gdscript/enforce_resource_paths") && (String(p_value).begins_with("res://") || String(p_value).begins_with("uid://"))) {
 				unsupported(p_origin, "a resource path stored as String; declare it as WResPath");
 				return String();
 			}
@@ -667,21 +669,21 @@ Error WGodotCppEmitter::generate(const String &p_directory, int p_jobs, WGodotCp
 	}
 	emit_native_access();
 	store_file("game_types.h", "// wgodot-changes::file\n#pragma once\n#include \"modules/wgodot/native/wgodot_native_support.h\"\n#include \"core/object/ref_counted.h\"\n#include \"core/variant/variant_caster.h\"\n#include \"core/variant/typed_array.h\"\n#include \"core/variant/typed_dictionary.h\"\n");
-	store_file("SCsub", "# wgodot-changes::file\nImport('env')\nImport('env_modules')\nenv_game = env_modules.Clone()\nenv_game.PrependUnique(CPPPATH=env.get('wgodot_public_includes', []))\nenv_game.add_source_files(env.modules_sources, '*.cpp')\nenv_game.add_source_files(env.modules_sources, [File('#modules/wgodot/native/wgodot_native_task.cpp'), File('#modules/wgodot/native/wgodot_native_connections.cpp'), File('#modules/wgodot/native/wgodot_native_debug.cpp'), File('#modules/wgodot/native/wgodot_native_string_format.cpp'), File('#modules/wgodot/wgodot_preloads.cpp')])\n");
+	store_file("SCsub", "# wgodot-changes::file\nImport('env')\nImport('env_modules')\nenv_game = env_modules.Clone()\nenv_game.PrependUnique(CPPPATH=env.get('wgodot_public_includes', []))\nenv_game.add_source_files(env.modules_sources, '*.cpp')\nenv_game.add_source_files(env.modules_sources, [File('#modules/wgodot/native/wgodot_native_task.cpp'), File('#modules/wgodot/native/wgodot_native_connections.cpp'), File('#modules/wgodot/native/wgodot_native_debug.cpp'), File('#modules/wgodot/native/wgodot_native_string_format.cpp'), File('#modules/wgodot/wgodot_preloads.cpp'), File('#modules/wgodot/native/wgodot_native_runtime.cpp'), File('#modules/wgodot/codecs/native_payload.cpp'), File('#modules/wgodot/codecs/w_animation.cpp')])\n");
 	String config = "# wgodot-changes::file\ndef can_build(env, platform):\n    return not env.editor_build\n\ndef configure(env):\n    env.AppendUnique(CPPDEFINES=['WGODOT_NATIVE_GAME'])\n";
 	if (trace_enabled) {
 		config += "    env.AppendUnique(CPPDEFINES=['WGODOT_NATIVE_TRACE_ENABLED'])\n";
 	}
 	store_file("config.py", config);
 	store_file("register_types.h", "// wgodot-changes::file\n#pragma once\n#include \"modules/register_module_types.h\"\nvoid initialize_main_game_module(ModuleInitializationLevel p_level);\nvoid uninitialize_main_game_module(ModuleInitializationLevel p_level);\n");
-	String registration = "// wgodot-changes::file\n#include \"register_types.h\"\n#include \"modules/wgodot/native/wgodot_native_static.h\"\n#include \"modules/wgodot/native/wgodot_native_task.h\"\n#include \"core/object/wgodot_native_interfaces.h\"\n";
+	String registration = "// wgodot-changes::file\n#include \"register_types.h\"\n#include \"modules/wgodot/native/wgodot_native_static.h\"\n#include \"modules/wgodot/native/wgodot_native_task.h\"\n#include \"modules/wgodot/native/wgodot_native_runtime.h\"\n#include \"core/object/wgodot_native_interfaces.h\"\n";
 	emit_preloads();
 	registration += "#include \"modules/wgodot/wgodot_preloads.h\"\n#include \"core/io/wgodot_native_resources.h\"\n#include \"scene/animation/wgodot_animation_property.h\"\nvoid register_main_game_preloads();\nvoid register_main_game_resources();\nvoid register_main_game_animation_bindings();\n";
 	String body;
 	if (trace_enabled) {
 		body += "#ifdef DEBUG_ENABLED\n\tWGodotNative::NativeDebug::initialize();\n#endif\n";
 	}
-	body += "\tWGodotPreloads::initialize();\n\tregister_main_game_preloads();\n\tWGodotNative::NativeConnections::initialize();\n\tGDREGISTER_ABSTRACT_CLASS(WGodotNative::NativeTask);\n" + register_interfaces();
+	body += "\tWGodotNative::initialize_resource_types();\n\tWGodotPreloads::initialize();\n\tregister_main_game_preloads();\n\tWGodotNative::NativeConnections::initialize();\n\tGDREGISTER_ABSTRACT_CLASS(WGodotNative::NativeTask);\n" + register_interfaces();
 	HashSet<String> registered;
 	for (const auto &entry : project.get_classes()) {
 		if (!entry.node->wgodot_static_class && files.has(entry.cpp_name + ".h")) {
@@ -737,9 +739,17 @@ Error WGodotCppEmitter::write(const String &p_directory) const {
 	}
 	names.sort();
 	StringBuilder fingerprint;
-	fingerprint += project.get_target().get_fingerprint() + "\n";
+	fingerprint += project.get_target().get_fingerprint() + "\n" + itos(bool(GLOBAL_GET("wgodot/gdscript/enforce_resource_paths"))) + "\n";
 	for (const String &name : names) {
 		const String &digest = files[name];
+		if (digest.is_empty()) {
+			const String staged = staging_directory.path_join(name);
+			if (FileAccess::exists(staged)) {
+				error = DirAccess::rename_absolute(staged, p_directory.path_join(name));
+				ERR_FAIL_COND_V(error != OK, error);
+			}
+			continue;
+		}
 		fingerprint += name + "\n" + digest + "\n";
 		const String path = p_directory.path_join(name);
 		if (cache ? cache->output_matches(name, digest) : (FileAccess::exists(path) && FileAccess::get_sha256(path) == digest)) {
@@ -757,6 +767,8 @@ Error WGodotCppEmitter::write(const String &p_directory) const {
 	}
 	Dictionary manifest;
 	manifest["format"] = 1;
+	manifest["resource_payload_version"] = 1;
+	manifest["enforce_resource_paths"] = bool(GLOBAL_GET("wgodot/gdscript/enforce_resource_paths"));
 	manifest["target"] = project.get_target().get_name();
 	manifest["target_fingerprint"] = project.get_target().get_fingerprint();
 	manifest["trace"] = trace_enabled;

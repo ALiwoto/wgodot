@@ -1,14 +1,15 @@
 // wgodot-changes::file
 #include "wgodot_cpp_cache.h"
 
+#include "wgodot_resource_rewrite.h"
+
 #include "core/config/project_settings.h"
-#include "core/io/dir_access.h"
 #include "core/io/config_file.h"
+#include "core/io/dir_access.h"
 #include "core/io/file_access.h"
 #include "core/io/resource_loader.h"
 #include "core/io/resource_uid.h"
 #include "core/io/wgodot_build_fingerprint.h"
-#include "wgodot_resource_rewrite.h"
 
 namespace {
 constexpr const char *CACHE_FILE = ".gd2cpp-cache.bin";
@@ -69,9 +70,10 @@ Error WGodotCppCache::open(const String &p_directory, const String &p_target, bo
 	// metadata and build options. No manual version bump or source checkout needed.
 	const String &compiler = WGodotBuildFingerprint::get();
 	ERR_FAIL_COND_V_MSG(compiler.is_empty(), ERR_CANT_OPEN, "Cannot fingerprint the running gd2cpp compiler.");
-	identity = (compiler + "\n" + p_target + "\n" + itos(p_trace) + "\n" +
+	identity = (compiler + "\n" + p_target + "\n" + itos(p_trace) + "\n" + itos(bool(GLOBAL_GET("wgodot/gdscript/enforce_resource_paths"))) + "\n" +
 			ProjectSettings::get_singleton()->get_resource_path() + "\n" + digest("res://project.godot") + "\n" +
-			digest("res://override.cfg") + "\n" + digest("res://wgodot_targets.cfg") + "\n" + digest("res://export_presets.cfg")).sha256_text();
+			digest("res://override.cfg") + "\n" + digest("res://wgodot_targets.cfg") + "\n" + digest("res://export_presets.cfg"))
+					   .sha256_text();
 	const String path = directory.path_join(CACHE_FILE);
 	if (FileAccess::exists(path)) {
 		const Ref<FileAccess> file = FileAccess::open(path, FileAccess::READ);
@@ -205,7 +207,7 @@ bool WGodotCppCache::output_matches(const String &p_name, const String &p_digest
 	if (FileAccess::exists(path)) {
 		valid = String(old.get("digest", "")) == p_digest && int64_t(old.get("size", -1)) == FileAccess::get_size(path) &&
 				int64_t(old.get("modified", -1)) == int64_t(FileAccess::get_modified_time(path));
-		if (!valid) {
+		if (!valid && !p_digest.is_empty()) {
 			valid = FileAccess::get_sha256(path) == p_digest;
 		}
 	}

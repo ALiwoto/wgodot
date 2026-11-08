@@ -7042,7 +7042,7 @@ bool GDScriptAnalyzer::check_type_compatibility(const GDScriptParser::DataType &
 			return true;
 		}
 		const bool constant = p_source.is_constant || (p_source_node && p_source_node->is_expression() && static_cast<const GDScriptParser::ExpressionNode *>(p_source_node)->is_constant);
-		return p_target.wgodot_resource_path && p_allow_implicit_conversion && constant && p_source.kind == GDScriptParser::DataType::BUILTIN && p_source.builtin_type == Variant::STRING;
+		return p_target.wgodot_resource_path && p_allow_implicit_conversion && (constant || !GLOBAL_GET("wgodot/gdscript/enforce_resource_paths")) && p_source.kind == GDScriptParser::DataType::BUILTIN && p_source.builtin_type == Variant::STRING;
 	}
 	// wgodot-changes::end
 	// These return "true" so it doesn't affect users negatively.

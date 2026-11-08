@@ -1,6 +1,7 @@
 // wgodot-changes::file
 #include "gdscript_analyzer.h"
 
+#include "core/config/project_settings.h"
 #include "core/io/wgodot_named_types.h"
 
 using Parser = GDScriptParser;
@@ -104,6 +105,9 @@ bool GDScriptAnalyzer::wgodot_validate_resource_path_argument(Parser::Expression
 		}
 		p_expression->type_constraint = wgodot_resource_path_type();
 		p_expression->type_constraint.is_constant = true;
+		return true;
+	}
+	if (!GLOBAL_GET("wgodot/gdscript/enforce_resource_paths") && p_expression->type_constraint.builtin_type == Variant::STRING) {
 		return true;
 	}
 	push_error("WResPath requires a constant resource path or another WResPath; runtime strings are not resource identities.", p_expression);

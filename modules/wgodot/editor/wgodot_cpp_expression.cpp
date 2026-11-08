@@ -361,6 +361,13 @@ WGodotCppEmitter::Value WGodotCppEmitter::lower_converted(const Parser::Expressi
 	if (p_target.wgodot_resource_path && p_expression->is_constant && p_expression->reduced) {
 		return resource_path_constant(p_expression->reduced_value);
 	}
+	if (p_target.wgodot_resource_path && !expression_type(p_expression).wgodot_resource_path) {
+		Value result = lower(p_expression);
+		class_call_headers.insert("core/io/wgodot_resource_paths.h");
+		result.code = "WGodotResourcePaths::from_source(" + result.code + ")";
+		result.cpp_type = "int64_t";
+		return result;
+	}
 	const String target = type(p_target, p_target_origin ? p_target_origin : p_expression);
 	if (p_expression->type == Parser::Node::ARRAY && is_warray(p_target)) {
 		return array_literal(static_cast<const Parser::ArrayNode *>(p_expression), p_target);

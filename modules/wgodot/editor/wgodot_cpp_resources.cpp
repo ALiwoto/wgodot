@@ -1,12 +1,10 @@
 // wgodot-changes::file
+#include "wgodot_cpp_cache.h"
 #include "wgodot_cpp_emitter.h"
 #include "wgodot_cpp_memory_profile.h"
-#include "wgodot_cpp_cache.h"
-#include "modules/wgodot/codecs/native_literals.h"
-#include "wgodot_cpp_source.h"
-#include "wgodot_cpp_scene_references.h"
-#include "modules/wgodot/codecs/resource_codec.h"
 #include "wgodot_cpp_names.h"
+#include "wgodot_cpp_scene_references.h"
+#include "wgodot_cpp_source.h"
 #include "wgodot_export_scene.h"
 #include "wgodot_native_resource_policy.h"
 #include "wgodot_native_resource_selection.h"
@@ -22,9 +20,13 @@
 #include "core/object/worker_thread_pool.h"
 #include "core/os/os.h"
 #include "core/string/string_builder.h"
+#include "scene/property_utils.h"
 #include "scene/resources/packed_scene.h"
 #include "scene/resources/wgodot_scene_types.h"
-#include "scene/property_utils.h"
+
+#include "modules/wgodot/codecs/native_literals.h"
+#include "modules/wgodot/codecs/native_payload.h"
+#include "modules/wgodot/codecs/resource_codec.h"
 
 using Parser = GDScriptParser;
 using namespace WGodotCppNames;
@@ -49,6 +51,8 @@ class WGodotCppResources {
 	HashMap<String, String> dependencies;
 	WGodotCppSource declarations;
 	WGodotCppSource body;
+	WGodotNativePayload::Writer payload;
+	Vector<String> scene_value_fields;
 	String source_path;
 	HashSet<String> preparation_paths;
 	Dictionary contribution;
@@ -75,8 +79,13 @@ class WGodotCppResources {
 		WGodotCppResources &owner;
 
 	public:
-		explicit CodecWriter(WGodotCppResources &p_owner) : owner(p_owner) {}
+		explicit CodecWriter(WGodotCppResources &p_owner) :
+				owner(p_owner) {}
 		String value(const Variant &p_value) override { return owner.value(p_value).code; }
+		String payload(const String &p_type, uint32_t p_schema, const std::function<void(FileAccess &)> &p_write) override {
+			const uint32_t slot = owner.payload.append_custom(p_schema, p_write);
+			return "payload.read_custom<" + p_type + ">(" + itos(slot) + ", " + itos(p_schema) + ")";
+		}
 		String symbol() override { return "codec_" + itos(owner.temporary++); }
 		void include(const String &p_header) override { owner.emitter->class_native_headers.insert(p_header); }
 		void line(const String &p_line) override { owner.emit("\t" + p_line + "\n"); }
@@ -184,20 +193,25 @@ class WGodotCppResources {
 
 	String rewritten_string(const String &p_value) {
 		auto path = [&](const String &p_original) { return "res://" + itos(emitter->resource_id(p_original)); };
-		String rewritten = WGodotResourceRewrite::value(p_value, PropertyInfo(), path);
+		String rewritten = GLOBAL_GET("wgodot/gdscript/enforce_resource_paths") ? String(WGodotResourceRewrite::value(p_value, PropertyInfo(), path)) : p_value;
 		if (rewritten.contains("#include")) {
 			rewritten = WGodotResourceRewrite::text(rewritten, source_path, path);
 		}
 		return rewritten;
 	}
 
-	template <class T>
-	void packed_values(const Vector<T> &p_values, const String &p_name, const String &p_type) {
-		declarations += "static constexpr " + p_type + " " + p_name + "[] = {\n";
-		for (int i = 0; i < p_values.size(); i++) {
-			declarations += "\t" + WGodotCppLiterals::packed_element(p_values[i]) + ",\n";
+	Value payload_value(const Variant &p_value) {
+		const String type = emitter->native_argument_type(PropertyInfo(p_value.get_type(), String()), &origin);
+		const uint32_t slot = payload.append(p_value);
+		const String expression = "payload.read<" + type + ">(" + itos(slot) + ")";
+		if (!emitting_scene) {
+			return Value(expression, type);
 		}
-		declarations += "};\n";
+		const String field = "value_" + itos(slot);
+		scene_fields += "\t" + type + " " + field + ";\n";
+		scene_value_fields.push_back(field);
+		body += "\t" + scene_data + "->" + field + " = " + expression + ";\n";
+		return Value(field, type);
 	}
 
 	Value scene_resource(const Ref<Resource> &p_resource) {
@@ -219,38 +233,17 @@ class WGodotCppResources {
 	Value value(const Variant &p_value) {
 		if (p_value.get_type() == Variant::STRING || p_value.get_type() == Variant::STRING_NAME) {
 			const String rewritten = rewritten_string(p_value);
-			const String literal = rewritten.is_empty() ? "String()" : "String::utf8(" + quoted(rewritten) + ")";
-			return p_value.get_type() == Variant::STRING_NAME ? Value("StringName(" + literal + ")", "StringName") : Value(literal, "String");
+			return payload_value(p_value.get_type() == Variant::STRING_NAME ? Variant(StringName(rewritten)) : Variant(rewritten));
 		}
 		if (p_value.get_type() >= Variant::PACKED_BYTE_ARRAY && p_value.get_type() <= Variant::PACKED_VECTOR4_ARRAY) {
-			const String type = Variant::get_type_name(p_value.get_type());
-			const uint64_t count = p_value.get_indexed_size();
-			if (count == 0) {
-				return Value(type + "()", type);
-			}
-			const String name = "data_" + itos(temporary++);
-			const String element_type = emitter->packed_element_type(p_value.get_type());
-			switch (p_value.get_type()) {
-				case Variant::PACKED_BYTE_ARRAY: packed_values(PackedByteArray(p_value), name, element_type); break;
-				case Variant::PACKED_INT32_ARRAY: packed_values(PackedInt32Array(p_value), name, element_type); break;
-				case Variant::PACKED_INT64_ARRAY: packed_values(PackedInt64Array(p_value), name, element_type); break;
-				case Variant::PACKED_FLOAT32_ARRAY: packed_values(PackedFloat32Array(p_value), name, element_type); break;
-				case Variant::PACKED_FLOAT64_ARRAY: packed_values(PackedFloat64Array(p_value), name, element_type); break;
-				case Variant::PACKED_VECTOR2_ARRAY: packed_values(PackedVector2Array(p_value), name, element_type); break;
-				case Variant::PACKED_VECTOR3_ARRAY: packed_values(PackedVector3Array(p_value), name, element_type); break;
-				case Variant::PACKED_VECTOR4_ARRAY: packed_values(PackedVector4Array(p_value), name, element_type); break;
-				case Variant::PACKED_COLOR_ARRAY: packed_values(PackedColorArray(p_value), name, element_type); break;
-				case Variant::PACKED_STRING_ARRAY: {
-					declarations += "static constexpr const char *" + name + "[] = {\n";
-					for (const String &item : PackedStringArray(p_value)) {
-						declarations += "\t" + quoted(rewritten_string(item)) + ",\n";
-					}
-					declarations += "};\n";
-					return Value("WGodotNative::packed_strings(" + name + ")", type);
+			if (p_value.get_type() == Variant::PACKED_STRING_ARRAY) {
+				PackedStringArray values = p_value;
+				for (int i = 0; i < values.size(); i++) {
+					values.write[i] = rewritten_string(values[i]);
 				}
-				default: ERR_FAIL_V(Value());
+				return payload_value(values);
 			}
-			return Value("WGodotNative::packed_data<" + type + ">(" + name + ")", type);
+			return payload_value(p_value);
 		}
 		if (p_value.get_type() == Variant::OBJECT) {
 			const Ref<Resource> resource = p_value;
@@ -328,12 +321,16 @@ class WGodotCppResources {
 			}
 			return Value(name, "Dictionary");
 		}
-		return emitter->lower_literal(p_value, &origin);
+		if (p_value.get_type() == Variant::NIL || p_value.get_type() == Variant::RID || p_value.get_type() == Variant::CALLABLE || p_value.get_type() == Variant::SIGNAL) {
+			return emitter->lower_literal(p_value, &origin);
+		}
+		return payload_value(p_value);
 	}
 
 	Value native_value(const Variant &p_value, const PropertyInfo &p_info) {
 		if (p_value.get_type() == Variant::INT && (p_info.usage & PROPERTY_USAGE_CLASS_IS_ENUM)) {
-			return emitter->native_literal(p_value, p_info, &origin);
+			const String type = emitter->native_argument_type(p_info, &origin);
+			return Value(type + "(" + value(p_value).code + ")", type);
 		}
 		return value(p_value);
 	}
@@ -392,18 +389,8 @@ class WGodotCppResources {
 			}
 			indices.push_back(index);
 		}
-		const String name = "node_indices_" + itos(temporary++);
 		const String element_class = emitter->class_name(p_element, &origin);
-		emit("\tstatic constexpr int " + name + "[] = {\n");
-		for (int first = 0; first < indices.size(); first += 16) {
-			Vector<String> row;
-			for (int i = first; i < MIN(first + 16, indices.size()); i++) {
-				row.push_back(itos(indices[i]));
-			}
-			emit("\t\t" + String(", ").join(row) + ",\n");
-		}
-		emit("\t};\n");
-		return "WGodotNative::scene_nodes<" + element_class + ">(p_context, " + name + ")";
+		return "WGodotNative::scene_nodes<" + element_class + ">(p_context, " + value(indices).code + ")";
 	}
 
 	String typed_value(const Variant &p_value, const Parser::DataType &p_type, const String &p_existing = String()) {
@@ -692,6 +679,7 @@ class WGodotCppResources {
 		const String state_name = "state_" + suffix;
 		scene_resources.clear();
 		scene_resource_fields.clear();
+		scene_value_fields.clear();
 		scene_fields = StringBuilder();
 		body += "\tRef<" + data_type + "> " + scene_data + ";\n\t" + scene_data + ".instantiate();\n";
 		declarations += "struct " + data_type + " final : WGodotSceneConstruction {\n";
@@ -751,6 +739,9 @@ class WGodotCppResources {
 		declarations += "\tRef<WGodotSceneConstruction> duplicate(const Resource::NativeCopyContext &p_context) const override {\n\t\tRef<" + data_type + "> result;\n\t\tresult.instantiate();\n";
 		for (const String &field : scene_resource_fields) {
 			declarations += "\t\tresult->" + field + " = p_context.resource(" + field + ");\n";
+		}
+		for (const String &field : scene_value_fields) {
+			declarations += "\t\tresult->" + field + " = " + field + ";\n";
 		}
 		declarations += "\t\treturn result;\n\t}\n" + scene_fields.as_string() + "};\n";
 		remapping_resources = true;
@@ -932,6 +923,12 @@ class WGodotCppResources {
 			error(String("Cannot open generated source sections: ") + error_names[section_error]);
 			return;
 		}
+		const String payload_name = name + ".wgp";
+		const Error payload_error = payload.open(emitter->staging_directory.path_join(payload_name));
+		if (payload_error != OK) {
+			emitter->output_error = payload_error;
+			return;
+		}
 		const Ref<Resource> resource = graph[0];
 		WGodotCppProject::Class resource_origin{ source_path, String(), &origin };
 		emitter->current_class = &resource_origin;
@@ -1000,10 +997,16 @@ class WGodotCppResources {
 					return;
 				}
 			}
-
 		}
-		emit("\treturn resource_0;\n");
-		String source = emitter->source_header(p_path, resource->get_class()) + "#include \"core/io/resource_loader.h\"\n#include \"core/io/wgodot_resource_paths.h\"\n#include \"scene/resources/packed_scene.h\"\n#include \"modules/wgodot/native/wgodot_native_serialization.h\"\n#include \"modules/wgodot/native/wgodot_native_callback.h\"\n";
+		emit("\tERR_FAIL_COND_V(!payload.is_valid(), Ref<Resource>());\n\treturn resource_0;\n");
+		const Error payload_result = payload.finish();
+		if (payload_result != OK) {
+			emitter->output_error = payload_result;
+			return;
+		}
+		// Payloads follow source dependencies, without hashing bulk values again.
+		emitter->files.insert(payload_name, String());
+		String source = emitter->source_header(p_path, resource->get_class()) + "#include \"modules/wgodot/codecs/native_payload.h\"\n#include \"core/io/resource_loader.h\"\n#include \"core/io/wgodot_resource_paths.h\"\n#include \"scene/resources/packed_scene.h\"\n#include \"modules/wgodot/native/wgodot_native_serialization.h\"\n#include \"modules/wgodot/native/wgodot_native_callback.h\"\n";
 		HashSet<String> includes;
 		for (const String &header : emitter->class_call_headers) {
 			includes.insert(header);
@@ -1023,7 +1026,7 @@ class WGodotCppResources {
 			source += "#include " + quoted(include) + "\n";
 		}
 		source += "\nnamespace WGodotGame {\n";
-		const String function = "Ref<Resource> create_resource_" + itos(id) + "(ResourceFormatLoader::CacheMode p_cache_mode) {\n\tconst auto dependency_cache = p_cache_mode == ResourceFormatLoader::CACHE_MODE_IGNORE_DEEP || p_cache_mode == ResourceFormatLoader::CACHE_MODE_REPLACE_DEEP ? p_cache_mode : ResourceFormatLoader::CACHE_MODE_REUSE;\n";
+		const String function = "Ref<Resource> create_resource_" + itos(id) + "(ResourceFormatLoader::CacheMode p_cache_mode) {\n\tWGodotNativePayload::Reader payload(" + itos(id) + ");\n\tERR_FAIL_COND_V(!payload.is_valid(), Ref<Resource>());\n\tconst auto dependency_cache = p_cache_mode == ResourceFormatLoader::CACHE_MODE_IGNORE_DEEP || p_cache_mode == ResourceFormatLoader::CACHE_MODE_REPLACE_DEEP ? p_cache_mode : ResourceFormatLoader::CACHE_MODE_REUSE;\n";
 		emitter->store_source(name + ".cpp", source, declarations, function, body, "}\n}\n");
 		const auto *game = resource_class(resource);
 		emitter->compiled_resources[p_path] = game ? game->cpp_name : String(resource->get_class());
@@ -1324,7 +1327,8 @@ class WGodotCppResources {
 	}
 
 public:
-	explicit WGodotCppResources(WGodotCppEmitter &p_emitter) : emitter(&p_emitter), scenes(p_emitter.project, p_emitter.diagnostics) {}
+	explicit WGodotCppResources(WGodotCppEmitter &p_emitter) :
+			emitter(&p_emitter), scenes(p_emitter.project, p_emitter.diagnostics) {}
 	void generate() {
 		WGodotNativeResourceSelection selection;
 		String selection_error;

@@ -11,6 +11,11 @@ namespace WGodotResourcePaths {
 inline constexpr uint32_t CATALOG_MAGIC = 0x31524357; // WRC1.
 inline constexpr const char *CATALOG_PATH = "res://0";
 
+inline constexpr const char *SOURCE_PATHS = "res://.wgodot/resource_paths.bin";
+void clear(); // Native shutdown only, after resource loads have joined.
+int64_t from_source(const String &p_path);
+String resolve_source(const String &p_path);
+
 String to_path(int64_t p_id);
 int64_t from_path(const String &p_path);
 int64_t from_variant(const Variant &p_value);

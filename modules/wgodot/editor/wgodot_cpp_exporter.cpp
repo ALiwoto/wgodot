@@ -2,10 +2,10 @@
 #include "wgodot_cpp_exporter.h"
 
 #include "../wgodot_cli.h"
+#include "wgodot_cpp_cache.h"
 #include "wgodot_cpp_emitter.h"
 #include "wgodot_cpp_memory_profile.h"
 #include "wgodot_cpp_project.h"
-#include "wgodot_cpp_cache.h"
 
 #include "core/config/project_settings.h"
 #include "core/error/error_macros.h"
@@ -91,7 +91,7 @@ public:
 } // namespace
 
 int WGodotCppExporter::run(const Vector<String> &p_arguments) {
-	const String usage = "Usage: wg export-cpp <absolute-output-directory> [--target client|server] [--jobs N] [--analyze-only] [--profile-memory] [--standalone] [--trace on|off|true|false] (defaults: client, jobs 0 = available worker threads, trace off). --standalone exports saved files in this process without using the editor. --profile-memory writes allocation/resource CSV diagnostics to the output directory.";
+	const String usage = "Usage: wg export-cpp <absolute-output-directory> [--target client|server] [--jobs N] [--enforce-resource-paths on|off] [--analyze-only] [--profile-memory] [--standalone] [--trace on|off|true|false] (defaults: client, jobs 0 = available worker threads, trace off). --standalone exports saved files in this process without using the editor. --profile-memory writes allocation/resource CSV diagnostics to the output directory.";
 	if (p_arguments.is_empty()) {
 		print_error(usage);
 		return 2;
@@ -101,6 +101,7 @@ int WGodotCppExporter::run(const Vector<String> &p_arguments) {
 	bool standalone = false;
 	bool trace_enabled = false;
 	int jobs = 0;
+	int enforce_resource_paths = -1;
 	String target = "client";
 	for (int i = 1; i < p_arguments.size(); i++) {
 		if (p_arguments[i] == "--analyze-only") {
@@ -115,6 +116,12 @@ int WGodotCppExporter::run(const Vector<String> &p_arguments) {
 				return 2;
 			}
 			jobs = p_arguments[i].to_int();
+		} else if (p_arguments[i] == "--enforce-resource-paths") {
+			if (++i >= p_arguments.size() || (p_arguments[i] != "on" && p_arguments[i] != "off")) {
+				print_error("--enforce-resource-paths requires on or off.");
+				return 2;
+			}
+			enforce_resource_paths = p_arguments[i] == "on";
 		} else if (p_arguments[i] == "--target") {
 			if (++i >= p_arguments.size() || (p_arguments[i] != "client" && p_arguments[i] != "server")) {
 				print_error("--target requires client or server.");
@@ -157,6 +164,9 @@ int WGodotCppExporter::run(const Vector<String> &p_arguments) {
 	options["trace"] = trace_enabled;
 	options["target"] = target;
 	options["jobs"] = jobs;
+	if (enforce_resource_paths >= 0) {
+		options["enforce_resource_paths"] = bool(enforce_resource_paths);
+	}
 	Dictionary response;
 	if (standalone) {
 		response = execute(options);
@@ -201,6 +211,22 @@ Dictionary WGodotCppExporter::execute(const Dictionary &p_options) {
 	}
 	if (!ProjectSettings::get_singleton()->is_project_loaded()) {
 		return failure("C++ export requires a project.godot.");
+	}
+	struct ResourcePathSetting {
+		Variant previous = GLOBAL_GET("wgodot/gdscript/enforce_resource_paths");
+		~ResourcePathSetting() {
+			ProjectSettings::get_singleton()->set_setting("wgodot/gdscript/enforce_resource_paths", previous);
+		}
+	} resource_path_setting;
+	if (p_options.has("enforce_resource_paths")) {
+		const Variant requested = p_options["enforce_resource_paths"];
+		if (requested.get_type() != Variant::BOOL) {
+			return failure("enforce_resource_paths must be a boolean.");
+		}
+		if (EditorNode::get_singleton() && requested != resource_path_setting.previous) {
+			return failure("Changing resource path enforcement requires --standalone or changing the project setting and reloading scripts.");
+		}
+		ProjectSettings::get_singleton()->set_setting("wgodot/gdscript/enforce_resource_paths", requested);
 	}
 	PackedStringArray unsaved;
 	if (ScriptEditor::get_singleton()) {

@@ -58,5 +58,6 @@ void clear() {
 		ResourceLoader::remove_resource_format_loader(loader);
 		loader.unref();
 	}
+	WGodotResourcePaths::clear();
 }
 } // namespace WGodotNativeResources
