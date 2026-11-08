@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!-- wgodot-changes::file -->
+<class name="PacketPeerKCP" inherits="PacketPeer" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
+	<brief_description>
+		Reliable, ordered messages over a nonblocking datagram transport.
+	</brief_description>
+	<description>
+		Wraps a connected [PacketPeerUDP], an established [PacketPeerDTLS], or another nonblocking datagram [PacketPeer]. Uses standard KCP v1 wire packets; no additional handshake, encryption, FEC or application headers are inserted.
+		Negotiate the conversation ID outside this class, then call [method start] on both endpoints. A [UDPServer] can supply server-side peers. By default this class consumes all packets from its transport. Protocols with handshake retries or other datagram types should instead dispatch incoming datagrams themselves, pass only KCP datagrams to [method input_packet], and call [code]poll(0)[/code]. Do not have two consumers independently read the same transport. KCP preserves message boundaries, including empty messages. Application byte streams should split large frames into messages and reassemble them above KCP.
+		Call [method poll] regularly even when no gameplay messages are sent. When using server-side UDP peers, also service [method UDPServer.poll]. [method get_next_poll_delay] helps schedule retransmission work independently of physics ticks, but incoming datagrams should be serviced promptly. All access to a peer must occur on one thread. There is no background thread or implicit network polling in receive methods.
+		Plain KCP provides reliability, not authentication or encryption. For new secure protocols, complete a certificate-verified DTLS handshake first and pass the resulting [PacketPeerDTLS] to [method start]. Game-specific legacy encryption belongs above this transport. There is no Godot MultiplayerAPI/RPC framing.
+	</description>
+	<methods>
+		<method name="close">
+			<return type="void" />
+			<description>Discards KCP queues and releases its transport reference. Does not close the underlying transport or send a disconnect notification. Drain [method get_pending_segment_count] first if delivery is required. The peer can subsequently be started again.</description>
+		</method>
+		<method name="get_buffered_segment_count" qualifiers="const">
+			<return type="int" />
+			<description>Returns received segments waiting for application consumption or reordering. Each receive queue is bounded by the configured receive window. Incoming segments can use a different MTU from outgoing ones.</description>
+		</method>
+		<method name="get_discarded_packet_count" qualifiers="const">
+			<return type="int" />
+			<description>Returns malformed or wrong-conversation datagrams discarded since [method start]. Normal loss and retransmission are not counted.</description>
+		</method>
+		<method name="get_last_error" qualifiers="const">
+			<return type="int" enum="Error" />
+			<description>Returns a persistent transport/protocol failure, or [constant @GlobalScope.OK]. After a persistent failure, close and establish a new session; resuming the same conversation after losing its sequence state is unsafe.</description>
+		</method>
+		<method name="get_max_packet_size" qualifiers="const">
+			<return type="int" />
+			<description>Returns the maximum outgoing message size: [code]min(127, max_pending_segments) * (MTU - 24)[/code] bytes. Returns zero before initialization. Oversized messages return [constant @GlobalScope.ERR_INVALID_PARAMETER]. Messages that fit this bound return [constant @GlobalScope.ERR_BUSY] without partial admission when existing queued data leaves insufficient room.</description>
+		</method>
+		<method name="get_next_poll_delay" qualifiers="const">
+			<return type="int" />
+			<description>Returns milliseconds until the next scheduled KCP update, zero when due, or -1 when inactive. Recompute after sending or receiving. This is not a reason to delay servicing incoming datagrams.</description>
+		</method>
+		<method name="get_pending_segment_count" qualifiers="const">
+			<return type="int" />
+			<description>Returns queued and unacknowledged outgoing segments. A fragmented application message occupies several segments.</description>
+		</method>
+		<method name="get_round_trip_time" qualifiers="const">
+			<return type="int" />
+			<description>Returns the smoothed round-trip estimate in milliseconds, or zero before a measurement exists.</description>
+		</method>
+		<method name="is_active" qualifiers="const">
+			<return type="bool" />
+			<description>Returns whether initialized without a persistent failure. This does not prove the remote endpoint exists, is authenticated, or is still alive. Session admission, idle timeouts and heartbeats belong to the application.</description>
+		</method>
+		<method name="input_packet">
+			<return type="int" enum="Error" />
+			<param index="0" name="packet" type="PackedByteArray" />
+			<description>Feeds one KCP datagram when the application owns incoming packet dispatch. Pass decrypted application data when using DTLS. Does not read the transport. Invalid datagrams are discarded and return [constant @GlobalScope.ERR_INVALID_DATA] without poisoning the session; [method get_last_error] distinguishes persistent failures. Continue calling [code]poll(0)[/code] to validate reassembly and service retransmissions. Pending ACKs remain bounded even between polls.</description>
+		</method>
+		<method name="poll">
+			<return type="int" enum="Error" />
+			<param index="0" name="max_datagrams" type="int" default="64" />
+			<description>Nonblockingly receives at most [param max_datagrams] datagrams and services ACKs/retransmissions using a monotonic clock. Also polls an underlying DTLS peer when automatic receiving is enabled. Set [param max_datagrams] to zero to service KCP only; in that mode the caller must poll/read its transport and use [method input_packet]. Returns [constant @GlobalScope.ERR_TIMEOUT] after KCP's retransmission limit is reached. Malformed datagrams are discarded; inconsistent reassembled fragment sequences fail the session. Consume complete messages using [method PacketPeer.get_packet]. Keep polling when [method PacketPeer.put_packet] returns [constant @GlobalScope.ERR_BUSY], then retry that message.</description>
+		</method>
+		<method name="set_timing">
+			<return type="int" enum="Error" />
+			<param index="0" name="no_delay" type="bool" />
+			<param index="1" name="interval" type="int" default="20" />
+			<param index="2" name="fast_resend" type="int" default="2" />
+			<param index="3" name="congestion_control" type="bool" default="true" />
+			<description>Configures KCP after [method start]. The interval is 10–5000 milliseconds. Fast resend is the nonnegative skipped-ACK threshold (zero disables it). Congestion control defaults to enabled; disabling it does not remove receiver flow control. The application must still poll frequently enough to service the selected interval.</description>
+		</method>
+		<method name="start">
+			<return type="int" enum="Error" />
+			<param index="0" name="transport" type="PacketPeer" />
+			<param index="1" name="conversation" type="int" />
+			<param index="2" name="mtu" type="int" default="0" />
+			<param index="3" name="send_window" type="int" default="128" />
+			<param index="4" name="receive_window" type="int" default="128" />
+			<param index="5" name="max_pending_segments" type="int" default="1024" />
+			<description>Initializes a session with a shared unsigned 32-bit conversation ID. Does not perform a handshake. UDP must already be connected; DTLS must have completed its handshake. UDP is switched to nonblocking writes. Other transports must provide nonblocking datagram semantics themselves.
+			The outgoing MTU includes the KCP header, excludes UDP/IP/DTLS overhead and must fit the transport payload limit. Zero selects the smaller of 1200 and that limit, accounting for negotiated DTLS overhead. Set an explicit MTU when an existing protocol requires one.
+			Windows are segment counts: send window 1–65535, receive window 128–65535. The receive window must hold an entire incoming fragmented message. [param max_pending_segments] is a positive bound covering all queued/unacknowledged outgoing segments; no partial admission occurs on queue exhaustion. Receive data and pending ACKs are also bounded. Defaults enable congestion control, a 20 ms interval, fast resend at two skipped ACKs and normal retransmission timing.</description>
+		</method>
+	</methods>
+</class>

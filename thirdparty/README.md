@@ -525,6 +525,17 @@ Patches:
 - `0001-backport-upstream-commit-63f2f57.patch` (GH-121974)
 
 
+<!-- wgodot-changes::begin -->
+## kcp
+
+- Upstream: https://github.com/skywind3000/kcp
+- Version: v1 branch, commit 8004f7eba5d1bf33f0691eef5f887f2cd3140cb5
+- License: MIT
+
+Unmodified upstream files: `ikcp.c`, `ikcp.h`, `LICENSE`.
+<!-- wgodot-changes::end -->
+
+
 ## libbacktrace
 
 - Upstream: https://github.com/ianlancetaylor/libbacktrace

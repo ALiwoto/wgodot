@@ -75,11 +75,21 @@ int PacketPeerMbedDTLS::bio_recv(void *ctx, unsigned char *buf, size_t len) {
 	if (err != OK) {
 		return MBEDTLS_ERR_SSL_INTERNAL_ERROR;
 	}
+	// wgodot-changes::begin
+	if (size_t(buffer_size) > len) {
+		// Drop oversized datagrams instead of overwriting the TLS receive buffer.
+		return MBEDTLS_ERR_SSL_WANT_READ;
+	}
+	// wgodot-changes::end
 	memcpy(buf, buffer, buffer_size);
 	return buffer_size;
 }
 
 void PacketPeerMbedDTLS::_cleanup() {
+	// wgodot-changes::begin
+	pending_write.clear();
+	pending_write_size = 0;
+	// wgodot-changes::end
 	tls_ctx->clear();
 	base = Ref<PacketPeer>();
 	status = STATUS_DISCONNECTED;
@@ -122,6 +132,9 @@ Error PacketPeerMbedDTLS::connect_to_peer(Ref<PacketPeerUDP> p_base, const Strin
 	ERR_FAIL_COND_V(err != OK, err);
 
 	base = p_base;
+	// wgodot-changes::begin
+	base->set_blocking_mode(false);
+	// wgodot-changes::end
 
 	mbedtls_ssl_set_bio(tls_ctx->get_context(), this, bio_send, bio_recv, nullptr);
 	mbedtls_ssl_set_timer_cb(tls_ctx->get_context(), &timer, mbedtls_timing_set_delay, mbedtls_timing_get_delay);
@@ -175,27 +188,61 @@ Error PacketPeerMbedDTLS::accept_peer(Ref<PacketPeerUDP> p_base, Ref<TLSOptions>
 Error PacketPeerMbedDTLS::put_packet(const uint8_t *p_buffer, int p_bytes) {
 	ERR_FAIL_COND_V(status != STATUS_CONNECTED, ERR_UNCONFIGURED);
 
+	// wgodot-changes::begin
+	if (p_bytes < 0 || p_bytes > get_max_packet_size()) {
+		return ERR_INVALID_PARAMETER;
+	}
+	if (pending_write_size != 0) {
+		return ERR_BUSY;
+	}
+	// wgodot-changes::end
 	if (p_bytes == 0) {
 		return OK;
 	}
 
-	int ret = mbedtls_ssl_write(tls_ctx->get_context(), p_buffer, p_bytes);
+	// wgodot-changes::begin
+	// mbedTLS requires identical write arguments until WANT_READ/WANT_WRITE
+	// resolves. Own at most one datagram; callers may reuse their buffer.
+	if (pending_write.size() < p_bytes) {
+		Error error = pending_write.resize(p_bytes);
+		if (error != OK) {
+			return error;
+		}
+	}
+	memcpy(pending_write.ptrw(), p_buffer, p_bytes);
+	pending_write_size = p_bytes;
+	Error error = _flush_pending_write();
+	return error == ERR_BUSY ? OK : error;
+}
+
+Error PacketPeerMbedDTLS::_flush_pending_write() {
+	if (pending_write_size == 0) {
+		return OK;
+	}
+	int ret = mbedtls_ssl_write(tls_ctx->get_context(), pending_write.ptr(), pending_write_size);
 	if (ret == MBEDTLS_ERR_SSL_WANT_READ || ret == MBEDTLS_ERR_SSL_WANT_WRITE) {
-		// Non blocking io.
-	} else if (ret <= 0) {
+		return ERR_BUSY;
+	} else if (ret != pending_write_size) {
 		TLSContextMbedTLS::print_mbedtls_error(ret);
 		_cleanup();
+		status = STATUS_ERROR;
 		return ERR_CONNECTION_ERROR;
 	}
-
+	pending_write_size = 0;
 	return OK;
 }
+// wgodot-changes::end
 
 Error PacketPeerMbedDTLS::get_packet(const uint8_t **r_buffer, int &r_bytes) {
 	ERR_FAIL_COND_V(status != STATUS_CONNECTED, ERR_UNCONFIGURED);
 
 	r_bytes = 0;
 
+	// wgodot-changes::begin
+	if (pending_write_size != 0) {
+		return ERR_BUSY;
+	}
+	// wgodot-changes::end
 	int ret = mbedtls_ssl_read(tls_ctx->get_context(), packet_buffer, PACKET_BUFFER_SIZE);
 	if (ret == MBEDTLS_ERR_SSL_WANT_READ || ret == MBEDTLS_ERR_SSL_WANT_WRITE) {
 		ret = 0; // non blocking io
@@ -226,6 +273,11 @@ void PacketPeerMbedDTLS::poll() {
 
 	ERR_FAIL_COND(base.is_null());
 
+	// wgodot-changes::begin
+	if (_flush_pending_write() != OK) {
+		return;
+	}
+	// wgodot-changes::end
 	int ret = mbedtls_ssl_read(tls_ctx->get_context(), nullptr, 0);
 
 	if (ret < 0 && ret != MBEDTLS_ERR_SSL_WANT_READ && ret != MBEDTLS_ERR_SSL_WANT_WRITE) {
@@ -243,11 +295,22 @@ void PacketPeerMbedDTLS::poll() {
 int PacketPeerMbedDTLS::get_available_packet_count() const {
 	ERR_FAIL_COND_V(status != STATUS_CONNECTED, 0);
 
+	// wgodot-changes::begin
+	if (pending_write_size != 0) {
+		return 0;
+	}
+	// wgodot-changes::end
 	return mbedtls_ssl_get_bytes_avail(tls_ctx->get_context()) > 0 ? 1 : 0;
 }
 
 int PacketPeerMbedDTLS::get_max_packet_size() const {
-	return 488; // 512 (UDP in Godot) - 24 (DTLS header)
+	// wgodot-changes::begin
+	if (status != STATUS_CONNECTED) {
+		return 0;
+	}
+	// Includes the configured MTU, negotiated cipher overhead and record limits.
+	return MAX(0, mbedtls_ssl_get_max_out_record_payload(tls_ctx->get_context()));
+	// wgodot-changes::end
 }
 
 PacketPeerMbedDTLS::PacketPeerMbedDTLS() {

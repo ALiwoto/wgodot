@@ -43,6 +43,11 @@ private:
 	};
 
 	uint8_t packet_buffer[PACKET_BUFFER_SIZE];
+	// wgodot-changes::begin
+	Vector<uint8_t> pending_write;
+	int pending_write_size = 0;
+	Error _flush_pending_write();
+	// wgodot-changes::end
 
 	Status status = STATUS_DISCONNECTED;
 	String hostname;

@@ -168,7 +168,11 @@ Error PacketPeerUDP::put_packet(const uint8_t *p_buffer, int p_buffer_size) {
 }
 
 int PacketPeerUDP::get_max_packet_size() const {
-	return 512; // uhm maybe not
+	// wgodot-changes::begin
+	// Maximum UDP payload supported by both IPv4 and IPv6 without jumbograms.
+	// Applications still choose a path MTU to avoid IP fragmentation.
+	return 65507;
+	// wgodot-changes::end
 }
 
 Error PacketPeerUDP::bind(int p_port, const IPAddress &p_bind_address, int p_recv_buffer_size) {

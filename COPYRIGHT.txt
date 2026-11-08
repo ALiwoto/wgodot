@@ -380,6 +380,11 @@ Comment: Jolt Physics
 Copyright: 2021, Jorrit Rouwe
 License: Expat
 
+Files: thirdparty/kcp/*
+Comment: KCP reliable datagram protocol (wgodot-changes)
+Copyright: 2017, Lin Wei (skywind3000 at gmail.com)
+License: Expat
+
 Files: thirdparty/libbacktrace/*
 Comment: libbacktrace
 Copyright: 2012-2021, Free Software Foundation, Inc.

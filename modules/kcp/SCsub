@@ -1,0 +1,17 @@
+# wgodot-changes::file
+from misc.utility.scons_hints import *
+
+Import("env")
+Import("env_modules")
+
+env_kcp = env_modules.Clone()
+env_thirdparty = env_kcp.Clone()
+env_thirdparty.disable_warnings()
+thirdparty_obj = []
+env_thirdparty.add_source_files(thirdparty_obj, "#thirdparty/kcp/ikcp.c")
+env.modules_sources += thirdparty_obj
+
+module_obj = []
+env_kcp.add_source_files(module_obj, "*.cpp")
+env.modules_sources += module_obj
+env.Depends(module_obj, thirdparty_obj)
