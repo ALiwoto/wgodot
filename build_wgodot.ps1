@@ -7,6 +7,9 @@ param(
 	[switch]$Release,
 	[switch]$Optimize,
 	[switch]$KeepGoing,
+	[switch]$DryRun,
+	[switch]$Symbols,
+	[string]$LLVMDirectory = $env:LLVM_DIR,
 	[string]$BuildProfilePath,
 	[string]$PostgreSQLPath,
 	[string]$PythonExecutable,
@@ -99,15 +102,20 @@ try {
 
 	$sconsArgs = @(
 		"platform=windows",
+		"use_llvm=yes",
 		"arch=x86_64",
 		"target=$target",
 		"debug_symbols=$debugSymbols",
+		"link_debug_symbols=$($Symbols.IsPresent.ToString().ToLowerInvariant())",
 		"windows_subsystem=console",
 		"accesskit=no",
 		"angle=no",
 		"d3d12=no",
 		"winrt=no"
 	)
+	if ($DryRun) {
+		$sconsArgs += '--dry-run'
+	}
 	if ($KeepGoing) {
 		$sconsArgs += '--keep-going'
 	}
@@ -121,7 +129,7 @@ try {
 		$sconsArgs += @("optimize=none", "lto=none")
 	}
 
-	$binaryPath = Join-Path $PSScriptRoot "bin/godot.windows.$target.x86_64.exe"
+	$binaryPath = Join-Path $PSScriptRoot "bin/godot.windows.$target.x86_64.llvm.exe"
 	if ($Game) {
 		$gameModulePath = $nativeBuild.ModuleDirectory
 		$binaryPath = $nativeBuild.TemplatePath
@@ -161,6 +169,28 @@ try {
 	}
 	Import-Module "$vs\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
 	Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments "-arch=x64"
+	if (!$LLVMDirectory) {
+		$clangCommand = Get-Command clang-cl -ErrorAction SilentlyContinue
+		$candidates = @(
+			if ($clangCommand) { Split-Path (Split-Path $clangCommand.Source -Parent) -Parent }
+			"$env:ProgramFiles/LLVM"
+			"$vs/VC/Tools/Llvm/x64"
+		)
+		$LLVMDirectory = $candidates | Where-Object {
+			Test-Path -LiteralPath "$_/bin/clang-cl.exe" -PathType Leaf
+		} | Select-Object -First 1
+	}
+	if (!$LLVMDirectory) {
+		throw 'LLVM was not found. Supply -LLVMDirectory, set LLVM_DIR, or add LLVM/bin to PATH.'
+	}
+	$LLVMDirectory = (Resolve-Path -LiteralPath $LLVMDirectory).Path
+	foreach ($tool in @('clang-cl', 'lld-link', 'llvm-lib', 'llvm-readobj')) {
+		if (!(Test-Path -LiteralPath "$LLVMDirectory/bin/$tool.exe" -PathType Leaf)) {
+			throw "LLVM tool is missing: $LLVMDirectory/bin/$tool.exe"
+		}
+	}
+	$env:PATH = "$LLVMDirectory/bin;$env:PATH"
+	Write-Host "Using LLVM compiler and linker: $LLVMDirectory"
 
 	# Run SCons in the selected interpreter. A pip-generated scons.exe can
 	# still point at an uninstalled Python after an interpreter upgrade.
@@ -180,10 +210,12 @@ try {
 	}
 
 	# Only the executable being rebuilt needs to close; keep other editors/games open.
-	$processName = [IO.Path]::GetFileNameWithoutExtension($binaryPath)
-	Get-Process -Name $processName -ErrorAction SilentlyContinue |
-		Where-Object { $_.Path -eq $binaryPath } |
-		Stop-Process -Force
+	if (!$DryRun) {
+		$processName = [IO.Path]::GetFileNameWithoutExtension($binaryPath)
+		Get-Process -Name $processName -ErrorAction SilentlyContinue |
+			Where-Object { $_.Path -eq $binaryPath } |
+			Stop-Process -Force
+	}
 
 	Push-Location $PSScriptRoot
 	try {
@@ -196,6 +228,11 @@ try {
 	finally {
 		Pop-Location
 	}
+	if ($DryRun) {
+		Write-Host "Build configuration checked; output would be: $binaryPath"
+		$buildExitCode = 0
+		return
+	}
 	$runtimeLibraries = @{}
 	if ($withPostgreSQL) {
 		# Ship libpq and its installed DLL dependencies; system DLLs stay with Windows.
@@ -207,12 +244,12 @@ try {
 				continue
 			}
 			$libraryPath = Join-Path $PostgreSQLPath "bin/$libraryName"
-			$dependencies = & dumpbin /nologo /dependents $libraryPath
+			$dependencies = & "$LLVMDirectory/bin/llvm-readobj.exe" --coff-imports $libraryPath
 			if ($LASTEXITCODE -ne 0) {
 				throw "Cannot inspect PostgreSQL runtime dependencies: $libraryPath"
 			}
 			foreach ($line in $dependencies) {
-				if ($line -match '^\s+([\w.-]+\.dll)\s*$') {
+				if ($line -match '^\s+Name: ([\w.-]+\.dll)\s*$') {
 					$dependency = $matches[1]
 					if (Test-Path -LiteralPath (Join-Path $PostgreSQLPath "bin/$dependency") -PathType Leaf) {
 						$pendingLibraries += $dependency

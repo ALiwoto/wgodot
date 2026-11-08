@@ -55,7 +55,8 @@ public:
 	WGodotCppProject(const WGodotCppProject &) = delete;
 	WGodotCppProject &operator=(const WGodotCppProject &) = delete;
 
-	Error analyze(const String &p_target = "client", int p_jobs = -1);
+	Error analyze(const String &p_target = "client", int p_jobs = -1, bool p_refresh_classes = true);
+	static Error refresh_script_classes(const PackedStringArray &p_paths);
 	const WGodotExportTarget &get_target() const { return target; }
 	bool is_editor_member(const GDScriptParser::ClassNode *p_class, const StringName &p_member) const;
 	const Vector<Class> &get_classes() const { return classes; }

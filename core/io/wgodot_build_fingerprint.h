@@ -3,8 +3,7 @@
 
 #include "core/string/ustring.h"
 
-// Identity of the running engine, including local changes and build options.
-// Calculated once per process; shared by caches whose interpretation is executable code.
+// Local build identity from executable metadata, shared by development caches.
 namespace WGodotBuildFingerprint {
 const String &get();
 }

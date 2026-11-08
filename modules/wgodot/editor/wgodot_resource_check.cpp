@@ -4,6 +4,7 @@
 #include "core/config/project_settings.h"
 #include "core/io/dir_access.h"
 #include "core/io/wgodot_build_fingerprint.h"
+#include "core/io/wgodot_file_stamp.h"
 #include "core/object/class_db.h"
 #include "core/object/script_language.h"
 #include "core/os/os.h"
@@ -126,9 +127,7 @@ void WGodotResourceCheck::check_item(uint32_t p_index, Item **p_pending) {
 	}
 	Item &item = *p_pending[p_index];
 	Entry &entry = item.entry;
-	// A restarted editor or an OS notification requires content verification,
-	// including same-size edits with preserved or coarse timestamps.
-	const String digest = FileAccess::get_md5(item.path);
+	const String digest = WGodotFileStamp::get(item.path);
 	if (!digest.is_empty() && digest == entry.digest) {
 		return;
 	}
@@ -145,7 +144,7 @@ void WGodotResourceCheck::check_item(uint32_t p_index, Item **p_pending) {
 	}
 	item.parsed = true;
 	entry.syntax = WGodotResourceSyntax::check(file);
-	if (FileAccess::get_md5(item.path) != digest) {
+	if (WGodotFileStamp::get(item.path) != digest) {
 		entry.digest = String();
 		entry.syntax.error = ERR_BUSY;
 		entry.syntax.message = "Resource changed during validation; run check again.";

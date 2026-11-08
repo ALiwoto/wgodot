@@ -1688,6 +1688,11 @@ void GodotConcavePolygonShape3D::_setup(const Vector<Vector3> &p_faces, bool p_b
 }
 
 void GodotConcavePolygonShape3D::set_data(const Variant &p_data) {
+	// wgodot-changes::begin
+	if (_set_prepared_data(p_data)) {
+		return;
+	}
+	// wgodot-changes::end
 	Dictionary d = p_data;
 	ERR_FAIL_COND(!d.has("faces"));
 

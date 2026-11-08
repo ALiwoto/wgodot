@@ -5,6 +5,7 @@
 #include "core/io/dir_access.h"
 #include "core/io/resource_format_binary.h"
 #include "core/io/wgodot_build_fingerprint.h"
+#include "core/io/wgodot_file_stamp.h"
 #include "core/io/wgodot_resource_serialization.h"
 #include "core/io/wgodot_resource_trace.h"
 #include "core/os/os.h"
@@ -22,10 +23,8 @@ WGodotTextResourceCache::WGodotTextResourceCache(const String &p_source_path) {
 	}
 	source_path = p_source_path;
 	WGodotResourceTrace trace("cache.verify_source", source_path);
-	// Content identity also detects same-size edits within one filesystem timestamp
-	// tick and restored/older timestamps. Unchanged sources are never reserialized.
-	source_hash = FileAccess::get_md5(source_path);
-	if (source_hash.is_empty()) {
+	source_hash = WGodotFileStamp::get(source_path);
+	if (source_hash == "<missing>") {
 		return;
 	}
 	// Loader, codec, scene-type and build-option changes invalidate automatically.
@@ -56,7 +55,7 @@ Ref<Resource> WGodotTextResourceCache::load(const String &p_original_path, bool 
 
 void WGodotTextResourceCache::store(const Ref<Resource> &p_resource, const WGodotResourceProperties &p_source_properties, const WGodotResourceUIDs &p_source_uids) const {
 	WGodotResourceTrace trace("cache.store", source_path);
-	if (cache_path.is_empty() || FileAccess::get_md5(source_path) != source_hash) {
+	if (cache_path.is_empty() || WGodotFileStamp::get(source_path) != source_hash) {
 		return;
 	}
 	if (DirAccess::make_dir_recursive_absolute(cache_path.get_base_dir()) != OK) {

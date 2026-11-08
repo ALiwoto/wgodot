@@ -35,6 +35,9 @@
 #include "servers/physics_3d/queries/physics_point_query_parameters_3d.h"
 #include "servers/physics_3d/queries/physics_ray_query_parameters_3d.h"
 #include "servers/physics_3d/queries/physics_shape_query_parameters_3d.h"
+// wgodot-changes::begin
+#include "servers/physics_3d/queries/wgodot_ray_result.h"
+// wgodot-changes::end
 
 class PhysicsDirectSpaceState3D : public Object {
 	GDCLASS(PhysicsDirectSpaceState3D, Object);
@@ -53,6 +56,7 @@ protected:
 public:
 	// wgodot-changes::begin
 	bool is_ray_obstructed(const Vector3 &p_from, const Vector3 &p_to, uint32_t p_collision_mask = UINT32_MAX);
+	Ref<PhysicsRayQueryResult3D> intersect_ray_typed(RequiredParam<PhysicsRayQueryParameters3D> p_ray_query);
 	// wgodot-changes::end
 	virtual bool intersect_ray(const PS3DT::RayParameters &p_parameters, PS3DT::RayResult &r_result) = 0;
 

@@ -15,6 +15,7 @@
 #include "core/io/file_access.h"
 #include "core/io/resource_loader.h"
 #include "core/io/resource_uid.h"
+#include "core/io/wgodot_file_stamp.h"
 #include "core/object/class_db.h"
 #include "core/object/script_language.h"
 #include "core/object/worker_thread_pool.h"
@@ -426,6 +427,50 @@ class WGodotCppResources {
 				return type + "()";
 			}
 			const Parser::DataType element_type = p_type.get_container_element_type(0);
+			// Homogeneous value arrays belong in one external payload record. Object
+			// arrays retain native factories and scene-reference remapping below.
+			Variant::Type packed_kind = Variant::NIL;
+			if (element_type.wgodot_resource_path || element_type.kind == Parser::DataType::ENUM) {
+				packed_kind = Variant::PACKED_INT64_ARRAY;
+			} else if (element_type.kind == Parser::DataType::BUILTIN) {
+				switch (element_type.builtin_type) {
+					case Variant::INT:
+						packed_kind = Variant::PACKED_INT64_ARRAY;
+						break;
+					case Variant::FLOAT:
+						packed_kind = Variant::PACKED_FLOAT64_ARRAY;
+						break;
+					case Variant::STRING:
+						packed_kind = Variant::PACKED_STRING_ARRAY;
+						break;
+					case Variant::VECTOR2:
+						packed_kind = Variant::PACKED_VECTOR2_ARRAY;
+						break;
+					case Variant::VECTOR3:
+						packed_kind = Variant::PACKED_VECTOR3_ARRAY;
+						break;
+					case Variant::VECTOR4:
+						packed_kind = Variant::PACKED_VECTOR4_ARRAY;
+						break;
+					case Variant::COLOR:
+						packed_kind = Variant::PACKED_COLOR_ARRAY;
+						break;
+					default:
+						break;
+				}
+			}
+			if (packed_kind != Variant::NIL) {
+				const Variant encoded = encode(p_value, p_type);
+				const Variant *argument = &encoded;
+				Variant packed;
+				Callable::CallError conversion;
+				Variant::construct(packed_kind, packed, &argument, 1, conversion);
+				if (conversion.error != Callable::CallError::CALL_OK) {
+					error("Could not encode a typed resource array payload.");
+					return type + "()";
+				}
+				return type + "::from_native(" + value(packed).code + ")";
+			}
 			if (resolving_nodes && object_handle(element_type)) {
 				const String indexed = node_array(array, element_type);
 				if (!indexed.is_empty()) {
@@ -1166,6 +1211,8 @@ class WGodotCppResources {
 		uint64_t reused = 0;
 		uint64_t preparation_msec = 0;
 		uint64_t generation_msec = 0;
+		uint64_t loading_msec = 0;
+		uint64_t reuse_msec = 0;
 		uint64_t last_progress = OS::get_singleton()->get_ticks_msec();
 		bool failed = false;
 		auto flush = [&]() {
@@ -1198,7 +1245,7 @@ class WGodotCppResources {
 			WGodotCppMemoryProfile::sample("batch-released", String(), completed);
 			const uint64_t now = OS::get_singleton()->get_ticks_msec();
 			if (now - last_progress >= 5000) {
-				print_line(vformat("Native factories: %d generated (%d workers)", completed, concurrency));
+				print_line(vformat("Native factories: %d generated, %d reused; load %d ms, reuse %d ms, prepare %d ms, emit %d ms", completed, reused, loading_msec, reuse_msec, preparation_msec, generation_msec));
 				last_progress = now;
 			}
 		};
@@ -1232,6 +1279,45 @@ class WGodotCppResources {
 			payload["paths"] = dependencies;
 			dependencies.push_back(p_path);
 			emitter->cache->record("dependencies:" + p_path, "", dependencies, payload);
+		};
+		struct PendingLoad {
+			String path;
+			bool authored = false;
+		};
+		Vector<PendingLoad> loads;
+		auto finish_loads = [&]() {
+			for (const PendingLoad &pending_load : loads) {
+				const String &path = pending_load.path;
+				const uint64_t load_started = OS::get_singleton()->get_ticks_msec();
+				const Ref<Resource> resource = ResourceLoader::load_threaded_get(path);
+				loading_msec += OS::get_singleton()->get_ticks_msec() - load_started;
+				// Collect every accepted request even after an error, releasing the
+				// loader's tokens and resource graphs before leaving generation.
+				if (failed || !emitter->diagnostics.is_empty()) {
+					continue;
+				}
+				WGodotCppMemoryProfile::sample("resource-loaded", path);
+				if (resource.is_null()) {
+					emitter->diagnostics.push_back("Cannot load required export resource: " + path);
+					continue;
+				}
+				emitter->unit_resource_paths.clear();
+				if (pending_load.authored && WGodotNativeResourcePolicy::needs_factory(resource)) {
+					paths.push_back(path);
+					emitter->resource_sources[path] = emitter->cache ? emitter->cache->digest(path) : WGodotFileStamp::get(path);
+					queue(path, resource);
+					continue;
+				}
+				const Ref<PackedScene> scene = resource;
+				if (scene.is_valid()) {
+					HashSet<const Resource *> seen;
+					scene_dependencies(scene, path, seen);
+				} else {
+					file_dependencies(path);
+				}
+				remember_dependencies(path);
+			}
+			loads.clear();
 		};
 		for (const auto &preload : emitter->preloads) {
 			emitter->resource_id(preload.path);
@@ -1267,7 +1353,9 @@ class WGodotCppResources {
 					continue;
 				}
 				if (emitter->cache) {
+					const uint64_t reuse_started = OS::get_singleton()->get_ticks_msec();
 					const Dictionary cached = emitter->cache->reuse("resource:" + path, "");
+					reuse_msec += OS::get_singleton()->get_ticks_msec() - reuse_started;
 					if (!cached.is_empty() && emitter->restore_contribution(cached)) {
 						const Dictionary compiled = cached["compiled"];
 						if (compiled.has(path)) {
@@ -1289,29 +1377,23 @@ class WGodotCppResources {
 				const bool authored = WGodotNativeResourcePolicy::is_authored(path);
 				if (authored || ResourceLoader::get_resource_type(path) == "PackedScene") {
 					WGodotCppMemoryProfile::sample("resource-load-begin", path);
-					const Ref<Resource> resource = ResourceLoader::load(path);
-					WGodotCppMemoryProfile::sample("resource-loaded", path);
-					if (resource.is_null()) {
-						emitter->diagnostics.push_back("Cannot load required export resource: " + path);
-						continue;
+					// Use the loader's dependency synchronization rather than loading
+					// resource graphs directly in emitter threads. Bound the window;
+					// authored getters and factory preparation still run on this thread.
+					if (ResourceLoader::load_threaded_request(path) != OK) {
+						emitter->diagnostics.push_back("Cannot start loading required export resource: " + path);
+						break;
 					}
-					if (authored && WGodotNativeResourcePolicy::needs_factory(resource)) {
-						paths.push_back(path);
-						emitter->resource_sources[path] = emitter->cache ? emitter->cache->digest(path) : FileAccess::get_sha256(path);
-						queue(path, resource);
-						continue;
+					loads.push_back({ path, authored });
+					if (loads.size() == concurrency) {
+						finish_loads();
 					}
-					const Ref<PackedScene> scene = resource;
-					if (scene.is_valid()) {
-						HashSet<const Resource *> seen;
-						scene_dependencies(scene, path, seen);
-						remember_dependencies(path);
-						continue;
-					}
+					continue;
 				}
 				file_dependencies(path);
 				remember_dependencies(path);
 			}
+			finish_loads();
 			flush();
 		}
 		flush();
@@ -1324,6 +1406,7 @@ class WGodotCppResources {
 		}
 		print_line(vformat("Native factories: %d generated, %d reused (%d workers)", completed, reused, concurrency));
 		print_line(vformat("Native factory preparation: %d ms; parallel generation/write: %d ms", preparation_msec, generation_msec));
+		print_line(vformat("Native factory loading: %d ms; cache reuse: %d ms", loading_msec, reuse_msec));
 	}
 
 public:
@@ -1387,6 +1470,45 @@ public:
 		paths.sort();
 		if (!emitter->diagnostics.is_empty() || emitter->output_error != OK) {
 			return;
+		}
+
+		// Keep individual factories for dependency caching, but avoid parsing the
+		// same engine headers once per tiny resource. Existing resource identities
+		// distribute additions among stable buckets without another content hash.
+		Vector<String> buckets[256];
+		for (const String &path : paths) {
+			const int64_t id = emitter->resource_id(path);
+			buckets[id & 255].push_back("resource_" + itos(id) + ".cpp");
+		}
+		for (int bucket = 0; bucket < 256; ++bucket) {
+			int group = 0;
+			int count = 0;
+			uint64_t size = 0;
+			String includes;
+			auto flush = [&]() {
+				if (count == 0) {
+					return;
+				}
+				emitter->store_file("factory_group_" + itos(bucket) + "_" + itos(group++) + ".cpp",
+						"// wgodot-changes::file\n// Generated resource compilation group.\n" + includes);
+				includes.clear();
+				count = 0;
+				size = 0;
+			};
+			for (const String &name : buckets[bucket]) {
+				String source = emitter->staging_directory.path_join(name);
+				if (!FileAccess::exists(source)) {
+					source = emitter->staging_directory.get_base_dir().path_join(name);
+				}
+				const uint64_t bytes = FileAccess::get_size(source);
+				if (count >= 64 || size + bytes > 512 * 1024) {
+					flush();
+				}
+				includes += "#include " + quoted(name) + "\n";
+				++count;
+				size += bytes;
+			}
+			flush();
 		}
 
 		String registration = "// wgodot-changes::file\n#include \"core/io/wgodot_native_resources.h\"\n\nnamespace WGodotGame {\n";

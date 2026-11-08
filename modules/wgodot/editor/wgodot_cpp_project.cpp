@@ -2,17 +2,20 @@
 #include "wgodot_cpp_project.h"
 
 #include "wgodot_cpp_ast.h"
-#include "wgodot_cpp_memory_profile.h"
 #include "wgodot_cpp_cache.h"
-#include "modules/gdscript/wgodot_gd/partial_classes.h"
+#include "wgodot_cpp_memory_profile.h"
 
 #include "core/config/project_settings.h"
 #include "core/io/dir_access.h"
 #include "core/io/file_access.h"
 #include "core/object/script_language.h"
+#include "core/string/string_builder.h"
 #include "core/templates/hash_set.h"
+#include "editor/editor_node.h"
+#include "modules/gdscript/gdscript.h"
 
 #include "modules/gdscript/wgodot_gd/editor/export/export_pass_no_export.h"
+#include "modules/gdscript/wgodot_gd/partial_classes.h"
 
 namespace {
 class ResourceDependencies : public WGodotCppAstVisitor {
@@ -34,12 +37,92 @@ class ResourceDependencies : public WGodotCppAstVisitor {
 public:
 	HashMap<String, WGodotCppProject::Preload> paths;
 };
+
+// Data-only scripts cannot execute their ordinary methods during resource
+// loading. Their fields/defaults determine factories; runtime method bodies do
+// not. Scripts with constructors, hooks, accessors or computed defaults retain
+// full dependency invalidation because loading can execute that code.
+class ResourceLayout : public WGodotCppAstVisitor {
+	using Parser = GDScriptParser;
+	HashSet<int> method_lines;
+
+	bool visit(const Parser::Node *p_node) override {
+		if (p_node->type == Parser::Node::CLASS) {
+			const auto *type = static_cast<const Parser::ClassNode *>(p_node);
+			ResourceLayout parent;
+			if (type->base_type.kind == Parser::DataType::CLASS && !parent.walk(type->base_type.class_type)) {
+				return false;
+			}
+		} else if (p_node->type == Parser::Node::FUNCTION) {
+			const auto *method = static_cast<const Parser::FunctionNode *>(p_node);
+			if (String(method->identifier->name).begins_with("_")) {
+				return false;
+			}
+			for (int line = method->start_line; line <= method->end_line; ++line) {
+				method_lines.insert(line);
+			}
+		} else if (p_node->type == Parser::Node::VARIABLE) {
+			const auto *variable = static_cast<const Parser::VariableNode *>(p_node);
+			if (variable->property != Parser::VariableNode::PROP_NONE ||
+					(variable->initializer && !variable->initializer->is_constant)) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	bool descend(const Parser::Node *p_node) override {
+		return p_node->type != Parser::Node::FUNCTION;
+	}
+
+public:
+	String signature(const String &p_source) const {
+		const PackedStringArray lines = p_source.split("\n");
+		StringBuilder layout;
+		for (int line = 0; line < lines.size(); ++line) {
+			if (!method_lines.has(line + 1) && !lines[line].strip_edges().is_empty()) {
+				layout += lines[line] + "\n";
+			}
+		}
+		return layout.as_string().sha256_text();
+	}
+};
 } // namespace
 
 WGodotCppProject::~WGodotCppProject() {
 	if (export_analysis) {
 		memdelete(export_analysis);
 	}
+}
+
+Error WGodotCppProject::refresh_script_classes(const PackedStringArray &p_paths) {
+	if (EditorNode::get_singleton()) {
+		return OK; // Editor commands already refresh the filesystem before export.
+	}
+	LocalVector<StringName> names;
+	ScriptServer::get_global_class_list(names);
+	for (const StringName &name : names) {
+		if (ScriptServer::get_global_class_language(name) == SNAME("GDScript")) {
+			ScriptServer::remove_global_class(name);
+		}
+	}
+	GDScriptLanguage *language = GDScriptLanguage::get_singleton();
+	for (const String &path : p_paths) {
+		if (path.get_extension() != "gd") {
+			continue;
+		}
+		String base;
+		bool abstract = false;
+		bool tool = false;
+		const String name = language->get_global_class_name(path, &base, nullptr, &abstract, &tool);
+		if (name.is_empty()) {
+			continue;
+		}
+		ERR_FAIL_COND_V_MSG(ScriptServer::is_global_class(name), ERR_ALREADY_EXISTS,
+				"Duplicate global script class '" + name + "' in " + path);
+		ScriptServer::add_global_class(name, base, SNAME("GDScript"), path, abstract, tool);
+	}
+	return OK;
 }
 
 Error WGodotCppProject::collect_scripts(const String &p_directory, Vector<String> &r_scripts) {
@@ -150,7 +233,7 @@ void WGodotCppProject::collect_classes(const String &p_script_path, GDScriptPars
 	}
 }
 
-Error WGodotCppProject::analyze(const String &p_target, int p_jobs) {
+Error WGodotCppProject::analyze(const String &p_target, int p_jobs, bool p_refresh_classes) {
 	jobs = p_jobs;
 	ERR_FAIL_COND_V(!ProjectSettings::get_singleton()->is_project_loaded(), ERR_UNCONFIGURED);
 	classes.clear();
@@ -184,6 +267,13 @@ Error WGodotCppProject::analyze(const String &p_target, int p_jobs) {
 		return error;
 	}
 	scripts.sort();
+	if (p_refresh_classes) {
+		PackedStringArray script_paths;
+		for (const String &path : scripts) {
+			script_paths.push_back(path);
+		}
+		RETURN_IF_ERROR(refresh_script_classes(script_paths));
+	}
 	error = prepare_sources(scripts);
 	if (error != OK) {
 		return error;
@@ -252,6 +342,11 @@ void WGodotCppProject::cache_dependencies(WGodotCppCache &p_cache) const {
 		}
 		paths.sort();
 		p_cache.set_dependencies(parser->get_path(), paths);
+		ResourceLayout layout;
+		const auto *source = export_project.get_source(parser->get_path());
+		if (source && WGodotPartialClasses::paths(parser->get_path()).size() <= 1 && layout.walk(parser->get_parser()->get_tree())) {
+			p_cache.set_resource_signature(parser->get_path(), layout.signature(source->get_text()));
+		}
 	}
 }
 

@@ -31,6 +31,9 @@
 #include "concave_polygon_shape_3d.h"
 
 #include "core/object/class_db.h"
+// wgodot-changes::begin
+#include "core/os/thread.h"
+// wgodot-changes::end
 #include "scene/resources/mesh.h"
 #include "servers/physics_3d/physics_server_3d.h"
 
@@ -92,7 +95,14 @@ void ConcavePolygonShape3D::_update_shape() {
 	Dictionary d;
 	d["faces"] = faces;
 	d["backface_collision"] = backface_collision;
-	PhysicsServer3D::get_singleton()->shape_set_data(get_shape(), d);
+	// wgodot-changes::begin
+	// Background resource loading must not queue expensive BVH construction on
+	// the simulation thread. Backends without a preparation stage retain their
+	// usual shape-data representation.
+	PhysicsServer3D *server = PhysicsServer3D::get_singleton();
+	Variant data = Thread::is_main_thread() ? Variant(d) : server->shape_prepare_data(PS3DE::SHAPE_CONCAVE_POLYGON, d);
+	server->shape_set_data(get_shape(), data);
+	// wgodot-changes::end
 
 	Shape3D::_update_shape();
 }

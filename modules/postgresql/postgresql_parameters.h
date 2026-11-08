@@ -25,6 +25,9 @@ public:
 	void append_float(double p_value);
 	void append_text(const String &p_value);
 	void append_bytes(const PackedByteArray &p_value);
+	void append_int32_array(const PackedInt32Array &p_values);
+	void append_int64_array(const PackedInt64Array &p_values);
+	void append_float64_array(const PackedFloat64Array &p_values);
 	int size() const { return parameters.size(); }
 	void clear() { parameters.clear(); }
 };

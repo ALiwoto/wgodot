@@ -7,6 +7,7 @@
 #include "core/io/file_access.h"
 #include "core/io/json.h"
 #include "core/io/resource_loader.h"
+#include "core/io/wgodot_file_stamp.h"
 #include "core/io/wgodot_resource_paths.h"
 #include "core/object/class_db.h"
 #include "editor/export/editor_export_preset.h"
@@ -93,14 +94,14 @@ void WGodotNativeExportPlugin::_export_begin(const HashSet<String> &p_features, 
 		add_shared_object(path, Vector<String>());
 	}
 	for (const KeyValue<Variant, Variant> &source : sources) {
-		if (!FileAccess::exists(source.key) || FileAccess::get_sha256(source.key) != String(source.value)) {
+		if (WGodotFileStamp::get(source.key) != String(source.value)) {
 			set_export_error(ERR_INVALID_DATA, "Script changed after native generation; regenerate and rebuild: " + String(source.key));
 			return;
 		}
 	}
 	const Dictionary editor_scripts = manifest.get("editor_only_scripts", Dictionary());
 	for (const KeyValue<Variant, Variant> &source : editor_scripts) {
-		if (!FileAccess::exists(source.key) || FileAccess::get_sha256(source.key) != String(source.value)) {
+		if (WGodotFileStamp::get(source.key) != String(source.value)) {
 			set_export_error(ERR_INVALID_DATA, "Editor-only script changed after native generation; regenerate: " + String(source.key));
 			return;
 		}
@@ -113,7 +114,7 @@ void WGodotNativeExportPlugin::_export_begin(const HashSet<String> &p_features, 
 	resources.initialize(manifest["resource_paths"], &target);
 	const Dictionary resource_sources = manifest["resource_sources"];
 	for (const KeyValue<Variant, Variant> &source : resource_sources) {
-		if (!FileAccess::exists(source.key) || FileAccess::get_sha256(source.key) != String(source.value)) {
+		if (WGodotFileStamp::get(source.key) != String(source.value)) {
 			set_export_error(ERR_INVALID_DATA, "Resource changed after native generation; regenerate payloads (rebuild only if construction code changes): " + String(source.key));
 			return;
 		}

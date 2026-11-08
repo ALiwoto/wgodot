@@ -1,6 +1,8 @@
 // wgodot-changes::file
-#include "wgodot_cpp_emitter.h"
 #include "wgodot_cpp_cache.h"
+#include "wgodot_cpp_emitter.h"
+
+#include "core/object/class_db.h"
 
 #include "modules/gdscript/wgodot_gd/inline_constants.h"
 
@@ -41,13 +43,16 @@ Dictionary WGodotCppEmitter::capture_contribution(const WGodotCppProject::Class 
 		animations[entry.key] = int64_t(entry.value);
 	}
 	payload["animations"] = animations;
-	PackedStringArray required;
+	HashSet<String> required_names;
 	for (const auto *node : required_classes) {
 		if (const auto *type = project.find_class(node)) {
-			required.push_back(type->cpp_name);
+			required_names.insert(type->cpp_name);
 		}
 	}
-	payload["required"] = required;
+	for (const String &name : class_dependencies) {
+		required_names.insert(name);
+	}
+	payload["required"] = names(required_names);
 	Dictionary preload_data;
 	for (const String &path : unit_preloads) {
 		const auto &preload = preloads[preload_indices[path]];
@@ -131,8 +136,7 @@ bool WGodotCppEmitter::restore_contribution(const Dictionary &p_payload) {
 	}
 	if (!lifecycle_class.is_empty()) {
 		const int flags = p_payload["lifecycle"];
-		class_lifecycles.insert(classes_by_name[lifecycle_class]->node, {
-			bool(flags & 1), bool(flags & 2), bool(flags & 4), bool(flags & 8), bool(flags & 16), bool(flags & 32) });
+		class_lifecycles.insert(classes_by_name[lifecycle_class]->node, { bool(flags & 1), bool(flags & 2), bool(flags & 4), bool(flags & 8), bool(flags & 16), bool(flags & 32) });
 	}
 	return true;
 }
@@ -159,6 +163,14 @@ void WGodotCppEmitter::emit_class(const WGodotCppProject::Class &p_class) {
 		return;
 	}
 	if (!required_classes.has(p_class.node) && WGodotGDScriptInlineConstants::can_omit_class(p_class.node)) {
+		return;
+	}
+	// Nested model declarations are not global script entry points. Retain
+	// actual type references and explicitly reflected classes; data/scene
+	// classes can also be discovered by resource factories later in the export.
+	if (p_class.node->outer && !required_classes.has(p_class.node) && !p_class.node->wgodot_export_reflection &&
+			!ClassDB::is_parent_class(native_base(p_class.node->self_type), SNAME("Resource")) &&
+			!ClassDB::is_parent_class(native_base(p_class.node->self_type), SNAME("Node"))) {
 		return;
 	}
 	if (p_class.node->base_type.kind == GDScriptParser::DataType::CLASS) {

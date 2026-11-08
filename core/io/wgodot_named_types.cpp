@@ -5,6 +5,45 @@
 #include "core/object/class_db.h"
 #include "core/variant/variant_parser.h"
 
+#include <cstring>
+
+namespace {
+// Dependency discovery needs ASCII delimiters and UTF-8 identifiers, not
+// decoded numeric values. Keep bulk numeric runs in the byte buffer: going
+// through Stream::get_char for every digit makes world catalogs very costly.
+class TypeStream {
+	Ref<FileAccess> file;
+	char buffer[65537];
+	size_t position = 0;
+	size_t length = 0;
+
+	bool refill() {
+		length = file->get_buffer(reinterpret_cast<uint8_t *>(buffer), sizeof(buffer) - 1);
+		position = 0;
+		buffer[length] = 0;
+		return length != 0;
+	}
+
+public:
+	explicit TypeStream(const Ref<FileAccess> &p_file) : file(p_file) {}
+	_FORCE_INLINE_ uint8_t get_char() {
+		if (position == length && !refill()) {
+			return 0;
+		}
+		return uint8_t(buffer[position++]);
+	}
+	uint8_t skip_numbers() {
+		while (position < length || refill()) {
+			position += std::strspn(buffer + position, "0123456789-+.eE, \t\r\n");
+			if (position < length) {
+				return uint8_t(buffer[position++]);
+			}
+		}
+		return 0;
+	}
+};
+} // namespace
+
 Ref<Script> WGodotNamedTypes::script(const StringName &p_name) {
 	if (!ScriptServer::is_global_class(p_name)) {
 		return Ref<Script>();
@@ -57,10 +96,8 @@ bool WGodotNamedTypes::is_script_reference(const String &p_type, const String &p
 
 void WGodotNamedTypes::dependencies(const Ref<FileAccess> &p_file, List<String> *r_dependencies, bool p_add_types) {
 	// Scan type declarations without decoding animation/mesh payloads or loading scripts.
-	// StreamFile buffers input, so this also works on very large text resources.
 	p_file->seek(0);
-	VariantParser::StreamFile stream;
-	stream.f = p_file;
+	TypeStream stream(p_file);
 	HashSet<StringName> classes;
 	bool tag_candidate = false;
 	bool type_tag = false;
@@ -76,36 +113,36 @@ void WGodotNamedTypes::dependencies(const Ref<FileAccess> &p_file, List<String> 
 			continue;
 		}
 		if (ch == '"') {
-			String text;
+			CharString text;
 			ch = stream.get_char();
 			while (ch && ch != '"') {
 				if (ch == '\\') {
 					ch = stream.get_char();
 				}
 				if (type_pending) {
-					text += ch;
+					text += char(ch);
 				}
 				ch = stream.get_char();
 			}
-			if (type_pending && ScriptServer::is_global_class(text)) {
-				classes.insert(text);
+			const String name = String::utf8(text.get_data());
+			if (type_pending && ScriptServer::is_global_class(name)) {
+				classes.insert(name);
 			}
 			type_pending = false;
 			ch = stream.get_char();
 			continue;
 		}
 		if ((ch >= '0' && ch <= '9') || ch == '-' || ch == '+' || ch == '.') {
-			do {
-				ch = stream.get_char();
-			} while ((ch >= '0' && ch <= '9') || ch == '-' || ch == '+' || ch == '.' || ch == 'e' || ch == 'E');
+			ch = stream.skip_numbers();
 			continue;
 		}
 		if (ch == '_' || (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || ch >= 128) {
-			String word;
+			CharString bytes;
 			do {
-				word += ch;
+				bytes += char(ch);
 				ch = stream.get_char();
 			} while (ch == '_' || (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch >= 128);
+			const String word = String::utf8(bytes.get_data());
 			if (tag_candidate) {
 				type_tag = word == "node" || word == "sub_resource" || word == "gd_resource" || word == "ext_resource";
 				tag_candidate = false;

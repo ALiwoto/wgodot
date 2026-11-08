@@ -75,6 +75,12 @@ public:
 	virtual RID custom_shape_create() = 0;
 
 	virtual void shape_set_data(RID p_shape, const Variant &p_data) = 0;
+	// wgodot-changes::begin
+	// Pure preparation: may run on a loading thread. Implementations must not
+	// access live bodies, spaces or RIDs. The returned value owns its data until
+	// shape_set_data consumes it on the physics thread.
+	virtual Variant shape_prepare_data(PS3DE::ShapeType p_type, const Variant &p_data) const { return p_data; }
+	// wgodot-changes::end
 	virtual void shape_set_custom_solver_bias(RID p_shape, real_t p_bias) = 0;
 
 	virtual PS3DE::ShapeType shape_get_type(RID p_shape) const = 0;

@@ -209,6 +209,9 @@ def get_opts():
         ("mssdk_version", "Windows SDK version to use. Handled automatically by SCons if omitted.", ""),
         BoolVariable("use_mingw", "Use the Mingw compiler, even if MSVC is installed.", False),
         BoolVariable("use_llvm", "Use the LLVM compiler", False),
+        # wgodot-changes::begin
+        BoolVariable("use_lld", "Use LLD with the MSVC compiler", False),
+        # wgodot-changes::end
         BoolVariable("use_static_cpp", "Link MinGW/MSVC C++ runtime libraries statically", True),
         BoolVariable("use_asan", "Use address sanitizer (ASAN)", False),
         BoolVariable("use_ubsan", "Use LLVM compiler undefined behavior sanitizer (UBSAN)", False),
@@ -298,6 +301,12 @@ def configure_msvc(env: "SConsEnvironment"):
         env["LINK"] = "lld-link"
         env["AR"] = "llvm-lib"
 
+        # wgodot-changes::begin
+        # SCons tracks header content. Identical regenerated headers can have new
+        # mtimes, which must not invalidate otherwise reusable Clang PCHs.
+        env.AppendUnique(CXXFLAGS=["/clang:-Xclang", "/clang:-fno-pch-timestamp"])
+        # wgodot-changes::end
+
         env.AppendUnique(CPPDEFINES=["R128_STDC_ONLY"])
         env.extra_suffix = ".llvm" + env.extra_suffix
 
@@ -305,6 +314,11 @@ def configure_msvc(env: "SConsEnvironment"):
         env["CPPDEFPREFIX"] = "-D"
         env["INCPREFIX"] = "-I"
         env.AppendUnique(CPPDEFINES=[("alloca", "_alloca")])
+
+    # wgodot-changes::begin
+    if env["use_lld"]:
+        env["LINK"] = "lld-link"
+    # wgodot-changes::end
 
     if env["silence_msvc"] and not env.GetOption("clean"):
         from tempfile import mkstemp

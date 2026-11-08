@@ -93,6 +93,11 @@ public:
 	FUNCRID(custom_shape)
 
 	FUNC2(shape_set_data, RID, const Variant &);
+	// wgodot-changes::begin
+	Variant shape_prepare_data(PS3DE::ShapeType p_type, const Variant &p_data) const override {
+		return physics_server_3d->shape_prepare_data(p_type, p_data);
+	}
+	// wgodot-changes::end
 	FUNC2(shape_set_custom_solver_bias, RID, real_t);
 
 	FUNC2(shape_set_margin, RID, real_t)

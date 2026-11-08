@@ -1,5 +1,6 @@
 // wgodot-changes::file
 #include "wgodot_cpp_cache.h"
+#include "wgodot_cpp_project.h"
 
 #include "wgodot_resource_rewrite.h"
 
@@ -10,6 +11,10 @@
 #include "core/io/resource_loader.h"
 #include "core/io/resource_uid.h"
 #include "core/io/wgodot_build_fingerprint.h"
+#include "core/io/wgodot_file_stamp.h"
+#include "core/os/os.h"
+#include "core/object/worker_thread_pool.h"
+#include "core/object/script_language.h"
 
 namespace {
 constexpr const char *CACHE_FILE = ".gd2cpp-cache.bin";
@@ -23,15 +28,30 @@ String input_digest(const String &p_path) {
 		// later resolution/remap invalidates consumers without logging a load error.
 		return uids->has_id(id) ? uids->get_id_path(id) : String("<unresolved-uid>");
 	}
-	return FileAccess::exists(p_path) ? FileAccess::get_sha256(p_path) : String("<missing>");
+	return WGodotFileStamp::get(p_path);
 }
 
 Dictionary file_stamp(const String &p_path, const String &p_digest) {
 	Dictionary stamp;
 	stamp["digest"] = p_digest;
-	stamp["size"] = FileAccess::get_size(p_path);
-	stamp["modified"] = int64_t(FileAccess::get_modified_time(p_path));
+	stamp["revision"] = WGodotFileStamp::get(p_path);
 	return stamp;
+}
+
+void resource_dependencies(const String &p_path, PackedStringArray &r_dependencies) {
+	List<String> paths;
+	ResourceLoader::get_dependencies(p_path, &paths);
+	for (const String &dependency : paths) {
+		String resolved = dependency.get_slice("::", 0);
+		if (resolved.begins_with("uid://")) {
+			r_dependencies.push_back(resolved);
+			resolved = dependency.get_slice("::", 2);
+		}
+		if (!resolved.is_empty()) {
+			r_dependencies.push_back(resolved.is_relative_path() ? p_path.get_base_dir().path_join(resolved).simplify_path() : resolved);
+		}
+	}
+	r_dependencies.sort();
 }
 } // namespace
 
@@ -64,17 +84,19 @@ Error WGodotCppCache::scan(const String &p_directory) {
 	return OK;
 }
 
-Error WGodotCppCache::open(const String &p_directory, const String &p_target, bool p_trace) {
+Error WGodotCppCache::open(const String &p_directory, const String &p_target, bool p_trace, int p_jobs) {
 	directory = p_directory;
-	// Fingerprint the running compiler, including parsers, codecs, native API
-	// metadata and build options. No manual version bump or source checkout needed.
+	jobs = p_jobs;
+	// Rebuilding the compiler invalidates its disposable cache without reading
+	// the executable or every project resource into a hashing function.
 	const String &compiler = WGodotBuildFingerprint::get();
 	ERR_FAIL_COND_V_MSG(compiler.is_empty(), ERR_CANT_OPEN, "Cannot fingerprint the running gd2cpp compiler.");
-	identity = (compiler + "\n" + p_target + "\n" + itos(p_trace) + "\n" + itos(bool(GLOBAL_GET("wgodot/gdscript/enforce_resource_paths"))) + "\n" +
+	identity = ("metadata-v1\n" + compiler + "\n" + p_target + "\n" + itos(p_trace) + "\n" + itos(bool(GLOBAL_GET("wgodot/gdscript/enforce_resource_paths"))) + "\n" +
 			ProjectSettings::get_singleton()->get_resource_path() + "\n" + digest("res://project.godot") + "\n" +
 			digest("res://override.cfg") + "\n" + digest("res://wgodot_targets.cfg") + "\n" + digest("res://export_presets.cfg"))
 					   .sha256_text();
 	const String path = directory.path_join(CACHE_FILE);
+	uint64_t phase_started = OS::get_singleton()->get_ticks_msec();
 	if (FileAccess::exists(path)) {
 		const Ref<FileAccess> file = FileAccess::open(path, FileAccess::READ);
 		if (file.is_valid()) {
@@ -85,16 +107,68 @@ Error WGodotCppCache::open(const String &p_directory, const String &p_target, bo
 			}
 		}
 	}
+	old_inputs = previous.get("inputs", Dictionary());
+	old_units = previous.get("units", Dictionary());
+	old_outputs = previous.get("outputs", Dictionary());
+	print_line(vformat("Native cache load: %d ms", OS::get_singleton()->get_ticks_msec() - phase_started));
+	phase_started = OS::get_singleton()->get_ticks_msec();
 	RETURN_IF_ERROR(scan("res://"));
 	inventory.sort();
+	print_line(vformat("Native cache inventory: %d files, %d ms", inventory.size(), OS::get_singleton()->get_ticks_msec() - phase_started));
+	RETURN_IF_ERROR(WGodotCppProject::refresh_script_classes(inventory));
+	LocalVector<StringName> names;
+	ScriptServer::get_global_class_list(names);
+	for (const StringName &name : names) {
+		named_types[String(name)] = ScriptServer::get_global_class_path(name) + "\n" + String(ScriptServer::get_global_class_base(name));
+	}
+	types_changed = named_types != Dictionary(previous.get("named_types", Dictionary()));
 	return OK;
+}
+
+void WGodotCppCache::prepare_dependencies() {
+	struct Input {
+		String path;
+		PackedStringArray dependencies;
+	};
+	struct Batch {
+		Vector<Input> items;
+		Input *data = nullptr;
+		void inspect(uint32_t p_index, void *) {
+			Input &item = data[p_index];
+			resource_dependencies(item.path, item.dependencies);
+		}
+	} batch;
+	for (const String &path : inventory) {
+		const String extension = path.get_extension();
+		if (extension != "tres" && extension != "tscn") {
+			continue;
+		}
+		const Dictionary previous_input = old_inputs.get(path, Dictionary());
+		if (types_changed || String(previous_input.get("digest", "")) != digest(path)) {
+			batch.items.push_back({ path, PackedStringArray() });
+		}
+	}
+	if (batch.items.is_empty()) {
+		return;
+	}
+	print_line(vformat("Inspecting dependencies: %d changed resources (%d workers)", batch.items.size(), jobs));
+	const uint64_t started = OS::get_singleton()->get_ticks_msec();
+	WorkerThreadPool *pool = WorkerThreadPool::get_singleton();
+	batch.data = batch.items.ptrw();
+	const auto task = pool->add_template_group_task(&batch, &Batch::inspect, static_cast<void *>(nullptr), batch.items.size(), jobs, true, "Inspect resource dependencies");
+	pool->wait_for_group_task_completion(task);
+	for (const Input &input : batch.items) {
+		prepared_dependencies.insert(input.path, input.dependencies);
+	}
+	print_line(vformat("Native dependency discovery: %d ms", OS::get_singleton()->get_ticks_msec() - started));
 }
 
 String WGodotCppCache::digest(const String &p_path) {
 	if (const String *cached = digests.getptr(p_path)) {
 		return *cached;
 	}
-	// Source content is always checked, including same-size/same-timestamp edits.
+	// Metadata is sampled once, then checked again at publication. Explicitly
+	// remove the cache when deliberately restoring both bytes and timestamps.
 	const String result = input_digest(p_path);
 	digests.insert(p_path, result);
 	return result;
@@ -106,32 +180,20 @@ void WGodotCppCache::track(const String &p_path) {
 		return;
 	}
 	inspected.insert(path);
-	const Dictionary old_inputs = previous.get("inputs", Dictionary());
 	Dictionary entry = old_inputs.get(path, Dictionary());
 	const String current = digest(path);
 	PackedStringArray dependencies = entry.get("dependencies", PackedStringArray());
-	if (!compatible || String(entry.get("digest", "")) != current) {
+	if (String(entry.get("digest", "")) != current || prepared_dependencies.has(path)) {
 		dependencies.clear();
 		const String ext = path.get_extension();
 		const bool uid = path.begins_with("uid://");
 		if (uid && current != "<unresolved-uid>") {
 			dependencies.push_back(current);
 		}
-		if (!uid && current != "<missing>" && ext != "gd" && ext != "import" && ResourceLoader::get_resource_type(path) != String()) {
-			List<String> paths;
-			ResourceLoader::get_dependencies(path, &paths);
-			for (const String &dependency : paths) {
-				String resolved = dependency.get_slice("::", 0);
-				if (resolved.begins_with("uid://")) {
-					dependencies.push_back(resolved);
-					// ResourceLoader supplies uid::type::fallback_path (the type may
-					// be empty). Keep the fallback as well as the UID mapping.
-					resolved = dependency.get_slice("::", 2);
-				}
-				if (!resolved.is_empty()) {
-					dependencies.push_back(resolved.is_relative_path() ? path.get_base_dir().path_join(resolved).simplify_path() : resolved);
-				}
-			}
+		if (const auto *prepared = prepared_dependencies.getptr(path)) {
+			dependencies = *prepared;
+		} else if (!uid && current != "<missing>" && ext != "gd" && ext != "import" && ResourceLoader::get_resource_type(path) != String()) {
+			resource_dependencies(path, dependencies);
 		}
 		if (!uid && current != "<missing>" && ext == "import") {
 			Ref<ConfigFile> config;
@@ -159,6 +221,7 @@ void WGodotCppCache::track(const String &p_path) {
 	entry["digest"] = current;
 	entry["dependencies"] = dependencies;
 	inputs[path] = entry;
+	dependencies_dirty = true;
 	for (const String &dependency : dependencies) {
 		track(dependency);
 	}
@@ -167,32 +230,67 @@ void WGodotCppCache::track(const String &p_path) {
 void WGodotCppCache::set_dependencies(const String &p_path, const PackedStringArray &p_dependencies) {
 	track(p_path);
 	Dictionary entry = inputs[p_path];
-	entry["dependencies"] = p_dependencies;
+	PackedStringArray dependencies = p_dependencies;
+	dependencies.sort();
+	entry["dependencies"] = dependencies;
+	dependencies_dirty = true;
 	for (const String &dependency : p_dependencies) {
 		track(dependency);
 	}
 }
 
-bool WGodotCppCache::unchanged(const String &p_path, HashSet<String> &r_seen) {
-	const String path = p_path.get_slice("::", 0);
-	if (r_seen.has(path)) {
-		return true;
+void WGodotCppCache::set_resource_signature(const String &p_path, const String &p_signature) {
+	track(p_path);
+	Dictionary entry = inputs[p_path];
+	entry["resource_signature"] = p_signature;
+	dependencies_dirty = true;
+}
+
+void WGodotCppCache::update_changes() {
+	if (!dependencies_dirty) {
+		return;
 	}
-	r_seen.insert(path);
-	track(path);
-	const Dictionary old_inputs = previous.get("inputs", Dictionary());
-	const Dictionary old = old_inputs.get(path, Dictionary());
-	const Dictionary current = inputs[path];
-	if (String(current["digest"]).is_empty() || String(old.get("digest", "")) != String(current["digest"])) {
-		return false;
-	}
-	const PackedStringArray dependencies = current["dependencies"];
-	for (const String &dependency : dependencies) {
-		if (!unchanged(dependency, r_seen)) {
-			return false;
+	changed.clear();
+	changed_resources.clear();
+	HashMap<String, Vector<String>> consumers;
+	for (const KeyValue<Variant, Variant> &input : inputs) {
+		const String path = input.key;
+		const Dictionary current = input.value;
+		const Dictionary old = old_inputs.get(path, Dictionary());
+		const bool dependencies_changed = current["dependencies"] != old.get("dependencies", PackedStringArray());
+		if (dependencies_changed || current["digest"] != old.get("digest", "")) {
+			changed.insert(path);
+		}
+		if (dependencies_changed || current.get("resource_signature", current["digest"]) != old.get("resource_signature", old.get("digest", ""))) {
+			changed_resources.insert(path);
+		}
+		for (const String &dependency : PackedStringArray(current["dependencies"])) {
+			consumers[dependency].push_back(path);
 		}
 	}
-	return true;
+	// Propagate once for the entire graph, including cycles. Walking every
+	// resource's transitive dependencies independently makes catalogs quadratic.
+	auto propagate = [&](HashSet<String> &p_changed) {
+		Vector<String> pending;
+		for (const String &path : p_changed) {
+			pending.push_back(path);
+		}
+		for (int index = 0; index < pending.size(); ++index) {
+			const auto *parents = consumers.getptr(pending[index]);
+			if (!parents) {
+				continue;
+			}
+			for (const String &parent : *parents) {
+				if (!p_changed.has(parent)) {
+					p_changed.insert(parent);
+					pending.push_back(parent);
+				}
+			}
+		}
+	};
+	propagate(changed);
+	propagate(changed_resources);
+	dependencies_dirty = false;
 }
 
 bool WGodotCppCache::output_matches(const String &p_name, const String &p_digest) {
@@ -201,41 +299,31 @@ bool WGodotCppCache::output_matches(const String &p_name, const String &p_digest
 		return *valid;
 	}
 	const String path = directory.path_join(p_name);
-	const Dictionary outputs = previous.get("outputs", Dictionary());
-	const Dictionary old = outputs.get(p_name, Dictionary());
+	const Dictionary old = old_outputs.get(p_name, Dictionary());
 	bool valid = false;
 	if (FileAccess::exists(path)) {
-		valid = String(old.get("digest", "")) == p_digest && int64_t(old.get("size", -1)) == FileAccess::get_size(path) &&
-				int64_t(old.get("modified", -1)) == int64_t(FileAccess::get_modified_time(path));
-		if (!valid && !p_digest.is_empty()) {
-			valid = FileAccess::get_sha256(path) == p_digest;
-		}
+		valid = String(old.get("digest", "")) == p_digest && String(old.get("revision", "")) == WGodotFileStamp::get(path);
 	}
 	valid_outputs.insert(key, valid);
 	return valid;
 }
 
 bool WGodotCppCache::up_to_date() {
+	prepare_dependencies();
+	for (const String &path : inventory) {
+		track(path);
+	}
 	if (!compatible || PackedStringArray(previous.get("inventory", PackedStringArray())) != inventory) {
 		return false;
 	}
-	HashSet<String> seen;
-	for (const String &path : inventory) {
-		if (!unchanged(path, seen)) {
-			return false;
-		}
-	}
-	const Dictionary old_inputs = previous.get("inputs", Dictionary());
-	for (const KeyValue<Variant, Variant> &entry : old_inputs) {
-		if (!unchanged(entry.key, seen)) {
-			return false;
-		}
-	}
-	const Dictionary outputs = previous.get("outputs", Dictionary());
-	if (outputs.is_empty()) {
+	update_changes();
+	if (!changed.is_empty()) {
 		return false;
 	}
-	for (const KeyValue<Variant, Variant> &entry : outputs) {
+	if (old_outputs.is_empty()) {
+		return false;
+	}
+	for (const KeyValue<Variant, Variant> &entry : old_outputs) {
 		const Dictionary stamp = entry.value;
 		if (!output_matches(entry.key, stamp["digest"])) {
 			return false;
@@ -248,15 +336,18 @@ Dictionary WGodotCppCache::reuse(const String &p_key, const String &p_context) {
 	if (!compatible) {
 		return Dictionary();
 	}
-	const Dictionary old_units = previous.get("units", Dictionary());
 	const Dictionary entry = old_units.get(p_key, Dictionary());
 	if (entry.is_empty() || String(entry["context"]) != p_context) {
 		return Dictionary();
 	}
-	HashSet<String> seen;
 	const PackedStringArray dependencies = entry["inputs"];
 	for (const String &path : dependencies) {
-		if (!unchanged(path, seen)) {
+		track(path);
+	}
+	update_changes();
+	const auto &invalid = p_key.begins_with("class:") ? changed : changed_resources;
+	for (const String &path : dependencies) {
+		if (invalid.has(path)) {
 			return Dictionary();
 		}
 	}
@@ -304,6 +395,7 @@ Error WGodotCppCache::commit(const HashMap<String, String> &p_files, int p_class
 	outputs["main_game.json"] = file_stamp(manifest, FileAccess::get_sha256(manifest));
 	Dictionary state;
 	state["identity"] = identity;
+	state["named_types"] = named_types;
 	state["inventory"] = inventory;
 	state["inputs"] = inputs;
 	state["units"] = units;

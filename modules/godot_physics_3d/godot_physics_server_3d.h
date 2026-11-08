@@ -90,6 +90,9 @@ public:
 	virtual RID custom_shape_create() override;
 
 	virtual void shape_set_data(RID p_shape, const Variant &p_data) override;
+	// wgodot-changes::begin
+	Variant shape_prepare_data(PS3DE::ShapeType p_type, const Variant &p_data) const override;
+	// wgodot-changes::end
 	virtual void shape_set_custom_solver_bias(RID p_shape, real_t p_bias) override;
 
 	virtual PS3DE::ShapeType shape_get_type(RID p_shape) const override;

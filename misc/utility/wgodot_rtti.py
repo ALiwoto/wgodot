@@ -1,11 +1,19 @@
 # wgodot-changes::file
 
+from methods import using_clang
+
 
 def _set_rtti(env, enabled):
-    rtti_flags = {"/GR", "/GR-", "-frtti", "-fno-rtti"}
+    rtti_flags = {"/GR", "/GR-", "-frtti", "-fno-rtti", "/clang:-frtti", "/clang:-fno-rtti"}
     for variable in ("CCFLAGS", "CXXFLAGS"):
         env[variable] = [flag for flag in env.get(variable, []) if flag not in rtti_flags]
-    flag = ("/GR" if enabled else "/GR-") if env.msvc else ("-frtti" if enabled else "-fno-rtti")
+    # clang-cl's /GR- only disables RTTI data; -fno-rtti disables the language feature too.
+    if env.msvc and not using_clang(env):
+        flag = "/GR" if enabled else "/GR-"
+    else:
+        flag = "-frtti" if enabled else "-fno-rtti"
+        if env.msvc:
+            flag = "/clang:" + flag
     env.AppendUnique(CXXFLAGS=[flag])
 
 

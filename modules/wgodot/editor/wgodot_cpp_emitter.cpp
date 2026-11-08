@@ -12,6 +12,7 @@
 #include "core/io/file_access.h"
 #include "core/io/json.h"
 #include "core/io/resource.h"
+#include "core/io/wgodot_file_stamp.h"
 #include "core/object/class_db.h"
 #include "core/os/os.h"
 #include "core/string/string_builder.h"
@@ -676,7 +677,44 @@ Error WGodotCppEmitter::generate(const String &p_directory, int p_jobs, WGodotCp
 	}
 	emit_native_access();
 	store_file("game_types.h", "// wgodot-changes::file\n#pragma once\n#include \"modules/wgodot/native/wgodot_native_support.h\"\n#include \"core/object/ref_counted.h\"\n#include \"core/variant/variant_caster.h\"\n#include \"core/variant/typed_array.h\"\n#include \"core/variant/typed_dictionary.h\"\n");
-	store_file("SCsub", "# wgodot-changes::file\nImport('env')\nImport('env_modules')\nenv_game = env_modules.Clone()\nenv_game.PrependUnique(CPPPATH=env.get('wgodot_public_includes', []))\nenv_game.add_source_files(env.modules_sources, '*.cpp')\nenv_game.add_source_files(env.modules_sources, [File('#modules/wgodot/native/wgodot_native_task.cpp'), File('#modules/wgodot/native/wgodot_native_connections.cpp'), File('#modules/wgodot/native/wgodot_native_debug.cpp'), File('#modules/wgodot/native/wgodot_native_string_format.cpp'), File('#modules/wgodot/wgodot_preloads.cpp'), File('#modules/wgodot/native/wgodot_native_runtime.cpp'), File('#modules/wgodot/codecs/native_payload.cpp'), File('#modules/wgodot/codecs/w_animation.cpp'), File('#modules/wgodot/serialization/wire.cpp'), File('#modules/wgodot/serialization/serializable.cpp')])\n");
+	// Inner models share their framework headers in bounded, stable groups.
+	// Top-level gameplay classes retain independent incremental compilation.
+	Vector<String> class_buckets[32];
+	HashSet<String> grouped_classes;
+	for (const auto &entry : project.get_classes()) {
+		const String name = entry.cpp_name + ".cpp";
+		if (entry.node->outer && files.has(name)) {
+			class_buckets[entry.cpp_name.substr(5, 2).hex_to_int() & 31].push_back(name);
+			grouped_classes.insert(name);
+		}
+	}
+	for (int bucket = 0; bucket < 32; ++bucket) {
+		class_buckets[bucket].sort();
+		int group = 0;
+		for (int first = 0; first < class_buckets[bucket].size(); first += 64) {
+			String includes = "// wgodot-changes::file\n// Generated inner-class compilation group.\n";
+			for (int index = first; index < MIN(first + 64, class_buckets[bucket].size()); ++index) {
+				includes += "#include " + quoted(class_buckets[bucket][index]) + "\n";
+			}
+			store_file("class_group_" + itos(bucket) + "_" + itos(group++) + ".cpp", includes);
+		}
+	}
+	Vector<String> compilation_units;
+	for (const auto &entry : files) {
+		if (entry.key.ends_with(".cpp") && !entry.key.begins_with("resource_") && !grouped_classes.has(entry.key)) {
+			compilation_units.push_back(entry.key);
+		}
+	}
+	// These are emitted below, after registration discovers all runtime types.
+	compilation_units.push_back("register_types.cpp");
+	compilation_units.push_back("game_preloads.cpp");
+	compilation_units.sort();
+	String source_list;
+	for (const String &name : compilation_units) {
+		source_list += quoted(name) + ", ";
+	}
+	store_file("native_pch.cpp", "// wgodot-changes::file\n#include \"modules/wgodot/native/wgodot_native_pch.h\"\n");
+	store_file("SCsub", "# wgodot-changes::file\nImport('env')\nImport('env_modules')\nenv_game = env_modules.Clone()\nenv_game.PrependUnique(CPPPATH=env.get('wgodot_public_includes', []))\nif env.msvc:\n    env_game.Append(CPPPATH=[Dir('#modules/wgodot/native')], CXXFLAGS=['/FIwgodot_native_pch.h'])\n    env_game['PCHSTOP'] = 'wgodot_native_pch.h'\n    pch, pch_object = env_game.PCH('native_pch' + env['OBJSUFFIX'] + '.pch', 'native_pch.cpp')\n    env_game['PCH'] = pch\n    env.modules_sources.append(pch_object)\ngame_objects = []\nenv_game.add_source_files(game_objects, [" + source_list + "])\nenv_game.add_source_files(game_objects, [File('#modules/wgodot/native/wgodot_native_task.cpp'), File('#modules/wgodot/native/wgodot_native_connections.cpp'), File('#modules/wgodot/native/wgodot_native_debug.cpp'), File('#modules/wgodot/native/wgodot_native_string_format.cpp'), File('#modules/wgodot/wgodot_preloads.cpp'), File('#modules/wgodot/native/wgodot_native_runtime.cpp'), File('#modules/wgodot/codecs/native_payload.cpp'), File('#modules/wgodot/codecs/w_animation.cpp'), File('#modules/wgodot/serialization/wire.cpp'), File('#modules/wgodot/serialization/serializable.cpp')])\nif env.msvc:\n    env_game.Depends(game_objects, pch)\nenv.modules_sources.extend(game_objects)\n");
 	String config = "# wgodot-changes::file\ndef can_build(env, platform):\n    return not env.editor_build\n\ndef configure(env):\n    env.AppendUnique(CPPDEFINES=['WGODOT_NATIVE_GAME'])\n";
 	if (trace_enabled) {
 		config += "    env.AppendUnique(CPPDEFINES=['WGODOT_NATIVE_TRACE_ENABLED'])\n";
@@ -818,7 +856,7 @@ Error WGodotCppEmitter::write(const String &p_directory) const {
 		}
 		for (const String &path : paths) {
 			if (path.begins_with("res://")) {
-				sources[path] = FileAccess::get_sha256(path);
+				sources[path] = WGodotFileStamp::get(path);
 			}
 		}
 		if (!entry.node->wgodot_static_class && !entry.node->wgodot_is_interface && files.has(entry.cpp_name + ".h")) {
@@ -833,7 +871,7 @@ Error WGodotCppEmitter::write(const String &p_directory) const {
 	manifest["sources"] = sources;
 	Dictionary editor_scripts;
 	for (const String &path : project.get_target().get_excluded_scripts()) {
-		editor_scripts[path] = FileAccess::get_sha256(path);
+		editor_scripts[path] = WGodotFileStamp::get(path);
 	}
 	manifest["editor_only_scripts"] = editor_scripts;
 	manifest["native_classes"] = native_classes;

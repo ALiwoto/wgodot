@@ -292,6 +292,7 @@ void print_cli_help() {
 	print_line("  resume_physics                    Resume physics-only pausing.");
 	print_line("  step_physics [--count <number>]   Advance paused physics ticks.");
 	print_line("  check                             Refresh assets; check GDScript and scene/resource syntax.");
+	print_line("    --native [--target client|server] [--jobs N] Check native source types without an editor, resource generation or C++ compilation.");
 	print_line("  format [paths...] [options]       Format GDScript using the running editor (--check, --diff).");
 	print_line("  help                              Show this help.");
 }
@@ -1420,6 +1421,20 @@ bool execute_if_requested(int &r_exit_code) {
 		return true;
 	}
 	if (command == "import" || command == "check") {
+		if (command == "check" && arguments.has("--native")) {
+			Vector<String> native_arguments;
+			native_arguments.push_back(ProjectSettings::get_singleton()->globalize_path(
+					ProjectSettings::get_singleton()->get_project_data_path().path_join("native_check")));
+			native_arguments.push_back("--analyze-only");
+			native_arguments.push_back("--standalone");
+			for (const String &argument : arguments) {
+				if (argument != "--native") {
+					native_arguments.push_back(argument);
+				}
+			}
+			r_exit_code = WGodotCppExporter::run(native_arguments);
+			return true;
+		}
 		Dictionary options;
 		for (int index = 0; index < arguments.size(); index++) {
 			if (arguments[index] != "--timeout") {

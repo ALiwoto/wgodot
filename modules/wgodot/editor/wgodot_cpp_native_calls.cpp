@@ -90,6 +90,10 @@ WGodotCppEmitter::Value WGodotCppEmitter::native_result_value(const String &p_co
 		result.code = "static_cast<" + result.cpp_type + ">(" + result.code + ")";
 	} else if ((p_info.type == Variant::INT || p_info.type == Variant::FLOAT) && !(p_info.usage & (PROPERTY_USAGE_CLASS_IS_ENUM | PROPERTY_USAGE_CLASS_IS_BITFIELD)) && p_metadata != GodotTypeInfo::METADATA_INT_IS_INT64 && p_metadata != GodotTypeInfo::METADATA_REAL_IS_DOUBLE) {
 		result.code = result.cpp_type + "(" + result.code + ")";
+	} else if (p_info.type == Variant::STRING || p_info.type == Variant::STRING_NAME) {
+		// Native wrappers can expose an explicit string conversion. The binding
+		// describes the script result, not necessarily the C++ method's type.
+		result.code = result.cpp_type + "(" + result.code + ")";
 	}
 	return result;
 }

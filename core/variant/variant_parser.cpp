@@ -31,6 +31,8 @@
 #include "variant_parser.h"
 
 // wgodot-changes::begin
+#include "wgodot_numeric_profile.h"
+
 #include "core/io/wgodot_named_types.h"
 // wgodot-changes::end
 
@@ -422,11 +424,25 @@ Error VariantParser::get_token(Stream *p_stream, Token &r_token, int &r_line, St
 					break;
 				}
 				StringBuffer<> token_text;
-				if (cchar == '-') {
-					token_text += '-';
+				// wgodot-changes::begin
+				const bool negative = cchar == '-';
+				// wgodot-changes::end
+				if (negative) {
 					cchar = p_stream->get_char();
 				}
 				if (cchar >= '0' && cchar <= '9') {
+					// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+					const uint64_t sample_started = WGodotNumericProfile::active ? WGodotNumericProfile::active->begin_number() : 0;
+#endif
+					// Most numeric literals fit on the stack. Avoid StringBuffer's
+					// capacity and writable-string checks for every digit in bulk data.
+					char32_t number[64];
+					int number_length = 0;
+					if (negative) {
+						number[number_length++] = '-';
+					}
+					// wgodot-changes::end
 					//a number
 #define READING_SIGN 0
 #define READING_INT 1
@@ -481,7 +497,13 @@ Error VariantParser::get_token(Stream *p_stream, Token &r_token, int &r_line, St
 						if (reading == READING_DONE) {
 							break;
 						}
-						token_text += c;
+						// wgodot-changes::begin
+						if (number_length < 63) {
+							number[number_length++] = c;
+						} else {
+							token_text += c;
+						}
+						// wgodot-changes::end
 						c = p_stream->get_char();
 					}
 
@@ -489,13 +511,40 @@ Error VariantParser::get_token(Stream *p_stream, Token &r_token, int &r_line, St
 
 					r_token.type = TK_NUMBER;
 
-					if (is_float) {
-						r_token.value = token_text.as_double();
+					// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+					const uint64_t conversion_started = sample_started ? OS::get_singleton()->get_ticks_usec() : 0;
+#endif
+					number[number_length] = 0;
+					if (token_text.length() == 0) {
+						if (is_float) {
+							r_token.value = String::to_float(number);
+						} else {
+							r_token.value = String::to_int(number);
+						}
 					} else {
-						r_token.value = token_text.as_int();
+						StringBuffer<> complete;
+						complete.append(number, number_length);
+						complete.append(token_text.as_string());
+						if (is_float) {
+							r_token.value = complete.as_double();
+						} else {
+							r_token.value = complete.as_int();
+						}
 					}
+#ifdef TOOLS_ENABLED
+					if (sample_started) {
+						WGodotNumericProfile::active->finish_number(sample_started, conversion_started);
+					}
+#endif
+					// wgodot-changes::end
 					return OK;
 				} else if (is_ascii_alphabet_char(cchar) || is_underscore(cchar)) {
+					// wgodot-changes::begin
+					if (negative) {
+						token_text += '-';
+					}
+					// wgodot-changes::end
 					bool first = true;
 
 					while (is_ascii_alphabet_char(cchar) || is_underscore(cchar) || (!first && is_digit(cchar))) {
@@ -555,6 +604,11 @@ Error VariantParser::_parse_enginecfg(Stream *p_stream, Vector<String> &r_string
 
 template <typename T>
 Error VariantParser::_parse_construct(Stream *p_stream, Vector<T> &r_construct, int &r_line, String &r_err_str) {
+	// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+	WGodotNumericProfile profile(r_line);
+#endif
+	// wgodot-changes::end
 	Token token;
 	get_token(p_stream, token, r_line, r_err_str);
 	if (token.type != TK_PARENTHESIS_OPEN) {
@@ -562,6 +616,18 @@ Error VariantParser::_parse_construct(Stream *p_stream, Vector<T> &r_construct, 
 		return ERR_PARSE_ERROR;
 	}
 
+	// wgodot-changes::begin
+	// Numeric resource arrays can contain millions of values. Grow and acquire
+	// writable storage in batches instead of doing copy-on-write checks per value.
+	T values[1024];
+	int count = 0;
+	auto flush = [&]() {
+		const int offset = r_construct.size();
+		r_construct.resize(offset + count);
+		memcpy(r_construct.ptrw() + offset, values, count * sizeof(T));
+		count = 0;
+	};
+	// wgodot-changes::end
 	bool first = true;
 	while (true) {
 		if (!first) {
@@ -595,14 +661,29 @@ Error VariantParser::_parse_construct(Stream *p_stream, Vector<T> &r_construct, 
 			}
 		}
 
-		r_construct.push_back(token.value);
+		// wgodot-changes::begin
+		values[count++] = token.value;
+		if (count == 1024) {
+			flush();
+		}
+		// wgodot-changes::end
 		first = false;
 	}
 
+	// wgodot-changes::begin
+	if (count > 0) {
+		flush();
+	}
+	// wgodot-changes::end
 	return OK;
 }
 
 Error VariantParser::_parse_byte_array(Stream *p_stream, Vector<uint8_t> &r_construct, int &r_line, String &r_err_str) {
+	// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+	WGodotNumericProfile profile(r_line);
+#endif
+	// wgodot-changes::end
 	Token token;
 	get_token(p_stream, token, r_line, r_err_str);
 	if (token.type != TK_PARENTHESIS_OPEN) {
@@ -1187,7 +1268,7 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 						key_script = script;
 					}
 				}
-			// wgodot-changes::begin
+				// wgodot-changes::begin
 			} else if (p_res_parser && p_res_parser->skip_class_loading && ScriptServer::is_global_class(r_token.value)) {
 				key_type = Variant::OBJECT;
 				key_class_name = WGodotNamedTypes::native_type(r_token.value);
@@ -1200,15 +1281,15 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 				key_type = Variant::OBJECT;
 				key_class_name = script->get_instance_base_type();
 				key_script = script;
-			// wgodot-changes::end
+				// wgodot-changes::end
 			} else if (ClassDB::class_exists(r_token.value)) {
 				key_type = Variant::OBJECT;
 				key_class_name = r_token.value;
-			// wgodot-changes::begin
+				// wgodot-changes::begin
 			} else if (r_token.value != "Variant") {
 				r_err_str = "Unknown container type '" + String(r_token.value) + "'. Use a native type or class_name.";
 				return ERR_PARSE_ERROR;
-			// wgodot-changes::end
+				// wgodot-changes::end
 			}
 
 			if (!got_comma_token) {
@@ -1252,7 +1333,7 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 						value_script = script;
 					}
 				}
-			// wgodot-changes::begin
+				// wgodot-changes::begin
 			} else if (p_res_parser && p_res_parser->skip_class_loading && ScriptServer::is_global_class(r_token.value)) {
 				value_type = Variant::OBJECT;
 				value_class_name = WGodotNamedTypes::native_type(r_token.value);
@@ -1265,15 +1346,15 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 				value_type = Variant::OBJECT;
 				value_class_name = script->get_instance_base_type();
 				value_script = script;
-			// wgodot-changes::end
+				// wgodot-changes::end
 			} else if (ClassDB::class_exists(r_token.value)) {
 				value_type = Variant::OBJECT;
 				value_class_name = r_token.value;
-			// wgodot-changes::begin
+				// wgodot-changes::begin
 			} else if (r_token.value != "Variant") {
 				r_err_str = "Unknown container type '" + String(r_token.value) + "'. Use a native type or class_name.";
 				return ERR_PARSE_ERROR;
-			// wgodot-changes::end
+				// wgodot-changes::end
 			}
 
 			if (key_type != Variant::NIL || value_type != Variant::NIL) {
@@ -1362,7 +1443,7 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 						array.set_typed(Variant::OBJECT, script->get_instance_base_type(), script);
 					}
 				}
-			// wgodot-changes::begin
+				// wgodot-changes::begin
 			} else if (p_res_parser && p_res_parser->skip_class_loading && ScriptServer::is_global_class(r_token.value)) {
 				array.set_typed(Variant::OBJECT, WGodotNamedTypes::native_type(r_token.value), Variant());
 			} else if (ScriptServer::is_global_class(r_token.value)) {
@@ -1372,14 +1453,14 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 					return ERR_PARSE_ERROR;
 				}
 				array.set_typed(Variant::OBJECT, script->get_instance_base_type(), script);
-			// wgodot-changes::end
+				// wgodot-changes::end
 			} else if (ClassDB::class_exists(r_token.value)) {
 				array.set_typed(Variant::OBJECT, r_token.value, Variant());
-			// wgodot-changes::begin
+				// wgodot-changes::begin
 			} else if (r_token.value != "Variant") {
 				r_err_str = "Unknown container type '" + String(r_token.value) + "'. Use a native type or class_name.";
 				return ERR_PARSE_ERROR;
-			// wgodot-changes::end
+				// wgodot-changes::end
 			}
 
 			if (!got_bracket_token) {
@@ -1421,77 +1502,42 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 			Vector<uint8_t> args;
 			RETURN_IF_ERROR(_parse_byte_array(p_stream, args, r_line, r_err_str));
 
-			Vector<uint8_t> arr;
-			{
-				int len = args.size();
-				arr.resize(len);
-				uint8_t *w = arr.ptrw();
-				for (int i = 0; i < len; i++) {
-					w[i] = args[i];
-				}
-			}
-
-			r_value = arr;
+			// wgodot-changes::begin
+			// Packed arrays share the parsed buffer until a caller writes to it.
+			r_value = args;
+			// wgodot-changes::end
 		} else if (id == "PackedInt32Array" || id == "PackedIntArray" || id == "PoolIntArray" || id == "IntArray") {
 			Vector<int32_t> args;
 			RETURN_IF_ERROR(_parse_construct<int32_t>(p_stream, args, r_line, r_err_str));
 
-			Vector<int32_t> arr;
-			{
-				int32_t len = args.size();
-				arr.resize(len);
-				int32_t *w = arr.ptrw();
-				for (int32_t i = 0; i < len; i++) {
-					w[i] = int32_t(args[i]);
-				}
-			}
-
-			r_value = arr;
+			// wgodot-changes::begin
+			// Packed arrays share the parsed buffer until a caller writes to it.
+			r_value = args;
+			// wgodot-changes::end
 		} else if (id == "PackedInt64Array") {
 			Vector<int64_t> args;
 			RETURN_IF_ERROR(_parse_construct<int64_t>(p_stream, args, r_line, r_err_str));
 
-			Vector<int64_t> arr;
-			{
-				int64_t len = args.size();
-				arr.resize(len);
-				int64_t *w = arr.ptrw();
-				for (int64_t i = 0; i < len; i++) {
-					w[i] = int64_t(args[i]);
-				}
-			}
-
-			r_value = arr;
+			// wgodot-changes::begin
+			// Packed arrays share the parsed buffer until a caller writes to it.
+			r_value = args;
+			// wgodot-changes::end
 		} else if (id == "PackedFloat32Array" || id == "PackedRealArray" || id == "PoolRealArray" || id == "FloatArray") {
 			Vector<float> args;
 			RETURN_IF_ERROR(_parse_construct<float>(p_stream, args, r_line, r_err_str));
 
-			Vector<float> arr;
-			{
-				int len = args.size();
-				arr.resize(len);
-				float *w = arr.ptrw();
-				for (int i = 0; i < len; i++) {
-					w[i] = args[i];
-				}
-			}
-
-			r_value = arr;
+			// wgodot-changes::begin
+			// Packed arrays share the parsed buffer until a caller writes to it.
+			r_value = args;
+			// wgodot-changes::end
 		} else if (id == "PackedFloat64Array") {
 			Vector<double> args;
 			RETURN_IF_ERROR(_parse_construct<double>(p_stream, args, r_line, r_err_str));
 
-			Vector<double> arr;
-			{
-				int len = args.size();
-				arr.resize(len);
-				double *w = arr.ptrw();
-				for (int i = 0; i < len; i++) {
-					w[i] = args[i];
-				}
-			}
-
-			r_value = arr;
+			// wgodot-changes::begin
+			// Packed arrays share the parsed buffer until a caller writes to it.
+			r_value = args;
+			// wgodot-changes::end
 		} else if (id == "PackedStringArray" || id == "PoolStringArray" || id == "StringArray") {
 			get_token(p_stream, r_token, r_line, r_err_str);
 			if (r_token.type != TK_PARENTHESIS_OPEN) {
@@ -1852,7 +1898,7 @@ Error VariantParser::parse_tag_assign_eof(Stream *p_stream, int &r_line, String 
 	if (p_assignment_parser) {
 		p_assignment_parser->handled = false;
 	}
-// wgodot-changes::end
+	// wgodot-changes::end
 	//assign..
 	r_assign = "";
 	String what;

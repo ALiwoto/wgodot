@@ -90,6 +90,14 @@ public:
 	void make_read_only() { Storage::make_read_only(storage); }
 	// native-array: internal
 	const Vector<T> &native() const { return elements(); }
+	// native-array: internal
+	// Payloads already own a writable COW vector. Preserve that ownership rather
+	// than generating or executing one assignment for every stored element.
+	static WArray from_native(const Native &p_values) {
+		WArray result;
+		result.elements() = p_values;
+		return result;
+	}
 	bool is_typed() const { return true; }
 	template <class U>
 	bool is_same_typed(const WArray<U> &) const { return std::is_same_v<T, U>; }

@@ -255,12 +255,14 @@ Dictionary WGodotCppExporter::execute(const Dictionary &p_options) {
 	ExportErrors engine_errors;
 	WGodotCppCache cache;
 	if (!analyze_only) {
+		const uint64_t cache_started = OS::get_singleton()->get_ticks_msec();
 		print_line("Checking native generation cache...");
-		const Error cache_error = cache.open(output, p_options.get("target", "client"), trace_enabled);
+		const Error cache_error = cache.open(output, p_options.get("target", "client"), trace_enabled, jobs);
 		if (cache_error != OK) {
 			return engine_errors.failure_response("Cannot inspect native generation inputs: " + String(error_names[cache_error]));
 		}
 		const bool up_to_date = cache.up_to_date();
+		print_line(vformat("Native cache inspection: %d ms", OS::get_singleton()->get_ticks_msec() - cache_started));
 		if (engine_errors.any()) {
 			return engine_errors.failure_response("Engine errors while inspecting native generation inputs.");
 		}
@@ -280,7 +282,7 @@ Dictionary WGodotCppExporter::execute(const Dictionary &p_options) {
 	WGodotCppProject project;
 	uint64_t started = OS::get_singleton()->get_ticks_msec();
 	print_line("Analyzing native scripts...");
-	Error result = project.analyze(p_options.get("target", "client"), jobs);
+	Error result = project.analyze(p_options.get("target", "client"), jobs, analyze_only);
 	if (result == OK && engine_errors.any()) {
 		result = ERR_COMPILATION_FAILED;
 	}

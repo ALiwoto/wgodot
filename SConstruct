@@ -142,7 +142,14 @@ env["x86_libtheora_opt_gcc"] = False
 env["x86_libtheora_opt_vc"] = False
 
 # avoid issues when building with different versions of python out of the same directory
-env.SConsignFile(File("#.sconsign{0}.dblite".format(pickle.HIGHEST_PROTOCOL)).abspath)
+# wgodot-changes::begin
+# Separate dependency records for engine/game targets. A small editor rebuild
+# should not deserialize and rewrite every game's generated-source records.
+signature_target = ".".join(ARGUMENTS.get(key, "default") for key in ("platform", "target", "arch", "extra_suffix"))
+if ARGUMENTS.get("ninja", "no").lower() in ("yes", "true", "1"):
+    signature_target += ".ninja"
+env.SConsignFile(File(f"#.sconsign{pickle.HIGHEST_PROTOCOL}.{signature_target}.dblite").abspath)
+# wgodot-changes::end
 
 # Build options
 
@@ -176,6 +183,9 @@ opts.Add(
     )
 )
 opts.Add(BoolVariable("debug_symbols", "Build with debugging symbols", False))
+# wgodot-changes::begin
+opts.Add(BoolVariable("link_debug_symbols", "Link Windows native debugger symbols", True))
+# wgodot-changes::end
 opts.Add(BoolVariable("separate_debug_symbols", "Extract debugging symbols to a separate file", False))
 opts.Add(BoolVariable("debug_paths_relative", "Make file paths in debug symbols relative (if supported)", False))
 opts.Add(
@@ -254,6 +264,9 @@ opts.Add(
 opts.Add(BoolVariable("tests", "Build the unit tests", False))
 opts.Add(BoolVariable("fast_unsafe", "Enable unsafe options for faster incremental builds", False))
 opts.Add(BoolVariable("ninja", "Use the ninja backend for faster rebuilds", False))
+# wgodot-changes::begin
+opts.Add("ninja_path", "Use a specific existing Ninja executable", "")
+# wgodot-changes::end
 opts.Add(BoolVariable("ninja_auto_run", "Run ninja automatically after generating the ninja file", True))
 opts.Add("ninja_file", "Path to the generated ninja file", "build.ninja")
 opts.Add(BoolVariable("compiledb", "Generate compilation DB (`compile_commands.json`) for external tools", False))
@@ -586,6 +599,19 @@ else:
 # Renamed to `content-timestamp` in SCons >= 4.2, keeping MD5 for compat.
 env.Decider("MD5-timestamp")
 
+# wgodot-changes::begin
+# Reuse signatures for unchanged generated objects/libraries after one second.
+# The default two-day drift window rereads large debug artifacts on each build.
+# Keep normal include scanning enabled; this is independent of fast_unsafe.
+env.SetOption("max_drift", 1)
+# Cache lexical includes, not their resolution. New headers and changes to
+# include search paths still go through SCons' normal dependency scanner.
+from pathlib import Path
+from misc.utility import wgodot_include_cache
+
+wgodot_include_cache.install(File("#core/object/object.cpp"), Path(File("#.local-tmp/include-cache.json").abspath))
+# wgodot-changes::end
+
 # SCons speed optimization controlled by the `fast_unsafe` option, which provide
 # more than 10 s speed up for incremental rebuilds.
 # Unsafe as they reduce the certainty of rebuilding all changed files.
@@ -841,7 +867,9 @@ env.AppendUnique(CCFLAGS=["$OPTIMIZELEVEL"])
 if env.msvc:
     if env["debug_symbols"]:
         env.AppendUnique(CCFLAGS=["/Zi", "/FS"])
-        env.AppendUnique(LINKFLAGS=["/DEBUG:FULL"])
+        # wgodot-changes::begin
+        env.AppendUnique(LINKFLAGS=["/DEBUG:FULL" if env["link_debug_symbols"] else "/DEBUG:NONE"])
+        # wgodot-changes::end
     else:
         env.AppendUnique(LINKFLAGS=["/DEBUG:NONE"])
 
@@ -1225,6 +1253,10 @@ if env["ninja"]:
     SetOption("experimental", "ninja")
     env["NINJA_FILE_NAME"] = env["ninja_file"]
     env["NINJA_DISABLE_AUTO_RUN"] = not env["ninja_auto_run"]
+    # wgodot-changes::begin
+    if env["ninja_path"]:
+        env["NINJA"] = env["ninja_path"]
+    # wgodot-changes::end
     env.Tool("ninja", env["ninja_file"])
 
 # Threads

@@ -10,22 +10,34 @@
 class WGodotCppCache {
 	String directory;
 	String identity;
+	Dictionary named_types;
+	bool types_changed = false;
 	PackedStringArray inventory;
 	Dictionary previous;
+	Dictionary old_inputs;
+	Dictionary old_units;
+	Dictionary old_outputs;
 	Dictionary inputs;
 	Dictionary units;
 	HashMap<String, String> digests;
 	HashSet<String> inspected;
 	HashMap<String, bool> valid_outputs;
+	HashMap<String, PackedStringArray> prepared_dependencies;
+	int jobs = 1;
+	HashSet<String> changed;
+	HashSet<String> changed_resources;
+	bool dependencies_dirty = true;
 	bool compatible = false;
 	Error scan(const String &p_directory);
-	bool unchanged(const String &p_path, HashSet<String> &r_seen);
+	void update_changes();
+	void prepare_dependencies();
 
 public:
-	Error open(const String &p_directory, const String &p_target, bool p_trace);
+	Error open(const String &p_directory, const String &p_target, bool p_trace, int p_jobs);
 	bool up_to_date();
 	void track(const String &p_path);
 	void set_dependencies(const String &p_path, const PackedStringArray &p_dependencies);
+	void set_resource_signature(const String &p_path, const String &p_signature);
 	String digest(const String &p_path);
 	Dictionary reuse(const String &p_key, const String &p_context);
 	void record(const String &p_key, const String &p_context, const PackedStringArray &p_inputs, const Dictionary &p_payload);

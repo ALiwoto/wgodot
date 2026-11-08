@@ -76,4 +76,19 @@ if env.editor_build:
         source_scanner=Scanner({}),
     )
     env_wgodot.Depends(["editor/wgodot_cpp_warray.cpp", "editor/wgodot_cpp_signatures.cpp"], array_api)
-    env_wgodot.add_source_files(env.modules_sources, "editor/*.cpp")
+    env_editor = env_wgodot.Clone()
+    editor_sources = [source for source in env_editor.Glob("editor/*.cpp") if source.name != "wgodot_cpp_pch.cpp"]
+    if env.msvc:
+        env_editor.Append(CPPPATH=[Dir("editor")], CXXFLAGS=["/FIwgodot_cpp_pch.h"])
+        env_editor["PCHSTOP"] = "wgodot_cpp_pch.h"
+        pch, pch_object = env_editor.PCH(
+            "editor/wgodot_cpp_pch" + env["OBJSUFFIX"] + ".pch", "editor/wgodot_cpp_pch.cpp"
+        )
+        env_editor["PCH"] = pch
+        env.modules_sources.append(pch_object)
+    editor_objects = []
+    env_editor.add_source_files(editor_objects, editor_sources)
+    if env.msvc:
+        # Keep the dependency explicit on Godot's final Object targets.
+        env_editor.Depends(editor_objects, pch)
+    env.modules_sources.extend(editor_objects)
