@@ -33,6 +33,9 @@
 // wgodot-changes::end
 
 #include "gdscript.h"
+// wgodot-changes::begin
+#include "core/object/wgodot_interface_registry.h"
+// wgodot-changes::end
 #include "gdscript_function.h"
 #include "gdscript_lambda_callable.h"
 
@@ -321,6 +324,7 @@ void (*type_init_function_table[])(Variant *) = {
 		&&OPCODE_CALL_GDSCRIPT_UTILITY, \
 		&&OPCODE_CALL_BUILTIN_TYPE_VALIDATED, \
 		&&OPCODE_CALL_SELF_BASE, \
+		&&OPCODE_CALL_SUPER_AS, \
 		&&OPCODE_CALL_METHOD_BIND, \
 		&&OPCODE_CALL_METHOD_BIND_RET, \
 		&&OPCODE_CALL_BUILTIN_STATIC, \
@@ -2599,6 +2603,60 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 				ip += 3;
 			}
 			DISPATCH_OPCODE;
+
+			// wgodot-changes::begin
+			OPCODE(OPCODE_CALL_SUPER_AS) {
+				LOAD_INSTRUCTION_ARGS
+				CHECK_SPACE(3 + instr_arg_count);
+				ip += instr_arg_count;
+				const int argc = _code_ptr[ip + 1];
+				GD_ERR_BREAK(argc < 0);
+				const StringName &method = _global_names_ptr[_code_ptr[ip + 2]];
+				GET_INSTRUCTION_ARG(provider, argc);
+				GET_INSTRUCTION_ARG(dst, argc + 1);
+				Callable::CallError err;
+				if (provider->get_type() == Variant::OBJECT) {
+					const GDScript *target = Object::cast_to<GDScript>(*provider);
+					while (target) {
+						const auto *function = target->member_functions.getptr(method);
+						if (function) {
+							*dst = (*function)->call(p_instance, (const Variant **)instruction_args, argc, err);
+							break;
+						}
+						if (target->wgodot_default_methods.has(method)) {
+							*dst = target->wgodot_call_default(p_instance, method, (const Variant **)instruction_args, argc, err);
+							break;
+						}
+						if (target->base.is_null()) {
+							const MethodBind *binding = ClassDB::get_method(target->native->get_name(), method);
+							if (binding) {
+								*dst = binding->call(p_instance->owner, (const Variant **)instruction_args, argc, err);
+							} else {
+								err.error = Callable::CallError::CALL_ERROR_INVALID_METHOD;
+							}
+							break;
+						}
+						target = target->base.ptr();
+					}
+				} else {
+					const StringName provider_name = *provider;
+					if (const auto *contract = WGodotNativeInterfaces::get_descriptor(provider_name)) {
+						*dst = contract->default_methods[method](p_instance->owner, (const Variant **)instruction_args, argc, err);
+					} else {
+						const MethodBind *binding = ClassDB::get_method(provider_name, method);
+						*dst = binding->call(p_instance->owner, (const Variant **)instruction_args, argc, err);
+					}
+				}
+				if (err.error != Callable::CallError::CALL_OK) {
+#ifdef DEBUG_ENABLED
+					err_text = _get_call_error("super_as call '" + String(method) + "'", (const Variant **)instruction_args, argc, *dst, err);
+#endif
+					OPCODE_BREAK;
+				}
+				ip += 3;
+			}
+			DISPATCH_OPCODE;
+			// wgodot-changes::end
 
 			OPCODE(OPCODE_CALL_SELF_BASE) {
 				LOAD_INSTRUCTION_ARGS

@@ -94,12 +94,13 @@ void append_script_diagnostics(const String &p_path, const ScriptCheck &p_check,
 	}
 	for (const GDScriptParser::ParserError &parse_error : parser.get_errors()) {
 		EditorLanguage::ScriptError diagnostic;
-		diagnostic.path = p_path;
-		diagnostic.start_line = parse_error.start_line;
+		const auto location = parser.wgodot_source_location(parse_error.start_line);
+		diagnostic.path = location.path;
+		diagnostic.start_line = location.line;
 		diagnostic.start_column = parse_error.start_column;
 		diagnostic.message = parse_error.message;
 		r_stats.error_count++;
-		append_script_error(diagnostic, p_path, r_stats, r_output);
+		append_script_error(diagnostic, diagnostic.path, r_stats, r_output);
 	}
 }
 

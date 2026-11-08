@@ -139,7 +139,9 @@ func destroy_me() -> void
 
 `implements A, B` adds contracts without changing native inheritance.
 
-Interfaces supports all kind of members (however, you can't have a default implementation in them, they have to be bodyless). vars and signals are also supported. All that matters in an interface decleration is the signature.
+Interface methods can have default bodies. Bodyless methods require implementation; defaults can be overridden. Properties remain typed declarations without storage or initializer values. Signals are supported.
+
+If unrelated interfaces supply bodies for the same method, declare an explicit method to resolve the conflict. `super_as(InterfaceName).method(args)` calls the selected default on the current object; it rejects bodyless methods. `super_as(AncestorClass).method(args)` selects an ancestor implementation. The target type is fixed at compile time; normal runtime branches can choose which call executes. Defaults call other methods through the implementing object, so its overrides still apply.
 
 Type hints, `is`/`as` and all other type system also recognize interfaces.
 

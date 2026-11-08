@@ -40,7 +40,7 @@ public:
 	};
 
 	// wgodot-changes::begin
-	static constexpr uint32_t TOKENIZER_VERSION = 102;
+	static constexpr uint32_t TOKENIZER_VERSION = 103;
 	// wgodot-changes::end
 	static constexpr uint32_t TOKEN_BYTE_MASK = 0x80;
 	static constexpr uint32_t TOKEN_BITS = 8;

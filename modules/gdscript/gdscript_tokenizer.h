@@ -129,6 +129,7 @@ public:
 			SIGNAL,
 			STATIC,
 			SUPER,
+			SUPER_AS, // wgodot-changes
 			TRAIT,
 			VAR,
 			TK_VOID, // Conflict with WinAPI.

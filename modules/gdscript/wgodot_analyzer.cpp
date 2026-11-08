@@ -306,6 +306,9 @@ bool GDScriptAnalyzer::wgodot_datatype_contains_variant(const GDScriptParser::Da
 }
 
 bool GDScriptAnalyzer::wgodot_validate_strict_datatype(const GDScriptParser::DataType &p_datatype, const GDScriptParser::Node *p_source, const String &p_context) {
+	if (p_source->wgodot_engine_boundary && p_datatype.kind == GDScriptParser::DataType::BUILTIN && p_datatype.builtin_type == Variant::DICTIONARY) {
+		return true;
+	}
 	if (!wgodot_strict_type_checking_enabled() || (p_datatype.is_hard_type() && !wgodot_datatype_contains_variant(p_datatype))) {
 		return true;
 	}
@@ -837,9 +840,6 @@ void GDScriptAnalyzer::wgodot_validate_interface_class(GDScriptParser::ClassNode
 				if (member.function->is_static || member.function->wgodot_private || member.function->wgodot_protected) {
 					push_error("Interface methods must be public instance methods.", member.function);
 				}
-				if (member.function->body != nullptr && !member.function->body->statements.is_empty()) {
-					push_error("Interface methods cannot have a body.", member.function);
-				}
 				break;
 			case GDScriptParser::ClassNode::Member::VARIABLE:
 				if (member.variable->initializer != nullptr || member.variable->property != GDScriptParser::VariableNode::PROP_NONE || member.variable->is_static || member.variable->wgodot_private || member.variable->wgodot_protected) {
@@ -890,10 +890,21 @@ void GDScriptAnalyzer::wgodot_validate_implemented_interfaces(GDScriptParser::Cl
 				continue;
 			}
 			GDScriptParser::ClassNode *owner = wgodot_find_member_owner(p_class, name);
+			if (!owner && required.type == Member::FUNCTION) {
+				const auto *provider = p_class->wgodot_default_methods.getptr(name);
+				if (provider && provider->kind == DataType::CLASS) {
+					owner = provider->class_type;
+				}
+			}
 			String error;
 			bool matches = false;
 			if (owner == nullptr) {
-				matches = wgodot_interface_native_member_matches(required, p_class->self_type.native_type, error);
+				const auto *provider = p_class->wgodot_default_methods.getptr(name);
+				if (required.type == Member::FUNCTION && provider && provider->kind == DataType::NATIVE) {
+					matches = wgodot_interface_native_method_matches(required.function, WGodotNativeInterfaces::get_descriptor(provider->native_type)->methods[name], error);
+				} else {
+					matches = wgodot_interface_native_member_matches(required, p_class->self_type.native_type, error);
+				}
 			} else {
 				resolve_class_member(owner, name, p_class);
 				const Member actual = owner->get_member(name);

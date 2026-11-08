@@ -175,10 +175,6 @@ String WGodotCppAsync::expression(const Parser::ExpressionNode *p_expression, in
 	}
 	if (p_expression->type == Parser::Node::AWAIT) {
 		const auto *node = static_cast<const Parser::AwaitNode *>(p_expression);
-		if (node->to_await->type == Parser::Node::CALL && emitter.interface_method(static_cast<const Parser::CallNode *>(node->to_await))) {
-			emitter.unsupported(node, "await through the current interface Variant ABI; this requires typed interface dispatch");
-			return String();
-		}
 		const auto awaited_type = emitter.expression_type(node->to_await);
 		const bool signal = awaited_type.kind == Parser::DataType::BUILTIN && awaited_type.builtin_type == Variant::SIGNAL;
 		if (!signal && !awaited_type.is_coroutine) {
@@ -528,6 +524,7 @@ String WGodotCppAsync::generate(const Parser::FunctionNode *p_function, const St
 	const String task_type = "WGodotNative::TaskState<" + result_type + ">";
 	const String handle_type = "WGodotNative::Task<" + result_type + ">";
 	const String owner = emitter.current_class->cpp_name;
+	const bool interface = emitter.current_class->node->wgodot_is_interface;
 	const bool is_static = p_function->source_lambda ? !p_function->source_lambda->use_self : p_function->is_static;
 	const String frame_name = "Async_" + p_name;
 	const String resume_name = "resume_" + p_name;
@@ -551,6 +548,8 @@ String WGodotCppAsync::generate(const Parser::FunctionNode *p_function, const St
 	definition += "\tvoid resume(WGodotNative::NativeTask &task) override {\n";
 	if (is_static) {
 		definition += "\t\t" + owner + "::" + resume_name + "(*this, static_cast<" + task_type + " &>(task));\n";
+	} else if (interface) {
+		definition += "\t\tauto *object = ObjectDB::get_instance(owner);\n\t\tif (!object) { task.cancel(); return; }\n\t\t" + owner + " instance{Variant(object)};\n\t\tinstance." + resume_name + "(*this, static_cast<" + task_type + " &>(task));\n";
 	} else {
 		definition += "\t\tauto *instance = Object::cast_to<" + owner + ">(ObjectDB::get_instance(owner));\n\t\tif (!instance) { task.cancel(); return; }\n\t\tinstance->" + resume_name + "(*this, static_cast<" + task_type + " &>(task));\n";
 	}
@@ -558,9 +557,11 @@ String WGodotCppAsync::generate(const Parser::FunctionNode *p_function, const St
 	String body = "\tauto *frame = memnew(" + frame_name + ");\n" + initialize;
 	if (!is_static) {
 		emitter.class_uses_tasks = true;
-		body += "\tframe->owner = get_instance_id();\n";
+		body += interface ? "\tframe->owner = ptr()->get_instance_id();\n" : "\tframe->owner = get_instance_id();\n";
 	}
-	body += "\treturn " + handle_type + "::start(frame" + String(is_static ? "" : ", &game_tasks") + ");\n";
+	body += "\treturn " + handle_type + "::start(frame" + String(is_static ? "" : interface ? ", &operator->()->wgodot_interface_tasks()"
+																							: ", &game_tasks") +
+			");\n";
 	// The frame must be complete before emitting the start method. Its static
 	// preparation is decided once all class resources have been lowered.
 	emitter.class_function_definitions.push_back({ handle_type + " " + owner + "::" + p_name + "(" + String(", ").join(p_parameters) + ")", body, is_static });

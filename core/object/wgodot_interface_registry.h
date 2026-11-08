@@ -16,6 +16,8 @@ struct Property {
 	StringName setter;
 };
 
+using DefaultMethod = Variant (*)(Object *, const Variant **, int, Callable::CallError &);
+
 struct Descriptor {
 	StringName name;
 	StringName native_base;
@@ -23,6 +25,7 @@ struct Descriptor {
 	String cpp_header;
 	Vector<StringName> parents;
 	HashMap<StringName, MethodInfo> methods;
+	HashMap<StringName, DefaultMethod> default_methods;
 	HashMap<StringName, Property> properties;
 	HashMap<StringName, MethodInfo> signals;
 	HashMap<StringName, HashMap<StringName, int64_t>> enums;
@@ -36,7 +39,16 @@ public:
 	explicit Builder(Descriptor &p_descriptor) : descriptor(p_descriptor) {}
 	void import_api(const StringName &p_class);
 	void inherits(const StringName &p_interface);
-	void method(const MethodInfo &p_method) { descriptor.methods.insert(p_method.name, p_method); }
+	void method(const MethodInfo &p_method) {
+		descriptor.methods.insert(p_method.name, p_method);
+		descriptor.default_methods.erase(p_method.name);
+	}
+	void default_arguments(const StringName &p_name, const Vector<Variant> &p_defaults) { descriptor.methods[p_name].default_arguments = p_defaults; }
+	template <class Method>
+	void default_method(const StringName &p_name, Method p_method, DefaultMethod p_default) {
+		method(p_name, p_method);
+		descriptor.default_methods.insert(p_name, p_default);
+	}
 	void property(const PropertyInfo &p_property, const StringName &p_getter, const StringName &p_setter = StringName()) {
 		descriptor.properties.insert(p_property.name, { p_property, p_getter, p_setter });
 	}

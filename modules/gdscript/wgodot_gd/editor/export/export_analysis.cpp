@@ -12,6 +12,7 @@
 #include "modules/gdscript/gdscript_compiler.h"
 #include "modules/gdscript/gdscript_tokenizer.h"
 #include "modules/gdscript/wgodot_gd/string_obfuscation_format.h"
+#include "modules/gdscript/wgodot_gd/partial_classes.h"
 
 namespace WGodotGDScriptExportTransform {
 
@@ -52,7 +53,7 @@ void ExportAnalysis::parse_scripts_parallel(int p_jobs) {
 	for (const String &path : project.get_script_paths()) {
 		Ref<GDScriptParserRef> parser;
 		parser.instantiate();
-		parser->initialize_export_source(path, project.get_source(path)->get_text());
+		parser->initialize_export_source(path, project.get_source(path));
 		parsers[path] = parser;
 		pending.push_back(parser);
 	}
@@ -107,7 +108,7 @@ StringName ExportAnalysis::get_global_class_native_base(const StringName &p_name
 }
 
 String ExportAnalysis::resolve_path(const String &p_path) const {
-	return ResourceUID::ensure_path(p_path);
+	return WGodotPartialClasses::canonical_path(ResourceUID::ensure_path(p_path));
 }
 
 bool ExportAnalysis::is_excluded_member(const String &p_class, const StringName &p_member) const {
@@ -131,7 +132,7 @@ Ref<GDScriptParserRef> ExportAnalysis::get_parser(const String &p_path, GDScript
 			return ref;
 		}
 		ref.instantiate();
-		ref->initialize_export_source(path, source->get_text());
+		ref->initialize_export_source(path, source);
 		parsers[path] = ref;
 	}
 	Scope scope(*this);

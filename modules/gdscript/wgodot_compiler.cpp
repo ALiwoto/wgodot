@@ -48,3 +48,19 @@ void GDScriptCompiler::_wgodot_prepare_interface_metadata(GDScript *p_script, co
 		}
 	}
 }
+
+void GDScriptCompiler::_wgodot_get_member(CodeGen &p_codegen, const GDScriptCodeGenerator::Address &p_target, const StringName &p_name) {
+	if (p_codegen.class_node->wgodot_is_interface) {
+		p_codegen.generator->write_get_named(p_target, p_name, GDScriptCodeGenerator::Address(GDScriptCodeGenerator::Address::SELF));
+	} else {
+		p_codegen.generator->write_get_member(p_target, p_name);
+	}
+}
+
+void GDScriptCompiler::_wgodot_set_member(CodeGen &p_codegen, const GDScriptCodeGenerator::Address &p_value, const StringName &p_name) {
+	if (p_codegen.class_node->wgodot_is_interface) {
+		p_codegen.generator->write_set_named(GDScriptCodeGenerator::Address(GDScriptCodeGenerator::Address::SELF), p_name, p_value);
+	} else {
+		p_codegen.generator->write_set_member(p_value, p_name);
+	}
+}

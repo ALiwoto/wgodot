@@ -198,7 +198,9 @@ void JSON::_stringify(String &r_result, const Variant &p_var, const String &p_in
 	}
 }
 
-Error JSON::_get_token(const char32_t *p_str, int &r_index, int p_len, Token &r_token, int &r_line, String &r_err_str) {
+// wgodot-changes::begin
+Error JSON::_get_token(const char32_t *p_str, int &r_index, int p_len, Token &r_token, int &r_line, String &r_err_str, bool p_preserve_integers) {
+	// wgodot-changes::end
 	while (p_len > 0) {
 		switch (p_str[r_index]) {
 			case '\n': {
@@ -391,9 +393,29 @@ Error JSON::_get_token(const char32_t *p_str, int &r_index, int p_len, Token &r_
 					//a number
 					const char32_t *rptr;
 					double number = String::to_float(&p_str[r_index], &rptr);
-					r_index += (rptr - &p_str[r_index]);
+					// wgodot-changes::begin
+					const char32_t *begin = &p_str[r_index];
+					r_index += (rptr - begin);
 					r_token.type = TK_NUMBER;
 					r_token.value = number;
+					if (p_preserve_integers) {
+						const bool negative = *begin == '-';
+						const char32_t *digit = begin + (negative ? 1 : 0);
+						const uint64_t limit = uint64_t(INT64_MAX) + (negative ? 1 : 0);
+						uint64_t integer = 0;
+						bool exact = digit < rptr;
+						for (; exact && digit < rptr; ++digit) {
+							if (!is_digit(*digit) || integer > (limit - (*digit - '0')) / 10) {
+								exact = false;
+								break;
+							}
+							integer = integer * 10 + (*digit - '0');
+						}
+						if (exact) {
+							r_token.value = negative ? (integer == uint64_t(INT64_MAX) + 1 ? INT64_MIN : -int64_t(integer)) : int64_t(integer);
+						}
+					}
+					// wgodot-changes::end
 					return OK;
 
 				} else if (is_ascii_alphabet_char(p_str[r_index])) {
@@ -419,7 +441,8 @@ Error JSON::_get_token(const char32_t *p_str, int &r_index, int p_len, Token &r_
 	return ERR_PARSE_ERROR;
 }
 
-Error JSON::_parse_value(Variant &r_value, Token &r_token, const char32_t *p_str, int &r_index, int p_len, int &r_line, int p_depth, String &r_err_str) {
+// wgodot-changes::begin
+Error JSON::_parse_value(Variant &r_value, Token &r_token, const char32_t *p_str, int &r_index, int p_len, int &r_line, int p_depth, String &r_err_str, bool p_preserve_integers) {
 	if (p_depth > Variant::MAX_RECURSION_DEPTH) {
 		r_err_str = "JSON structure is too deep";
 		return ERR_OUT_OF_MEMORY;
@@ -427,11 +450,11 @@ Error JSON::_parse_value(Variant &r_value, Token &r_token, const char32_t *p_str
 
 	if (r_token.type == TK_CURLY_BRACKET_OPEN) {
 		Dictionary d;
-		RETURN_IF_ERROR(_parse_object(d, p_str, r_index, p_len, r_line, p_depth + 1, r_err_str));
+		RETURN_IF_ERROR(_parse_object(d, p_str, r_index, p_len, r_line, p_depth + 1, r_err_str, p_preserve_integers));
 		r_value = d;
 	} else if (r_token.type == TK_BRACKET_OPEN) {
 		Array a;
-		RETURN_IF_ERROR(_parse_array(a, p_str, r_index, p_len, r_line, p_depth + 1, r_err_str));
+		RETURN_IF_ERROR(_parse_array(a, p_str, r_index, p_len, r_line, p_depth + 1, r_err_str, p_preserve_integers));
 		r_value = a;
 	} else if (r_token.type == TK_IDENTIFIER) {
 		String id = r_token.value;
@@ -456,13 +479,15 @@ Error JSON::_parse_value(Variant &r_value, Token &r_token, const char32_t *p_str
 
 	return OK;
 }
+// wgodot-changes::end
 
-Error JSON::_parse_array(Array &r_array, const char32_t *p_str, int &r_index, int p_len, int &r_line, int p_depth, String &r_err_str) {
+// wgodot-changes::begin
+Error JSON::_parse_array(Array &r_array, const char32_t *p_str, int &r_index, int p_len, int &r_line, int p_depth, String &r_err_str, bool p_preserve_integers) {
 	Token token;
 	bool need_comma = false;
 
 	while (r_index < p_len) {
-		RETURN_IF_ERROR(_get_token(p_str, r_index, p_len, token, r_line, r_err_str));
+		RETURN_IF_ERROR(_get_token(p_str, r_index, p_len, token, r_line, r_err_str, p_preserve_integers));
 
 		if (token.type == TK_BRACKET_CLOSE) {
 			return OK;
@@ -479,7 +504,7 @@ Error JSON::_parse_array(Array &r_array, const char32_t *p_str, int &r_index, in
 		}
 
 		Variant v;
-		RETURN_IF_ERROR(_parse_value(v, token, p_str, r_index, p_len, r_line, p_depth, r_err_str));
+		RETURN_IF_ERROR(_parse_value(v, token, p_str, r_index, p_len, r_line, p_depth, r_err_str, p_preserve_integers));
 
 		r_array.push_back(v);
 		need_comma = true;
@@ -488,8 +513,10 @@ Error JSON::_parse_array(Array &r_array, const char32_t *p_str, int &r_index, in
 	r_err_str = "Expected ']'";
 	return ERR_PARSE_ERROR;
 }
+// wgodot-changes::end
 
-Error JSON::_parse_object(Dictionary &r_object, const char32_t *p_str, int &r_index, int p_len, int &r_line, int p_depth, String &r_err_str) {
+// wgodot-changes::begin
+Error JSON::_parse_object(Dictionary &r_object, const char32_t *p_str, int &r_index, int p_len, int &r_line, int p_depth, String &r_err_str, bool p_preserve_integers) {
 	bool at_key = true;
 	String key;
 	Token token;
@@ -497,7 +524,7 @@ Error JSON::_parse_object(Dictionary &r_object, const char32_t *p_str, int &r_in
 
 	while (r_index < p_len) {
 		if (at_key) {
-			RETURN_IF_ERROR(_get_token(p_str, r_index, p_len, token, r_line, r_err_str));
+			RETURN_IF_ERROR(_get_token(p_str, r_index, p_len, token, r_line, r_err_str, p_preserve_integers));
 
 			if (token.type == TK_CURLY_BRACKET_CLOSE) {
 				return OK;
@@ -519,17 +546,17 @@ Error JSON::_parse_object(Dictionary &r_object, const char32_t *p_str, int &r_in
 			}
 
 			key = token.value;
-			RETURN_IF_ERROR(_get_token(p_str, r_index, p_len, token, r_line, r_err_str));
+			RETURN_IF_ERROR(_get_token(p_str, r_index, p_len, token, r_line, r_err_str, p_preserve_integers));
 			if (token.type != TK_COLON) {
 				r_err_str = "Expected ':'";
 				return ERR_PARSE_ERROR;
 			}
 			at_key = false;
 		} else {
-			RETURN_IF_ERROR(_get_token(p_str, r_index, p_len, token, r_line, r_err_str));
+			RETURN_IF_ERROR(_get_token(p_str, r_index, p_len, token, r_line, r_err_str, p_preserve_integers));
 
 			Variant v;
-			RETURN_IF_ERROR(_parse_value(v, token, p_str, r_index, p_len, r_line, p_depth, r_err_str));
+			RETURN_IF_ERROR(_parse_value(v, token, p_str, r_index, p_len, r_line, p_depth, r_err_str, p_preserve_integers));
 			r_object[key] = v;
 			need_comma = true;
 			at_key = true;
@@ -539,27 +566,29 @@ Error JSON::_parse_object(Dictionary &r_object, const char32_t *p_str, int &r_in
 	r_err_str = "Expected '}'";
 	return ERR_PARSE_ERROR;
 }
+// wgodot-changes::end
 
 void JSON::set_data(const Variant &p_data) {
 	data = p_data;
 	text.clear();
 }
 
-Error JSON::_parse_string(const String &p_json, Variant &r_ret, String &r_err_str, int &r_err_line) {
+// wgodot-changes::begin
+Error JSON::_parse_string(const String &p_json, Variant &r_ret, String &r_err_str, int &r_err_line, bool p_preserve_integers) {
 	const char32_t *str = p_json.ptr();
 	int idx = 0;
 	int len = p_json.length();
 	Token token;
 	r_err_line = 0;
 
-	RETURN_IF_ERROR(_get_token(str, idx, len, token, r_err_line, r_err_str));
+	RETURN_IF_ERROR(_get_token(str, idx, len, token, r_err_line, r_err_str, p_preserve_integers));
 
-	Error err = _parse_value(r_ret, token, str, idx, len, r_err_line, 0, r_err_str);
+	Error err = _parse_value(r_ret, token, str, idx, len, r_err_line, 0, r_err_str, p_preserve_integers);
 
 	// Check if EOF is reached
 	// or it's a type of the next token.
 	if (err == OK && idx < len) {
-		err = _get_token(str, idx, len, token, r_err_line, r_err_str);
+		err = _get_token(str, idx, len, token, r_err_line, r_err_str, p_preserve_integers);
 
 		if (err || token.type != TK_EOF) {
 			r_err_str = "Expected 'EOF'";
@@ -571,6 +600,7 @@ Error JSON::_parse_string(const String &p_json, Variant &r_ret, String &r_err_st
 
 	return err;
 }
+// wgodot-changes::end
 
 Error JSON::parse(const String &p_json_string, bool p_keep_text) {
 	Error err = _parse_string(p_json_string, data, err_str, err_line);
@@ -582,6 +612,12 @@ Error JSON::parse(const String &p_json_string, bool p_keep_text) {
 	}
 	return err;
 }
+
+// wgodot-changes::begin
+Error JSON::parse_preserving_integers(const String &p_json_string) {
+	return _parse_string(p_json_string, data, err_str, err_line, true);
+}
+// wgodot-changes::end
 
 String JSON::get_parsed_text() const {
 	return text;

@@ -164,6 +164,11 @@ WGodotCppEmitter::Value WGodotCppEmitter::value_facts(const Parser::ExpressionNo
 		return result;
 	}
 	if (p_expression->type == Parser::Node::SELF) {
+		if (current_class->node->wgodot_is_interface) {
+			result.effects = false;
+			result.borrowed = result.nonnull = true;
+			return result;
+		}
 		result.cpp_type = class_name(datatype, p_expression) + " *";
 		result.effects = false;
 		result.invariant = true;
@@ -309,6 +314,12 @@ String WGodotCppEmitter::expression(const Parser::ExpressionNode *p_expression) 
 
 WGodotCppEmitter::Value WGodotCppEmitter::lower_receiver(const Parser::ExpressionNode *p_expression) {
 	if (!p_expression) {
+		if (current_class->node->wgodot_is_interface) {
+			Value self("(*this)", current_class->cpp_name);
+			self.effects = false;
+			self.borrowed = self.nonnull = true;
+			return self;
+		}
 		Value self("this", current_class->cpp_name + " *");
 		self.effects = false;
 		self.invariant = self.object_pointer = self.nonnull = true;
@@ -337,7 +348,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::lower_call(const Parser::CallNode *p_c
 	}
 	if (p_call->get_callee_type() == Parser::Node::IDENTIFIER) {
 		const auto *owner = member_owner(current_class->node, p_call->function_name);
-		if ((owner && owner->node->get_member(p_call->function_name).type == Parser::ClassNode::Member::FUNCTION) || ClassDB::has_method(native_base(current_class->node->self_type), p_call->function_name)) {
+		if ((owner && owner->node->get_member(p_call->function_name).type == Parser::ClassNode::Member::FUNCTION) || current_class->node->wgodot_default_methods.has(p_call->function_name) || ClassDB::has_method(native_base(current_class->node->self_type), p_call->function_name)) {
 			return call(p_call);
 		}
 		return global_call(p_call);

@@ -119,6 +119,9 @@ void WGodotCppEmitter::emit_class_uncached(const WGodotCppProject::Class &p_clas
 		switch (entry.type) {
 			case Parser::ClassNode::Member::FUNCTION: {
 				const auto *method = entry.function;
+				if (emit_serialization_factory(p_class, method, declaration, definitions)) {
+					break;
+				}
 				const String method_name = method->identifier->name;
 				const bool initializer = method_name == "_init";
 				String signature;
@@ -280,6 +283,7 @@ void WGodotCppEmitter::emit_class_uncached(const WGodotCppProject::Class &p_clas
 		definitions += "void " + name + "::_get_property_list(List<PropertyInfo> *p_list) const {\n" + property_list + "}\n\n";
 	}
 	emit_container_constants(p_class, declaration, definitions);
+	emit_serialization(p_class, declaration, definitions);
 	if (!native_copy.is_empty()) {
 		const bool resource = ClassDB::is_parent_class(native_base(node->self_type), SNAME("Resource"));
 		const String parameters = resource ? "Resource *p_copy, const DuplicateParams &p_params" : "Node *p_copy, const Node *p_root, int p_flags";
@@ -305,7 +309,8 @@ void WGodotCppEmitter::emit_class_uncached(const WGodotCppProject::Class &p_clas
 		definitions += function.body + "}\n\n";
 	}
 	declaration += fields + class_lambda_declarations + "};\n";
-	const String origin = source_header(p_class.script_path, node->fqcn);
+	const auto location = project.find_parser(p_class.script_path)->wgodot_source_location(node->start_line);
+	const String origin = source_header(location.path, node->fqcn);
 	String header = origin + "#pragma once\n#include \"game_types.h\"\n";
 	Vector<String> includes;
 	for (const String &include : class_native_headers) {

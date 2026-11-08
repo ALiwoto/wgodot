@@ -15,7 +15,8 @@ String WGodotCppEmitter::debug_source_arguments(const Parser::Node *p_node) {
 	if (current_function) {
 		function += "::" + (current_function->identifier ? String(current_function->identifier->name) : String("<lambda>"));
 	}
-	return WGodotCppNames::quoted("res://" + itos(resource_id(current_class->script_path))) + ", " + itos(p_node->start_line) + ", " + WGodotCppNames::quoted(function);
+	const auto location = project.find_parser(current_class->script_path)->wgodot_source_location(p_node->start_line);
+	return WGodotCppNames::quoted("res://" + itos(resource_id(location.path))) + ", " + itos(location.line) + ", " + WGodotCppNames::quoted(function);
 }
 
 bool WGodotCppEmitter::validate_callback(const Parser::ExpressionNode *p_source, const WGodotCppSignatures::Signature &p_target, bool p_discard_result) {

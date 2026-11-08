@@ -28,6 +28,13 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
+// wgodot-changes::begin
+#include "modules/modules_enabled.gen.h"
+#ifdef MODULE_GDSCRIPT_ENABLED
+#include "modules/gdscript/wgodot_gd/partial_classes.h"
+#endif
+// wgodot-changes::end
+
 #include "editor_file_system.h"
 
 // wgodot-changes::begin
@@ -1107,6 +1114,9 @@ void EditorFileSystem::scan() {
 	// Startup progress pumps the main loop. Claim the scan before that can
 	// deliver settings/file notifications and recursively start another scan.
 	scanning = true;
+#ifdef MODULE_GDSCRIPT_ENABLED
+	WGodotPartialClasses::clear();
+#endif
 	// wgodot-changes::end
 
 	// The first scan must be on the main thread because, after the first scan and update
@@ -1784,6 +1794,9 @@ void EditorFileSystem::scan_changes(bool p_use_notifications) {
 	if (!_prepare_changed_directories(p_use_notifications)) {
 		return;
 	}
+#ifdef MODULE_GDSCRIPT_ENABLED
+	WGodotPartialClasses::clear();
+#endif
 	// wgodot-changes::end
 	sources_changed.clear();
 	scanning_changes = true;
@@ -2495,6 +2508,14 @@ void EditorFileSystem::update_file(const String &p_file) {
 
 void EditorFileSystem::update_files(const Vector<String> &p_script_paths) {
 	// wgodot-changes::begin
+#ifdef MODULE_GDSCRIPT_ENABLED
+	for (const String &path : p_script_paths) {
+		if (path.get_extension() == "gd") {
+			WGodotPartialClasses::clear();
+			break;
+		}
+	}
+#endif
 	WGodotResourceTrace trace("filesystem.update_files");
 	WGodotEditorActivity activity("Updating resource metadata");
 	bool late_update_changed = false;

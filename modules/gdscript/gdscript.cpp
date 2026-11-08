@@ -339,6 +339,11 @@ void GDScript::_placeholder_erased(PlaceHolderScriptInstance *p_placeholder) {
 void GDScript::_get_script_method_list(List<MethodInfo> *r_list, bool p_include_base) const {
 	const GDScript *current = this;
 	while (current) {
+		// wgodot-changes::begin
+		for (const auto &entry : current->wgodot_default_methods) {
+			r_list->push_back(current->wgodot_default_method_info(entry.key));
+		}
+		// wgodot-changes::end
 		for (const KeyValue<StringName, GDScriptFunction *> &E : current->member_functions) {
 			r_list->push_back(E.value->get_method_info());
 		}
@@ -399,7 +404,9 @@ void GDScript::get_script_property_list(List<PropertyInfo> *r_list) const {
 }
 
 bool GDScript::has_method(const StringName &p_method) const {
-	return member_functions.has(p_method);
+	// wgodot-changes::begin
+	return member_functions.has(p_method) || wgodot_default_methods.has(p_method);
+	// wgodot-changes::end
 }
 
 bool GDScript::has_static_method(const StringName &p_method) const {
@@ -408,6 +415,12 @@ bool GDScript::has_static_method(const StringName &p_method) const {
 
 int GDScript::get_script_method_argument_count(const StringName &p_method, bool *r_is_valid) const {
 	HashMap<StringName, GDScriptFunction *>::ConstIterator E = member_functions.find(p_method);
+	if (!E && wgodot_default_methods.has(p_method)) {
+		if (r_is_valid) {
+			*r_is_valid = true;
+		}
+		return wgodot_default_method_info(p_method).arguments.size();
+	}
 	if (!E) {
 		if (r_is_valid) {
 			*r_is_valid = false;
@@ -424,7 +437,9 @@ int GDScript::get_script_method_argument_count(const StringName &p_method, bool 
 MethodInfo GDScript::get_method_info(const StringName &p_method) const {
 	HashMap<StringName, GDScriptFunction *>::ConstIterator E = member_functions.find(p_method);
 	if (!E) {
-		return MethodInfo();
+		// wgodot-changes::begin
+		return wgodot_default_method_info(p_method);
+		// wgodot-changes::end
 	}
 
 	return E->value->get_method_info();
@@ -896,7 +911,10 @@ Error GDScript::reload(bool p_keep_state) {
 
 		const List<GDScriptParser::ParserError>::Element *e = parser.get_errors().front();
 		while (e != nullptr) {
-			_err_print_error("GDScript::reload", path.is_empty() ? "built-in" : (const char *)path.utf8().get_data(), e->get().start_line, ("Parse Error: " + e->get().message).utf8().get_data(), false, ERR_HANDLER_SCRIPT);
+			// wgodot-changes::begin
+			const auto location = parser.wgodot_source_location(e->get().start_line);
+			_err_print_error("GDScript::reload", location.path.is_empty() ? "built-in" : location.path.utf8().get_data(), location.line, ("Parse Error: " + e->get().message).utf8().get_data(), false, ERR_HANDLER_SCRIPT);
+			// wgodot-changes::end
 			e = e->next();
 		}
 		reloading = false;
@@ -1732,6 +1750,12 @@ bool GDScriptInstance::get(const StringName &p_name, Variant &r_ret) const {
 		}
 
 		if (likely(sptr->valid)) {
+			// wgodot-changes::begin
+			if (sptr->wgodot_default_methods.has(p_name)) {
+				r_ret = Callable(owner, p_name);
+				return true;
+			}
+			// wgodot-changes::end
 			HashMap<StringName, GDScriptFunction *>::ConstIterator E = sptr->member_functions.find(p_name);
 			if (E) {
 				r_ret = Callable(owner, E->key);
@@ -1972,6 +1996,11 @@ void GDScriptInstance::get_method_list(List<MethodInfo> *r_list) const {
 		for (const KeyValue<StringName, GDScriptFunction *> &E : sptr->member_functions) {
 			r_list->push_back(E.value->get_method_info());
 		}
+		// wgodot-changes::begin
+		for (const auto &entry : sptr->wgodot_default_methods) {
+			r_list->push_back(sptr->wgodot_default_method_info(entry.key));
+		}
+		// wgodot-changes::end
 		sptr = sptr->base.ptr();
 	}
 }
@@ -1983,6 +2012,11 @@ bool GDScriptInstance::has_method(const StringName &p_method) const {
 		if (E) {
 			return true;
 		}
+		// wgodot-changes::begin
+		if (sptr->wgodot_default_methods.has(p_method)) {
+			return true;
+		}
+		// wgodot-changes::end
 		sptr = sptr->base.ptr();
 	}
 
@@ -1999,6 +2033,14 @@ int GDScriptInstance::get_method_argument_count(const StringName &p_method, bool
 			}
 			return E->value->get_argument_count();
 		}
+		// wgodot-changes::begin
+		if (sptr->wgodot_default_methods.has(p_method)) {
+			if (r_is_valid) {
+				*r_is_valid = true;
+			}
+			return sptr->wgodot_default_method_info(p_method).arguments.size();
+		}
+		// wgodot-changes::end
 		sptr = sptr->base.ptr();
 	}
 
@@ -2032,6 +2074,11 @@ Variant GDScriptInstance::callp(const StringName &p_method, const Variant **p_ar
 				return E->value->call(this, p_args, p_argcount, r_error);
 			}
 		}
+		// wgodot-changes::begin
+		if (sptr->wgodot_default_methods.has(p_method)) {
+			return sptr->wgodot_call_default(this, p_method, p_args, p_argcount, r_error);
+		}
+		// wgodot-changes::end
 		sptr = sptr->base.ptr();
 	}
 
@@ -2291,6 +2338,9 @@ String GDScriptLanguage::get_extension() const {
 }
 
 void GDScriptLanguage::finish() {
+	// wgodot-changes::begin
+	WGodotPartialClasses::clear();
+	// wgodot-changes::end
 	ERR_FAIL_COND_MSG(finishing, "GDScript bug (please report): GDScriptLanguage double finish.");
 	finishing = true;
 
@@ -2457,6 +2507,9 @@ struct GDScriptDepSort {
 };
 
 void GDScriptLanguage::reload_all_scripts() {
+	// wgodot-changes::begin
+	WGodotPartialClasses::clear();
+	// wgodot-changes::end
 #ifdef DEBUG_ENABLED
 	print_verbose("GDScript: Reloading all scripts");
 	Array scripts;
@@ -2585,6 +2638,9 @@ void GDScriptLanguage::reload_scripts(const Array &p_scripts) {
 }
 
 void GDScriptLanguage::reload_tool_script(const Ref<Script> &p_script) {
+	// wgodot-changes::begin
+	WGodotPartialClasses::clear();
+	// wgodot-changes::end
 	Array scripts = { p_script };
 	reload_scripts(scripts);
 }
@@ -2733,6 +2789,11 @@ bool GDScriptLanguage::handles_global_class_type(const String &p_type) const {
 }
 
 String GDScriptLanguage::get_global_class_name(const String &p_path, String *r_base_type, String *r_icon_path, bool *r_is_abstract, bool *r_is_tool) const {
+	// wgodot-changes::begin
+	if (WGodotPartialClasses::canonical_path(p_path) != p_path) {
+		return String();
+	}
+	// wgodot-changes::end
 	LocalVector<String> r_vec;
 	return _get_global_class_name(p_path, r_base_type, r_icon_path, r_is_abstract, r_is_tool, r_vec);
 }
@@ -2751,6 +2812,18 @@ String GDScriptLanguage::_get_global_class_name(const String &p_path, String *r_
 	}
 
 	String source = f->get_as_utf8_string();
+	// wgodot-changes::begin
+	if (source.contains("@partial")) {
+		String composed;
+		String canonical;
+		String error;
+		Vector<WGodotPartialClasses::SourcePart> parts;
+		if (WGodotPartialClasses::compose(source, p_path, composed, canonical, parts, error) != OK) {
+			return String();
+		}
+		source = composed;
+	}
+	// wgodot-changes::end
 
 	GDScriptParser parser;
 	err = parser.parse(source, p_path, false, false);

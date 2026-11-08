@@ -6,6 +6,7 @@ using Parser = GDScriptParser;
 using namespace WGodotCppNames;
 
 String WGodotCppEmitter::lambda(const Parser::LambdaNode *p_lambda) {
+	const bool interface = current_class->node->wgodot_is_interface;
 	const String name = "lambda_" + itos(p_lambda->start_line) + "_" + itos(p_lambda->start_column);
 	class_call_headers.insert("modules/wgodot/native/wgodot_native_callback.h");
 	if (!class_lambdas.has(p_lambda)) {
@@ -36,7 +37,7 @@ String WGodotCppEmitter::lambda(const Parser::LambdaNode *p_lambda) {
 		arguments.push_back(capture_name);
 	}
 	if (p_lambda->use_self) {
-		captures.push_back("owner = " + type(current_class->node->self_type, p_lambda) + "(this)");
+		captures.push_back(interface ? "owner = *this" : "owner = " + type(current_class->node->self_type, p_lambda) + "(this)");
 	}
 	Vector<String> parameters;
 	Vector<String> defaults;
@@ -53,9 +54,10 @@ String WGodotCppEmitter::lambda(const Parser::LambdaNode *p_lambda) {
 			defaults.push_back(converted(parameter->initializer, parameter->type_constraint, parameter));
 		}
 	}
-	String code = signature_type(p_lambda) + "::make([" + String(", ").join(captures) + "](" + String(", ").join(parameters) + ") -> " + function_result(p_lambda->function) + " { return " + (p_lambda->use_self ? "owner->" : current_class->cpp_name + "::") + name + "(" + String(", ").join(arguments) + "); }";
+	String code = signature_type(p_lambda) + "::make([" + String(", ").join(captures) + "](" + String(", ").join(parameters) + ")" + String(interface && p_lambda->use_self ? " mutable" : "") + " -> " + function_result(p_lambda->function) + " { return " + (p_lambda->use_self ? interface ? "owner." : "owner->" : current_class->cpp_name + "::") + name + "(" + String(", ").join(arguments) + "); }";
 	if (p_lambda->use_self) {
-		code += ", [id = get_instance_id()]() { return ObjectDB::get_instance(id) != nullptr; }, get_instance_id()";
+		const String id = interface ? "ptr()->get_instance_id()" : "get_instance_id()";
+		code += ", [id = " + id + "]() { return ObjectDB::get_instance(id) != nullptr; }, " + id;
 	}
 	code += ")";
 	if (!defaults.is_empty()) {

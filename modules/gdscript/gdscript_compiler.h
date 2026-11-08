@@ -144,6 +144,10 @@ class GDScriptCompiler {
 		}
 	};
 
+	// wgodot-changes::begin
+	void _wgodot_get_member(CodeGen &p_codegen, const GDScriptCodeGenerator::Address &p_target, const StringName &p_name);
+	void _wgodot_set_member(CodeGen &p_codegen, const GDScriptCodeGenerator::Address &p_value, const StringName &p_name);
+	// wgodot-changes::end
 	bool _is_class_member_property(CodeGen &codegen, const StringName &p_name);
 	bool _is_class_member_property(GDScript *owner, const StringName &p_name);
 	bool _is_local_or_parameter(CodeGen &codegen, const StringName &p_name);

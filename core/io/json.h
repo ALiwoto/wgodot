@@ -71,11 +71,13 @@ class JSON : public Resource {
 
 	static void _add_indent(String &r_result, const String &p_indent, int p_size);
 	static void _stringify(String &r_result, const Variant &p_var, const String &p_indent, int p_cur_indent, bool p_sort_keys, HashSet<const void *> &p_markers, bool p_full_precision);
-	static Error _get_token(const char32_t *p_str, int &r_index, int p_len, Token &r_token, int &r_line, String &r_err_str);
-	static Error _parse_value(Variant &r_value, Token &r_token, const char32_t *p_str, int &r_index, int p_len, int &r_line, int p_depth, String &r_err_str);
-	static Error _parse_array(Array &r_array, const char32_t *p_str, int &r_index, int p_len, int &r_line, int p_depth, String &r_err_str);
-	static Error _parse_object(Dictionary &r_object, const char32_t *p_str, int &r_index, int p_len, int &r_line, int p_depth, String &r_err_str);
-	static Error _parse_string(const String &p_json, Variant &r_ret, String &r_err_str, int &r_err_line);
+	// wgodot-changes::begin
+	static Error _get_token(const char32_t *p_str, int &r_index, int p_len, Token &r_token, int &r_line, String &r_err_str, bool p_preserve_integers = false);
+	static Error _parse_value(Variant &r_value, Token &r_token, const char32_t *p_str, int &r_index, int p_len, int &r_line, int p_depth, String &r_err_str, bool p_preserve_integers = false);
+	static Error _parse_array(Array &r_array, const char32_t *p_str, int &r_index, int p_len, int &r_line, int p_depth, String &r_err_str, bool p_preserve_integers = false);
+	static Error _parse_object(Dictionary &r_object, const char32_t *p_str, int &r_index, int p_len, int &r_line, int p_depth, String &r_err_str, bool p_preserve_integers = false);
+	static Error _parse_string(const String &p_json, Variant &r_ret, String &r_err_str, int &r_err_line, bool p_preserve_integers = false);
+	// wgodot-changes::end
 
 	static Variant _from_native(const Variant &p_variant, bool p_full_objects, int p_depth);
 	static Variant _to_native(const Variant &p_json, bool p_allow_objects, int p_depth);
@@ -85,6 +87,9 @@ protected:
 
 public:
 	Error parse(const String &p_json_string, bool p_keep_text = false);
+	// wgodot-changes::begin
+	Error parse_preserving_integers(const String &p_json_string);
+	// wgodot-changes::end
 	String get_parsed_text() const;
 
 	static String stringify(const Variant &p_var, const String &p_indent = "", bool p_sort_keys = true, bool p_full_precision = false);

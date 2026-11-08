@@ -27,7 +27,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::property_access(const Parser::DataType
 	// A class name qualifies static storage/accessors without a runtime receiver.
 	// Static access through an instance still evaluates that instance expression.
 	// Implicit self uses ClassNode::self_type (a metatype), but has a real pointer.
-	const bool has_receiver = !p_base_type.is_meta_type || p_receiver_value.object_pointer;
+	const bool has_receiver = !p_base_type.is_meta_type || p_receiver_value.object_pointer || p_receiver_value.nonnull;
 	Vector<Value> operands;
 	if (has_receiver) {
 		operands.push_back(p_receiver_value);

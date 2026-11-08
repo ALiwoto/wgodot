@@ -72,7 +72,13 @@ void GDScriptAnalyzer::wgodot_validate_native_interfaces(Parser::ClassNode *p_cl
 		auto find_member = [&](const StringName &p_name, Member &r_member) {
 			Parser::ClassNode *owner = wgodot_find_member_owner(p_class, p_name);
 			if (!owner) {
-				if (!p_class->wgodot_is_interface && !native_implementation) {
+				const auto *provider = p_class->wgodot_default_methods.getptr(p_name);
+				if (provider && provider->kind == DataType::CLASS) {
+					owner = provider->class_type;
+				}
+			}
+			if (!owner) {
+				if (!p_class->wgodot_is_interface && !native_implementation && !p_class->wgodot_default_methods.has(p_name)) {
 					push_error(vformat("Class '%s' must implement '%s.%s'.", wgodot_get_class_display_name(p_class), name, p_name), p_class);
 				}
 				return false;

@@ -19,7 +19,17 @@ void GDScriptParser::register_wgodot_annotations() {
 	register_annotation(MethodInfo("@static_class"), AnnotationInfo::CLASS, &GDScriptParser::wgodot_static_class_annotation);
 	register_annotation(MethodInfo("@no_mangle"), AnnotationInfo::CONSTANT | AnnotationInfo::STATEMENT | AnnotationInfo::ENUM, &GDScriptParser::wgodot_no_mangle_annotation);
 	register_annotation(MethodInfo("@no_string_mangle"), AnnotationInfo::SCRIPT | AnnotationInfo::CLASS | AnnotationInfo::FUNCTION, &GDScriptParser::wgodot_no_string_mangle_annotation);
-	register_annotation(MethodInfo("@partial", PropertyInfo(Variant::STRING, "path")), AnnotationInfo::SCRIPT | AnnotationInfo::CLASS, &GDScriptParser::wgodot_noop_annotation, Vector<Variant>(), true);
+	register_annotation(MethodInfo("@partial"), AnnotationInfo::SCRIPT, &GDScriptParser::wgodot_noop_annotation);
+	register_annotation(MethodInfo("@PbFieldId", PropertyInfo(Variant::INT, "id")), AnnotationInfo::VARIABLE, &GDScriptParser::wgodot_noop_annotation);
+	register_annotation(MethodInfo("@PbEncoding", PropertyInfo(Variant::STRING, "encoding")), AnnotationInfo::VARIABLE, &GDScriptParser::wgodot_noop_annotation);
+	register_annotation(MethodInfo("@PbKeyEncoding", PropertyInfo(Variant::STRING, "encoding")), AnnotationInfo::VARIABLE, &GDScriptParser::wgodot_noop_annotation);
+	register_annotation(MethodInfo("@PbValueEncoding", PropertyInfo(Variant::STRING, "encoding")), AnnotationInfo::VARIABLE, &GDScriptParser::wgodot_noop_annotation);
+	register_annotation(MethodInfo("@PbPacked", PropertyInfo(Variant::BOOL, "packed")), AnnotationInfo::VARIABLE, &GDScriptParser::wgodot_noop_annotation);
+	register_annotation(MethodInfo("@PbOneof", PropertyInfo(Variant::STRING, "group")), AnnotationInfo::VARIABLE, &GDScriptParser::wgodot_noop_annotation);
+	register_annotation(MethodInfo("@BinaryFieldOrder", PropertyInfo(Variant::INT, "order")), AnnotationInfo::VARIABLE, &GDScriptParser::wgodot_noop_annotation);
+	register_annotation(MethodInfo("@BinaryFieldType", PropertyInfo(Variant::STRING, "type")), AnnotationInfo::VARIABLE, &GDScriptParser::wgodot_noop_annotation);
+	register_annotation(MethodInfo("@BinaryOptions", PropertyInfo(Variant::STRING, "endian"), PropertyInfo(Variant::BOOL, "strict")), AnnotationInfo::SCRIPT | AnnotationInfo::CLASS, &GDScriptParser::wgodot_noop_annotation);
+	register_annotation(MethodInfo("@JsonPropertyName", PropertyInfo(Variant::STRING, "name")), AnnotationInfo::VARIABLE, &GDScriptParser::wgodot_noop_annotation);
 }
 
 bool GDScriptParser::wgodot_export_reflection_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class) {

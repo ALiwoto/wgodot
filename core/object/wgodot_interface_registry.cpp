@@ -55,6 +55,9 @@ void WGodotNativeInterfaces::Builder::inherits(const StringName &p_interface) {
 	for (const auto &entry : parent->methods) {
 		descriptor.methods.insert(entry.key, entry.value);
 	}
+	for (const auto &entry : parent->default_methods) {
+		descriptor.default_methods.insert(entry.key, entry.value);
+	}
 	for (const auto &entry : parent->properties) {
 		descriptor.properties.insert(entry.key, entry.value);
 	}

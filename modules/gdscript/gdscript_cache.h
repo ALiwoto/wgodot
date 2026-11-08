@@ -39,6 +39,11 @@
 
 class GDScriptAnalyzer;
 class GDScriptParser;
+// wgodot-changes::begin
+namespace WGodotGDScriptExportTransform {
+class ExportSource;
+}
+// wgodot-changes::end
 
 class GDScriptParserRef : public RefCounted {
 	GDSOFTCLASS(GDScriptParserRef, RefCounted);
@@ -64,7 +69,7 @@ private:
 	// wgodot-changes::begin
 #ifdef TOOLS_ENABLED
 	bool export_source = false;
-	String export_source_text;
+	const WGodotGDScriptExportTransform::ExportSource *export_source_data = nullptr;
 #endif
 	// wgodot-changes::end
 
@@ -80,7 +85,7 @@ public:
 	Error raise_status(Status p_new_status);
 	// wgodot-changes::begin
 #ifdef TOOLS_ENABLED
-	void initialize_export_source(const String &p_path, const String &p_source);
+	void initialize_export_source(const String &p_path, const WGodotGDScriptExportTransform::ExportSource *p_source);
 #endif
 	// wgodot-changes::end
 	void clear();

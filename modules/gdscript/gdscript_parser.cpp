@@ -468,7 +468,7 @@ void GDScriptParser::set_last_completion_call_arg(int p_argument) {
 	completion_call_stack.back()->get().argument = p_argument;
 }
 
-Error GDScriptParser::parse(const String &p_source_code, const String &p_script_path, bool p_for_completion, bool p_parse_body) {
+Error GDScriptParser::parse(const String &p_source_code, const String &p_script_path, bool p_for_completion, bool p_parse_body, bool p_expand_partials) {
 // wgodot-changes::begin
 	WGodotStartupProfile::Scope wgodot_profile("GDScript parse source", p_script_path);
 // wgodot-changes::end
@@ -505,13 +505,33 @@ Error GDScriptParser::parse(const String &p_source_code, const String &p_script_
 		source = source.replace_first(String::chr(0xFFFF), String());
 	}
 
+	// wgodot-changes::begin
+	String effective_path = p_script_path.simplify_path();
+	if (p_parse_body && p_expand_partials && source.contains("@partial")) {
+		String composed;
+		String error;
+		const String fragment_path = effective_path;
+		if (WGodotPartialClasses::compose(source, fragment_path, composed, effective_path, wgodot_partial_sources, error) != OK) {
+			push_error(error, 1, 1, 1, 1);
+			return ERR_PARSE_ERROR;
+		}
+		source = composed;
+		for (const auto &part : wgodot_partial_sources) {
+			if (p_for_completion && part.path == p_script_path) {
+				cursor_line += part.first_line - 1;
+			}
+		}
+	}
+	// wgodot-changes::end
 	GDScriptTokenizerText *text_tokenizer = memnew(GDScriptTokenizerText);
 	text_tokenizer->set_source_code(source);
 
 	tokenizer = text_tokenizer;
 	tokenizer->set_cursor_position(cursor_line, cursor_column);
 
-	script_path = p_script_path.simplify_path();
+	// wgodot-changes::begin
+	script_path = effective_path;
+	// wgodot-changes::end
 
 #ifdef DEBUG_ENABLED
 	evaluate_warning_directory_rules_for_script_path();
@@ -3553,6 +3573,26 @@ GDScriptParser::ExpressionNode *GDScriptParser::parse_call(ExpressionNode *p_pre
 	CallNode *call = alloc_node<CallNode>();
 	reset_extents(call, p_previous_operand);
 
+	// wgodot-changes::begin
+	if (previous.type == GDScriptTokenizer::Token::SUPER_AS) {
+		call->is_super = true;
+		if (!consume(GDScriptTokenizer::Token::PARENTHESIS_OPEN, "Expected '(' after super_as.")) {
+			return nullptr;
+		}
+		call->wgodot_super_type = parse_type();
+		if (!call->wgodot_super_type || !consume(GDScriptTokenizer::Token::PARENTHESIS_CLOSE, "Expected ')' after super_as type.") ||
+				!consume(GDScriptTokenizer::Token::PERIOD, "Expected '.' after super_as(Type).") ||
+				!consume(GDScriptTokenizer::Token::IDENTIFIER, "Expected method name after super_as(Type).")) {
+			return nullptr;
+		}
+		call->callee = parse_identifier();
+		call->function_name = static_cast<IdentifierNode *>(call->callee)->name;
+		if (!consume(GDScriptTokenizer::Token::PARENTHESIS_OPEN, "Expected '(' after method name.")) {
+			return nullptr;
+		}
+		push_multiline(true);
+	} else
+	// wgodot-changes::end
 	if (previous.type == GDScriptTokenizer::Token::SUPER) {
 		// Super call.
 		call->is_super = true;
@@ -4425,6 +4465,7 @@ GDScriptParser::ParseRule *GDScriptParser::get_rule(GDScriptTokenizer::Token::Ty
 		{ nullptr,                                          nullptr,                                        PREC_NONE }, // SIGNAL,
 		{ nullptr,                                          nullptr,                                        PREC_NONE }, // STATIC,
 		{ &GDScriptParser::parse_call,						nullptr,                                        PREC_NONE }, // SUPER,
+		{ &GDScriptParser::parse_call,						nullptr,                                        PREC_NONE }, // SUPER_AS, wgodot-changes
 		{ nullptr,                                          nullptr,                                        PREC_NONE }, // TRAIT,
 		{ nullptr,                                          nullptr,                                        PREC_NONE }, // VAR,
 		{ nullptr,                                          nullptr,                                        PREC_NONE }, // TK_VOID,

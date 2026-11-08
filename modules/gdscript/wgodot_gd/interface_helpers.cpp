@@ -73,6 +73,12 @@ const WGodotNativeInterfaces::Descriptor *native_interface_for_member(const GDSc
 	if (p_type.kind == GDScriptParser::DataType::NATIVE) {
 		return WGodotNativeInterfaces::get_descriptor(p_type.native_type);
 	}
+	if (p_type.kind == GDScriptParser::DataType::CLASS) {
+		const auto *provider = p_type.class_type->wgodot_default_methods.getptr(p_member);
+		if (provider && provider->kind == GDScriptParser::DataType::NATIVE) {
+			return WGodotNativeInterfaces::get_descriptor(provider->native_type);
+		}
+	}
 	if (p_type.kind == GDScriptParser::DataType::CLASS && p_type.class_type->wgodot_is_interface) {
 		for (const StringName &name : p_type.class_type->wgodot_native_interfaces) {
 			const auto *type = WGodotNativeInterfaces::get_descriptor(name);

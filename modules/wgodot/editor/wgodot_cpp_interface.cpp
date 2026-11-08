@@ -141,7 +141,29 @@ void WGodotCppEmitter::emit_interface(const WGodotCppProject::Class &p_class) {
 			contract += "\tvirtual " + traits + "::Result " + String(entry.key) + "(" + String(", ").join(parameters) + ")" + String(entry.value.flags & METHOD_FLAG_CONST ? " const" : "") + " = 0;\n";
 		}
 	}
+	for (const auto &member : p_class.node->members) {
+		if (member.type == Parser::ClassNode::Member::FUNCTION && member.function->is_coroutine) {
+			class_native_headers.insert("modules/wgodot/native/wgodot_native_task.h");
+			contract += "\tvirtual WGodotNative::TaskOwner &wgodot_interface_tasks() = 0;\n";
+			break;
+		}
+	}
 	contract += "};\n";
+	String default_declarations;
+	String default_definitions;
+	for (int i = 0; i < p_class.node->wgodot_own_member_count; i++) {
+		const auto &member = p_class.node->members[i];
+		if (member.type == Parser::ClassNode::Member::FUNCTION && !member.function->is_abstract) {
+			String declaration;
+			default_definitions += function(member.function, declaration, "m_" + symbol(member.get_name()));
+			default_declarations += declaration;
+		}
+	}
+	default_declarations += class_lambda_declarations;
+	default_definitions += class_lambda_definitions;
+	for (const FunctionDefinition &method : class_function_definitions) {
+		default_definitions += method.signature + " {\n" + method.body + "}\n\n";
+	}
 	String constant_declarations;
 	String constant_definitions;
 	emit_container_constants(p_class, constant_declarations, constant_definitions);
@@ -165,10 +187,10 @@ void WGodotCppEmitter::emit_interface(const WGodotCppProject::Class &p_class) {
 	for (const String &dependency : dependencies) {
 		header += "class " + dependency + ";\n";
 	}
-	header += contract + interface_value_definition(name, native_cpp_names[native], interface, constant_declarations);
+	header += contract + interface_value_definition(name, native_cpp_names[native], interface, constant_declarations + default_declarations);
 	header += "}\n" + interface_value_traits(name);
 	store_file(name + ".h", header);
-	if (!constant_definitions.is_empty()) {
+	if (!constant_definitions.is_empty() || !default_definitions.is_empty()) {
 		String source = source_header(p_class.script_path, p_class.node->fqcn) + "#include \"" + name + ".h\"\n";
 		headers.clear();
 		for (const String &include : class_call_headers) {
@@ -183,7 +205,7 @@ void WGodotCppEmitter::emit_interface(const WGodotCppProject::Class &p_class) {
 				source += "#include \"" + dependency + ".h\"\n";
 			}
 		}
-		source += "\nnamespace WGodotGame {\n" + constant_definitions + "}\n";
+		source += "\nnamespace WGodotGame {\n" + constant_definitions + default_definitions + "}\n";
 		store_file(name + ".cpp", source);
 	}
 }

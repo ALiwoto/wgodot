@@ -35,6 +35,7 @@
 // wgodot-changes::end
 // wgodot-changes::begin
 #include "wgodot_gd/script_resolution.h"
+#include "modules/wgodot/serialization/schema.h"
 
 #include "core/profiling/wgodot_startup_profile.h"
 // wgodot-changes::end
@@ -689,6 +690,8 @@ Error GDScriptAnalyzer::resolve_class_inheritance(GDScriptParser::ClassNode *p_c
 	}
 
 	p_class->base_type = result;
+	// wgodot-changes::begin
+	// wgodot-changes::end
 	class_type.native_type = result.native_type;
 	p_class->self_type = class_type;
 
@@ -1430,6 +1433,8 @@ void GDScriptAnalyzer::resolve_class_interface(GDScriptParser::ClassNode *p_clas
 		}
 		// wgodot-changes::begin
 		wgodot_resolve_implemented_interfaces(p_class);
+		wgodot_resolve_interface_defaults(p_class);
+		wgodot_add_serialization_factories(p_class);
 		// wgodot-changes::end
 
 		GDScriptParser::DataType base_type = p_class->base_type;
@@ -1452,6 +1457,15 @@ void GDScriptAnalyzer::resolve_class_interface(GDScriptParser::ClassNode *p_clas
 		}
 
 		// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+		wgodot_resolve_serialization_fields(p_class);
+		for (const auto codec : { WGodotSerialization::Codec::JSON, WGodotSerialization::Codec::BINARY, WGodotSerialization::Codec::PROTOBUF }) {
+			const auto serialization = WGodotSerialization::schema(p_class, codec);
+			if (!serialization.error.is_empty()) {
+				push_error(serialization.error, serialization.error_node);
+			}
+		}
+#endif
 		wgodot_validate_static_class(p_class);
 		wgodot_validate_interface_class(p_class);
 		wgodot_validate_implemented_interfaces(p_class);
@@ -3879,6 +3893,11 @@ void GDScriptAnalyzer::reduce_call(GDScriptParser::CallNode *p_call, bool p_is_a
 
 	if (p_call->is_super) {
 		base_type = parser->current_class->base_type;
+		// wgodot-changes::begin
+		if (p_call->wgodot_super_type && !wgodot_resolve_super_as(p_call, base_type)) {
+			return;
+		}
+		// wgodot-changes::end
 		base_type.is_meta_type = false;
 		is_self = true;
 
@@ -4728,6 +4747,16 @@ void GDScriptAnalyzer::reduce_identifier_from_base(GDScriptParser::IdentifierNod
 
 	// Check native members. No need for native class recursion because Node exposes all Object's properties.
 	// wgodot-changes::begin
+	const auto &default_base = p_base ? *p_base : parser->current_class->self_type;
+	if (default_base.kind == GDScriptParser::DataType::CLASS) {
+		const auto *provider = default_base.class_type->wgodot_default_methods.getptr(p_identifier->name);
+		if (provider && provider->kind == GDScriptParser::DataType::CLASS && provider->class_type != default_base.class_type) {
+			auto type = *provider;
+			type.is_meta_type = p_base ? p_base->is_meta_type : false;
+			reduce_identifier_from_base(p_identifier, &type);
+			return;
+		}
+	}
 	if (wgodot_reduce_native_interface_member(p_base ? *p_base : parser->current_class->self_type, p_identifier)) {
 		return;
 	}
@@ -5185,7 +5214,9 @@ void GDScriptAnalyzer::reduce_preload(GDScriptParser::PreloadNode *p_preload) {
 		p_preload->resolved_path = p_preload->path->reduced_value;
 		// TODO: Save this as script dependency.
 		if (p_preload->resolved_path.is_relative_path()) {
-			p_preload->resolved_path = parser->script_path.get_base_dir().path_join(p_preload->resolved_path);
+			// wgodot-changes::begin
+			p_preload->resolved_path = parser->wgodot_source_location(p_preload->start_line).path.get_base_dir().path_join(p_preload->resolved_path);
+			// wgodot-changes::end
 		}
 		p_preload->resolved_path = p_preload->resolved_path.simplify_path();
 		// wgodot-changes::begin
@@ -6539,6 +6570,11 @@ bool GDScriptAnalyzer::get_function_signature(GDScriptParser::Node *p_source, bo
 		return false;
 	}
 
+	// wgodot-changes::begin
+	if (p_base_type.kind == GDScriptParser::DataType::CLASS) {
+		resolve_class_interface(p_base_type.class_type, p_source);
+	}
+	// wgodot-changes::end
 	StringName base_native = p_base_type.native_type;
 	// wgodot-changes::begin
 	if (const auto *contract = WGodotGDScriptStdLib::get_native_interface(base_native)) {
@@ -6611,6 +6647,16 @@ bool GDScriptAnalyzer::get_function_signature(GDScriptParser::Node *p_source, bo
 		base_class = base_class->base_type.class_type;
 	}
 
+	// wgodot-changes::begin
+	if (!found_function && p_base_type.kind == GDScriptParser::DataType::CLASS) {
+		const auto *provider = p_base_type.class_type->wgodot_default_methods.getptr(function_name);
+		if (provider && provider->kind == GDScriptParser::DataType::CLASS) {
+			found_function_class = provider->class_type;
+			resolve_class_member(found_function_class, function_name, p_source);
+			found_function = found_function_class->get_member(function_name).function;
+		}
+	}
+	// wgodot-changes::end
 	if (found_function != nullptr) {
 		if (found_function->is_abstract) {
 			r_method_flags.set_flag(METHOD_FLAG_VIRTUAL_REQUIRED);

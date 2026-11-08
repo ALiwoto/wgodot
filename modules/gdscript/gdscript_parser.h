@@ -34,6 +34,7 @@
 #include "gdscript_tokenizer.h"
 // wgodot-changes::begin
 #include "wgodot_gd/enum_values.h"
+#include "wgodot_gd/partial_classes.h"
 // wgodot-changes::end
 
 #ifdef DEBUG_ENABLED
@@ -53,6 +54,10 @@
 #ifdef DEBUG_ENABLED
 #include "core/string/string_builder.h"
 #endif
+
+// wgodot-changes::begin
+namespace WGodotGDScriptExportTransform { class ExportSource; }
+// wgodot-changes::end
 
 class GDScriptParser {
 	struct AnnotationInfo;
@@ -377,6 +382,7 @@ public:
 		List<AnnotationNode *> annotations;
 		// wgodot-changes::begin
 		bool wgodot_export_reflection = false;
+		bool wgodot_engine_boundary = false; // Compiler-provided JSON Dictionary parameter.
 		// wgodot-changes::end
 
 		virtual bool is_expression() const { return false; }
@@ -538,6 +544,9 @@ public:
 		LocalVector<ExpressionNode *> arguments;
 		StringName function_name;
 		bool is_super = false;
+		// wgodot-changes::begin
+		TypeNode *wgodot_super_type = nullptr;
+		// wgodot-changes::end
 		bool is_static = false;
 
 		CallNode() {
@@ -804,6 +813,7 @@ public:
 		};
 		Vector<WGodotInterfaceReference> wgodot_implements;
 		Vector<ClassNode *> wgodot_resolved_interfaces;
+		HashMap<StringName, DataType> wgodot_default_methods;
 		Vector<StringName> wgodot_native_interfaces;
 		bool wgodot_interfaces_resolved = false;
 		int wgodot_own_member_count = -1;
@@ -924,6 +934,9 @@ public:
 	};
 
 	struct FunctionNode : public Node {
+		// wgodot-changes::begin
+		int wgodot_serialization_factory = 0; // 1: JSON, 2: Dictionary, 3: binary.
+		// wgodot-changes::end
 		IdentifierNode *identifier = nullptr;
 		LocalVector<ParameterNode *> parameters;
 		HashMap<StringName, uint32_t> parameters_indices;
@@ -1772,7 +1785,14 @@ private:
 #endif // TOOLS_ENABLED
 
 public:
-	Error parse(const String &p_source_code, const String &p_script_path, bool p_for_completion, bool p_parse_body = true);
+	// wgodot-changes::begin
+	Vector<WGodotPartialClasses::SourcePart> wgodot_partial_sources;
+	WGodotPartialClasses::SourceLocation wgodot_source_location(int p_line) const;
+#ifdef TOOLS_ENABLED
+	const WGodotGDScriptExportTransform::ExportSource *wgodot_export_source = nullptr;
+#endif
+	Error parse(const String &p_source_code, const String &p_script_path, bool p_for_completion, bool p_parse_body = true, bool p_expand_partials = true);
+	// wgodot-changes::end
 	Error parse_binary(const Vector<uint8_t> &p_binary, const String &p_script_path);
 	ClassNode *get_tree() const { return head; }
 	bool is_tool() const { return _is_tool; }

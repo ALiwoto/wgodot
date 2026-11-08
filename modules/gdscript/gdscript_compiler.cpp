@@ -29,6 +29,9 @@
 /**************************************************************************/
 
 #include "gdscript_compiler.h"
+// wgodot-changes::begin
+#include "modules/wgodot/serialization/schema.h"
+// wgodot-changes::end
 
 // wgodot-changes::begin
 #include "core/profiling/wgodot_startup_profile.h"
@@ -61,6 +64,11 @@ bool GDScriptCompiler::_is_class_member_property(CodeGen &codegen, const StringN
 }
 
 bool GDScriptCompiler::_is_class_member_property(GDScript *owner, const StringName &p_name) {
+	// wgodot-changes::begin
+	if (owner->wgodot_is_interface && owner->member_indices.has(p_name)) {
+		return true; // Interface properties have no storage; dispatch to the implementor.
+	}
+	// wgodot-changes::end
 	GDScript *scr = owner;
 	GDScriptNativeClass *nc = nullptr;
 	while (scr) {
@@ -310,7 +318,9 @@ GDScriptCodeGenerator::Address GDScriptCompiler::_parse_expression(CodeGen &code
 					if (_is_class_member_property(codegen, identifier)) {
 						// Get property.
 						GDScriptCodeGenerator::Address temp = codegen.add_temporary(_gdtype_from_datatype(p_expression->type_constraint, codegen.script));
-						gen->write_get_member(temp, identifier);
+						// wgodot-changes::begin
+						_wgodot_get_member(codegen, temp, identifier);
+						// wgodot-changes::end
 						return temp;
 					}
 
@@ -662,7 +672,15 @@ GDScriptCodeGenerator::Address GDScriptCompiler::_parse_expression(CodeGen &code
 
 				if (call->is_super) {
 					// Super call.
-					gen->write_super_call(result, call->function_name, arguments);
+					// wgodot-changes::begin
+					if (call->wgodot_super_type) {
+						const auto provider = _gdtype_from_datatype(call->wgodot_super_type->resolved_type, codegen.script, false);
+						const Variant value = provider.script_type ? Variant(Ref<Script>(provider.script_type)) : Variant(provider.native_type);
+						gen->write_super_as(result, codegen.add_constant(value), call->function_name, arguments);
+					} else {
+						gen->write_super_call(result, call->function_name, arguments);
+					}
+					// wgodot-changes::end
 				} else {
 					if (callee->type == GDScriptParser::Node::IDENTIFIER) {
 						// Self function call.
@@ -1235,7 +1253,9 @@ GDScriptCodeGenerator::Address GDScriptCompiler::_parse_expression(CodeGen &code
 						if (!known_type) {
 							gen->write_jump_if_shared(assigned);
 						}
-						gen->write_set_member(assigned, assign_class_member_property);
+						// wgodot-changes::begin
+						_wgodot_set_member(codegen, assigned, assign_class_member_property);
+						// wgodot-changes::end
 						if (!known_type) {
 							gen->write_end_jump_if_shared();
 						}
@@ -1290,13 +1310,19 @@ GDScriptCodeGenerator::Address GDScriptCompiler::_parse_expression(CodeGen &code
 				if (has_operation) {
 					GDScriptCodeGenerator::Address op_result = codegen.add_temporary(_gdtype_from_datatype(assignment->type_constraint, codegen.script));
 					GDScriptCodeGenerator::Address member = codegen.add_temporary(_gdtype_from_datatype(assignment->assignee->type_constraint, codegen.script));
-					gen->write_get_member(member, name);
+					// wgodot-changes::begin
+					_wgodot_get_member(codegen, member, name);
+					// wgodot-changes::end
 					gen->write_binary_operator(op_result, assignment->variant_op, member, assigned_value);
 					gen->pop_temporary(); // Pop member temp.
 					to_assign = op_result;
 				}
 
-				gen->write_set_member(to_assign, name);
+				// wgodot-changes::begin
+
+				_wgodot_set_member(codegen, to_assign, name);
+
+				// wgodot-changes::end
 
 				if (to_assign.mode == GDScriptCodeGenerator::Address::TEMPORARY) {
 					gen->pop_temporary(); // Pop the assigned expression or the temp result if it has operation.
@@ -2784,6 +2810,10 @@ Error GDScriptCompiler::_prepare_compilation(GDScript *p_script, const GDScriptP
 
 	p_script->member_functions.clear();
 	p_script->member_indices.clear();
+	// wgodot-changes::begin
+	p_script->wgodot_field_annotations.clear();
+	p_script->wgodot_class_annotations.clear();
+	// wgodot-changes::end
 	p_script->static_variables_indices.clear();
 	p_script->static_variables.clear();
 	p_script->_signals.clear();
@@ -2800,6 +2830,12 @@ Error GDScriptCompiler::_prepare_compilation(GDScript *p_script, const GDScriptP
 	p_script->_is_abstract = p_class->is_abstract;
 	// wgodot-changes::begin
 	_wgodot_prepare_interface_metadata(p_script, p_class);
+	p_script->wgodot_default_methods.clear();
+	for (const auto &entry : p_class->wgodot_default_methods) {
+		if (entry.value.class_type != p_class) {
+			p_script->wgodot_default_methods.insert(entry.key, _gdtype_from_datatype(entry.value, p_script, false));
+		}
+	}
 	// wgodot-changes::end
 
 	if (p_script->local_name != StringName()) {
@@ -2865,6 +2901,9 @@ Error GDScriptCompiler::_prepare_compilation(GDScript *p_script, const GDScriptP
 
 			p_script->base = base;
 			p_script->member_indices = base->member_indices;
+			// wgodot-changes::begin
+
+			// wgodot-changes::end
 		} break;
 		default: {
 			_set_error("Parser bug (please report): invalid inheritance.", nullptr);
@@ -2877,6 +2916,41 @@ Error GDScriptCompiler::_prepare_compilation(GDScript *p_script, const GDScriptP
 	if (base_type.kind == GDScriptDataType::GDSCRIPT && p_script->base.is_valid()) {
 		p_script->rpc_config = p_script->base->rpc_config.duplicate();
 	}
+
+	// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+	for (const auto codec : { WGodotSerialization::Codec::JSON, WGodotSerialization::Codec::BINARY, WGodotSerialization::Codec::PROTOBUF }) {
+		const auto serialization = WGodotSerialization::schema(p_class, codec);
+		if (serialization.enabled) {
+			auto attribute = [](Dictionary &r_attributes, const StringName &p_name, const Variant &p_value) {
+				Array arguments;
+				arguments.push_back(p_value);
+				r_attributes[p_name] = arguments;
+			};
+			Array options;
+			options.push_back(serialization.big_endian ? "big" : "little");
+			options.push_back(serialization.strict);
+			p_script->wgodot_class_annotations["@BinaryOptions"] = options;
+			for (const auto &field : serialization.fields) {
+				Dictionary annotations = p_script->wgodot_field_annotations[field.node->identifier->name];
+				attribute(annotations, serialization.protobuf ? SNAME("@PbFieldId") : SNAME("@BinaryFieldOrder"), field.id);
+				auto encoding = [&](const StringName &p_name, WGodotSerialization::Kind p_kind) {
+					if (p_kind != WGodotSerialization::Kind::INVALID) {
+						attribute(annotations, p_name, String(WGodotSerialization::kind_name(p_kind)).to_lower());
+					}
+				};
+				encoding(serialization.protobuf ? SNAME("@PbEncoding") : SNAME("@BinaryFieldType"), field.kind);
+				encoding(SNAME("@PbKeyEncoding"), field.key);
+				encoding(SNAME("@PbValueEncoding"), field.value);
+				attribute(annotations, SNAME("@PbPacked"), field.packed);
+				attribute(annotations, SNAME("@PbOneof"), field.oneof);
+				attribute(annotations, SNAME("@JsonPropertyName"), field.json);
+				p_script->wgodot_field_annotations[field.node->identifier->name] = annotations;
+			}
+		}
+	}
+#endif
+	// wgodot-changes::end
 
 	for (const GDScriptParser::ClassNode::Member &member : p_class->members) {
 		switch (member.type) {
@@ -3059,6 +3133,12 @@ Error GDScriptCompiler::_prepare_compilation(GDScript *p_script, const GDScriptP
 Error GDScriptCompiler::_compile_class(GDScript *p_script, const GDScriptParser::ClassNode *p_class, bool p_keep_state) {
 	// Compile member functions, getters, and setters.
 	for (const GDScriptParser::ClassNode::Member &member : p_class->members) {
+		// wgodot-changes::begin
+		if (p_class->wgodot_is_interface && member.type == member.FUNCTION &&
+				int(p_class->members_indices[member.get_name()]) >= p_class->wgodot_own_member_count) {
+			continue;
+		}
+		// wgodot-changes::end
 		if (member.type == member.FUNCTION) {
 			const GDScriptParser::FunctionNode *function = member.function;
 			Error err = OK;

@@ -1107,6 +1107,21 @@ void GDScriptByteCodeGenerator::write_call(const Address &p_target, const Addres
 	}
 }
 
+// wgodot-changes::begin
+void GDScriptByteCodeGenerator::write_super_as(const Address &p_target, const Address &p_provider, const StringName &p_function_name, const Vector<Address> &p_arguments) {
+	append_opcode_and_argcount(GDScriptFunction::OPCODE_CALL_SUPER_AS, 2 + p_arguments.size());
+	for (const Address &argument : p_arguments) {
+		append(argument);
+	}
+	append(p_provider);
+	CallTarget ct = get_call_target(p_target);
+	append(ct.target);
+	append(p_arguments.size());
+	append(p_function_name);
+	ct.cleanup();
+}
+// wgodot-changes::end
+
 void GDScriptByteCodeGenerator::write_super_call(const Address &p_target, const StringName &p_function_name, const Vector<Address> &p_arguments) {
 	append_opcode_and_argcount(GDScriptFunction::OPCODE_CALL_SELF_BASE, 1 + p_arguments.size());
 	for (int i = 0; i < p_arguments.size(); i++) {

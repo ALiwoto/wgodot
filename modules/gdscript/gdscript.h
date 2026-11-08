@@ -106,6 +106,7 @@ class GDScript : public Script {
 	bool wgodot_is_interface = false;
 	String wgodot_interface_key;
 	HashSet<String> wgodot_implemented_interfaces;
+	HashMap<StringName, GDScriptDataType> wgodot_default_methods;
 	// wgodot-changes::end
 
 public:
@@ -249,6 +250,8 @@ public:
 	bool inherits_script(const Ref<Script> &p_script) const override;
 	// wgodot-changes::begin
 	bool wgodot_is_interface_type() const override;
+	MethodInfo wgodot_default_method_info(const StringName &p_method) const;
+	Variant wgodot_call_default(GDScriptInstance *p_instance, const StringName &p_method, const Variant **p_args, int p_argcount, Callable::CallError &r_error) const;
 	String wgodot_get_interface_id() const override;
 	const String &wgodot_get_interface_key() const;
 	bool wgodot_implements_interface(const String &p_interface_key) const override;
@@ -265,6 +268,10 @@ public:
 	const HashMap<StringName, Ref<GDScript>> &get_subclasses() const { return subclasses; }
 	const HashMap<StringName, Variant> &get_constants() const { return constants; }
 	const HashSet<StringName> &get_members() const { return members; }
+	// wgodot-changes::begin
+	HashMap<StringName, Dictionary> wgodot_field_annotations;
+	Dictionary wgodot_class_annotations;
+	// wgodot-changes::end
 	const GDScriptDataType &get_member_type(const StringName &p_member) const {
 		CRASH_COND(!member_indices.has(p_member));
 		return member_indices[p_member].data_type;

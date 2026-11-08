@@ -8,6 +8,7 @@
 #include "core/templates/hash_map.h"
 #include "core/templates/hash_set.h"
 #include "core/templates/vector.h"
+#include "modules/gdscript/wgodot_gd/partial_classes.h"
 
 namespace WGodotGDScriptExportTransform {
 
@@ -33,6 +34,7 @@ class ExportSource {
 	String original;
 	String text;
 	Vector<OriginSpan> origins;
+	Vector<WGodotPartialClasses::SourcePart> partial_sources;
 
 	void append_original_range(int p_start, int p_end, ExportSource &r_output) const;
 	Error apply(const Vector<SourceEdit> &p_edits, const StringName &p_pass, ExportSource &r_output, String &r_error) const;
@@ -43,6 +45,7 @@ public:
 	const String &get_original() const { return original; }
 	SourceOrigin get_origin(int p_offset) const;
 	int get_original_line(int p_offset) const;
+	WGodotPartialClasses::SourceLocation get_location(const String &p_path, int p_line) const;
 };
 
 // Source buffers are shared between revisions until an edit replaces them.

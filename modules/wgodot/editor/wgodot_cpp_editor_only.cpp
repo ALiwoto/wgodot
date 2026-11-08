@@ -67,7 +67,8 @@ Error WGodotCppProject::prepare_editor_only() {
 			if (error != OK) {
 				if (ref.is_valid()) {
 					for (const Parser::ParserError &message : ref->get_parser()->get_errors()) {
-						diagnostics.push_back(vformat("%s:%d: %s", path, message.start_line, message.message));
+						const auto location = ref->get_parser()->wgodot_source_location(message.start_line);
+						diagnostics.push_back(vformat("%s:%d: %s", location.path, location.line, message.message));
 					}
 				}
 				return error;

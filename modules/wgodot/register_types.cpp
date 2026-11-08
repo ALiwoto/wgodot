@@ -26,7 +26,7 @@
 
 #include "modules/modules_enabled.gen.h"
 #ifdef MODULE_GDSCRIPT_ENABLED
-#include "native/binary_serializable.h"
+#include "serialization/serializable.h"
 
 #include "core/object/wgodot_interface_registry.h"
 #endif
@@ -88,7 +88,9 @@ void initialize_wgodot_module(ModuleInitializationLevel p_level) {
 #endif
 		WGodotPreloads::initialize();
 #ifdef MODULE_GDSCRIPT_ENABLED
-		WGDREGISTER_INTERFACE(BinarySerializable, "Object", "modules/wgodot/native/binary_serializable.h");
+		WGDREGISTER_INTERFACE(JsonSerializable, "RefCounted", "modules/wgodot/serialization/serializable.h");
+		WGDREGISTER_INTERFACE(BinarySerializable, "RefCounted", "modules/wgodot/serialization/serializable.h");
+		WGDREGISTER_INTERFACE(ProtobufSerializable, "RefCounted", "modules/wgodot/serialization/serializable.h");
 #endif
 		WGodotPauseController::initialize();
 		WGodotWaitController::initialize();

@@ -17,6 +17,7 @@
 #include "core/string/string_builder.h"
 
 #include "modules/gdscript/wgodot_gd/interface_helpers.h"
+#include "modules/gdscript/wgodot_gd/partial_classes.h"
 
 #include <charconv>
 
@@ -38,7 +39,8 @@ String WGodotCppEmitter::source_header(const String &p_path, const String &p_cla
 
 void WGodotCppEmitter::unsupported(const Parser::Node *p_node, const String &p_feature) {
 	if (!function_failed) {
-		diagnostics.push_back(vformat("%s:%d:%d: C++ export does not yet implement %s", current_class->script_path, p_node->start_line, p_node->start_column, p_feature));
+		const auto location = project.find_parser(current_class->script_path)->wgodot_source_location(p_node->start_line);
+		diagnostics.push_back(vformat("%s:%d:%d: C++ export does not yet implement %s", location.path, location.line, p_node->start_column, p_feature));
 	}
 	function_failed = true;
 }
@@ -259,6 +261,10 @@ WGodotCppEmitter::Value WGodotCppEmitter::member(const Parser::ExpressionNode *p
 		return native_property(p_base, p_name, p_origin);
 	}
 	const auto *owner = member_owner(datatype.class_type, p_name);
+	const auto *provider = datatype.class_type->wgodot_default_methods.getptr(p_name);
+	if (!owner && provider && provider->kind == Parser::DataType::CLASS) {
+		owner = project.find_class(provider->class_type);
+	}
 	if (!owner) {
 		return native_property(p_base, p_name, p_origin);
 	}
@@ -294,7 +300,8 @@ WGodotCppEmitter::Value WGodotCppEmitter::member(const Parser::ExpressionNode *p
 	if (entry.type == Parser::ClassNode::Member::FUNCTION) {
 		class_call_headers.insert("modules/wgodot/native/wgodot_native_callback.h");
 		const bool interface = owner->node->wgodot_is_interface;
-		String value = interface ? "WGodotNative::interface_callable<" + signature_type(p_origin) + ">(" + expression(p_base) + ", " : "WGodotNative::method_callable(";
+		const String interface_receiver = interface ? owner->cpp_name + "(" + lower_receiver(p_base).expression() + ")" : String();
+		String value = interface ? "WGodotNative::interface_callable<" + signature_type(p_origin) + ">(" + interface_receiver + ", " : "WGodotNative::method_callable(";
 		if (!entry.function->is_static && !interface) {
 			value += "WGodotNative::object_pointer(" + (p_base ? expression(p_base) : "this") + "), ";
 		}
@@ -526,7 +533,7 @@ String WGodotCppEmitter::leaf_expression(const Parser::ExpressionNode *p_express
 		case Parser::Node::LAMBDA:
 			return lambda(static_cast<const Parser::LambdaNode *>(p_expression));
 		case Parser::Node::SELF:
-			return "this";
+			return current_class->node->wgodot_is_interface ? "(*this)" : "this";
 		case Parser::Node::LITERAL:
 			return literal(static_cast<const Parser::LiteralNode *>(p_expression)->value, p_expression);
 		case Parser::Node::IDENTIFIER: {
@@ -669,7 +676,7 @@ Error WGodotCppEmitter::generate(const String &p_directory, int p_jobs, WGodotCp
 	}
 	emit_native_access();
 	store_file("game_types.h", "// wgodot-changes::file\n#pragma once\n#include \"modules/wgodot/native/wgodot_native_support.h\"\n#include \"core/object/ref_counted.h\"\n#include \"core/variant/variant_caster.h\"\n#include \"core/variant/typed_array.h\"\n#include \"core/variant/typed_dictionary.h\"\n");
-	store_file("SCsub", "# wgodot-changes::file\nImport('env')\nImport('env_modules')\nenv_game = env_modules.Clone()\nenv_game.PrependUnique(CPPPATH=env.get('wgodot_public_includes', []))\nenv_game.add_source_files(env.modules_sources, '*.cpp')\nenv_game.add_source_files(env.modules_sources, [File('#modules/wgodot/native/wgodot_native_task.cpp'), File('#modules/wgodot/native/wgodot_native_connections.cpp'), File('#modules/wgodot/native/wgodot_native_debug.cpp'), File('#modules/wgodot/native/wgodot_native_string_format.cpp'), File('#modules/wgodot/wgodot_preloads.cpp'), File('#modules/wgodot/native/wgodot_native_runtime.cpp'), File('#modules/wgodot/codecs/native_payload.cpp'), File('#modules/wgodot/codecs/w_animation.cpp')])\n");
+	store_file("SCsub", "# wgodot-changes::file\nImport('env')\nImport('env_modules')\nenv_game = env_modules.Clone()\nenv_game.PrependUnique(CPPPATH=env.get('wgodot_public_includes', []))\nenv_game.add_source_files(env.modules_sources, '*.cpp')\nenv_game.add_source_files(env.modules_sources, [File('#modules/wgodot/native/wgodot_native_task.cpp'), File('#modules/wgodot/native/wgodot_native_connections.cpp'), File('#modules/wgodot/native/wgodot_native_debug.cpp'), File('#modules/wgodot/native/wgodot_native_string_format.cpp'), File('#modules/wgodot/wgodot_preloads.cpp'), File('#modules/wgodot/native/wgodot_native_runtime.cpp'), File('#modules/wgodot/codecs/native_payload.cpp'), File('#modules/wgodot/codecs/w_animation.cpp'), File('#modules/wgodot/serialization/wire.cpp'), File('#modules/wgodot/serialization/serializable.cpp')])\n");
 	String config = "# wgodot-changes::file\ndef can_build(env, platform):\n    return not env.editor_build\n\ndef configure(env):\n    env.AppendUnique(CPPDEFINES=['WGODOT_NATIVE_GAME'])\n";
 	if (trace_enabled) {
 		config += "    env.AppendUnique(CPPDEFINES=['WGODOT_NATIVE_TRACE_ENABLED'])\n";
@@ -714,20 +721,45 @@ Error WGodotCppEmitter::write(const String &p_directory) const {
 	Error error = DirAccess::make_dir_recursive_absolute(p_directory);
 	ERR_FAIL_COND_V(error != OK, error);
 	const String manifest_path = p_directory.path_join("main_game.json");
-	PackedStringArray previous_files;
-	if (FileAccess::exists(manifest_path)) {
+	const String pending_path = p_directory.path_join(".wgodot-pending.json");
+	HashSet<String> previous_files;
+	for (const String &ownership_path : { manifest_path, pending_path }) {
+		if (!FileAccess::exists(ownership_path)) {
+			continue;
+		}
 		JSON json;
-		ERR_FAIL_COND_V(json.parse(FileAccess::get_file_as_string(manifest_path)) != OK || json.get_data().get_type() != Variant::DICTIONARY, ERR_FILE_CORRUPT);
+		ERR_FAIL_COND_V(json.parse(FileAccess::get_file_as_string(ownership_path)) != OK || json.get_data().get_type() != Variant::DICTIONARY, ERR_FILE_CORRUPT);
 		const Dictionary manifest = json.get_data();
 		ERR_FAIL_COND_V(int(manifest.get("format", 0)) != 1, ERR_FILE_UNRECOGNIZED);
-		previous_files = manifest.get("files", PackedStringArray());
-		for (const String &name : previous_files) {
-			ERR_FAIL_COND_V_MSG(name.is_empty() || name.get_file() != name || name == "." || name == "..", ERR_FILE_CORRUPT, "Invalid generated filename in " + manifest_path);
+		const PackedStringArray owned_files = manifest.get("files", PackedStringArray());
+		for (const String &name : owned_files) {
+			ERR_FAIL_COND_V_MSG(name.is_empty() || name.get_file() != name || name == "." || name == "..", ERR_FILE_CORRUPT, "Invalid generated filename in " + ownership_path);
+			previous_files.insert(name);
 		}
 	}
 	for (const String &name : DirAccess::get_files_at(p_directory)) {
 		ERR_FAIL_COND_V_MSG(name.ends_with(".cpp") && !files.has(name) && !previous_files.has(name), ERR_ALREADY_EXISTS, "Unmanaged C++ source in generated module: " + name);
 	}
+	// Retain ownership across an interrupted publish, including newly added files.
+	for (const KeyValue<String, String> &file : files) {
+		previous_files.insert(file.key);
+	}
+	PackedStringArray pending_files;
+	for (const String &name : previous_files) {
+		pending_files.push_back(name);
+	}
+	pending_files.sort();
+	Dictionary pending;
+	pending["format"] = 1;
+	pending["files"] = pending_files;
+	const String staged_pending = staging_directory.path_join(".wgodot-pending.json");
+	Ref<FileAccess> pending_file = FileAccess::open(staged_pending, FileAccess::WRITE, &error);
+	ERR_FAIL_COND_V(error != OK, error);
+	pending_file->store_string(JSON::stringify(pending));
+	pending_file->flush();
+	ERR_FAIL_COND_V(pending_file->get_error() != OK, pending_file->get_error());
+	pending_file.unref();
+	RETURN_IF_ERROR(DirAccess::rename_absolute(staged_pending, pending_path));
 	// A partially written generation must never pass the -Game preflight.
 	if (FileAccess::exists(manifest_path)) {
 		error = DirAccess::remove_absolute(manifest_path);
@@ -777,14 +809,25 @@ Error WGodotCppEmitter::write(const String &p_directory) const {
 	Dictionary sources;
 	Dictionary native_classes;
 	for (const auto &entry : project.get_classes()) {
-		if (entry.script_path.begins_with("res://") && !sources.has(entry.script_path)) {
-			sources[entry.script_path] = FileAccess::get_sha256(entry.script_path);
+		if (entry.node->outer) {
+			continue;
 		}
-		if (!entry.node->outer && !entry.node->wgodot_static_class && !entry.node->wgodot_is_interface && files.has(entry.cpp_name + ".h")) {
+		Vector<String> paths = WGodotPartialClasses::paths(entry.script_path);
+		if (paths.is_empty()) {
+			paths.push_back(entry.script_path);
+		}
+		for (const String &path : paths) {
+			if (path.begins_with("res://")) {
+				sources[path] = FileAccess::get_sha256(path);
+			}
+		}
+		if (!entry.node->wgodot_static_class && !entry.node->wgodot_is_interface && files.has(entry.cpp_name + ".h")) {
 			Dictionary native_class;
 			native_class["class"] = entry.cpp_name;
 			native_class["base"] = native_base(entry.node->self_type);
-			native_classes[entry.script_path] = native_class;
+			for (const String &path : paths) {
+				native_classes[path] = native_class;
+			}
 		}
 	}
 	manifest["sources"] = sources;
@@ -803,11 +846,16 @@ Error WGodotCppEmitter::write(const String &p_directory) const {
 	}
 	manifest["resource_paths"] = resource_paths;
 	manifest["resource_selection_fingerprint"] = resource_selection_fingerprint;
-	Ref<FileAccess> manifest_file = FileAccess::open(manifest_path, FileAccess::WRITE, &error);
+	const String staged_manifest = staging_directory.path_join("main_game.json");
+	Ref<FileAccess> manifest_file = FileAccess::open(staged_manifest, FileAccess::WRITE, &error);
 	ERR_FAIL_COND_V(error != OK, error);
 	manifest_file->store_string(JSON::stringify(manifest, "\t", true) + "\n");
 	manifest_file->flush();
 	ERR_FAIL_COND_V(manifest_file->get_error() != OK, manifest_file->get_error());
 	manifest_file.unref();
-	return cache ? cache->commit(files, project.get_classes().size()) : OK;
+	RETURN_IF_ERROR(DirAccess::rename_absolute(staged_manifest, manifest_path));
+	if (cache) {
+		RETURN_IF_ERROR(cache->commit(files, project.get_classes().size()));
+	}
+	return DirAccess::remove_absolute(pending_path);
 }

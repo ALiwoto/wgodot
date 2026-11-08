@@ -4,6 +4,7 @@
 
 #include "core/io/file_access.h"
 #include "core/object/script_language.h"
+#include "modules/gdscript/wgodot_gd/partial_classes.h"
 
 
 namespace WGodotGDScriptExportTransform {
@@ -43,6 +44,21 @@ int ExportSource::get_original_line(int p_offset) const {
 	return line;
 }
 
+WGodotPartialClasses::SourceLocation ExportSource::get_location(const String &p_path, int p_line) const {
+	if (partial_sources.is_empty() || p_line <= 0) {
+		return { p_path, p_line };
+	}
+	int offset = 0;
+	for (int line = 1; line < p_line; ++line) {
+		offset = text.find_char('\n', offset);
+		if (offset < 0) {
+			return { p_path, p_line };
+		}
+		++offset;
+	}
+	return WGodotPartialClasses::locate(partial_sources, p_path, get_original_line(offset));
+}
+
 void ExportSource::append_original_range(int p_start, int p_end, ExportSource &r_output) const {
 	const int output_start = r_output.text.length();
 	r_output.text += text.substr(p_start, p_end - p_start);
@@ -78,6 +94,7 @@ Error ExportSource::apply(const Vector<SourceEdit> &p_edits, const StringName &p
 
 	ExportSource output;
 	output.original = original;
+	output.partial_sources = partial_sources;
 	cursor = 0;
 	for (const SourceEdit &edit : edits) {
 		append_original_range(cursor, edit.start, output);
@@ -114,6 +131,10 @@ Error ExportProject::capture(const HashSet<String> &p_exported_paths, const Hash
 		}
 	}
 	for (const String &path : p_script_paths) {
+		if (WGodotPartialClasses::canonical_path(path) != path) {
+			captured.exported_paths.erase(path);
+			continue;
+		}
 		captured.script_paths.push_back(path);
 	}
 	captured.script_paths.sort();
@@ -125,6 +146,21 @@ Error ExportProject::capture(const HashSet<String> &p_exported_paths, const Hash
 			r_error = "Cannot capture GDScript export input: " + path;
 			return error;
 		}
+		String composed;
+		String canonical;
+		Vector<WGodotPartialClasses::SourcePart> parts;
+		error = WGodotPartialClasses::compose(source.text, path, composed, canonical, parts, r_error);
+		if (error != OK) {
+			return error;
+		}
+		for (const auto &part : parts) {
+			if (p_exported_paths.has(part.path) != p_exported_paths.has(path)) {
+				r_error = "Partial class fragments must belong to the same export target: " + part.path;
+				return ERR_INVALID_DATA;
+			}
+		}
+		source.text = composed;
+		source.partial_sources = parts;
 		source.original = source.text;
 		if (!source.text.is_empty()) {
 			ExportSource::OriginSpan span;

@@ -124,6 +124,7 @@ static const char *token_names[] = {
 	"signal", // SIGNAL,
 	"static", // STATIC,
 	"super", // SUPER,
+	"super_as", // wgodot-changes
 	"trait", // TRAIT,
 	"var", // VAR,
 	"void", // TK_VOID,
@@ -263,6 +264,7 @@ bool GDScriptTokenizer::Token::is_node_name() const {
 		case SELF:
 		case SIGNAL:
 		case STATIC:
+		case SUPER_AS: // wgodot-changes
 		case SUPER:
 		case TRAIT:
 		case UNDERSCORE:
@@ -551,6 +553,7 @@ GDScriptTokenizer::Token GDScriptTokenizerText::annotation() {
 	KEYWORD("self", Token::SELF) \
 	KEYWORD("signal", Token::SIGNAL) \
 	KEYWORD("static", Token::STATIC) \
+	KEYWORD("super_as", Token::SUPER_AS) \
 	KEYWORD("super", Token::SUPER) \
 	KEYWORD_GROUP('t') \
 	KEYWORD("trait", Token::TRAIT) \

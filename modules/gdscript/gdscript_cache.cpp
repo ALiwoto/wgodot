@@ -29,6 +29,11 @@
 /**************************************************************************/
 
 #include "gdscript_cache.h"
+// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+#include "wgodot_gd/editor/export/export_project.h"
+#endif
+// wgodot-changes::end
 
 // wgodot-changes::begin
 #include "core/profiling/wgodot_startup_profile.h"
@@ -40,6 +45,7 @@
 #include "gdscript_parser.h"
 // wgodot-changes::begin
 #include "wgodot_gd/script_resolution.h"
+#include "wgodot_gd/partial_classes.h"
 // wgodot-changes::end
 
 #include "core/io/file_access.h"
@@ -91,8 +97,10 @@ Error GDScriptParserRef::raise_status(Status p_new_status) {
 				// wgodot-changes::begin
 #ifdef TOOLS_ENABLED
 				if (export_source) {
-					source_hash = export_source_text.hash();
-					result = get_parser()->parse(export_source_text, path, false);
+					const String &source = export_source_data->get_text();
+					source_hash = source.hash();
+					result = get_parser()->parse(source, path, false, true, false);
+					get_parser()->wgodot_export_source = export_source_data;
 					break;
 				}
 #endif
@@ -228,6 +236,10 @@ void GDScriptCache::remove_script(const String &p_path) {
 
 Ref<GDScriptParserRef> GDScriptCache::get_parser(const String &p_path, GDScriptParserRef::Status p_status, Error &r_error, const String &p_owner) {
 	// wgodot-changes::begin
+	const String canonical = WGodotPartialClasses::canonical_path(p_path);
+	if (canonical != p_path) {
+		return get_parser(canonical, p_status, r_error, p_owner);
+	}
 #ifdef TOOLS_ENABLED
 	Ref<GDScriptParserRef> export_parser;
 	if (WGodotGDScriptResolution::get_parser_override(p_path, p_status, r_error, export_parser)) {
@@ -279,6 +291,12 @@ bool GDScriptCache::has_parser(const String &p_path) {
 
 void GDScriptCache::remove_parser(const String &p_path) {
 	MutexLock lock(singleton->mutex);
+	// wgodot-changes::begin
+	const String canonical = WGodotPartialClasses::canonical_path(p_path);
+	if (canonical != p_path) {
+		remove_parser(canonical);
+	}
+	// wgodot-changes::end
 
 	if (singleton->parser_map.has(p_path)) {
 		GDScriptParserRef *parser_ref = singleton->parser_map[p_path];
@@ -339,6 +357,10 @@ Vector<uint8_t> GDScriptCache::get_binary_tokens(const String &p_path) {
 
 Ref<GDScript> GDScriptCache::get_shallow_script(const String &p_path, Error &r_error, const String &p_owner) {
 // wgodot-changes::begin
+	const String canonical = WGodotPartialClasses::canonical_path(p_path);
+	if (canonical != p_path) {
+		return get_shallow_script(canonical, r_error, p_owner);
+	}
 	WGodotStartupProfile::Scope wgodot_profile("GDScript shallow load", p_path);
 // wgodot-changes::end
 	// wgodot-changes::begin
@@ -392,6 +414,12 @@ Ref<GDScript> GDScriptCache::get_shallow_script(const String &p_path, Error &r_e
 }
 
 Ref<GDScript> GDScriptCache::get_full_script(const String &p_path, Error &r_error, const String &p_owner, bool p_update_from_disk) {
+	// wgodot-changes::begin
+	const String canonical = WGodotPartialClasses::canonical_path(p_path);
+	if (canonical != p_path) {
+		return get_full_script(canonical, r_error, p_owner, p_update_from_disk);
+	}
+	// wgodot-changes::end
 // wgodot-changes::begin
 	WGodotStartupProfile::Scope wgodot_profile("GDScript full load", p_path);
 // wgodot-changes::end

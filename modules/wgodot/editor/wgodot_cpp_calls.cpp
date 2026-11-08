@@ -11,7 +11,8 @@ using namespace WGodotCppNames;
 
 const Parser::FunctionNode *WGodotCppEmitter::interface_method(const Parser::CallNode *p_call) const {
 	const Parser::ExpressionNode *base = p_call->get_callee_type() == Parser::Node::SUBSCRIPT ? static_cast<const Parser::SubscriptNode *>(p_call->callee)->base : nullptr;
-	const auto &base_type = base ? base->type_constraint : current_class->node->self_type;
+	const auto &base_type = p_call->wgodot_super_type ? p_call->wgodot_super_type->resolved_type : base ? base->type_constraint
+																										: current_class->node->self_type;
 	if (base_type.kind == Parser::DataType::CLASS && base_type.class_type->wgodot_is_interface && base_type.class_type->has_function(p_call->function_name)) {
 		return base_type.class_type->get_member(p_call->function_name).function;
 	}
@@ -23,8 +24,9 @@ WGodotCppEmitter::Value WGodotCppEmitter::call(const Parser::CallNode *p_call) {
 	if (p_call->get_callee_type() == Parser::Node::SUBSCRIPT) {
 		base = static_cast<const Parser::SubscriptNode *>(p_call->callee)->base;
 	}
-	const Parser::DataType &base_type = p_call->is_super ? current_class->node->base_type : base ? base->type_constraint
-																								 : current_class->node->self_type;
+	const Parser::DataType &base_type = p_call->wgodot_super_type ? p_call->wgodot_super_type->resolved_type : p_call->is_super ? current_class->node->base_type
+			: base																												? base->type_constraint
+																																: current_class->node->self_type;
 	if (const auto *contract = WGodotGDScriptInterfaceHelpers::native_interface_for_member(base_type, p_call->function_name)) {
 		if (contract->methods.has(p_call->function_name)) {
 			return native_interface_call(p_call, base, *contract);
@@ -33,9 +35,14 @@ WGodotCppEmitter::Value WGodotCppEmitter::call(const Parser::CallNode *p_call) {
 	if (base_type.kind != Parser::DataType::CLASS) {
 		return native_call(p_call, base, base_type);
 	}
-	if (const auto *contract_method = interface_method(p_call)) {
+	const Parser::DataType *default_provider = base_type.class_type->wgodot_default_methods.getptr(p_call->function_name);
+	const Parser::FunctionNode *contract_method = interface_method(p_call);
+	if (!contract_method && default_provider && default_provider->kind == Parser::DataType::CLASS) {
+		contract_method = default_provider->class_type->get_member(p_call->function_name).function;
+	}
+	if (contract_method) {
 		class_call_headers.insert("modules/wgodot/native/wgodot_native_interface.h");
-		const String result_type = type(p_call->type_constraint, p_call);
+		const String result_type = function_result(contract_method);
 		Vector<Value> operands;
 		for (uint32_t i = 0; i < p_call->arguments.size(); i++) {
 			operands.push_back(lower_converted(p_call->arguments[i], contract_method->parameters[i]->type_constraint, contract_method->parameters[i], true));
@@ -48,7 +55,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::call(const Parser::CallNode *p_call) {
 			}
 			operands.push_back(lower_converted(parameter->initializer, parameter->type_constraint, parameter, true));
 		}
-		operands.push_back(lower(base));
+		operands.push_back(lower_receiver(base));
 		Value result = sequence(operands);
 		Vector<String> arguments;
 		for (int i = 0; i < operands.size() - 1; i++) {
@@ -58,8 +65,19 @@ WGodotCppEmitter::Value WGodotCppEmitter::call(const Parser::CallNode *p_call) {
 		if (!value.borrowed && !value.object_pointer) {
 			materialize(value, result.setup);
 		}
-		const String instance = materialize_receiver(result, value, value.code + ".operator->()");
-		result.code = instance + "->" + String(p_call->function_name) + "(" + String(", ").join(arguments) + ")";
+		String invoke;
+		if (p_call->wgodot_super_type) {
+			const String provider = class_name(base_type, p_call);
+			class_call_headers.insert(provider + ".h");
+			invoke = provider + "(" + value.code + ").m_" + symbol(p_call->function_name);
+		} else if (!base_type.class_type->wgodot_is_interface) {
+			const String contract = interface_cpp_type(default_provider->class_type);
+			invoke = "static_cast<" + contract + " *>(WGodotNative::object_pointer(" + value.code + "))->" + String(p_call->function_name);
+		} else {
+			const String instance = materialize_receiver(result, value, value.code + ".operator->()");
+			invoke = instance + "->" + String(p_call->function_name);
+		}
+		result.code = invoke + "(" + String(", ").join(arguments) + ")";
 		result.code = trace_call(p_call, result.code);
 		result.cpp_type = result_type;
 		result.effects = true;

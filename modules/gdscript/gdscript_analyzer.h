@@ -157,7 +157,11 @@ class GDScriptAnalyzer {
 	bool wgodot_try_get_callable_info(const GDScriptParser::ExpressionNode *p_expression, MethodInfo &r_callable_info, Vector<const GDScriptParser::ExpressionNode *> &r_bound_arguments) const;
 	bool wgodot_strict_signal_callable_checking_enabled() const;
 	void wgodot_validate_interface_class(GDScriptParser::ClassNode *p_class);
+	void wgodot_resolve_interface_defaults(GDScriptParser::ClassNode *p_class);
+	bool wgodot_resolve_super_as(GDScriptParser::CallNode *p_call, GDScriptParser::DataType &r_type);
 	void wgodot_resolve_implemented_interfaces(GDScriptParser::ClassNode *p_class);
+	void wgodot_resolve_serialization_fields(GDScriptParser::ClassNode *p_class);
+	void wgodot_add_serialization_factories(GDScriptParser::ClassNode *p_class);
 	StringName wgodot_validating_native_class;
 	const GDScriptParser::ClassNode *wgodot_validating_native_interface = nullptr;
 	bool wgodot_interface_type_accepts(const GDScriptParser::DataType &p_target, const GDScriptParser::DataType &p_source);

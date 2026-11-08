@@ -65,8 +65,12 @@ void WGodotCppEmitter::emit_interface_inheritance(const WGodotCppProject::Class 
 			unsupported(method, "interface implementation with a different coroutine result type");
 			return;
 		}
+		const auto *provider = p_class.node->wgodot_default_methods.getptr(p_name);
+		if (!method && provider && provider->kind == Parser::DataType::NATIVE && p_interface == WGodotNativeInterfaces::get_descriptor(provider->native_type)->cpp_type) {
+			return; // The native interface already supplies this implementation.
+		}
 		MethodInfo native_method;
-		if (!method && !ClassDB::get_method_info(native_base(base), p_name, &native_method)) {
+		if (!method && !provider && !ClassDB::get_method_info(native_base(base), p_name, &native_method)) {
 			unsupported(p_class.node, "C++ interface implementation for " + String(p_name));
 			return;
 		}
@@ -88,6 +92,15 @@ void WGodotCppEmitter::emit_interface_inheritance(const WGodotCppProject::Class 
 		String invoke;
 		if (method) {
 			invoke = String(constant ? "const_cast<" + p_class.cpp_name + " *>(this)->" : "this->") + "m_" + symbol(p_name) + "(" + String(", ").join(arguments) + ")";
+		} else if (provider) {
+			if (provider->kind == Parser::DataType::CLASS) {
+				const String wrapper = class_name(*provider, p_class.node);
+				class_call_headers.insert(wrapper + ".h");
+				invoke = wrapper + "(this).m_" + symbol(p_name) + "(" + String(", ").join(arguments) + ")";
+			} else {
+				const auto *contract = WGodotNativeInterfaces::get_descriptor(provider->native_type);
+				invoke = "this->" + contract->cpp_type + "::" + String(p_name) + "(" + String(", ").join(arguments) + ")";
+			}
 		} else {
 			const MethodBind *binding = ClassDB::get_method(native_base(base), p_name);
 			if (!binding) {
@@ -165,6 +178,13 @@ void WGodotCppEmitter::emit_interface_inheritance(const WGodotCppProject::Class 
 			continue;
 		}
 		const String interface = interface_cpp_type(contract.node);
+		for (const auto &member : contract.node->members) {
+			if (member.type == Parser::ClassNode::Member::FUNCTION && member.function->is_coroutine && !forwarded.has(SNAME("wgodot_interface_tasks"))) {
+				class_uses_tasks = true;
+				forwarded.insert(SNAME("wgodot_interface_tasks"));
+				r_declaration += "\tWGodotNative::TaskOwner &wgodot_interface_tasks() override { return game_tasks; }\n";
+			}
+		}
 		const bool inherited = base.kind == Parser::DataType::CLASS && WGodotGDScriptInterfaceHelpers::class_implements_interface_type(base.class_type, contract.node);
 		if (!inherited) {
 			r_bases += ", public " + interface;

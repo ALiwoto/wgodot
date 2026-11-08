@@ -4,6 +4,7 @@
 #include "wgodot_cpp_ast.h"
 #include "wgodot_cpp_memory_profile.h"
 #include "wgodot_cpp_cache.h"
+#include "modules/gdscript/wgodot_gd/partial_classes.h"
 
 #include "core/config/project_settings.h"
 #include "core/io/dir_access.h"
@@ -190,7 +191,7 @@ Error WGodotCppProject::analyze(const String &p_target, int p_jobs) {
 	WGodotGDScriptExportTransform::ExportAnalysis::Scope scope(*export_analysis);
 	ResourceDependencies dependencies;
 	for (const String &path : scripts) {
-		if (!target.includes(path)) {
+		if (!target.includes(path) || !export_project.get_source(path)) {
 			continue;
 		}
 		WGodotCppMemoryProfile::sample("script-begin", path);
@@ -202,7 +203,8 @@ Error WGodotCppProject::analyze(const String &p_target, int p_jobs) {
 		if (error != OK) {
 			if (parser.is_valid()) {
 				for (const GDScriptParser::ParserError &parse_error : parser->get_parser()->get_errors()) {
-					diagnostics.push_back(vformat("%s:%d:%d: %s", path, parse_error.start_line, parse_error.start_column, parse_error.message));
+					const auto location = parser->get_parser()->wgodot_source_location(parse_error.start_line);
+					diagnostics.push_back(vformat("%s:%d:%d: %s", location.path, location.line, parse_error.start_column, parse_error.message));
 				}
 			}
 			diagnostics.push_back(vformat("Cannot analyze %s for %s: %s. Dependencies must be shared or owned by this target.", path, target.get_name(), error_names[error]));
@@ -235,6 +237,11 @@ const WGodotCppProject::Class *WGodotCppProject::find_class(const GDScriptParser
 void WGodotCppProject::cache_dependencies(WGodotCppCache &p_cache) const {
 	for (const auto &parser : parsers) {
 		PackedStringArray paths;
+		for (const String &part : WGodotPartialClasses::paths(parser->get_path())) {
+			if (part != parser->get_path()) {
+				paths.push_back(part);
+			}
+		}
 		for (const auto &dependency : parser->get_parser()->get_depended_parsers()) {
 			paths.push_back(dependency.key);
 		}
