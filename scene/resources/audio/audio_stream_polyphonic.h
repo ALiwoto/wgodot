@@ -77,6 +77,9 @@ class AudioStreamPlaybackPolyphonic : public AudioStreamPlayback {
 	};
 
 	LocalVector<Stream> streams;
+	// wgodot-changes::begin
+	HashMap<StringName, Variant> parameters;
+	// wgodot-changes::end
 	AudioFrame internal_buffer[INTERNAL_BUFFER_LEN];
 
 	bool active = false;
@@ -107,6 +110,10 @@ public:
 
 	virtual double get_playback_position() const override;
 	virtual void seek(double p_time) override;
+	// wgodot-changes::begin
+	virtual void set_parameter(const StringName &p_name, const Variant &p_value) override;
+	virtual Variant get_parameter(const StringName &p_name) const override;
+	// wgodot-changes::end
 
 	virtual void tag_used_streams() override;
 

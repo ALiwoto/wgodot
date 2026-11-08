@@ -1,0 +1,6 @@
+# wgodot-changes::file
+Import("env")
+Import("env_modules")
+
+env_audio_graph = env_modules.Clone()
+env_audio_graph.add_source_files(env.modules_sources, "*.cpp")

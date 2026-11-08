@@ -115,6 +115,27 @@ void AudioStreamPlaybackPolyphonic::seek(double p_time) {
 	// Ignored.
 }
 
+// wgodot-changes::begin
+void AudioStreamPlaybackPolyphonic::set_parameter(const StringName &p_name, const Variant &p_value) {
+	AudioServer::get_singleton()->lock();
+	parameters[p_name] = p_value;
+	for (Stream &stream : streams) {
+		if (stream.active.is_set() && stream.stream_playback.is_valid()) {
+			stream.stream_playback->set_parameter(p_name, p_value);
+		}
+	}
+	AudioServer::get_singleton()->unlock();
+}
+
+Variant AudioStreamPlaybackPolyphonic::get_parameter(const StringName &p_name) const {
+	AudioServer::get_singleton()->lock();
+	const Variant *value = parameters.getptr(p_name);
+	Variant result = value ? *value : Variant();
+	AudioServer::get_singleton()->unlock();
+	return result;
+}
+// wgodot-changes::end
+
 void AudioStreamPlaybackPolyphonic::tag_used_streams() {
 	for (Stream &s : streams) {
 		if (s.active.is_set()) {
@@ -224,6 +245,11 @@ AudioStreamPlaybackPolyphonic::ID AudioStreamPlaybackPolyphonic::play_stream(con
 			// Can use this stream, as it's not active.
 			streams[i].stream = p_stream;
 			streams[i].stream_playback = streams[i].stream->instantiate_playback();
+			// wgodot-changes::begin
+			for (const KeyValue<StringName, Variant> &parameter : parameters) {
+				streams[i].stream_playback->set_parameter(parameter.key, parameter.value);
+			}
+			// wgodot-changes::end
 			streams[i].play_offset = p_from_offset;
 			streams[i].volume_db = p_volume_db;
 			streams[i].prev_volume_db = p_volume_db;

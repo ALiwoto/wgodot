@@ -381,6 +381,9 @@ static float _get_max_volume(const FixedVector<AudioFrame, AuSC::MAX_CHANNELS_PE
 
 // Interacts with PhysicsServer3D, so can only be called during _physics_process.
 Vector<AudioFrame> AudioStreamPlayer3D::_update_panning() {
+	// wgodot-changes::begin
+	float nearest_listener_distance = INFINITY;
+	// wgodot-changes::end
 	Vector<AudioFrame> output_volume_vector;
 	output_volume_vector.resize(VOLUME_VECTOR_SIZE);
 	output_volume_vector.fill(AudioFrame(0, 0));
@@ -445,6 +448,9 @@ Vector<AudioFrame> AudioStreamPlayer3D::_update_panning() {
 		Vector3 local_pos = listener_node->get_global_transform().orthonormalized().affine_inverse().xform(global_pos);
 
 		float dist = local_pos.length();
+		// wgodot-changes::begin
+		nearest_listener_distance = MIN(nearest_listener_distance, dist);
+		// wgodot-changes::end
 
 #ifndef PHYSICS_3D_DISABLED
 		Vector3 area_sound_pos;
@@ -552,6 +558,9 @@ Vector<AudioFrame> AudioStreamPlayer3D::_update_panning() {
 	}
 
 	for (Ref<AudioStreamPlayback> &playback : internal->stream_playbacks) {
+		// wgodot-changes::begin
+		playback->set_parameter(SNAME("listener_distance"), nearest_listener_distance);
+		// wgodot-changes::end
 		AudioServer::get_singleton()->set_playback_highshelf_params(playback, linear_attenuation, attenuation_filter_cutoff_hz);
 	}
 

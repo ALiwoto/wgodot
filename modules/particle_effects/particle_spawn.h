@@ -261,6 +261,12 @@ private:
 	bool random_extreme = false;
 	bool velocity_in_world_space = false;
 	Basis velocity_basis;
+	Ref<ParticleFloatCurve> velocity_cone_angle;
+	Ref<ParticleFloatCurve> velocity_cone_speed;
+	Basis velocity_cone_basis;
+	Vector2 velocity_cone_azimuth = Vector2(0, Math::TAU);
+	double velocity_cone_angle_step = 0.0;
+	bool velocity_transform_scale = false;
 	bool velocity_applies_owner_scale = false;
 	Ref<ParticleFloatCurve> radial_velocity;
 	Vector3 velocity_origin;
@@ -311,6 +317,18 @@ public:
 	bool get_velocity_in_world_space() const { return velocity_in_world_space; }
 	void set_velocity_basis(const Basis &p_value) { velocity_basis = p_value; }
 	Basis get_velocity_basis() const { return velocity_basis; }
+	void set_velocity_cone_angle(const Ref<ParticleFloatCurve> &p_value) { velocity_cone_angle = p_value; }
+	Ref<ParticleFloatCurve> get_velocity_cone_angle() const { return velocity_cone_angle; }
+	void set_velocity_cone_speed(const Ref<ParticleFloatCurve> &p_value) { velocity_cone_speed = p_value; }
+	Ref<ParticleFloatCurve> get_velocity_cone_speed() const { return velocity_cone_speed; }
+	void set_velocity_cone_basis(const Basis &p_value) { velocity_cone_basis = p_value; }
+	Basis get_velocity_cone_basis() const { return velocity_cone_basis; }
+	void set_velocity_cone_azimuth(Vector2 p_value) { velocity_cone_azimuth = p_value; }
+	Vector2 get_velocity_cone_azimuth() const { return velocity_cone_azimuth; }
+	void set_velocity_cone_angle_step(double p_value) { velocity_cone_angle_step = p_value; }
+	double get_velocity_cone_angle_step() const { return velocity_cone_angle_step; }
+	void set_velocity_transform_scale(bool p_value) { velocity_transform_scale = p_value; }
+	bool get_velocity_transform_scale() const { return velocity_transform_scale; }
 	void set_velocity_applies_owner_scale(bool p_value) { velocity_applies_owner_scale = p_value; }
 	bool get_velocity_applies_owner_scale() const { return velocity_applies_owner_scale; }
 	void set_radial_velocity(const Ref<ParticleFloatCurve> &p_value) { radial_velocity = p_value; }

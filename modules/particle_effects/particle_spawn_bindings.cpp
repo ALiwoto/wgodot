@@ -146,6 +146,24 @@ void ParticleSpawnShape3D::_bind_methods() {
 }
 
 void ParticleBirthRule3D::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("set_velocity_cone_angle", "curve"), &ParticleBirthRule3D::set_velocity_cone_angle);
+	ClassDB::bind_method(D_METHOD("get_velocity_cone_angle"), &ParticleBirthRule3D::get_velocity_cone_angle);
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "velocity_cone_angle", PROPERTY_HINT_RESOURCE_TYPE, "ParticleFloatCurve"), "set_velocity_cone_angle", "get_velocity_cone_angle");
+	ClassDB::bind_method(D_METHOD("set_velocity_cone_speed", "curve"), &ParticleBirthRule3D::set_velocity_cone_speed);
+	ClassDB::bind_method(D_METHOD("get_velocity_cone_speed"), &ParticleBirthRule3D::get_velocity_cone_speed);
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "velocity_cone_speed", PROPERTY_HINT_RESOURCE_TYPE, "ParticleFloatCurve"), "set_velocity_cone_speed", "get_velocity_cone_speed");
+	ClassDB::bind_method(D_METHOD("set_velocity_cone_basis", "basis"), &ParticleBirthRule3D::set_velocity_cone_basis);
+	ClassDB::bind_method(D_METHOD("get_velocity_cone_basis"), &ParticleBirthRule3D::get_velocity_cone_basis);
+	ADD_PROPERTY(PropertyInfo(Variant::BASIS, "velocity_cone_basis"), "set_velocity_cone_basis", "get_velocity_cone_basis");
+	ClassDB::bind_method(D_METHOD("set_velocity_cone_azimuth", "range"), &ParticleBirthRule3D::set_velocity_cone_azimuth);
+	ClassDB::bind_method(D_METHOD("get_velocity_cone_azimuth"), &ParticleBirthRule3D::get_velocity_cone_azimuth);
+	ADD_PROPERTY(PropertyInfo(Variant::VECTOR2, "velocity_cone_azimuth"), "set_velocity_cone_azimuth", "get_velocity_cone_azimuth");
+	ClassDB::bind_method(D_METHOD("set_velocity_cone_angle_step", "step"), &ParticleBirthRule3D::set_velocity_cone_angle_step);
+	ClassDB::bind_method(D_METHOD("get_velocity_cone_angle_step"), &ParticleBirthRule3D::get_velocity_cone_angle_step);
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "velocity_cone_angle_step"), "set_velocity_cone_angle_step", "get_velocity_cone_angle_step");
+	ClassDB::bind_method(D_METHOD("set_velocity_transform_scale", "enabled"), &ParticleBirthRule3D::set_velocity_transform_scale);
+	ClassDB::bind_method(D_METHOD("get_velocity_transform_scale"), &ParticleBirthRule3D::get_velocity_transform_scale);
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "velocity_transform_scale"), "set_velocity_transform_scale", "get_velocity_transform_scale");
 	ClassDB::bind_method(D_METHOD("set_surface_check_height", "value"), &ParticleBirthRule3D::set_surface_check_height);
 	ClassDB::bind_method(D_METHOD("get_surface_check_height"), &ParticleBirthRule3D::get_surface_check_height);
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "surface_check_height"), "set_surface_check_height", "get_surface_check_height");

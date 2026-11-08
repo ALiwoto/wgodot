@@ -202,15 +202,28 @@ Vector3 ParticleBirthRule3D::sample_texture_sign(const Ref<RandomStream32> &p_ra
 }
 
 Vector3 ParticleBirthRule3D::sample_velocity(const Ref<RandomStream32> &p_random, const Basis &p_emitter_basis, bool p_local_space, double p_emitter_seconds, double p_task_ratio) const {
-	Vector3 velocity = sample_vector(p_random, p_emitter_seconds, p_task_ratio);
+	Vector3 velocity;
+	if (velocity_cone_angle.is_valid() && velocity_cone_speed.is_valid()) {
+		double angle = velocity_cone_angle->sample(p_emitter_seconds, p_task_ratio, p_random);
+		const double speed = velocity_cone_speed->sample(p_emitter_seconds, p_task_ratio, p_random);
+		double azimuth = Math::lerp(double(velocity_cone_azimuth.x), double(velocity_cone_azimuth.y), double(p_random->next_float()));
+		if (velocity_cone_angle_step > 0.0) {
+			angle = std::trunc(angle / velocity_cone_angle_step) * velocity_cone_angle_step;
+			azimuth = std::trunc(azimuth / velocity_cone_angle_step) * velocity_cone_angle_step;
+		}
+		velocity = velocity_cone_basis.xform(Vector3(Math::sin(angle) * Math::cos(azimuth), Math::cos(angle), Math::sin(angle) * Math::sin(azimuth))) * speed;
+	} else {
+		velocity = sample_vector(p_random, p_emitter_seconds, p_task_ratio);
+	}
 	if (!velocity_in_world_space) {
 		velocity = velocity_basis.xform(velocity);
 	}
 	const Basis rotation = p_emitter_basis.orthonormalized();
+	const Basis transform = velocity_transform_scale ? p_emitter_basis : rotation;
 	if (p_local_space && velocity_in_world_space) {
-		velocity = rotation.inverse().xform(velocity);
+		velocity = transform.inverse().xform(velocity);
 	} else if (!p_local_space && !velocity_in_world_space) {
-		velocity = rotation.xform(velocity);
+		velocity = transform.xform(velocity);
 	}
 	if (velocity_applies_owner_scale) {
 		velocity *= p_emitter_basis.get_scale();
