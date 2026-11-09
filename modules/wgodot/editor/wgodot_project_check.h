@@ -14,6 +14,7 @@ class WGodotProjectCheck {
 	uint64_t started_msec = 0;
 
 public:
+	static Dictionary run_standalone(uint64_t p_timeout_msec);
 	// An empty result means the refresh started successfully, or is still pending.
 	Dictionary start(uint64_t p_timeout_msec = WGodotCLI::PROJECT_OPERATION_TIMEOUT_MSEC);
 	Dictionary poll();

@@ -2901,9 +2901,6 @@ Error GDScriptCompiler::_prepare_compilation(GDScript *p_script, const GDScriptP
 
 			p_script->base = base;
 			p_script->member_indices = base->member_indices;
-			// wgodot-changes::begin
-
-			// wgodot-changes::end
 		} break;
 		default: {
 			_set_error("Parser bug (please report): invalid inheritance.", nullptr);

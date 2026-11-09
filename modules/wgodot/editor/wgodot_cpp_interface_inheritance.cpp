@@ -53,6 +53,9 @@ void WGodotCppEmitter::emit_interface_inheritance(const WGodotCppProject::Class 
 	const auto &base = p_class.node->base_type;
 	const String base_cpp = class_name(base, p_class.node);
 	auto forward_method = [&](const String &p_interface, const StringName &p_name, const Parser::FunctionNode *p_required, const MethodInfo *p_native, bool p_inherited) {
+		if (p_native && (p_native->flags & METHOD_FLAG_STATIC)) {
+			return;
+		}
 		if (forwarded.has(p_name)) {
 			return;
 		}

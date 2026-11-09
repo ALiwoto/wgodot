@@ -251,7 +251,7 @@ public:
 	// wgodot-changes::begin
 	bool wgodot_is_interface_type() const override;
 	MethodInfo wgodot_default_method_info(const StringName &p_method) const;
-	Variant wgodot_call_default(GDScriptInstance *p_instance, const StringName &p_method, const Variant **p_args, int p_argcount, Callable::CallError &r_error) const;
+	Variant wgodot_call_default(GDScriptInstance *p_instance, const StringName &p_method, const Variant **p_args, int p_argcount, Callable::CallError &r_error, GDScript *p_class = nullptr) const;
 	String wgodot_get_interface_id() const override;
 	const String &wgodot_get_interface_key() const;
 	bool wgodot_implements_interface(const String &p_interface_key) const override;

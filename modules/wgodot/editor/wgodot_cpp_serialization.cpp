@@ -25,20 +25,6 @@ String codec(const Field &p_field, bool p_protobuf, bool p_read) {
 }
 } // namespace
 
-bool WGodotCppEmitter::emit_serialization_factory(const WGodotCppProject::Class &p_class, const GDScriptParser::FunctionNode *p_method, String &r_declaration, String &r_definitions) {
-	if (!p_method->wgodot_serialization_factory) {
-		return false;
-	}
-	const auto *parameter = p_method->parameters[0];
-	const String result = type(p_class.node->self_type, p_class.node);
-	const String parameters = "const " + type(parameter->type_constraint, parameter) + " &data";
-	const String method = "m_" + symbol(p_method->identifier->name);
-	const String decoder = "_" + String(p_method->identifier->name);
-	r_declaration += "\tstatic " + result + " " + method + "(" + parameters + ");\n";
-	r_definitions += result + " " + p_class.cpp_name + "::" + method + "(" + parameters + ") {\n\tauto model = create();\n\tif (!model->" + decoder + "(" + String(p_method->wgodot_serialization_factory >= 3 ? "data.packed_native()" : "data") + ")) {\n\t\treturn {};\n\t}\n\treturn model;\n}\n\n";
-	return true;
-}
-
 void WGodotCppEmitter::emit_serialization(const WGodotCppProject::Class &p_class, String &r_declaration, String &r_definitions) {
 	for (const Codec selected : { Codec::JSON, Codec::BINARY, Codec::PROTOBUF }) {
 		const Schema layout = schema(p_class.node, selected);

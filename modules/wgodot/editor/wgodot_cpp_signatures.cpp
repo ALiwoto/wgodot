@@ -7,6 +7,7 @@
 #include "core/object/class_db.h"
 
 #include "modules/gdscript/gdscript_analyzer.h"
+#include "modules/gdscript/wgodot_gd/interface_helpers.h"
 
 #include <functional>
 
@@ -240,6 +241,13 @@ void WGodotCppSignatures::seed(const Parser::Node *p_node) {
 		Signature signature;
 		signature.signal = expr->type_constraint.builtin_type == Variant::SIGNAL;
 		signature.result = { signature.signal ? builtin(Variant::NIL) : analyzer.type_from_property(info.return_val, false, p_node), p_node };
+		const auto &receiver = p_node->type == Parser::Node::SUBSCRIPT ? static_cast<const Parser::SubscriptNode *>(p_node)->base->type_constraint : scopes[p_node].owner->node->self_type;
+		if (const auto *contract = WGodotGDScriptInterfaceHelpers::native_interface_for_member(receiver, info.name)) {
+			if (contract->factory_methods.has(info.name)) {
+				signature.result.type = receiver;
+				signature.result.type.is_meta_type = false;
+			}
+		}
 		for (const auto &argument : info.arguments) {
 			signature.arguments.push_back({ analyzer.type_from_property(argument, true, p_node), p_node });
 		}

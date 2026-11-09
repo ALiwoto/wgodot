@@ -24,6 +24,7 @@
 #include "core/templates/vector.h"
 #include "editor/file_system/editor_paths.h"
 #include "editor/wgodot_cpp_exporter.h"
+#include "editor/wgodot_project_check.h"
 
 namespace WGodotCLI {
 
@@ -291,7 +292,8 @@ void print_cli_help() {
 	print_line("  pause_physics                     Pause fixed physics ticks only.");
 	print_line("  resume_physics                    Resume physics-only pausing.");
 	print_line("  step_physics [--count <number>]   Advance paused physics ticks.");
-	print_line("  check                             Refresh assets; check GDScript and scene/resource syntax.");
+	print_line("  check [--standalone]              Check GDScript and scene/resource syntax; use the editor when available, otherwise check saved files locally without importing assets.");
+	print_line("    --standalone                     Check saved files directly, without editor discovery.");
 	print_line("    --native [--target client|server] [--jobs N] Check native source types without an editor, resource generation or C++ compilation.");
 	print_line("  format [paths...] [options]       Format GDScript using the running editor (--check, --diff).");
 	print_line("  help                              Show this help.");
@@ -392,7 +394,8 @@ int run_status(const Vector<String> &p_arguments) {
 int request_editor(const Dictionary &p_request, Dictionary &r_response) {
 	bool project_was_resolved = false;
 	const Vector<EditorRecord> records = find_editor_records(project_was_resolved);
-	const uint64_t discovery_deadline = OS::get_singleton()->get_ticks_msec() + DISCOVERY_TIMEOUT_MSEC;
+	const uint64_t discovery_timeout = String(p_request.get("command", String())) == "check" ? 250 : DISCOVERY_TIMEOUT_MSEC;
+	const uint64_t discovery_deadline = OS::get_singleton()->get_ticks_msec() + discovery_timeout;
 	Vector<EditorConnection> connections;
 	// Probe all recorded ports together, so stale editors share one timeout.
 	for (const EditorRecord &record : records) {
@@ -780,13 +783,19 @@ int run_check_command(const Dictionary &p_options) {
 	request["options"] = p_options;
 
 	Dictionary response;
-	const int discovery_result = request_editor(request, response);
-	if (discovery_result != 0) {
-		print_line("wgodot: " + String(response.get("message", "No matching editor was found.")));
-		return discovery_result;
+	if (!(bool)p_options.get("standalone", false)) {
+		const int discovery_result = request_editor(request, response);
+		if (discovery_result != 0 && String(response.get("error", String())) != "editor_not_found") {
+			print_line("wgodot: " + String(response.get("message", "Editor discovery failed.")));
+			return discovery_result;
+		}
+	}
+	if (response.is_empty() || String(response.get("error", String())) == "editor_not_found") {
+		print_line("wgodot-check: checking saved files locally (no editor or asset import).");
+		response = WGodotProjectCheck::run_standalone(project_operation_timeout(request));
 	}
 	if (!(bool)response.get("ok", false)) {
-		print_line("wgodot: " + String(response.get("message", "The editor could not refresh and check the project.")));
+		print_line("wgodot: " + String(response.get("message", "Could not check the project.")));
 		return 4;
 	}
 
@@ -1437,6 +1446,10 @@ bool execute_if_requested(int &r_exit_code) {
 		}
 		Dictionary options;
 		for (int index = 0; index < arguments.size(); index++) {
+			if (command == "check" && arguments[index] == "--standalone") {
+				options["standalone"] = true;
+				continue;
+			}
 			if (arguments[index] != "--timeout") {
 				print_line("wgodot: unknown " + command + " argument: " + arguments[index]);
 				r_exit_code = 2;

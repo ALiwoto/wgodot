@@ -3,6 +3,7 @@
 
 #include "core/object/method_info.h"
 #include "core/templates/hash_map.h"
+#include "core/templates/hash_set.h"
 #include "core/templates/local_vector.h"
 #include "core/variant/type_info.h"
 
@@ -26,6 +27,8 @@ struct Descriptor {
 	Vector<StringName> parents;
 	HashMap<StringName, MethodInfo> methods;
 	HashMap<StringName, DefaultMethod> default_methods;
+	// Factories receive the calling Script as their receiver and return that class.
+	HashSet<StringName> factory_methods;
 	HashMap<StringName, Property> properties;
 	HashMap<StringName, MethodInfo> signals;
 	HashMap<StringName, HashMap<StringName, int64_t>> enums;
@@ -42,6 +45,7 @@ public:
 	void method(const MethodInfo &p_method) {
 		descriptor.methods.insert(p_method.name, p_method);
 		descriptor.default_methods.erase(p_method.name);
+		descriptor.factory_methods.erase(p_method.name);
 	}
 	void default_arguments(const StringName &p_name, const Vector<Variant> &p_defaults) { descriptor.methods[p_name].default_arguments = p_defaults; }
 	template <class Method>
@@ -51,6 +55,17 @@ public:
 	}
 	void property(const PropertyInfo &p_property, const StringName &p_getter, const StringName &p_setter = StringName()) {
 		descriptor.properties.insert(p_property.name, { p_property, p_getter, p_setter });
+	}
+	template <class... Args>
+	void factory_method(const StringName &p_name, DefaultMethod p_default) {
+		MethodInfo info;
+		info.name = p_name;
+		info.flags |= METHOD_FLAG_STATIC;
+		info.return_val = PropertyInfo(Variant::OBJECT, StringName(), PROPERTY_HINT_NONE, "", PROPERTY_USAGE_DEFAULT, descriptor.native_base);
+		(info.arguments.push_back(GetTypeInfo<std::decay_t<Args>>::get_class_info()), ...);
+		method(info);
+		descriptor.default_methods.insert(p_name, p_default);
+		descriptor.factory_methods.insert(p_name);
 	}
 	void signal(const MethodInfo &p_signal) { descriptor.signals.insert(p_signal.name, p_signal); }
 	void constant(const StringName &p_name, int64_t p_value, const StringName &p_enum = StringName()) {

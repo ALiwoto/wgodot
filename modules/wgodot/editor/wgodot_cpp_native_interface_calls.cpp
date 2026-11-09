@@ -38,6 +38,22 @@ WGodotCppEmitter::Value WGodotCppEmitter::native_interface_call(const Parser::Ca
 		operands.push_back(value);
 		index++;
 	}
+	if (p_interface.factory_methods.has(p_call->function_name)) {
+		Value result = sequence(operands);
+		Vector<String> arguments;
+		for (int i = 0; i < operands.size(); i++) {
+			arguments.push_back(convert_value(operands[i], native_argument_type(method.arguments[i], p_call)));
+		}
+		if (p_base && !p_base->type_constraint.is_meta_type && !p_call->is_super) {
+			result.setup.push_back("(void)(" + lower(p_base).expression() + ");");
+		}
+		const String model = class_name(p_call->type_constraint, p_call);
+		class_call_headers.insert(model + ".h");
+		result.code = p_interface.cpp_type + "::" + String(p_call->function_name) + "<" + model + ">(" + String(", ").join(arguments) + ")";
+		result.cpp_type = result_type;
+		result.effects = true;
+		return result;
+	}
 	operands.push_back(lower_receiver(p_base));
 	Value result = sequence(operands);
 	Vector<String> arguments;
@@ -77,6 +93,26 @@ WGodotCppEmitter::Value WGodotCppEmitter::native_interface_member(const Parser::
 			unsupported(p_origin, "native interface container method reference; use a lambda with an explicit container boundary");
 			return String();
 		}
+	}
+	if (p_interface.factory_methods.has(p_name)) {
+		const auto &base = p_base ? p_base->type_constraint : current_class->node->self_type;
+		const String model = class_name(base, p_origin);
+		class_call_headers.insert(model + ".h");
+		const String method_name = p_interface.cpp_type + "::" + String(p_name) + "<" + model + ">";
+		const String slot = method_name.sha256_text().substr(0, 16);
+		String invoke = "WGodotNative::static_callable<" + signature_type(p_origin) + ">(&" + method_name + ", UINT64_C(0x" + slot + "))";
+		Vector<String> defaults;
+		for (const Variant &value : method.default_arguments) {
+			defaults.push_back(literal(value, p_origin));
+		}
+		if (!defaults.is_empty()) {
+			invoke += ".with_defaults(std::make_tuple(" + String(", ").join(defaults) + "))";
+		}
+		Value result(invoke, signature_type(p_origin));
+		if (p_base && !base.is_meta_type) {
+			result.setup.push_back("(void)(" + lower(p_base).expression() + ");");
+		}
+		return result;
 	}
 	const String slot = (String(p_interface.name) + "::" + String(p_name)).sha256_text().substr(0, 16);
 	// A script interface may include this native contract's methods. Its own

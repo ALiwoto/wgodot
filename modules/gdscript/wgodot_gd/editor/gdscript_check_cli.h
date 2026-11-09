@@ -21,6 +21,7 @@ class ProjectCheck : public RefCounted {
 
 public:
 	void start();
+	void start(const Vector<String> &p_paths);
 	Dictionary poll();
 	~ProjectCheck();
 };

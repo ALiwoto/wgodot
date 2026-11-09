@@ -382,7 +382,6 @@ public:
 		List<AnnotationNode *> annotations;
 		// wgodot-changes::begin
 		bool wgodot_export_reflection = false;
-		bool wgodot_engine_boundary = false; // Compiler-provided JSON Dictionary parameter.
 		// wgodot-changes::end
 
 		virtual bool is_expression() const { return false; }
@@ -934,9 +933,6 @@ public:
 	};
 
 	struct FunctionNode : public Node {
-		// wgodot-changes::begin
-		int wgodot_serialization_factory = 0; // 1: JSON, 2: Dictionary, 3: binary.
-		// wgodot-changes::end
 		IdentifierNode *identifier = nullptr;
 		LocalVector<ParameterNode *> parameters;
 		HashMap<StringName, uint32_t> parameters_indices;

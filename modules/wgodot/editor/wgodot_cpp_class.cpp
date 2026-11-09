@@ -119,9 +119,6 @@ void WGodotCppEmitter::emit_class_uncached(const WGodotCppProject::Class &p_clas
 		switch (entry.type) {
 			case Parser::ClassNode::Member::FUNCTION: {
 				const auto *method = entry.function;
-				if (emit_serialization_factory(p_class, method, declaration, definitions)) {
-					break;
-				}
 				const String method_name = method->identifier->name;
 				const bool initializer = method_name == "_init";
 				String signature;

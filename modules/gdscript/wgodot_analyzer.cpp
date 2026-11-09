@@ -306,9 +306,6 @@ bool GDScriptAnalyzer::wgodot_datatype_contains_variant(const GDScriptParser::Da
 }
 
 bool GDScriptAnalyzer::wgodot_validate_strict_datatype(const GDScriptParser::DataType &p_datatype, const GDScriptParser::Node *p_source, const String &p_context) {
-	if (p_source->wgodot_engine_boundary && p_datatype.kind == GDScriptParser::DataType::BUILTIN && p_datatype.builtin_type == Variant::DICTIONARY) {
-		return true;
-	}
 	if (!wgodot_strict_type_checking_enabled() || (p_datatype.is_hard_type() && !wgodot_datatype_contains_variant(p_datatype))) {
 		return true;
 	}

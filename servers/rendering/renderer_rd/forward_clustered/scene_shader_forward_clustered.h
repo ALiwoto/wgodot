@@ -403,8 +403,6 @@ public:
 	void set_default_specialization(const ShaderSpecialization &p_specialization);
 	void enable_multiview_shader_group();
 	void enable_advanced_shader_group(bool p_needs_multiview = false);
-	// wgodot-changes::begin
-	// wgodot-changes::end
 	bool is_multiview_shader_group_enabled() const;
 	bool is_advanced_shader_group_enabled(bool p_multiview) const;
 	uint32_t get_pipeline_compilations(RSE::PipelineSource p_source);

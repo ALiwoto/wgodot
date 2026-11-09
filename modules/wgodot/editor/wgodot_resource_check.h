@@ -43,6 +43,7 @@ class WGodotResourceCheck : public RefCounted {
 public:
 	static void invalidate(const HashSet<String> &p_paths, bool p_all);
 	void start();
+	void start(const Vector<String> &p_paths);
 	Dictionary poll();
 	~WGodotResourceCheck();
 };

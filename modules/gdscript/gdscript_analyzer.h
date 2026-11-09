@@ -161,7 +161,6 @@ class GDScriptAnalyzer {
 	bool wgodot_resolve_super_as(GDScriptParser::CallNode *p_call, GDScriptParser::DataType &r_type);
 	void wgodot_resolve_implemented_interfaces(GDScriptParser::ClassNode *p_class);
 	void wgodot_resolve_serialization_fields(GDScriptParser::ClassNode *p_class);
-	void wgodot_add_serialization_factories(GDScriptParser::ClassNode *p_class);
 	StringName wgodot_validating_native_class;
 	const GDScriptParser::ClassNode *wgodot_validating_native_interface = nullptr;
 	bool wgodot_interface_type_accepts(const GDScriptParser::DataType &p_target, const GDScriptParser::DataType &p_source);
@@ -170,6 +169,7 @@ class GDScriptAnalyzer {
 	void wgodot_validate_implemented_interfaces(GDScriptParser::ClassNode *p_class);
 	void wgodot_validate_native_interfaces(GDScriptParser::ClassNode *p_class);
 	bool wgodot_reduce_native_interface_member(const GDScriptParser::DataType &p_base, GDScriptParser::IdentifierNode *p_identifier);
+	GDScriptParser::DataType wgodot_native_factory_type(const GDScriptParser::DataType &p_base, const GDScriptParser::Node *p_source);
 	HashSet<StringName> wgodot_validate_implemented_interface_conflicts(GDScriptParser::ClassNode *p_class, const Vector<GDScriptParser::ClassNode *> &p_interfaces);
 	void wgodot_validate_static_class(GDScriptParser::ClassNode *p_class);
 	bool wgodot_validate_static_class_type_hint(GDScriptParser::TypeNode *p_type, const GDScriptParser::DataType &p_datatype);

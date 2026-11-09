@@ -311,10 +311,8 @@ def configure_msvc(env: "SConsEnvironment"):
         # SCons tracks header content. Identical regenerated headers can have new
         # mtimes, which must not invalidate otherwise reusable Clang PCHs.
         env.AppendUnique(CXXFLAGS=["/clang:-Xclang", "/clang:-fno-pch-timestamp"])
-        # wgodot-changes::end
-
         env.AppendUnique(CPPDEFINES=["R128_STDC_ONLY"])
-        env.extra_suffix = ".llvm" + env.extra_suffix
+        # wgodot-changes::end
 
         # Ensure intellisense tools like `compile_commands.json` play nice with MSVC syntax.
         env["CPPDEFPREFIX"] = "-D"
@@ -745,7 +743,6 @@ def configure_mingw(env: "SConsEnvironment"):
         env["RANLIB"] = get_detected(env, "ranlib")
         env["AS"] = get_detected(env, "clang")
         env.Append(ASFLAGS=["-c"])
-        env.extra_suffix = ".llvm" + env.extra_suffix
     else:
         env["CC"] = get_detected(env, "gcc")
         env["CXX"] = get_detected(env, "g++")

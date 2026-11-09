@@ -71,6 +71,12 @@ void WGodotResourceCheck::invalidate(const HashSet<String> &p_paths, bool p_all)
 }
 
 void WGodotResourceCheck::start() {
+	Vector<String> paths;
+	collect_resources(EditorFileSystem::get_singleton()->get_filesystem(), paths);
+	start(paths);
+}
+
+void WGodotResourceCheck::start(const Vector<String> &p_paths) {
 	class_identity = get_class_identity();
 	const String &build = WGodotBuildFingerprint::get();
 	if (!build.is_empty()) {
@@ -104,8 +110,7 @@ void WGodotResourceCheck::start() {
 			}
 		}
 	}
-	Vector<String> paths;
-	collect_resources(EditorFileSystem::get_singleton()->get_filesystem(), paths);
+	Vector<String> paths = p_paths;
 	paths.sort();
 	inventory_changed = paths.size() != cache.size();
 	for (const String &path : paths) {

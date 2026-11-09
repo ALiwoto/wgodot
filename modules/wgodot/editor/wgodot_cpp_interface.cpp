@@ -128,7 +128,7 @@ void WGodotCppEmitter::emit_interface(const WGodotCppProject::Class &p_class) {
 		used_native_interfaces.insert(native_name);
 		class_native_headers.insert(parent->cpp_header);
 		for (const auto &entry : parent->methods) {
-			if (declared.has(entry.key)) {
+			if (declared.has(entry.key) || (entry.value.flags & METHOD_FLAG_STATIC)) {
 				continue;
 			}
 			declared.insert(entry.key);

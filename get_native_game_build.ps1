@@ -23,5 +23,5 @@ if ($GameName) {
 	ModuleDirectory = Join-Path $gameDirectory "$GameTarget/main_game"
 	ExtraSuffix = $extraSuffix
 	EngineTarget = $engineTarget
-	TemplatePath = Join-Path $PSScriptRoot "bin/godot.windows.$engineTarget.x86_64.llvm.$extraSuffix.exe"
+	TemplatePath = Join-Path $PSScriptRoot "bin/godot.windows.$engineTarget.x86_64.$extraSuffix.exe"
 }

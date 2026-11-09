@@ -9,6 +9,20 @@
 using namespace WGodotSerialization;
 
 namespace {
+Variant decode_factory(Object *p_class, const StringName &p_decoder, const Variant **p_args, int p_count, Callable::CallError &r_error) {
+	Variant model = p_class->callp(SNAME("new"), nullptr, 0, r_error);
+	if (r_error.error != Callable::CallError::CALL_OK) {
+		return Variant();
+	}
+	Object *object = model;
+	if (!object) {
+		r_error.error = Callable::CallError::CALL_ERROR_INSTANCE_IS_NULL;
+		return Variant();
+	}
+	const Variant decoded = object->callp(p_decoder, p_args, p_count, r_error);
+	return r_error.error == Callable::CallError::CALL_OK && bool(decoded) ? model : Variant();
+}
+
 template <auto Function>
 struct ReflectedMethod;
 
@@ -98,6 +112,12 @@ void WGodotSerialization::reflected_clear_fields(Object *p_object) {
 }
 
 void JsonSerializable::_bind_interface(WGodotNativeInterfaces::Builder &p_builder) {
+	p_builder.factory_method<String>("deserialize_json", [](Object *p_class, const Variant **p_args, int p_count, Callable::CallError &r_error) {
+		return decode_factory(p_class, SNAME("_deserialize_json"), p_args, p_count, r_error);
+	});
+	p_builder.factory_method<Dictionary>("deserialize_json_dict", [](Object *p_class, const Variant **p_args, int p_count, Callable::CallError &r_error) {
+		return decode_factory(p_class, SNAME("_deserialize_json_dict"), p_args, p_count, r_error);
+	});
 	p_builder.default_method("serialize_json", &JsonSerializable::serialize_json, ReflectedMethod<&encode_json>::call);
 	p_builder.default_method("serialize_json_dict", &JsonSerializable::serialize_json_dict, ReflectedMethod<&encode_json_dict>::call);
 	p_builder.default_method("_deserialize_json", &JsonSerializable::_deserialize_json, ReflectedMethod<&decode_json>::call);
@@ -105,11 +125,17 @@ void JsonSerializable::_bind_interface(WGodotNativeInterfaces::Builder &p_builde
 }
 
 void BinarySerializable::_bind_interface(WGodotNativeInterfaces::Builder &p_builder) {
+	p_builder.factory_method<PackedByteArray>("deserialize_binary", [](Object *p_class, const Variant **p_args, int p_count, Callable::CallError &r_error) {
+		return decode_factory(p_class, SNAME("_deserialize_binary"), p_args, p_count, r_error);
+	});
 	p_builder.default_method("serialize_binary", &BinarySerializable::serialize_binary, ReflectedMethod<&encode<false>>::call);
 	p_builder.default_method("_deserialize_binary", &BinarySerializable::_deserialize_binary, ReflectedMethod<&decode<false>>::call);
 }
 
 void ProtobufSerializable::_bind_interface(WGodotNativeInterfaces::Builder &p_builder) {
+	p_builder.factory_method<PackedByteArray>("deserialize_protobuf", [](Object *p_class, const Variant **p_args, int p_count, Callable::CallError &r_error) {
+		return decode_factory(p_class, SNAME("_deserialize_protobuf"), p_args, p_count, r_error);
+	});
 	p_builder.default_method("serialize_protobuf", &ProtobufSerializable::serialize_protobuf, ReflectedMethod<&encode<true>>::call);
 	p_builder.default_method("_deserialize_protobuf", &ProtobufSerializable::_deserialize_protobuf, ReflectedMethod<&decode<true>>::call);
 	p_builder.default_method("has_field", &ProtobufSerializable::has_field, ReflectedMethod<&has_present_field>::call);

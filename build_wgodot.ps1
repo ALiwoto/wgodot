@@ -133,7 +133,7 @@ try {
 		$sconsArgs += @("optimize=none", "lto=none")
 	}
 
-	$binaryPath = Join-Path $PSScriptRoot "bin/godot.windows.$target.x86_64.llvm.exe"
+	$binaryPath = Join-Path $PSScriptRoot "bin/godot.windows.$target.x86_64.exe"
 	if ($Game) {
 		$gameModulePath = $nativeBuild.ModuleDirectory
 		$binaryPath = $nativeBuild.TemplatePath

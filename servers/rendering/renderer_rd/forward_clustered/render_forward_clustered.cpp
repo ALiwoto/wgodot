@@ -828,9 +828,6 @@ uint32_t RenderForwardClustered::_setup_environment(const RenderDataRD *p_render
 
 	RD::get_singleton()->buffer_update(scene_state.implementation_uniform_buffers[uniform_buffer_index], 0, sizeof(SceneState::UBO), &scene_state.ubo);
 
-// wgodot-changes::begin
-
-// wgodot-changes::end
 
 	return uniform_buffer_index;
 }

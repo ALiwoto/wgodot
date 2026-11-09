@@ -690,8 +690,6 @@ Error GDScriptAnalyzer::resolve_class_inheritance(GDScriptParser::ClassNode *p_c
 	}
 
 	p_class->base_type = result;
-	// wgodot-changes::begin
-	// wgodot-changes::end
 	class_type.native_type = result.native_type;
 	p_class->self_type = class_type;
 
@@ -1434,7 +1432,6 @@ void GDScriptAnalyzer::resolve_class_interface(GDScriptParser::ClassNode *p_clas
 		// wgodot-changes::begin
 		wgodot_resolve_implemented_interfaces(p_class);
 		wgodot_resolve_interface_defaults(p_class);
-		wgodot_add_serialization_factories(p_class);
 		// wgodot-changes::end
 
 		GDScriptParser::DataType base_type = p_class->base_type;
@@ -6722,7 +6719,11 @@ bool GDScriptAnalyzer::get_function_signature(GDScriptParser::Node *p_source, bo
 	// wgodot-changes::begin
 	if (const auto *contract = WGodotGDScriptInterfaceHelpers::native_interface_for_member(p_base_type, function_name)) {
 		if (const MethodInfo *method = contract->methods.getptr(function_name)) {
-			return function_signature_from_info(*method, r_return_type, r_par_types, r_default_arg_count, r_method_flags, p_source);
+			const bool valid = function_signature_from_info(*method, r_return_type, r_par_types, r_default_arg_count, r_method_flags, p_source);
+			if (contract->factory_methods.has(function_name)) {
+				r_return_type = wgodot_native_factory_type(p_base_type, p_source);
+			}
+			return valid;
 		}
 	}
 	// wgodot-changes::end

@@ -2624,7 +2624,7 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 							break;
 						}
 						if (target->wgodot_default_methods.has(method)) {
-							*dst = target->wgodot_call_default(p_instance, method, (const Variant **)instruction_args, argc, err);
+							*dst = target->wgodot_call_default(p_instance, method, (const Variant **)instruction_args, argc, err, _script);
 							break;
 						}
 						if (target->base.is_null()) {
@@ -2641,7 +2641,8 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 				} else {
 					const StringName provider_name = *provider;
 					if (const auto *contract = WGodotNativeInterfaces::get_descriptor(provider_name)) {
-						*dst = contract->default_methods[method](p_instance->owner, (const Variant **)instruction_args, argc, err);
+						Object *receiver = contract->factory_methods.has(method) ? static_cast<Object *>(_script) : p_instance->owner;
+						*dst = contract->default_methods[method](receiver, (const Variant **)instruction_args, argc, err);
 					} else {
 						const MethodBind *binding = ClassDB::get_method(provider_name, method);
 						*dst = binding->call(p_instance->owner, (const Variant **)instruction_args, argc, err);

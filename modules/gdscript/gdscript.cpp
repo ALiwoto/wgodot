@@ -410,6 +410,11 @@ bool GDScript::has_method(const StringName &p_method) const {
 }
 
 bool GDScript::has_static_method(const StringName &p_method) const {
+	// wgodot-changes::begin
+	if (wgodot_default_methods.has(p_method)) {
+		return wgodot_default_method_info(p_method).flags & METHOD_FLAG_STATIC;
+	}
+	// wgodot-changes::end
 	return member_functions.has(p_method) && member_functions[p_method]->is_static();
 }
 
@@ -952,7 +957,10 @@ Error GDScript::reload(bool p_keep_state) {
 		if (EngineDebugger::is_active()) {
 			Vector<ScriptLanguage::StackInfo> si;
 			// TODO: Provide the script function as the first argument.
-			EngineDebugger::get_script_debugger()->send_error("GDScript::reload", get_script_path(), warning.start_line, warning.get_name(), warning.get_message(), false, ERR_HANDLER_WARNING, si);
+			// wgodot-changes::begin
+			const auto location = parser.wgodot_source_location(warning.start_line);
+			EngineDebugger::get_script_debugger()->send_error("GDScript::reload", location.path, location.line, warning.get_name(), warning.get_message(), false, ERR_HANDLER_WARNING, si);
+			// wgodot-changes::end
 		}
 	}
 #endif
@@ -1024,6 +1032,11 @@ Variant GDScript::callp(const StringName &p_method, const Variant **p_args, int 
 
 				return E->value->call(nullptr, p_args, p_argcount, r_error);
 			}
+			// wgodot-changes::begin
+			if (top->wgodot_default_methods.has(p_method) && (top->wgodot_default_method_info(p_method).flags & METHOD_FLAG_STATIC)) {
+				return top->wgodot_call_default(nullptr, p_method, p_args, p_argcount, r_error, this);
+			}
+			// wgodot-changes::end
 		}
 		top = top->base.ptr();
 	}
@@ -1084,6 +1097,12 @@ bool GDScript::_get(const StringName &p_name, Variant &r_ret) const {
 				r_ret = Callable(const_cast<GDScript *>(top), E->key);
 				return true;
 			}
+			// wgodot-changes::begin
+			if (top->wgodot_default_methods.has(p_name) && (top->wgodot_default_method_info(p_name).flags & METHOD_FLAG_STATIC)) {
+				r_ret = Callable(const_cast<GDScript *>(this), p_name);
+				return true;
+			}
+			// wgodot-changes::end
 		}
 
 		{

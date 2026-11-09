@@ -445,4 +445,9 @@ auto method_callable(R (*p_method)(Args...), uint64_t p_slot) {
 	return WCallable<R(Args...)>::make(p_method, {}, ObjectID(), std::make_shared<MethodIdentity>(ObjectID(), p_slot));
 }
 
+template <class Callback, class Method>
+Callback static_callable(Method p_method, uint64_t p_slot) {
+	return Callback::make([p_method](auto &&...p_args) -> typename Callback::Result { return invoke_static<typename Callback::Result>(p_method, p_args...); }, {}, ObjectID(), std::make_shared<MethodIdentity>(ObjectID(), p_slot));
+}
+
 } // namespace WGodotNative

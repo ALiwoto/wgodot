@@ -81,16 +81,17 @@ struct ScriptCheck {
 	}
 };
 
-void append_script_diagnostics(const String &p_path, const ScriptCheck &p_check, CheckStats &r_stats, PackedStringArray &r_output) {
+void append_script_diagnostics(const ScriptCheck &p_check, CheckStats &r_stats, PackedStringArray &r_output) {
 	r_stats.script_count++;
 	const GDScriptParser &parser = *p_check.reference->get_parser();
 	for (const GDScriptWarning &warning : parser.get_warnings()) {
 		EditorLanguage::Warning diagnostic;
-		diagnostic.start_line = warning.start_line;
+		const auto location = parser.wgodot_source_location(warning.start_line);
+		diagnostic.start_line = location.line;
 		diagnostic.string_code = GDScriptWarning::get_name_from_code(warning.code);
 		diagnostic.message = warning.get_message();
 		r_stats.warning_count++;
-		append_script_warning(diagnostic, p_path, r_stats, r_output);
+		append_script_warning(diagnostic, location.path, r_stats, r_output);
 	}
 	for (const GDScriptParser::ParserError &parse_error : parser.get_errors()) {
 		EditorLanguage::ScriptError diagnostic;
@@ -160,7 +161,7 @@ Dictionary run_project_check_result(const ExportProject &p_project, const SafeFl
 		}
 		linted_usec = OS::get_singleton()->get_ticks_usec();
 		for (int index = 0; index < paths.size(); index++) {
-			append_script_diagnostics(paths[index], checks[index], stats, output);
+			append_script_diagnostics(checks[index], stats, output);
 		}
 	}
 	const uint64_t elapsed_msec = (OS::get_singleton()->get_ticks_usec() - start_usec) / 1000;
@@ -200,11 +201,15 @@ void ProjectCheck::run(void *p_userdata) {
 void ProjectCheck::start() {
 	Vector<String> paths;
 	collect_script_paths(EditorFileSystem::get_singleton()->get_filesystem(), paths);
+	start(paths);
+}
+
+void ProjectCheck::start(const Vector<String> &p_paths) {
 	HashSet<String> inputs;
-	for (const String &path : paths) {
+	for (const String &path : p_paths) {
 		inputs.insert(path);
 	}
-	// Capture the editor's class registry before the worker owns the analysis.
+	// Capture source and class metadata before the worker owns the analysis.
 	String error;
 	if (project.capture(inputs, inputs, error) != OK) {
 		result["ok"] = false;
