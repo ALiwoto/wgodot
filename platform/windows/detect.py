@@ -302,6 +302,12 @@ def configure_msvc(env: "SConsEnvironment"):
         env["AR"] = "llvm-lib"
 
         # wgodot-changes::begin
+        # MSVC SDK setup prepends its tools to PATH. Keep the selected LLVM
+        # directory first so dependency checks do not search those directories
+        # again for every object. Compiler files remain tracked dependencies.
+        clang_path = env.WhereIs("clang-cl")
+        if clang_path:
+            env.PrependENVPath("PATH", os.path.dirname(clang_path))
         # SCons tracks header content. Identical regenerated headers can have new
         # mtimes, which must not invalidate otherwise reusable Clang PCHs.
         env.AppendUnique(CXXFLAGS=["/clang:-Xclang", "/clang:-fno-pch-timestamp"])

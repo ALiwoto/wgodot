@@ -1851,7 +1851,11 @@ void ResourceFormatSaverBinaryInstance::write_variant(Ref<FileAccess> r_file, co
 				return; // Don't save it.
 			}
 
-			if (!res->is_built_in()) {
+			// wgodot-changes::begin
+			// Cached references to another file's subresources are external too.
+			// Use the table built by _find_resources, not the resource's path shape.
+			if (r_external_resources.has(res)) {
+				// wgodot-changes::end
 				r_file->store_32(OBJECT_EXTERNAL_RESOURCE_INDEX);
 				r_file->store_32(uint32_t(r_external_resources[res]));
 			} else {

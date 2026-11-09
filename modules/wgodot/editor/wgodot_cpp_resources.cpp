@@ -14,6 +14,7 @@
 #include "core/io/dir_access.h"
 #include "core/io/file_access.h"
 #include "core/io/resource_loader.h"
+#include "core/io/wgodot_resource_load_priority.h"
 #include "core/io/resource_uid.h"
 #include "core/io/wgodot_file_stamp.h"
 #include "core/object/class_db.h"
@@ -1193,6 +1194,7 @@ class WGodotCppResources {
 	}
 
 	void generate_reachable() {
+		const WGodotResourceLoadPriority load_priority(true);
 		WorkerThreadPool *pool = WorkerThreadPool::get_singleton();
 		const int concurrency = MIN(emitter->jobs, pool->get_thread_count());
 		Vector<WGodotCppEmitter *> workers;

@@ -67,13 +67,18 @@ class IncludeScanner(ClassicCPP):
         return includes
 
     def save(self) -> None:
-        # Retain only files used by this build, so removed generated headers do
-        # not accumulate forever. No resolved paths or build decisions are saved.
+        # Partial builds must not evict other targets' include spellings. Prune
+        # deleted files; changed files are checked against their revision on use.
+        retained: dict[str, Entry] = {
+            path: entry for path, entry in self.previous.items()
+            if path not in self.current and os.path.isfile(path)
+        }
+        retained.update(self.current)
         temporary: Path = self.cache_path.with_suffix(f".{os.getpid()}.tmp")
         print(f"C/C++ include cache: {self.hits} reused, {self.misses} scanned.")
         try:
             self.cache_path.parent.mkdir(parents=True, exist_ok=True)
-            temporary.write_text(json.dumps({"pattern": self.cre.pattern, "files": self.current}), encoding="utf-8")
+            temporary.write_text(json.dumps({"pattern": self.cre.pattern, "files": retained}), encoding="utf-8")
             temporary.replace(self.cache_path)
         except OSError:
             pass  # A cache write cannot invalidate a completed build.

@@ -37,6 +37,9 @@
 
 #include "resource_loader.h"
 // wgodot-changes::begin
+#include "wgodot_resource_load_priority.h"
+// wgodot-changes::end
+// wgodot-changes::begin
 #include "wgodot_resource_paths.h"
 // wgodot-changes::end
 
@@ -864,8 +867,8 @@ Ref<ResourceLoader::LoadToken> ResourceLoader::_load_start(const String &p_path,
 				load_task_ptr->thread_id = Thread::get_caller_id();
 			}
 		} else {
-			load_task_ptr->task_id = WorkerThreadPool::get_singleton()->add_native_task(&ResourceLoader::_run_load_task, load_task_ptr);
 			// wgodot-changes::begin
+			load_task_ptr->task_id = WorkerThreadPool::get_singleton()->add_native_task(&ResourceLoader::_run_load_task, load_task_ptr, WGodotResourceLoadPriority::is_foreground());
 			load_token->wgodot_owned_pool_task = load_task_ptr->task_id;
 			// wgodot-changes::end
 		}

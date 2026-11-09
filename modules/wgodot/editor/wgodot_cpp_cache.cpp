@@ -1,7 +1,7 @@
 // wgodot-changes::file
 #include "wgodot_cpp_cache.h"
-#include "wgodot_cpp_project.h"
 
+#include "wgodot_cpp_project.h"
 #include "wgodot_resource_rewrite.h"
 
 #include "core/config/project_settings.h"
@@ -12,9 +12,9 @@
 #include "core/io/resource_uid.h"
 #include "core/io/wgodot_build_fingerprint.h"
 #include "core/io/wgodot_file_stamp.h"
-#include "core/os/os.h"
-#include "core/object/worker_thread_pool.h"
 #include "core/object/script_language.h"
+#include "core/object/worker_thread_pool.h"
+#include "core/os/os.h"
 
 namespace {
 constexpr const char *CACHE_FILE = ".gd2cpp-cache.bin";
@@ -151,6 +151,38 @@ void WGodotCppCache::prepare_dependencies() {
 	if (batch.items.is_empty()) {
 		return;
 	}
+	// Dependency discovery is useful even if generation is interrupted later.
+	// Keep its metadata separate from the successfully published C++ artifacts.
+	const String dependency_cache = ProjectSettings::get_singleton()->get_project_data_path().path_join("resource_dependencies.bin");
+	Dictionary saved_entries;
+	{
+		const Ref<FileAccess> file = FileAccess::open(dependency_cache, FileAccess::READ);
+		if (file.is_valid()) {
+			const Variant data = file->get_var(false);
+			if (data.get_type() == Variant::DICTIONARY) {
+				const Dictionary state = data;
+				if (String(state.get("build", "")) == WGodotBuildFingerprint::get() && Dictionary(state.get("named_types", Dictionary())) == named_types) {
+					saved_entries = state.get("entries", Dictionary());
+				}
+			}
+		}
+	}
+	Vector<Input> pending;
+	Dictionary entries;
+	for (const Input &input : batch.items) {
+		const Dictionary entry = saved_entries.get(input.path, Dictionary());
+		if (String(entry.get("stamp", "")) == digest(input.path)) {
+			prepared_dependencies.insert(input.path, entry["dependencies"]);
+			entries[input.path] = entry;
+		} else {
+			pending.push_back(input);
+		}
+	}
+	print_line(vformat("Native dependency cache: %d reused, %d pending", entries.size(), pending.size()));
+	if (pending.is_empty()) {
+		return;
+	}
+	batch.items = pending;
 	print_line(vformat("Inspecting dependencies: %d changed resources (%d workers)", batch.items.size(), jobs));
 	const uint64_t started = OS::get_singleton()->get_ticks_msec();
 	WorkerThreadPool *pool = WorkerThreadPool::get_singleton();
@@ -159,8 +191,31 @@ void WGodotCppCache::prepare_dependencies() {
 	pool->wait_for_group_task_completion(task);
 	for (const Input &input : batch.items) {
 		prepared_dependencies.insert(input.path, input.dependencies);
+		if (WGodotFileStamp::get(input.path) == digest(input.path)) {
+			Dictionary entry;
+			entry["stamp"] = digest(input.path);
+			entry["dependencies"] = input.dependencies;
+			entries[input.path] = entry;
+		}
 	}
 	print_line(vformat("Native dependency discovery: %d ms", OS::get_singleton()->get_ticks_msec() - started));
+	Dictionary state;
+	state["build"] = WGodotBuildFingerprint::get();
+	state["named_types"] = named_types;
+	state["entries"] = entries;
+	if (DirAccess::make_dir_recursive_absolute(dependency_cache.get_base_dir()) == OK) {
+		const String temporary = dependency_cache + "." + itos(OS::get_singleton()->get_process_id()) + ".tmp";
+		Ref<FileAccess> file = FileAccess::open(temporary, FileAccess::WRITE);
+		if (file.is_valid()) {
+			file->store_var(state);
+			file->flush();
+			const Error error = file->get_error();
+			file.unref();
+			if (error != OK || DirAccess::rename_absolute(temporary, dependency_cache) != OK) {
+				DirAccess::remove_absolute(temporary);
+			}
+		}
+	}
 }
 
 String WGodotCppCache::digest(const String &p_path) {

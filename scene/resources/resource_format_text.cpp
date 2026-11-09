@@ -56,8 +56,9 @@
 #include "core/object/class_db.h"
 #include "core/object/script_language.h"
 // wgodot-changes::begin
-#include "core/io/wgodot_named_types.h"
 #include "wgodot_scene_types.h"
+
+#include "core/io/wgodot_named_types.h"
 // wgodot-changes::end
 #include "scene/property_utils.h"
 #include "scene/resources/packed_scene.h"
@@ -635,7 +636,7 @@ Error ResourceLoaderText::load() {
 			Ref<Resource> cache = ResourceCache::get_ref(path);
 			// wgodot-changes::begin
 			if (cache.is_valid() && WGodotNamedTypes::type_name(cache.ptr()) == type) {
-			// wgodot-changes::end
+				// wgodot-changes::end
 				res = cache;
 				res->reset_state();
 				do_assign = true;
@@ -794,7 +795,9 @@ Error ResourceLoaderText::load() {
 					if (set_valid) {
 						// wgodot-changes::begin
 						if (wgodot_source_properties) {
-							(*wgodot_source_properties)[res].push_back({ assign, value });
+							// Snapshot mutable containers, retaining resource identities and packed-array COW storage.
+							(*wgodot_source_properties)[res].push_back({ assign,
+									value.get_type() == Variant::ARRAY || value.get_type() == Variant::DICTIONARY ? value.duplicate(true) : value });
 						}
 						// wgodot-changes::end
 						res->set(assign, value);
@@ -871,7 +874,7 @@ Error ResourceLoaderText::load() {
 				Ref<Resource> cache = ResourceCache::get_ref(local_path);
 				// wgodot-changes::begin
 				if (cache_mode == ResourceFormatLoader::CACHE_MODE_REPLACE && cache.is_valid() && WGodotNamedTypes::type_name(cache.ptr()) == res_type) {
-				// wgodot-changes::end
+					// wgodot-changes::end
 					cache->reset_state();
 					resource = cache;
 				}
@@ -1011,7 +1014,8 @@ Error ResourceLoaderText::load() {
 				if (set_valid) {
 					// wgodot-changes::begin
 					if (wgodot_source_properties) {
-						(*wgodot_source_properties)[is_scene ? Ref<Resource>(packed_scene) : resource].push_back({ assign, value });
+							(*wgodot_source_properties)[is_scene ? Ref<Resource>(packed_scene) : resource].push_back({ assign,
+									value.get_type() == Variant::ARRAY || value.get_type() == Variant::DICTIONARY ? value.duplicate(true) : value });
 					}
 					// wgodot-changes::end
 					if (is_scene) {
@@ -1651,7 +1655,7 @@ Ref<Resource> ResourceFormatLoaderText::load(const String &p_path, const String 
 	// wgodot-changes::begin
 #ifdef TOOLS_ENABLED
 	// Keep authored assignments; getters can synthesize defaults from dependencies.
-	// External resources stay references, and scripts still use the text loader.
+	// External resources and scripts remain references to their current sources.
 	const bool cache_candidate = loader.error == OK;
 	WGodotTextResourceCache binary_cache(cache_candidate ? p_path : String());
 	WGodotResourceProperties source_properties;
@@ -1679,16 +1683,15 @@ Ref<Resource> ResourceFormatLoaderText::load(const String &p_path, const String 
 		// wgodot-changes::begin
 #ifdef TOOLS_ENABLED
 		if (loader.wgodot_source_properties && !loader.reused_subresource && !loader.wgodot_cache_incomplete) {
-			bool native_data = true;
+			bool cacheable = true;
 			Vector<Ref<Resource>> resources;
 			resources.push_back(loader.get_resource());
 			for (const KeyValue<String, Ref<Resource>> &entry : loader.int_resources) {
 				resources.push_back(entry.value);
 			}
 			for (const Ref<Resource> &resource : resources) {
-				const Ref<Script> script = resource->get_script();
-				if (script.is_valid() || Object::cast_to<Script>(resource.ptr()) || Object::cast_to<MissingResource>(resource.ptr()) || resource->get_meta(SNAME("_skip_save_"), false)) {
-					native_data = false;
+				if (Object::cast_to<Script>(resource.ptr()) || Object::cast_to<MissingResource>(resource.ptr()) || resource->get_meta(SNAME("_skip_save_"), false)) {
+					cacheable = false;
 					break;
 				}
 				// Keep empty resources too: their defaults must remain defaults.
@@ -1708,7 +1711,7 @@ Ref<Resource> ResourceFormatLoaderText::load(const String &p_path, const String 
 					properties.push_back({ "_bundled", resource->get("_bundled") });
 				}
 			}
-			if (native_data) {
+			if (cacheable) {
 				binary_cache.store(loader.get_resource(), source_properties, source_uids);
 			}
 		}
@@ -2248,7 +2251,6 @@ Error ResourceFormatSaverTextInstance::save(const String &p_path, const Ref<Reso
 		String title = packed_scene.is_valid() ? "[gd_scene " : "[gd_resource ";
 		if (packed_scene.is_null()) {
 			title += "type=\"" + _resource_get_class(p_resource) + "\" ";
-
 		}
 
 		title += "format=" + itos(use_compat ? ResourceLoaderText::FORMAT_VERSION_COMPAT : ResourceLoaderText::FORMAT_VERSION) + "";

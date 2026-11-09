@@ -113,6 +113,11 @@ for x in sorted(glob.glob("platform/*")):
 # further down after parsing our platform-specific configuration.
 # Then we prepend PATH to make it take precedence, while preserving SCons' own entries.
 env = Environment(tools=[])
+# wgodot-changes::begin
+# Global File/Dir/SConscript helpers need a default environment, but compilation
+# uses the explicit environment below. Do not discover/configure compilers twice.
+DefaultEnvironment(tools=[])
+# wgodot-changes::end
 env.PrependENVPath("PATH", os.getenv("PATH"))
 env.PrependENVPath("PKG_CONFIG_PATH", os.getenv("PKG_CONFIG_PATH"))
 if "TERM" in os.environ:  # Used for colored output.
@@ -277,6 +282,9 @@ opts.Add(
     "",
 )
 opts.Add(BoolVariable("verbose", "Enable verbose output for the compilation", False))
+# wgodot-changes::begin
+opts.Add("llvm_diagnostics", "Directory for per-target Clang and LLD timing traces", "")
+# wgodot-changes::end
 opts.Add(BoolVariable("progress", "Show a progress indicator during compilation", True))
 opts.Add(
     EnumVariable("warnings", "Level of compilation warnings", "all", ["extra", "all", "moderate", "no"], ignorecase=2)
@@ -759,6 +767,13 @@ if not env["rendering_device"] or not (env["forward_mobile_renderer"] or env["fo
 # Must happen after the flags' definition, as configure is when most flags
 # are actually handled to change compile options, etc.
 detect.configure(env)
+
+# wgodot-changes::begin
+if env["llvm_diagnostics"]:
+    from misc.utility.wgodot_build_diagnostics import configure
+
+    configure(env)
+# wgodot-changes::end
 
 platform_string = env["platform"]
 if env.get("simulator"):

@@ -10,6 +10,8 @@ param(
 	[switch]$DryRun,
 	[switch]$Symbols,
 	[string]$LLVMDirectory = $env:LLVM_DIR,
+	[string]$DiagnosticsDirectory = $env:SCONS_DIAGNOSTICS,
+	[string]$LogPath,
 	[string]$BuildProfilePath,
 	[string]$PostgreSQLPath,
 	[string]$PythonExecutable,
@@ -31,6 +33,7 @@ Import-Module "$PSHOME/Modules/Microsoft.PowerShell.Utility/Microsoft.PowerShell
 
 $started = Get-Date -Format o
 $buildExitCode = 1
+$previousDiagnostics = $env:SCONS_DIAGNOSTICS
 if ($StatusPath) {
 	$StatusPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($StatusPath)
 	New-Item -ItemType Directory -Path (Split-Path -Parent $StatusPath) -Force | Out-Null
@@ -167,8 +170,8 @@ try {
 	if (!$vs) {
 		throw "Visual Studio with the C++ x64 build tools was not found."
 	}
-	Import-Module "$vs\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
-	Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments "-arch=x64"
+	# SCons initializes the target's SDK/CRT environment. Running DevShell here
+	# repeats that setup before SCons configures the same toolchain again.
 	if (!$LLVMDirectory) {
 		$clangCommand = Get-Command clang-cl -ErrorAction SilentlyContinue
 		$candidates = @(
@@ -204,10 +207,20 @@ try {
 			$PythonExecutable = (Get-Command python -ErrorAction Stop).Source
 		}
 	}
-	& $PythonExecutable @pythonArguments -c 'import SCons'
+	& $PythonExecutable @pythonArguments -c "import importlib.util, sys; sys.exit(importlib.util.find_spec('SCons.Diagnostics') is None)"
 	if ($LASTEXITCODE -ne 0) {
-		throw "The selected Python cannot import SCons. Install SCons in that interpreter, or pass -PythonExecutable with an existing build interpreter. No dependencies were installed."
+		throw 'The selected Python needs our SCons fork with SCons.Diagnostics. Install that checkout in editable mode, or select its interpreter with -PythonExecutable.'
 	}
+	if (!$DiagnosticsDirectory) {
+		$DiagnosticsDirectory = Join-Path $PSScriptRoot '.local-tmp/build-diagnostics'
+	}
+	$env:SCONS_DIAGNOSTICS = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($DiagnosticsDirectory)
+	$sconsArgs += @("llvm_diagnostics=$env:SCONS_DIAGNOSTICS/llvm", 'verbose=yes', 'progress=no')
+	if (!$LogPath) {
+		$LogPath = Join-Path $env:SCONS_DIAGNOSTICS "build-$target-$(Get-Date -Format 'yyyyMMdd-HHmmss')-$PID.log"
+	}
+	$LogPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($LogPath)
+	Write-Host "Timestamped build output: $LogPath"
 
 	# Only the executable being rebuilt needs to close; keep other editors/games open.
 	if (!$DryRun) {
@@ -219,7 +232,8 @@ try {
 
 	Push-Location $PSScriptRoot
 	try {
-		& $PythonExecutable @pythonArguments -m SCons @sconsArgs
+		& $PythonExecutable @pythonArguments -u "$PSScriptRoot/misc/utility/wgodot_logged_process.py" `
+			--log $LogPath --label "scons-$target" -- $PythonExecutable @pythonArguments -u -m SCons @sconsArgs
 		if ($LASTEXITCODE -ne 0) {
 			$buildExitCode = $LASTEXITCODE
 			exit $buildExitCode
@@ -286,6 +300,7 @@ try {
 	$buildExitCode = 0
 }
 finally {
+	$env:SCONS_DIAGNOSTICS = $previousDiagnostics
 	if ($StatusPath) {
 		$state = if ($buildExitCode -eq 0) { 'succeeded' } else { 'failed' }
 		@(
