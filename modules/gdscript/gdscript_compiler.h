@@ -42,6 +42,10 @@ class GDScriptCompiler {
 	HashSet<GDScript *> parsed_classes;
 	HashSet<GDScript *> parsing_classes;
 	GDScript *main_script = nullptr;
+	// wgodot-changes::begin
+	HashMap<StringName, String> wgodot_enum_hints;
+	String _wgodot_get_enum_hint(const GDScriptParser::DataType &p_type);
+	// wgodot-changes::end
 
 	struct FunctionLambdaInfo {
 		GDScriptFunction *function = nullptr;

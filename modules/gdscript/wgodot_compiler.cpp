@@ -6,6 +6,29 @@
 #include "wgodot_gd/interface_helpers.h"
 #include "wgodot_stdlib.h"
 
+String GDScriptCompiler::_wgodot_get_enum_hint(const GDScriptParser::DataType &p_type) {
+	// For enum types, the analyzer stores the qualified enum identity in native_type.
+	// Cache only for this compilation so edits cannot leave stale Inspector labels.
+	if (const String *hint = wgodot_enum_hints.getptr(p_type.native_type)) {
+		return *hint;
+	}
+
+	String hint;
+	bool first = true;
+	for (const KeyValue<StringName, int64_t> &entry : p_type.enum_values) {
+		if (first) {
+			first = false;
+		} else {
+			hint += ",";
+		}
+		hint += entry.key.string().capitalize().xml_escape();
+		hint += ":";
+		hint += String::num_int64(entry.value).xml_escape();
+	}
+	wgodot_enum_hints.insert(p_type.native_type, hint);
+	return hint;
+}
+
 bool GDScriptCompiler::_wgodot_compile_interface_identifier(CodeGen &p_codegen, const StringName &p_name, const GDScriptParser::ExpressionNode *p_source, GDScriptCodeGenerator::Address &r_address, Error &r_error) {
 	if (!WGodotGDScriptStdLib::has_global_interface(p_name)) {
 		return false;

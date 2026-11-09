@@ -34,6 +34,7 @@ Import-Module "$PSHOME/Modules/Microsoft.PowerShell.Utility/Microsoft.PowerShell
 $started = Get-Date -Format o
 $buildExitCode = 1
 $previousDiagnostics = $env:SCONS_DIAGNOSTICS
+$previousPath = $env:PATH
 if ($StatusPath) {
 	$StatusPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($StatusPath)
 	New-Item -ItemType Directory -Path (Split-Path -Parent $StatusPath) -Force | Out-Null
@@ -175,8 +176,8 @@ try {
 	if (!$LLVMDirectory) {
 		$clangCommand = Get-Command clang-cl -ErrorAction SilentlyContinue
 		$candidates = @(
-			if ($clangCommand) { Split-Path (Split-Path $clangCommand.Source -Parent) -Parent }
 			"$env:ProgramFiles/LLVM"
+			if ($clangCommand) { Split-Path (Split-Path $clangCommand.Source -Parent) -Parent }
 			"$vs/VC/Tools/Llvm/x64"
 		)
 		$LLVMDirectory = $candidates | Where-Object {
@@ -184,7 +185,7 @@ try {
 		} | Select-Object -First 1
 	}
 	if (!$LLVMDirectory) {
-		throw 'LLVM was not found. Supply -LLVMDirectory, set LLVM_DIR, or add LLVM/bin to PATH.'
+		throw 'LLVM was not found in Program Files, on PATH, or in Visual Studio. Install LLVM or supply -LLVMDirectory for a different location.'
 	}
 	$LLVMDirectory = (Resolve-Path -LiteralPath $LLVMDirectory).Path
 	foreach ($tool in @('clang-cl', 'lld-link', 'llvm-lib', 'llvm-readobj')) {
@@ -207,20 +208,22 @@ try {
 			$PythonExecutable = (Get-Command python -ErrorAction Stop).Source
 		}
 	}
-	& $PythonExecutable @pythonArguments -c "import importlib.util, sys; sys.exit(importlib.util.find_spec('SCons.Diagnostics') is None)"
-	if ($LASTEXITCODE -ne 0) {
-		throw 'The selected Python needs our SCons fork with SCons.Diagnostics. Install that checkout in editable mode, or select its interpreter with -PythonExecutable.'
+	if ($DiagnosticsDirectory) {
+		& $PythonExecutable @pythonArguments -c "import importlib.util, sys; sys.exit(importlib.util.find_spec('SCons.Diagnostics') is None)"
+		if ($LASTEXITCODE -ne 0) {
+			throw 'Build diagnostics require our SCons fork. Select its interpreter with -PythonExecutable.'
+		}
+		$env:SCONS_DIAGNOSTICS = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($DiagnosticsDirectory)
+		$sconsArgs += "llvm_diagnostics=$env:SCONS_DIAGNOSTICS/llvm"
+		if (!$LogPath) {
+			$LogPath = Join-Path $env:SCONS_DIAGNOSTICS "build-$target-$(Get-Date -Format 'yyyyMMdd-HHmmss')-$PID.log"
+		}
 	}
-	if (!$DiagnosticsDirectory) {
-		$DiagnosticsDirectory = Join-Path $PSScriptRoot '.local-tmp/build-diagnostics'
+	if ($LogPath) {
+		$LogPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($LogPath)
+		$sconsArgs += 'progress=no'
+		Write-Host "Timestamped build output: $LogPath"
 	}
-	$env:SCONS_DIAGNOSTICS = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($DiagnosticsDirectory)
-	$sconsArgs += @("llvm_diagnostics=$env:SCONS_DIAGNOSTICS/llvm", 'verbose=yes', 'progress=no')
-	if (!$LogPath) {
-		$LogPath = Join-Path $env:SCONS_DIAGNOSTICS "build-$target-$(Get-Date -Format 'yyyyMMdd-HHmmss')-$PID.log"
-	}
-	$LogPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($LogPath)
-	Write-Host "Timestamped build output: $LogPath"
 
 	# Only the executable being rebuilt needs to close; keep other editors/games open.
 	if (!$DryRun) {
@@ -232,8 +235,12 @@ try {
 
 	Push-Location $PSScriptRoot
 	try {
-		& $PythonExecutable @pythonArguments -u "$PSScriptRoot/misc/utility/wgodot_logged_process.py" `
-			--log $LogPath --label "scons-$target" -- $PythonExecutable @pythonArguments -u -m SCons @sconsArgs
+		if ($LogPath) {
+			& $PythonExecutable @pythonArguments -u "$PSScriptRoot/misc/utility/wgodot_logged_process.py" `
+				--log $LogPath --label "scons-$target" -- $PythonExecutable @pythonArguments -u -m SCons @sconsArgs
+		} else {
+			& $PythonExecutable @pythonArguments -u -m SCons @sconsArgs
+		}
 		if ($LASTEXITCODE -ne 0) {
 			$buildExitCode = $LASTEXITCODE
 			exit $buildExitCode
@@ -301,6 +308,7 @@ try {
 }
 finally {
 	$env:SCONS_DIAGNOSTICS = $previousDiagnostics
+	$env:PATH = $previousPath
 	if ($StatusPath) {
 		$state = if ($buildExitCode -eq 0) { 'succeeded' } else { 'failed' }
 		@(

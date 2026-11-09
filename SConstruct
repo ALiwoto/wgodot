@@ -148,12 +148,9 @@ env["x86_libtheora_opt_vc"] = False
 
 # avoid issues when building with different versions of python out of the same directory
 # wgodot-changes::begin
-# Separate dependency records for engine/game targets. A small editor rebuild
-# should not deserialize and rewrite every game's generated-source records.
-signature_target = ".".join(ARGUMENTS.get(key, "default") for key in ("platform", "target", "arch", "extra_suffix"))
-if ARGUMENTS.get("ninja", "no").lower() in ("yes", "true", "1"):
-    signature_target += ".ninja"
-env.SConsignFile(File(f"#.sconsign{pickle.HIGHEST_PROTOCOL}.{signature_target}.dblite").abspath)
+# Generated headers are shared between targets. Their producer signatures must
+# share one database too, so switching targets regenerates the correct headers.
+env.SConsignFile(File(f"#.sconsign{pickle.HIGHEST_PROTOCOL}.dblite").abspath)
 # wgodot-changes::end
 
 # Build options

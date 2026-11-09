@@ -3000,21 +3000,9 @@ Error GDScriptCompiler::_prepare_compilation(GDScript *p_script, const GDScriptP
 					// for unexported properties so they display nicely in the Remote Tree Inspector.
 					if (variable_type.kind == GDScriptParser::DataType::ENUM && !variable_type.is_meta_type) {
 						prop_info.hint = PROPERTY_HINT_ENUM;
-
-						String enum_hint_string;
-						bool first = true;
-						for (const KeyValue<StringName, int64_t> &E : variable_type.enum_values) {
-							if (first) {
-								first = false;
-							} else {
-								enum_hint_string += ",";
-							}
-							enum_hint_string += E.key.string().capitalize().xml_escape();
-							enum_hint_string += ":";
-							enum_hint_string += String::num_int64(E.value).xml_escape();
-						}
-
-						prop_info.hint_string = enum_hint_string;
+						// wgodot-changes::begin
+						prop_info.hint_string = _wgodot_get_enum_hint(variable_type);
+						// wgodot-changes::end
 					}
 				}
 				prop_info.usage |= PROPERTY_USAGE_SCRIPT_VARIABLE;
@@ -3425,16 +3413,32 @@ Error GDScriptCompiler::compile(const GDScriptParser *p_parser, GDScript *p_scri
 
 	source = p_script->get_path();
 
+	// wgodot-changes::begin
+	wgodot_enum_hints.clear();
+	WGodotStartupProfile::Scope wgodot_phase("GDScript capture old lambdas", source);
+	// wgodot-changes::end
 	ScriptLambdaInfo old_lambda_info = _get_script_lambda_replacement_info(p_script);
 
 	// Create scripts for subclasses beforehand so they can be referenced
+	// wgodot-changes::begin
+	wgodot_phase.next("GDScript create class objects");
+	// wgodot-changes::end
 	make_scripts(p_script, root, p_keep_state);
 
 	main_script->_owner = nullptr;
+	// wgodot-changes::begin
+	wgodot_phase.next("GDScript prepare class metadata");
+	// wgodot-changes::end
 	RETURN_IF_ERROR(_prepare_compilation(main_script, parser->get_tree(), p_keep_state));
 
+	// wgodot-changes::begin
+	wgodot_phase.next("GDScript emit class bytecode");
+	// wgodot-changes::end
 	RETURN_IF_ERROR(_compile_class(main_script, root, p_keep_state));
 
+	// wgodot-changes::begin
+	wgodot_phase.next("GDScript update live functions");
+	// wgodot-changes::end
 	ScriptLambdaInfo new_lambda_info = _get_script_lambda_replacement_info(p_script);
 
 	HashMap<GDScriptFunction *, GDScriptFunction *> func_ptr_replacements;
@@ -3445,6 +3449,9 @@ Error GDScriptCompiler::compile(const GDScriptParser *p_parser, GDScript *p_scri
 		GDScriptCache::add_static_script(p_script);
 	}
 
+	// wgodot-changes::begin
+	wgodot_phase.next("GDScript compile dependencies");
+	// wgodot-changes::end
 	Error err = GDScriptCache::finish_compiling(main_script->path);
 	if (err) {
 		_set_error(R"(Failed to compile depended scripts.)", nullptr);
