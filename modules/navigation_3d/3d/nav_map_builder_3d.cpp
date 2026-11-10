@@ -35,6 +35,9 @@
 #include "nav_region_iteration_3d.h"
 
 #include "core/config/project_settings.h"
+// wgodot-changes::begin
+#include "core/math/dynamic_bvh.h"
+// wgodot-changes::end
 
 using namespace Nav3D;
 
@@ -209,12 +212,37 @@ void NavMapBuilder3D::_build_step_edge_connection_margin_connections(NavMapItera
 
 	const real_t edge_connection_margin_squared = edge_connection_margin * edge_connection_margin;
 
+	// wgodot-changes::begin
+	// Keep the existing connection test and order, but only consider edges whose
+	// bounds can reach each other. Streamed maps can have hundreds of thousands
+	// of boundary edges; comparing every pair stalls background map construction.
+	DynamicBVH edge_tree;
+	LocalVector<AABB> edge_bounds;
+	edge_bounds.resize(free_edges.size());
+	for (uint32_t i = 0; i < free_edges.size(); i++) {
+		AABB bounds(free_edges[i].pathway_start, Vector3());
+		bounds.expand_to(free_edges[i].pathway_end);
+		edge_bounds[i] = bounds;
+		edge_tree.insert(bounds, &free_edges[i]);
+	}
+	LocalVector<uint32_t> candidates;
+	auto collect_edge = [&](void *p_edge) {
+		candidates.push_back(static_cast<Connection *>(p_edge) - free_edges.ptr());
+		return false;
+	};
+	// wgodot-changes::end
+
 	for (uint32_t i = 0; i < free_edges.size(); i++) {
 		const Connection &free_edge = free_edges[i];
 		const Vector3 &edge_p1 = free_edge.pathway_start;
 		const Vector3 &edge_p2 = free_edge.pathway_end;
 
-		for (uint32_t j = 0; j < free_edges.size(); j++) {
+		// wgodot-changes::begin
+		candidates.clear();
+		edge_tree.aabb_query(edge_bounds[i].grow(edge_connection_margin + CMP_EPSILON), collect_edge);
+		candidates.sort();
+		for (uint32_t j : candidates) {
+			// wgodot-changes::end
 			const Connection &other_edge = free_edges[j];
 			if (i == j || free_edge.polygon->owner == other_edge.polygon->owner) {
 				continue;

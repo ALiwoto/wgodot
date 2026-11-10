@@ -1,4 +1,5 @@
 // wgodot-changes::file
+#include "arrays.h"
 #include "reflection.h"
 
 #ifdef TOOLS_ENABLED
@@ -12,30 +13,33 @@ void WGodotSerialization::reflected_write(const Object *p_object, Writer &r_writ
 			continue;
 		}
 		const Variant value = p_object->get(field.name);
-		if (field.type.builtin_type == Variant::ARRAY) {
-			const Array array = value;
-			if (!pb) {
-				r_writer.fixed(array.size(), 4);
-			}
-			if (pb && field.packed && wire_type(field.kind) != 2) {
-				if (array.is_empty()) {
-					continue;
+		if (field.repeated) {
+			Variant collection = value;
+			r_writer.valid &= visit_array(collection, [&](const auto &array) {
+				if (!pb) {
+					r_writer.fixed(array.size(), 4);
 				}
-				Writer packed;
-				for (int64_t i = 0; i < array.size(); ++i) {
-					write_value(packed, array[i], field.kind, true);
-				}
-				r_writer.valid &= packed.valid;
-				r_writer.tag(field.id, 2);
-				write_bytes(r_writer, packed.data.ptr(), packed.data.size(), true);
-			} else {
-				for (int64_t i = 0; i < array.size(); ++i) {
-					if (pb) {
-						r_writer.tag(field.id, wire_type(field.kind));
+				if (pb && field.packed && wire_type(field.kind) != 2) {
+					if (array.is_empty()) {
+						return true;
 					}
-					write_value(r_writer, array[i], field.kind, pb);
+					Writer packed;
+					for (int64_t i = 0; i < array.size(); ++i) {
+						write_value(packed, array[i], field.kind, true);
+					}
+					r_writer.valid &= packed.valid;
+					r_writer.tag(field.id, 2);
+					write_bytes(r_writer, packed.data.ptr(), packed.data.size(), true);
+				} else {
+					for (int64_t i = 0; i < array.size(); ++i) {
+						if (pb) {
+							r_writer.tag(field.id, wire_type(field.kind));
+						}
+						write_value(r_writer, array[i], field.kind, pb);
+					}
 				}
-			}
+				return r_writer.valid;
+			});
 		} else if (field.type.builtin_type == Variant::DICTIONARY) {
 			if (!pb) {
 				r_writer.valid = false;
@@ -108,41 +112,45 @@ bool WGodotSerialization::reflected_read(Object *p_object, Reader &r_reader, boo
 			}
 		}
 		Variant value = p_object->get(field->name);
-		if (field->type.builtin_type == Variant::ARRAY) {
-			Array array = value;
-			const GDScriptDataType element = field->type.get_container_element_type(0);
-			if (!pb || (wire == 2 && wire_type(field->kind) != 2)) {
-				Reader packed;
-				uint64_t count = 0;
-				if (pb) {
-					packed = r_reader.slice(r_reader.varint());
-				} else {
-					count = r_reader.fixed(4);
-					if (count > uint64_t(r_reader.remaining())) {
-						return false;
+		if (field->repeated) {
+			const GDScriptDataType element = sequence_element(field->type);
+			if (!visit_array(value, [&](auto &array) {
+					if (!pb || (wire == 2 && wire_type(field->kind) != 2)) {
+						Reader packed;
+						uint64_t count = 0;
+						if (pb) {
+							packed = r_reader.slice(r_reader.varint());
+						} else {
+							array.clear();
+							count = r_reader.fixed(4);
+							if (!r_reader.valid || count > uint64_t(r_reader.remaining())) {
+								return false;
+							}
+						}
+						if (pb && !packed.valid) {
+							return false;
+						}
+						while (pb ? packed.remaining() > 0 : count-- > 0) {
+							Variant item = default_value(element);
+							if (!read_value(pb ? packed : r_reader, item, element, field->kind, pb) || !fits_array(item, field->type.builtin_type)) {
+								return false;
+							}
+							array.push_back(item);
+						}
+					} else {
+						if (wire != wire_type(field->kind)) {
+							return false;
+						}
+						Variant item = default_value(element);
+						if (!read_value(r_reader, item, element, field->kind, true) || !fits_array(item, field->type.builtin_type)) {
+							return false;
+						}
+						array.push_back(item);
 					}
-				}
-				if (pb && !packed.valid) {
-					return false;
-				}
-				while (pb ? packed.remaining() > 0 : count-- > 0) {
-					Variant item = default_value(element);
-					if (!read_value(pb ? packed : r_reader, item, element, field->kind, pb)) {
-						return false;
-					}
-					array.push_back(item);
-				}
-			} else {
-				if (wire != wire_type(field->kind)) {
-					return false;
-				}
-				Variant item = default_value(element);
-				if (!read_value(r_reader, item, element, field->kind, true)) {
-					return false;
-				}
-				array.push_back(item);
+					return r_reader.valid;
+				})) {
+				return false;
 			}
-			value = array;
 		} else if (field->type.builtin_type == Variant::DICTIONARY) {
 			if (!pb || wire != 2) {
 				return false;

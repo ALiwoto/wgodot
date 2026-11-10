@@ -21,7 +21,7 @@ String codec(const Field &p_field, bool p_protobuf, bool p_read) {
 	if (p_field.type.builtin_type == Variant::DICTIONARY) {
 		return operation + "_map<" + kind(p_field.key) + ", " + kind(p_field.value) + ">";
 	}
-	return operation + String(p_field.type.builtin_type == Variant::ARRAY ? "_array<" : "<") + kind(p_field.kind) + ", " + (p_protobuf ? "true" : "false") + ">";
+	return operation + String(p_field.repeated ? "_array<" : "<") + kind(p_field.kind) + ", " + (p_protobuf ? "true" : "false") + ">";
 }
 } // namespace
 
@@ -48,8 +48,9 @@ void WGodotCppEmitter::emit_serialization(const WGodotCppProject::Class &p_class
 				// Register dependencies even when a field is only used by the codec.
 				(void)type(field.type, field.node);
 				const String value = field_name(field);
-				encode += "\tresult[" + quoted(field.json) + "] = WGodotSerialization::json(" + value + ");\n";
-				decode += "\tif (const Variant *value = p_data.getptr(" + quoted(field.json) + ")) {\n\t\tif (!WGodotSerialization::parse_json(*value, " + value + ")) {\n\t\t\treturn false;\n\t\t}\n\t}\n";
+				const String json_options = field.repeated && field.type.builtin_type == Variant::PACKED_BYTE_ARRAY ? "<false>" : "";
+				encode += "\tresult[" + quoted(field.json) + "] = WGodotSerialization::json" + json_options + "(" + value + ");\n";
+				decode += "\tif (const Variant *value = p_data.getptr(" + quoted(field.json) + ")) {\n\t\tif (!WGodotSerialization::parse_json" + json_options + "(*value, " + value + ")) {\n\t\t\treturn false;\n\t\t}\n\t}\n";
 			}
 			r_definitions += encode + "\treturn result;\n}\n\n";
 			r_definitions += decode + "\treturn true;\n}\n\n";
@@ -59,7 +60,7 @@ void WGodotCppEmitter::emit_serialization(const WGodotCppProject::Class &p_class
 		if (layout.protobuf) {
 			Vector<int> ids;
 			for (const Field &field : layout.fields) {
-				if (field.type.builtin_type != Variant::ARRAY && field.type.builtin_type != Variant::DICTIONARY) {
+				if (!field.repeated && field.type.builtin_type != Variant::DICTIONARY) {
 					ids.push_back(field.id);
 				}
 			}
@@ -108,7 +109,7 @@ void WGodotCppEmitter::emit_serialization(const WGodotCppProject::Class &p_class
 		for (const Field &field : layout.fields) {
 			const String value = field_name(field);
 			const String id = itos(field.id);
-			const bool array = field.type.builtin_type == Variant::ARRAY;
+			const bool array = field.repeated;
 			const bool map = field.type.builtin_type == Variant::DICTIONARY;
 			String indent = "\t";
 			if (layout.protobuf && !array && !map) {

@@ -83,18 +83,27 @@ bool WGodotSerialization::reflected_has_field(const Object *p_object, uint32_t p
 }
 
 void WGodotSerialization::reflected_set_field(Object *p_object, uint32_t p_id, bool p_present) {
+	PackedInt32Array fields = p_object->get_meta(SNAME("_protobuf_fields"), PackedInt32Array());
+	const int64_t index = fields.find(p_id);
+	if (!p_present && index < 0) {
+		return;
+	}
+	const Ref<GDScript> script = p_object->get_script();
+	if (script.is_null()) {
+		return;
+	}
 	bool known = false;
-	for (const auto &field : reflected_fields(p_object, true)) {
-		if (field.id == int64_t(p_id) && field.type.builtin_type != Variant::ARRAY && field.type.builtin_type != Variant::DICTIONARY) {
-			known = true;
+	for (const auto &entry : script->wgodot_field_annotations) {
+		if (int64_t(argument(entry.value, SNAME("@PbFieldId"), -1)) == int64_t(p_id)) {
+			const Variant::Type type = script->get_member_type(entry.key).builtin_type;
+			const Kind kind = kind_from_name(argument(entry.value, SNAME("@PbEncoding"), ""));
+			known = !is_sequence(type, kind) && type != Variant::DICTIONARY;
 			break;
 		}
 	}
 	if (!known) {
 		return;
 	}
-	PackedInt32Array fields = p_object->get_meta(SNAME("_protobuf_fields"), PackedInt32Array());
-	const int64_t index = fields.find(p_id);
 	if (p_present && index < 0) {
 		fields.push_back(p_id);
 	} else if (!p_present && index >= 0) {

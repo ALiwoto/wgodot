@@ -30,6 +30,7 @@ void GDScriptParser::register_wgodot_annotations() {
 	register_annotation(MethodInfo("@BinaryFieldType", PropertyInfo(Variant::STRING, "type")), AnnotationInfo::VARIABLE, &GDScriptParser::wgodot_noop_annotation);
 	register_annotation(MethodInfo("@BinaryOptions", PropertyInfo(Variant::STRING, "endian"), PropertyInfo(Variant::BOOL, "strict")), AnnotationInfo::SCRIPT | AnnotationInfo::CLASS, &GDScriptParser::wgodot_noop_annotation);
 	register_annotation(MethodInfo("@JsonPropertyName", PropertyInfo(Variant::STRING, "name")), AnnotationInfo::VARIABLE, &GDScriptParser::wgodot_noop_annotation);
+	register_annotation(MethodInfo("@JsonEncoding", PropertyInfo(Variant::STRING, "encoding")), AnnotationInfo::VARIABLE, &GDScriptParser::wgodot_noop_annotation);
 }
 
 bool GDScriptParser::wgodot_export_reflection_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class) {

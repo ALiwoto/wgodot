@@ -2936,7 +2936,7 @@ Error GDScriptCompiler::_prepare_compilation(GDScript *p_script, const GDScriptP
 						attribute(annotations, p_name, String(WGodotSerialization::kind_name(p_kind)).to_lower());
 					}
 				};
-				encoding(serialization.protobuf ? SNAME("@PbEncoding") : SNAME("@BinaryFieldType"), field.kind);
+				encoding(serialization.json ? SNAME("@JsonEncoding") : serialization.protobuf ? SNAME("@PbEncoding") : SNAME("@BinaryFieldType"), field.kind);
 				encoding(SNAME("@PbKeyEncoding"), field.key);
 				encoding(SNAME("@PbValueEncoding"), field.value);
 				attribute(annotations, SNAME("@PbPacked"), field.packed);

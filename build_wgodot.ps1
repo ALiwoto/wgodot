@@ -9,6 +9,8 @@ param(
 	[switch]$KeepGoing,
 	[switch]$DryRun,
 	[switch]$Symbols,
+	[ValidateRange(0, 2147483647)]
+	[int]$Jobs = 0,
 	[string]$LLVMDirectory = $env:LLVM_DIR,
 	[string]$DiagnosticsDirectory = $env:SCONS_DIAGNOSTICS,
 	[string]$LogPath,
@@ -117,6 +119,9 @@ try {
 		"d3d12=no",
 		"winrt=no"
 	)
+	if ($Jobs -gt 0) {
+		$sconsArgs += "-j$Jobs"
+	}
 	if ($DryRun) {
 		$sconsArgs += '--dry-run'
 	}

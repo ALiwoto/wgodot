@@ -4,6 +4,7 @@
 #include "core/io/marshalls.h"
 
 #include <libpq-fe.h>
+#include <type_traits>
 
 PostgreSQLResult::~PostgreSQLResult() {
 	if (result) {
@@ -131,6 +132,59 @@ PackedByteArray PostgreSQLResult::get_bytes(int p_row, int p_column) const {
 	return bytes;
 }
 
+template <typename T, typename Packed>
+static Packed read_numeric_array(PGresult *p_result, int p_row, int p_column, Oid p_array_type, Oid p_element_type) {
+	ERR_FAIL_COND_V_MSG(PQftype(p_result, p_column) != p_array_type, Packed(), "Column has a different PostgreSQL array type. Use an explicit SQL cast or the matching getter.");
+	const int length = PQgetlength(p_result, p_row, p_column);
+	const uint8_t *bytes = reinterpret_cast<const uint8_t *>(PQgetvalue(p_result, p_row, p_column));
+	ERR_FAIL_COND_V(length < 12, Packed());
+	const uint32_t dimensions = BSWAP32(decode_uint32(bytes));
+	ERR_FAIL_COND_V_MSG(dimensions > 1, Packed(), "Packed arrays require a one-dimensional PostgreSQL array.");
+	ERR_FAIL_COND_V_MSG(BSWAP32(decode_uint32(bytes + 4)) != 0, Packed(), "Packed arrays cannot represent NULL elements.");
+	ERR_FAIL_COND_V(BSWAP32(decode_uint32(bytes + 8)) != p_element_type, Packed());
+	if (dimensions == 0) {
+		ERR_FAIL_COND_V(length != 12, Packed());
+		return Packed();
+	}
+	ERR_FAIL_COND_V(length < 20, Packed());
+	const uint32_t count = BSWAP32(decode_uint32(bytes + 12));
+	constexpr uint32_t stride = 4 + sizeof(T);
+	ERR_FAIL_COND_V(count > uint32_t(length - 20) / stride || uint64_t(count) * stride != uint32_t(length - 20), Packed());
+	Packed values;
+	ERR_FAIL_COND_V(values.resize(count) != OK, Packed());
+	T *output = values.ptrw();
+	bytes += 20; // The SQL lower bound does not change the packed sequence order.
+	for (uint32_t index = 0; index < count; index++, bytes += stride) {
+		ERR_FAIL_COND_V(BSWAP32(decode_uint32(bytes)) != sizeof(T), Packed());
+		if constexpr (sizeof(T) == 4) {
+			output[index] = int32_t(BSWAP32(decode_uint32(bytes + 4)));
+		} else {
+			const uint64_t value = BSWAP64(decode_uint64(bytes + 4));
+			if constexpr (std::is_same_v<T, double>) {
+				memcpy(output + index, &value, sizeof(value));
+			} else {
+				output[index] = int64_t(value);
+			}
+		}
+	}
+	return values;
+}
+
+PackedInt32Array PostgreSQLResult::get_int32_array(int p_row, int p_column) const {
+	ERR_FAIL_COND_V(!readable_cell(p_row, p_column), PackedInt32Array());
+	return read_numeric_array<int32_t, PackedInt32Array>(result, p_row, p_column, 1007, 23);
+}
+
+PackedInt64Array PostgreSQLResult::get_int64_array(int p_row, int p_column) const {
+	ERR_FAIL_COND_V(!readable_cell(p_row, p_column), PackedInt64Array());
+	return read_numeric_array<int64_t, PackedInt64Array>(result, p_row, p_column, 1016, 20);
+}
+
+PackedFloat64Array PostgreSQLResult::get_float64_array(int p_row, int p_column) const {
+	ERR_FAIL_COND_V(!readable_cell(p_row, p_column), PackedFloat64Array());
+	return read_numeric_array<double, PackedFloat64Array>(result, p_row, p_column, 1022, 701);
+}
+
 void PostgreSQLResult::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_status"), &PostgreSQLResult::get_status);
 	ClassDB::bind_method(D_METHOD("get_error_message"), &PostgreSQLResult::get_error_message);
@@ -146,6 +200,9 @@ void PostgreSQLResult::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_float", "row", "column"), &PostgreSQLResult::get_float);
 	ClassDB::bind_method(D_METHOD("get_text", "row", "column"), &PostgreSQLResult::get_text);
 	ClassDB::bind_method(D_METHOD("get_bytes", "row", "column"), &PostgreSQLResult::get_bytes);
+	ClassDB::bind_method(D_METHOD("get_int32_array", "row", "column"), &PostgreSQLResult::get_int32_array);
+	ClassDB::bind_method(D_METHOD("get_int64_array", "row", "column"), &PostgreSQLResult::get_int64_array);
+	ClassDB::bind_method(D_METHOD("get_float64_array", "row", "column"), &PostgreSQLResult::get_float64_array);
 	BIND_ENUM_CONSTANT(STATUS_UNKNOWN);
 	BIND_ENUM_CONSTANT(STATUS_COMMAND);
 	BIND_ENUM_CONSTANT(STATUS_ROWS);

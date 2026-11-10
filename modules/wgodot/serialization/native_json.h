@@ -4,11 +4,11 @@
 #include "native.h"
 
 namespace WGodotSerialization {
-template <class T>
+template <bool ByteBlob = true, class T>
 Variant json(const T &p_value) {
-	if constexpr (std::is_same_v<T, WGodotNative::WArray<uint8_t, Variant::PACKED_BYTE_ARRAY>>) {
+	if constexpr (ByteBlob && std::is_same_v<T, WGodotNative::WArray<uint8_t, Variant::PACKED_BYTE_ARRAY>>) {
 		return encode_base64(p_value.native().ptr(), p_value.size());
-	} else if constexpr (WGodotNative::IsWArray<T>::value) {
+	} else if constexpr (WGodotNative::IsWArray<T>::value || WGodotNative::IsPacked<T>::value) {
 		Array result;
 		for (const auto &item : p_value.native()) {
 			result.push_back(json(item));
@@ -35,16 +35,16 @@ Variant json(const T &p_value) {
 	}
 }
 
-template <class T>
+template <bool ByteBlob = true, class T>
 bool parse_json(const Variant &p_value, T &r_value) {
-	if constexpr (std::is_same_v<T, WGodotNative::WArray<uint8_t, Variant::PACKED_BYTE_ARRAY>>) {
+	if constexpr (ByteBlob && std::is_same_v<T, WGodotNative::WArray<uint8_t, Variant::PACKED_BYTE_ARRAY>>) {
 		PackedByteArray bytes;
 		if (p_value.get_type() != Variant::STRING || !decode_base64(p_value, bytes)) {
 			return false;
 		}
 		r_value = T(bytes);
 		return true;
-	} else if constexpr (WGodotNative::IsWArray<T>::value) {
+	} else if constexpr (WGodotNative::IsWArray<T>::value || WGodotNative::IsPacked<T>::value) {
 		if (p_value.get_type() != Variant::ARRAY) {
 			return false;
 		}
@@ -96,8 +96,8 @@ bool parse_json(const Variant &p_value, T &r_value) {
 		if (!json_integer(p_value, integer)) {
 			return false;
 		}
-		if constexpr (std::is_same_v<T, uint8_t>) {
-			if (integer < 0 || integer > 255) {
+		if constexpr (std::is_integral_v<T> && sizeof(T) < sizeof(int64_t)) {
+			if (integer < std::numeric_limits<T>::min() || integer > std::numeric_limits<T>::max()) {
 				return false;
 			}
 		}

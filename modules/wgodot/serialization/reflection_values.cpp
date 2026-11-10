@@ -12,7 +12,7 @@ Variant argument(const Dictionary &p_attributes, const StringName &p_name, const
 	return p_index < arguments.size() ? arguments[p_index] : p_default;
 }
 
-Vector<ReflectedField> reflected_fields(const Object *p_object, bool p_protobuf) {
+Vector<ReflectedField> reflected_fields(const Object *p_object, bool p_protobuf, bool p_json) {
 	Ref<GDScript> script = p_object->get_script();
 	Vector<ReflectedField> fields;
 	if (script.is_null()) {
@@ -23,7 +23,10 @@ Vector<ReflectedField> reflected_fields(const Object *p_object, bool p_protobuf)
 		field.name = entry.key;
 		field.type = script->get_member_type(entry.key);
 		field.id = argument(entry.value, p_protobuf ? SNAME("@PbFieldId") : SNAME("@BinaryFieldOrder"), -1);
-		field.kind = kind_from_name(argument(entry.value, p_protobuf ? SNAME("@PbEncoding") : SNAME("@BinaryFieldType"), ""));
+		field.kind = kind_from_name(argument(entry.value, p_json ? SNAME("@JsonEncoding") : p_protobuf ? SNAME("@PbEncoding")
+																									   : SNAME("@BinaryFieldType"),
+				""));
+		field.repeated = is_sequence(field.type.builtin_type, field.kind);
 		field.key = kind_from_name(argument(entry.value, SNAME("@PbKeyEncoding"), ""));
 		field.value = kind_from_name(argument(entry.value, SNAME("@PbValueEncoding"), ""));
 		field.oneof = argument(entry.value, SNAME("@PbOneof"), "");

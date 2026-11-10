@@ -29,7 +29,18 @@ Kind inferred_kind(const P::DataType &p_type) {
 			return Kind::STRING;
 		case Variant::PACKED_BYTE_ARRAY:
 			return Kind::BYTES;
+		case Variant::PACKED_INT32_ARRAY:
+			return Kind::INT32;
+		case Variant::PACKED_INT64_ARRAY:
+			return Kind::INT64;
+		case Variant::PACKED_FLOAT32_ARRAY:
+			return Kind::FLOAT;
+		case Variant::PACKED_FLOAT64_ARRAY:
+			return Kind::DOUBLE;
+		case Variant::PACKED_STRING_ARRAY:
+			return Kind::STRING;
 		case Variant::VECTOR3:
+		case Variant::PACKED_VECTOR3_ARRAY:
 			return Kind::VECTOR3;
 		case Variant::OBJECT:
 			return Kind::MESSAGE;
@@ -39,7 +50,7 @@ Kind inferred_kind(const P::DataType &p_type) {
 }
 
 bool matches(Kind p_kind, const P::DataType &p_type, bool p_binary, bool p_protobuf) {
-	if (p_kind == Kind::INVALID) {
+	if (p_kind == Kind::INVALID || is_sequence(p_type.builtin_type, p_kind)) {
 		return false;
 	}
 	const Kind inferred = inferred_kind(p_type);
@@ -72,11 +83,15 @@ void fields(const P::ClassNode *p_class, Schema &r_schema) {
 		field.json = argument(field.node, SNAME("@JsonPropertyName"), String(member.get_name()));
 		field.oneof = r_schema.protobuf ? String(argument(field.node, SNAME("@PbOneof"), "")) : String();
 		field.packed = argument(field.node, SNAME("@PbPacked"), true);
-		const auto element = field.type.builtin_type == Variant::ARRAY ? field.type.get_container_element_type(0) : field.type;
-		field.kind = kind_from_name(argument(field.node, r_schema.protobuf ? SNAME("@PbEncoding") : SNAME("@BinaryFieldType"), ""));
-		if (field.kind == Kind::INVALID && String(argument(field.node, r_schema.protobuf ? SNAME("@PbEncoding") : SNAME("@BinaryFieldType"), "")).is_empty()) {
-			field.kind = inferred_kind(element);
+		const String encoding = argument(field.node, r_schema.json ? SNAME("@JsonEncoding") : r_schema.protobuf ? SNAME("@PbEncoding")
+																												: SNAME("@BinaryFieldType"),
+				"");
+		field.kind = kind_from_name(encoding);
+		if (encoding.is_empty()) {
+			field.kind = inferred_kind(field.type.builtin_type == Variant::ARRAY ? field.type.get_container_element_type(0) : field.type);
 		}
+		field.repeated = is_sequence(field.type.builtin_type, field.kind);
+		const auto element = field.repeated ? sequence_element(field.type) : field.type;
 		bool valid = matches(field.kind, element, r_schema.binary, r_schema.protobuf);
 		if (field.type.builtin_type == Variant::DICTIONARY) {
 			const auto key = field.type.get_container_element_type(0);
@@ -100,7 +115,7 @@ void fields(const P::ClassNode *p_class, Schema &r_schema) {
 		} else if (r_schema.binary && !r_schema.protobuf && field.id < 0) {
 			r_schema.error = "Binary fields require a non-negative BinaryFieldOrder.";
 		}
-		if (!field.oneof.is_empty() && (field.type.builtin_type == Variant::ARRAY || field.type.builtin_type == Variant::DICTIONARY)) {
+		if (!field.oneof.is_empty() && (field.repeated || field.type.builtin_type == Variant::DICTIONARY)) {
 			r_schema.error = "Protobuf oneof members cannot be arrays or maps.";
 		}
 		for (const Field &other : r_schema.fields) {
@@ -119,7 +134,8 @@ void fields(const P::ClassNode *p_class, Schema &r_schema) {
 
 Schema schema(const GDScriptParser::ClassNode *p_class, Codec p_codec) {
 	Schema result;
-	const StringName contract = p_codec == Codec::PROTOBUF ? SNAME("ProtobufSerializable") : p_codec == Codec::BINARY ? SNAME("BinarySerializable") : SNAME("JsonSerializable");
+	const StringName contract = p_codec == Codec::PROTOBUF ? SNAME("ProtobufSerializable") : p_codec == Codec::BINARY ? SNAME("BinarySerializable")
+																													  : SNAME("JsonSerializable");
 	result.enabled = WGodotGDScriptInterfaceHelpers::class_implements_native_interface(p_class, contract);
 	if (!result.enabled || p_class->wgodot_is_interface) {
 		result.enabled = false;
@@ -127,6 +143,7 @@ Schema schema(const GDScriptParser::ClassNode *p_class, Codec p_codec) {
 	}
 	result.binary = p_codec != Codec::JSON;
 	result.protobuf = p_codec == Codec::PROTOBUF;
+	result.json = p_codec == Codec::JSON;
 	const String endian = argument(p_class, SNAME("@BinaryOptions"), "little");
 	result.big_endian = endian == "big";
 	result.strict = argument(p_class, SNAME("@BinaryOptions"), true, 1);

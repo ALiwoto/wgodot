@@ -13,6 +13,7 @@ struct ReflectedField {
 	Kind kind = Kind::INVALID;
 	Kind key = Kind::INVALID;
 	Kind value = Kind::INVALID;
+	bool repeated = false;
 	int id = -1;
 	bool packed = true;
 	String oneof;
@@ -26,14 +27,14 @@ bool reflected_has_field(const Object *p_object, uint32_t p_id);
 void reflected_set_field(Object *p_object, uint32_t p_id, bool p_present = true);
 void reflected_clear_fields(Object *p_object);
 Variant argument(const Dictionary &p_attributes, const StringName &p_name, const Variant &p_default = Variant(), int p_index = 0);
-Vector<ReflectedField> reflected_fields(const Object *p_object, bool p_protobuf);
+Vector<ReflectedField> reflected_fields(const Object *p_object, bool p_protobuf, bool p_json = false);
 bool reflected_big_endian(const Object *p_object);
 bool reflected_strict(const Object *p_object);
 void write_value(Writer &r_writer, const Variant &p_value, Kind p_kind, bool p_protobuf);
 bool read_value(Reader &r_reader, Variant &r_value, const GDScriptDataType &p_type, Kind p_kind, bool p_protobuf);
 Variant default_value(const GDScriptDataType &p_type);
 Variant new_model(const GDScriptDataType &p_type);
-Variant json_value(const Variant &p_value, const GDScriptDataType &p_type);
-bool parse_json_value(const Variant &p_value, const GDScriptDataType &p_type, Variant &r_value);
+Variant json_value(const Variant &p_value, const GDScriptDataType &p_type, Kind p_kind = Kind::BYTES);
+bool parse_json_value(const Variant &p_value, const GDScriptDataType &p_type, Variant &r_value, Kind p_kind = Kind::BYTES);
 } // namespace WGodotSerialization
 #endif

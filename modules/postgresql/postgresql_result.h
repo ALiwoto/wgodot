@@ -38,6 +38,9 @@ public:
 	double get_float(int p_row, int p_column) const;
 	String get_text(int p_row, int p_column) const;
 	PackedByteArray get_bytes(int p_row, int p_column) const;
+	PackedInt32Array get_int32_array(int p_row, int p_column) const;
+	PackedInt64Array get_int64_array(int p_row, int p_column) const;
+	PackedFloat64Array get_float64_array(int p_row, int p_column) const;
 	~PostgreSQLResult();
 };
 

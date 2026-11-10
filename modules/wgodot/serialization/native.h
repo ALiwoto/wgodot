@@ -6,6 +6,8 @@
 #include "modules/wgodot/native/wgodot_native_warray.h"
 #include "modules/wgodot/native/wgodot_native_wdictionary.h"
 
+#include <limits>
+
 namespace WGodotSerialization {
 template <Kind K, bool Protobuf, class T>
 void write(Writer &r_writer, const T &p_value) {
@@ -105,6 +107,11 @@ bool read(Reader &r_reader, T &r_value) {
 		if constexpr (K == Kind::FLOAT || K == Kind::DOUBLE) {
 			r_value = T(number);
 		} else {
+			if constexpr (std::is_integral_v<T> && sizeof(T) < sizeof(int64_t)) {
+				if (integer < std::numeric_limits<T>::min() || integer > std::numeric_limits<T>::max()) {
+					return false;
+				}
+			}
 			r_value = T(integer);
 		}
 		return true;

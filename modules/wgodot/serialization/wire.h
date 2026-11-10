@@ -35,6 +35,24 @@ const char *kind_name(Kind p_kind);
 int wire_type(Kind p_kind);
 int binary_width(Kind p_kind);
 
+// Byte blobs and repeated byte integers share storage, not wire semantics.
+inline bool is_sequence(Variant::Type p_type, Kind p_kind) {
+	return p_type == Variant::ARRAY || p_type == Variant::PACKED_VECTOR3_ARRAY ||
+			(p_type >= Variant::PACKED_BYTE_ARRAY && p_type <= Variant::PACKED_STRING_ARRAY &&
+					(p_type != Variant::PACKED_BYTE_ARRAY || p_kind != Kind::BYTES));
+}
+
+template <class Type>
+Type sequence_element(const Type &p_type) {
+	if (p_type.builtin_type == Variant::ARRAY) {
+		return p_type.get_container_element_type(0);
+	}
+	Type element;
+	element.kind = Type::BUILTIN;
+	element.builtin_type = Variant::get_indexed_element_type(p_type.builtin_type);
+	return element;
+}
+
 struct Writer {
 	PackedByteArray data;
 	bool valid = true;

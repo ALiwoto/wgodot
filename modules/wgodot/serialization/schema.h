@@ -7,7 +7,9 @@
 #include "modules/gdscript/gdscript_parser.h"
 
 namespace WGodotSerialization {
-enum class Codec { JSON, BINARY, PROTOBUF };
+enum class Codec { JSON,
+	BINARY,
+	PROTOBUF };
 
 struct Field {
 	const GDScriptParser::VariableNode *node = nullptr;
@@ -16,6 +18,7 @@ struct Field {
 	Kind kind = Kind::INVALID;
 	Kind key = Kind::INVALID;
 	Kind value = Kind::INVALID;
+	bool repeated = false;
 	bool packed = true;
 	String oneof;
 	String json;
@@ -25,6 +28,7 @@ struct Schema {
 	bool enabled = false;
 	bool binary = false;
 	bool protobuf = false;
+	bool json = false;
 	bool big_endian = false;
 	bool strict = true;
 	Vector<Field> fields;
