@@ -29,6 +29,9 @@
 /**************************************************************************/
 
 #include "main.h"
+// wgodot-changes::begin
+#include "core/io/wgodot_global_resources.h"
+// wgodot-changes::end
 
 // wgodot-changes::begin
 #include "core/io/wgodot_resource_trace.h"
@@ -3988,6 +3991,12 @@ Error Main::setup2(bool p_show_boot_logo) {
 
 	// This loads global classes, so it must happen before custom loaders and savers are registered
 	ScriptServer::init_languages();
+	// wgodot-changes::begin
+	if (!project_manager) {
+		Error global_error = WGlobalResources::start();
+		ERR_FAIL_COND_V_MSG(global_error != OK, global_error, "Global resources could not be loaded.");
+	}
+	// wgodot-changes::end
 
 #if TOOLS_ENABLED
 
@@ -5567,6 +5576,9 @@ void Main::cleanup(bool p_force) {
 #endif
 	// wgodot-changes::end
 	WorkerThreadPool::get_singleton()->exit_languages_threads();
+	// wgodot-changes::begin
+	WGlobalResources::clear();
+	// wgodot-changes::end
 
 	ScriptServer::finish_languages();
 

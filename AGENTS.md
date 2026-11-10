@@ -20,7 +20,7 @@ in case the entire file is for us, add this at the beginning of the file:
 // wgodot-changes::file
 ```
 
-3. no need to run compile operation yourself, because that's way too heavy. I will do it myself.
+3. To build the engine on windows, you can use `build_wgodot.ps1`; it has proper default args.
 
 4. For project settings registered with `GLOBAL_DEF`, use `GLOBAL_GET` / `GLOBAL_GET_CACHED` directly at the call site unless there is a clear reuse or compatibility reason. Do not add one-off helper functions or `has_setting` fallbacks for a single setting.
 

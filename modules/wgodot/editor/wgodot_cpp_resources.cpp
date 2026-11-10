@@ -13,6 +13,7 @@
 #include "core/config/project_settings.h"
 #include "core/io/dir_access.h"
 #include "core/io/file_access.h"
+#include "core/io/wgodot_global_resources.h"
 #include "core/io/resource_loader.h"
 #include "core/io/wgodot_resource_load_priority.h"
 #include "core/io/resource_uid.h"
@@ -233,6 +234,11 @@ class WGodotCppResources {
 	}
 
 	Value value(const Variant &p_value) {
+		WGlobalResources::Reference global;
+		if (WGlobalResources::reference(p_value, global, source_path)) {
+			emitter->class_native_headers.insert("core/io/wgodot_global_resources.h");
+			return Value("WGlobalResources::value(StringName(" + quoted(global.resource) + "), StringName(" + quoted(global.member) + "))", "Variant");
+		}
 		if (p_value.get_type() == Variant::STRING || p_value.get_type() == Variant::STRING_NAME) {
 			const String rewritten = rewritten_string(p_value);
 			return payload_value(p_value.get_type() == Variant::STRING_NAME ? Variant(StringName(rewritten)) : Variant(rewritten));
@@ -397,6 +403,11 @@ class WGodotCppResources {
 
 	String typed_value(const Variant &p_value, const Parser::DataType &p_type, const String &p_existing = String()) {
 		const String type = emitter->type(p_type, &origin);
+		WGlobalResources::Reference global;
+		if (WGlobalResources::reference(p_value, global, source_path)) {
+			emitter->class_native_headers.insert("modules/wgodot/native/wgodot_native_globals.h");
+			return "WGodotNative::global_value<" + type + ">(StringName(" + quoted(global.resource) + "), StringName(" + quoted(global.member) + "))";
+		}
 		if (type == "Variant") {
 			error("Native construction requires a concrete type, not Variant.");
 			return "{}";
@@ -1415,6 +1426,19 @@ public:
 	explicit WGodotCppResources(WGodotCppEmitter &p_emitter) :
 			emitter(&p_emitter), scenes(p_emitter.project, p_emitter.diagnostics) {}
 	void generate() {
+		if (WGlobalResources::start() != OK) {
+			emitter->diagnostics.push_back("Cannot generate global resources.");
+			return;
+		}
+		const HashMap<StringName, String> global_paths = WGlobalResources::paths();
+		Vector<String> global_names;
+		for (const auto &global : global_paths) {
+			global_names.push_back(global.key);
+		}
+		global_names.sort();
+		for (const String &name : global_names) {
+			emitter->resource_id(global_paths[name]);
+		}
 		WGodotNativeResourceSelection selection;
 		String selection_error;
 		if (selection.load(emitter->project.get_target().get_name(), selection_error) != OK) {
@@ -1513,7 +1537,7 @@ public:
 			flush();
 		}
 
-		String registration = "// wgodot-changes::file\n#include \"core/io/wgodot_native_resources.h\"\n\nnamespace WGodotGame {\n";
+		String registration = "// wgodot-changes::file\n#include \"core/io/wgodot_native_resources.h\"\n#include \"core/io/wgodot_global_resources.h\"\n\nnamespace WGodotGame {\n";
 		for (const String &path : paths) {
 			registration += "Ref<Resource> create_resource_" + itos(emitter->resource_id(path)) + "(ResourceFormatLoader::CacheMode p_cache_mode);\n";
 		}
@@ -1526,7 +1550,11 @@ public:
 			}
 			registration += "\t};\n\tWGodotNativeResources::initialize(definitions, " + itos(paths.size()) + ");\n";
 		}
-		registration += "}\n";
+		registration += "\tHashMap<StringName, String> globals;\n";
+		for (const String &name : global_names) {
+			registration += "\tglobals.insert(StringName(" + quoted(name) + "), " + quoted("res://" + itos(emitter->resource_id(global_paths[name]))) + ");\n";
+		}
+		registration += "\tWGlobalResources::set_manifest(globals);\n}\n";
 		emitter->store_file("game_resources.cpp", registration);
 	}
 };

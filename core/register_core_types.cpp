@@ -29,6 +29,9 @@
 /**************************************************************************/
 
 #include "register_core_types.h"
+// wgodot-changes::begin
+#include "core/io/wgodot_global_resources.h"
+// wgodot-changes::end
 
 #include "core/config/engine.h"
 #include "core/config/project_settings.h"
@@ -155,6 +158,9 @@ void register_core_types() {
 	GDREGISTER_CLASS(ValueContainer);
 	// wgodot-changes::end
 	GDREGISTER_CLASS(Resource);
+	// wgodot-changes::begin
+	GDREGISTER_CLASS(WGlobalResource);
+	// wgodot-changes::end
 
 	GDREGISTER_CLASS(Time);
 	_time = memnew(Time);
@@ -364,6 +370,9 @@ void register_core_types() {
 }
 
 void register_core_settings() {
+	// wgodot-changes::begin
+	WGlobalResources::register_settings();
+	// wgodot-changes::end
 	// Since in register core types, globals may not be present.
 	GLOBAL_DEF(PropertyInfo(Variant::INT, "network/limits/tcp/connect_timeout_seconds", PROPERTY_HINT_RANGE, "1,1800,1"), (30));
 	GLOBAL_DEF(PropertyInfo(Variant::INT, "network/limits/unix/connect_timeout_seconds", PROPERTY_HINT_RANGE, "1,1800,1"), (30));

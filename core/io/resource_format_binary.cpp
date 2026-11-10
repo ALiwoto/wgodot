@@ -29,6 +29,10 @@
 /**************************************************************************/
 
 #include "resource_format_binary.h"
+// wgodot-changes::begin
+#include "core/io/wgodot_global_resources.h"
+#include "core/variant/container_type_validate.h"
+// wgodot-changes::end
 
 // wgodot-changes::begin
 #include "core/io/wgodot_resource_trace.h"
@@ -95,6 +99,10 @@ enum {
 	VARIANT_VECTOR4I = 51,
 	VARIANT_PROJECTION = 52,
 	VARIANT_PACKED_VECTOR4_ARRAY = 53,
+	// wgodot-changes::begin
+	VARIANT_TYPED_ARRAY = 0x57474101,
+	VARIANT_TYPED_DICTIONARY = 0x57474401,
+	// wgodot-changes::end
 	OBJECT_EMPTY = 0,
 	OBJECT_EXTERNAL_RESOURCE = 1,
 	OBJECT_INTERNAL_RESOURCE = 2,
@@ -165,6 +173,16 @@ StringName ResourceLoaderBinary::_get_string() {
 
 Error ResourceLoaderBinary::parse_variant(Variant &r_v) {
 	uint32_t prop_type = f->get_32();
+	// wgodot-changes::begin
+	if (prop_type == WGlobalResources::BINARY_REFERENCE) {
+		const String name = f->get_pascal_string();
+		const String member = f->get_pascal_string();
+		String message;
+		Error result = WGlobalResources::resolve(name, member, r_v, message);
+		ERR_FAIL_COND_V_MSG(result != OK, result, message);
+		return OK;
+	}
+	// wgodot-changes::end
 	print_bl("find property of type: " + itos(prop_type));
 
 	switch (prop_type) {
@@ -470,9 +488,29 @@ Error ResourceLoaderBinary::parse_variant(Variant &r_v) {
 			r_v = Signal();
 		} break;
 
+		// wgodot-changes::begin
+		case VARIANT_TYPED_DICTIONARY: // Typed dictionary, including its key/value constraints.
+		// wgodot-changes::end
 		case VARIANT_DICTIONARY: {
+			// wgodot-changes::begin
+			ContainerType types[2];
+			if (prop_type == VARIANT_TYPED_DICTIONARY) {
+				for (ContainerType &type : types) {
+					type.builtin_type = Variant::Type(f->get_32());
+					ERR_FAIL_COND_V(type.builtin_type >= Variant::VARIANT_MAX, ERR_FILE_CORRUPT);
+					type.class_name = f->get_pascal_string();
+					Variant script;
+					Error result = parse_variant(script);
+					ERR_FAIL_COND_V(result != OK, result);
+					type.script = script;
+				}
+			}
+			// wgodot-changes::end
 			uint32_t len = f->get_32();
 			Dictionary d; //last bit means shared
+			// wgodot-changes::begin
+			d.set_typed(types[0], types[1]);
+			// wgodot-changes::end
 			len &= 0x7FFFFFFF;
 			for (uint32_t i = 0; i < len; i++) {
 				Variant key;
@@ -485,9 +523,27 @@ Error ResourceLoaderBinary::parse_variant(Variant &r_v) {
 			}
 			r_v = d;
 		} break;
+		// wgodot-changes::begin
+		case VARIANT_TYPED_ARRAY: // Typed array.
+		// wgodot-changes::end
 		case VARIANT_ARRAY: {
+			// wgodot-changes::begin
+			ContainerType type;
+			if (prop_type == VARIANT_TYPED_ARRAY) {
+				type.builtin_type = Variant::Type(f->get_32());
+				ERR_FAIL_COND_V(type.builtin_type >= Variant::VARIANT_MAX, ERR_FILE_CORRUPT);
+				type.class_name = f->get_pascal_string();
+				Variant script;
+				Error result = parse_variant(script);
+				ERR_FAIL_COND_V(result != OK, result);
+				type.script = script;
+			}
+			// wgodot-changes::end
 			uint32_t len = f->get_32();
 			Array a; //last bit means shared
+			// wgodot-changes::begin
+			a.set_typed(type);
+			// wgodot-changes::end
 			len &= 0x7FFFFFFF;
 			a.resize(len);
 			for (uint32_t i = 0; i < len; i++) {
@@ -1597,6 +1653,15 @@ void ResourceFormatSaverBinaryInstance::_pad_buffer(Ref<FileAccess> r_file, int 
 }
 
 void ResourceFormatSaverBinaryInstance::write_variant(Ref<FileAccess> r_file, const Variant &p_property, HashMap<Ref<Resource>, int> &r_resource_map, HashMap<Ref<Resource>, int> &r_external_resources, HashMap<StringName, int> &r_string_map, const PropertyInfo &p_hint) {
+	// wgodot-changes::begin
+	WGlobalResources::Reference global;
+	if (WGlobalResources::SaveScope::reference(p_property, global)) {
+		r_file->store_32(WGlobalResources::BINARY_REFERENCE);
+		r_file->store_pascal_string(global.resource);
+		r_file->store_pascal_string(global.member);
+		return;
+	}
+	// wgodot-changes::end
 	switch (p_property.get_type()) {
 		case Variant::NIL: {
 			r_file->store_32(VARIANT_NIL);
@@ -1880,8 +1945,18 @@ void ResourceFormatSaverBinaryInstance::write_variant(Ref<FileAccess> r_file, co
 		} break;
 
 		case Variant::DICTIONARY: {
-			r_file->store_32(VARIANT_DICTIONARY);
 			Dictionary d = p_property;
+			// wgodot-changes::begin
+			r_file->store_32(d.is_typed() ? VARIANT_TYPED_DICTIONARY : VARIANT_DICTIONARY);
+			if (d.is_typed()) {
+				r_file->store_32(d.get_typed_key_builtin());
+				r_file->store_pascal_string(d.get_typed_key_class_name());
+				write_variant(r_file, d.get_typed_key_script(), r_resource_map, r_external_resources, r_string_map);
+				r_file->store_32(d.get_typed_value_builtin());
+				r_file->store_pascal_string(d.get_typed_value_class_name());
+				write_variant(r_file, d.get_typed_value_script(), r_resource_map, r_external_resources, r_string_map);
+			}
+			// wgodot-changes::end
 			r_file->store_32(uint32_t(d.size()));
 
 			for (const KeyValue<Variant, Variant> &kv : d) {
@@ -1891,8 +1966,15 @@ void ResourceFormatSaverBinaryInstance::write_variant(Ref<FileAccess> r_file, co
 
 		} break;
 		case Variant::ARRAY: {
-			r_file->store_32(VARIANT_ARRAY);
 			Array a = p_property;
+			// wgodot-changes::begin
+			r_file->store_32(a.is_typed() ? VARIANT_TYPED_ARRAY : VARIANT_ARRAY);
+			if (a.is_typed()) {
+				r_file->store_32(a.get_typed_builtin());
+				r_file->store_pascal_string(a.get_typed_class_name());
+				write_variant(r_file, a.get_typed_script(), r_resource_map, r_external_resources, r_string_map);
+			}
+			// wgodot-changes::end
 			r_file->store_32(uint32_t(a.size()));
 			for (const Variant &var : a) {
 				write_variant(r_file, var, r_resource_map, r_external_resources, r_string_map);
@@ -2088,6 +2170,12 @@ void ResourceFormatSaverBinaryInstance::write_variant(Ref<FileAccess> r_file, co
 }
 
 void ResourceFormatSaverBinaryInstance::_find_resources(const Variant &p_variant, bool p_main) {
+	// wgodot-changes::begin
+	WGlobalResources::Reference global;
+	if (!p_main && WGlobalResources::SaveScope::reference(p_variant, global)) {
+		return;
+	}
+	// wgodot-changes::end
 	switch (p_variant.get_type()) {
 		case Variant::OBJECT: {
 			Ref<Resource> res = p_variant;
@@ -2229,6 +2317,7 @@ static String _resource_get_class(Ref<Resource> p_resource) {
 
 // wgodot-changes::begin
 Error ResourceFormatSaverBinaryInstance::save(const String &p_path, const Ref<Resource> &p_resource, uint32_t p_flags, const WGodotResourceProperties *p_source_properties, const WGodotResourceUIDs *p_source_uids) {
+	WGlobalResources::SaveScope global_scope(p_resource);
 	wgodot_source_properties = p_source_properties;
 	// wgodot-changes::end
 	Resource::seed_scene_unique_id(p_path.hash());

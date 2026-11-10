@@ -29,6 +29,9 @@
 /**************************************************************************/
 
 #include "resource_format_text.h"
+// wgodot-changes::begin
+#include "core/io/wgodot_global_resources.h"
+// wgodot-changes::end
 
 // wgodot-changes::begin
 #include "modules/modules_enabled.gen.h"
@@ -797,7 +800,7 @@ Error ResourceLoaderText::load() {
 						if (wgodot_source_properties) {
 							// Snapshot mutable containers, retaining resource identities and packed-array COW storage.
 							(*wgodot_source_properties)[res].push_back({ assign,
-									value.get_type() == Variant::ARRAY || value.get_type() == Variant::DICTIONARY ? value.duplicate(true) : value });
+									WGlobalResources::snapshot(value) });
 						}
 						// wgodot-changes::end
 						res->set(assign, value);
@@ -1015,7 +1018,7 @@ Error ResourceLoaderText::load() {
 					// wgodot-changes::begin
 					if (wgodot_source_properties) {
 							(*wgodot_source_properties)[is_scene ? Ref<Resource>(packed_scene) : resource].push_back({ assign,
-									value.get_type() == Variant::ARRAY || value.get_type() == Variant::DICTIONARY ? value.duplicate(true) : value });
+									WGlobalResources::snapshot(value) });
 					}
 					// wgodot-changes::end
 					if (is_scene) {
@@ -1906,6 +1909,12 @@ String ResourceFormatSaverTextInstance::_write_resource(const Ref<Resource> &res
 }
 
 void ResourceFormatSaverTextInstance::_find_resources(const Variant &p_variant, bool p_main) {
+	// wgodot-changes::begin
+	WGlobalResources::Reference global;
+	if (!p_main && WGlobalResources::SaveScope::reference(p_variant, global)) {
+		return;
+	}
+	// wgodot-changes::end
 	switch (p_variant.get_type()) {
 		case Variant::OBJECT: {
 			Ref<Resource> res = p_variant;
@@ -2196,6 +2205,9 @@ void ResourceFormatSaverTextInstance::_parse_nodes(const Ref<PackedScene> &curr_
 }
 
 Error ResourceFormatSaverTextInstance::save(const String &p_path, const Ref<Resource> &p_resource, uint32_t p_flags) {
+	// wgodot-changes::begin
+	WGlobalResources::SaveScope global_scope(p_resource);
+	// wgodot-changes::end
 	Resource::seed_scene_unique_id(p_path.hash()); // Seeding for save path should make it deterministic for importers.
 
 	if (p_path.ends_with(".tscn")) {

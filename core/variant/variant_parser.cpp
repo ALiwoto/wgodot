@@ -29,6 +29,9 @@
 /**************************************************************************/
 
 #include "variant_parser.h"
+// wgodot-changes::begin
+#include "core/io/wgodot_global_resources.h"
+// wgodot-changes::end
 
 // wgodot-changes::begin
 #include "wgodot_numeric_profile.h"
@@ -772,6 +775,11 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 		return OK;
 	} else if (r_token.type == TK_IDENTIFIER) {
 		String id = r_token.value;
+		// wgodot-changes::begin
+		if (id == "GlobalResource") {
+			return WGlobalResources::parse(p_stream, r_line, r_err_str, r_value, p_res_parser && p_res_parser->syntax_only);
+		}
+		// wgodot-changes::end
 		if (id == "true") {
 			r_value = true;
 		} else if (id == "false") {
@@ -2022,6 +2030,12 @@ static String encode_resource_reference(const String &p_path) {
 }
 
 Error VariantWriter::write(const Variant &p_variant, StoreStringFunc p_store_string_func, void *p_store_string_ud, EncodeResourceFunc p_encode_res_func, void *p_encode_res_ud, bool p_pretty_print, int p_recursion_count, bool p_compat) {
+	// wgodot-changes::begin
+	WGlobalResources::Reference global;
+	if (WGlobalResources::SaveScope::reference(p_variant, global)) {
+		return p_store_string_func(p_store_string_ud, global.text());
+	}
+	// wgodot-changes::end
 	switch (p_variant.get_type()) {
 		case Variant::NIL: {
 			p_store_string_func(p_store_string_ud, "null");
