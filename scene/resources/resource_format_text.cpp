@@ -642,6 +642,9 @@ Error ResourceLoaderText::load() {
 
 		Ref<Resource> res;
 		bool do_assign = false;
+		// wgodot-changes::begin
+		bool wgodot_initializing_owned = false;
+		// wgodot-changes::end
 
 		if (cache_mode == ResourceFormatLoader::CACHE_MODE_REPLACE && ResourceCache::has(path)) {
 			//reuse existing
@@ -691,6 +694,9 @@ Error ResourceLoaderText::load() {
 				}
 
 				res = Ref<Resource>(r);
+				// wgodot-changes::begin
+				wgodot_initializing_owned = cache_mode != ResourceFormatLoader::CACHE_MODE_REPLACE;
+				// wgodot-changes::end
 				do_assign = true;
 			}
 		}
@@ -745,6 +751,9 @@ Error ResourceLoaderText::load() {
 #else
 		WGodotResourceValueParser value_assignment(res->get_class(), res->get_script(), named_types);
 #endif
+		if (wgodot_initializing_owned && !wgodot_source_properties) {
+			value_assignment.initialize_owned(res.ptr());
+		}
 		// wgodot-changes::end
 		while (true) {
 			String assign;
@@ -882,6 +891,9 @@ Error ResourceLoaderText::load() {
 			break;
 		}
 
+		// wgodot-changes::begin
+		bool wgodot_initializing_owned = false;
+		// wgodot-changes::end
 		Ref<MissingResource> missing_resource;
 		if (!is_scene) {
 			resource = ResourceLoader::get_resource_ref_override(local_path);
@@ -921,6 +933,9 @@ Error ResourceLoaderText::load() {
 					}
 
 					resource = Ref<Resource>(r);
+					// wgodot-changes::begin
+					wgodot_initializing_owned = cache_mode != ResourceFormatLoader::CACHE_MODE_REPLACE;
+					// wgodot-changes::end
 				}
 			}
 		}
@@ -943,6 +958,9 @@ Error ResourceLoaderText::load() {
 #else
 		WGodotResourceValueParser value_assignment(is_scene ? StringName("PackedScene") : StringName(resource->get_class()), is_scene ? Ref<Script>() : Ref<Script>(resource->get_script()), named_types);
 #endif
+		if (wgodot_initializing_owned && !wgodot_source_properties) {
+			value_assignment.initialize_owned(resource.ptr());
+		}
 		// wgodot-changes::end
 		while (true) {
 			String assign;

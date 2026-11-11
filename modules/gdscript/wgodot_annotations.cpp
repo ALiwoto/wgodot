@@ -15,7 +15,11 @@ void GDScriptParser::register_wgodot_annotations() {
 	register_annotation(MethodInfo("@override"), AnnotationInfo::FUNCTION, &GDScriptParser::wgodot_override_annotation);
 	register_annotation(MethodInfo("@private"), AnnotationInfo::CLASS_LEVEL, &GDScriptParser::wgodot_private_annotation);
 	register_annotation(MethodInfo("@protected"), AnnotationInfo::CLASS_LEVEL, &GDScriptParser::wgodot_protected_annotation);
-	register_annotation(MethodInfo("@readonly"), AnnotationInfo::VARIABLE | AnnotationInfo::STATEMENT, &GDScriptParser::wgodot_readonly_annotation);
+	register_annotation(MethodInfo("@readonly"), AnnotationInfo::VARIABLE | AnnotationInfo::STATEMENT | AnnotationInfo::FUNCTION, &GDScriptParser::wgodot_readonly_annotation);
+	register_annotation(MethodInfo("@immutable"), AnnotationInfo::VARIABLE | AnnotationInfo::STATEMENT | AnnotationInfo::PARAMETER | AnnotationInfo::TYPE_USAGE, &GDScriptParser::wgodot_immutable_annotation);
+	register_annotation(MethodInfo("@data_class"), AnnotationInfo::CLASS, &GDScriptParser::wgodot_data_class_annotation);
+	register_annotation(MethodInfo("@immutable_return"), AnnotationInfo::FUNCTION, &GDScriptParser::wgodot_immutable_result_annotation);
+	register_annotation(MethodInfo("@immutable_clone"), AnnotationInfo::FUNCTION, &GDScriptParser::wgodot_immutable_result_annotation);
 	register_annotation(MethodInfo("@static_class"), AnnotationInfo::CLASS, &GDScriptParser::wgodot_static_class_annotation);
 	register_annotation(MethodInfo("@no_mangle"), AnnotationInfo::CONSTANT | AnnotationInfo::STATEMENT | AnnotationInfo::ENUM, &GDScriptParser::wgodot_no_mangle_annotation);
 	register_annotation(MethodInfo("@no_string_mangle"), AnnotationInfo::SCRIPT | AnnotationInfo::CLASS | AnnotationInfo::FUNCTION, &GDScriptParser::wgodot_no_string_mangle_annotation);
@@ -233,6 +237,15 @@ bool GDScriptParser::wgodot_protected_annotation(AnnotationNode *p_annotation, N
 
 bool GDScriptParser::wgodot_readonly_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class) {
 	(void)p_class;
+	if (p_target && p_target->type == Node::FUNCTION) {
+		FunctionNode *function = static_cast<FunctionNode *>(p_target);
+		if (function->wgodot_readonly) {
+			push_error("@readonly can only be applied once to a method.", p_annotation);
+			return false;
+		}
+		function->wgodot_readonly = true;
+		return true;
+	}
 
 	if (p_target == nullptr || p_target->type != Node::VARIABLE) {
 		push_error(R"("@readonly" annotation can only be applied to variables.)", p_annotation);
@@ -246,6 +259,50 @@ bool GDScriptParser::wgodot_readonly_annotation(AnnotationNode *p_annotation, No
 	}
 
 	variable->wgodot_readonly = true;
+	return true;
+}
+
+bool GDScriptParser::wgodot_immutable_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class) {
+	bool *qualified = nullptr;
+	if (p_target && (p_target->type == Node::VARIABLE || p_target->type == Node::PARAMETER)) {
+		qualified = &static_cast<AssignableNode *>(p_target)->wgodot_immutable;
+	} else if (p_target && p_target->type == Node::TYPE) {
+		qualified = &static_cast<TypeNode *>(p_target)->wgodot_immutable;
+	}
+	if (!qualified || *qualified) {
+		push_error("@immutable must be applied once to a variable, parameter or type usage.", p_annotation);
+		return false;
+	}
+	*qualified = true;
+	return true;
+}
+
+bool GDScriptParser::wgodot_data_class_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class) {
+	if (!p_target || p_target->type != Node::CLASS) {
+		push_error("@data_class requires a class.", p_annotation);
+		return false;
+	}
+	ClassNode *target = static_cast<ClassNode *>(p_target);
+	if (target->wgodot_data_class) {
+		push_error("@data_class can only be applied once to a class.", p_annotation);
+		return false;
+	}
+	target->wgodot_data_class = true;
+	return true;
+}
+
+bool GDScriptParser::wgodot_immutable_result_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class) {
+	if (!p_target || p_target->type != Node::FUNCTION) {
+		push_error("An immutable result contract requires a function.", p_annotation);
+		return false;
+	}
+	FunctionNode *function = static_cast<FunctionNode *>(p_target);
+	if (function->wgodot_immutable_return || function->wgodot_immutable_clone) {
+		push_error("Use exactly one immutable result contract on a function.", p_annotation);
+		return false;
+	}
+	function->wgodot_immutable_clone = p_annotation->name == SNAME("@immutable_clone");
+	function->wgodot_immutable_return = !function->wgodot_immutable_clone;
 	return true;
 }
 

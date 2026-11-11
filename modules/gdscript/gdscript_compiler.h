@@ -105,6 +105,15 @@ class GDScriptCompiler {
 			uint32_t addr = generator->add_temporary(p_type);
 			return GDScriptCodeGenerator::Address(GDScriptCodeGenerator::Address::TEMPORARY, addr, p_type);
 		}
+		// wgodot-changes::begin
+		GDScriptCodeGenerator::Address add_assignment_temporary(const GDScriptDataType &p_type) {
+			// The producing opcode assigns a complete Variant. Preconstructing a
+			// packed wrapper here would allocate it only to discard it immediately.
+			auto result = add_temporary();
+			result.type = p_type;
+			return result;
+		}
+		// wgodot-changes::end
 
 		GDScriptCodeGenerator::Address add_constant(const Variant &p_constant) {
 			GDScriptDataType type;
@@ -167,6 +176,12 @@ class GDScriptCompiler {
 	// wgodot-changes::end
 
 	GDScriptCodeGenerator::Address _parse_expression(CodeGen &codegen, Error &r_error, const GDScriptParser::ExpressionNode *p_expression, bool p_root = false, bool p_initializer = false);
+	// wgodot-changes::begin
+	GDScriptCodeGenerator::Address _wgodot_parse_packed_literal(CodeGen &codegen, Error &r_error, const GDScriptParser::CallNode *p_call);
+	void _wgodot_construct_fields(CodeGen &codegen, Error &r_error, const GDScriptParser::CallNode *p_call, const GDScriptCodeGenerator::Address &p_result, const Vector<GDScriptCodeGenerator::Address> &p_arguments);
+	bool _wgodot_can_skip_empty_initializer(const GDScriptParser::ClassNode *p_class, const GDScriptParser::VariableNode *p_field) const;
+	void _wgodot_write_shared_empty(CodeGen &codegen, const GDScriptCodeGenerator::Address &p_target);
+	// wgodot-changes::end
 	GDScriptCodeGenerator::Address _parse_match_pattern(CodeGen &codegen, Error &r_error, const GDScriptParser::PatternNode *p_pattern, const GDScriptCodeGenerator::Address &p_value_addr, const GDScriptCodeGenerator::Address &p_type_addr, const GDScriptCodeGenerator::Address &p_previous_test, bool p_is_first, bool p_is_nested);
 	List<GDScriptCodeGenerator::Address> _add_block_locals(CodeGen &codegen, const GDScriptParser::SuiteNode *p_block);
 	void _clear_block_locals(CodeGen &codegen, const List<GDScriptCodeGenerator::Address> &p_locals);

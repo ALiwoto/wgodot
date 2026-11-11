@@ -34,6 +34,9 @@
 
 #include "gdscript.h"
 // wgodot-changes::begin
+#include "wgodot_construction.h"
+// wgodot-changes::end
+// wgodot-changes::begin
 #include "core/object/wgodot_interface_registry.h"
 // wgodot-changes::end
 #include "gdscript_function.h"
@@ -316,6 +319,9 @@ void (*type_init_function_table[])(Variant *) = {
 		&&OPCODE_CONSTRUCT_TYPED_ARRAY, \
 		&&OPCODE_CONSTRUCT_DICTIONARY, \
 		&&OPCODE_CONSTRUCT_TYPED_DICTIONARY, \
+		&&OPCODE_CONSTRUCT_SCRIPT_FIELDS, \
+		&&OPCODE_SKIP_INITIALIZED_MEMBER, \
+		&&OPCODE_CONSTRUCT_PACKED_LITERAL, \
 		&&OPCODE_CALL, \
 		&&OPCODE_CALL_RETURN, \
 		&&OPCODE_CALL_ASYNC, \
@@ -520,7 +526,7 @@ void (*type_init_function_table[])(Variant *) = {
 #define METHOD_CALL_ON_NULL_VALUE_ERROR(method_pointer) "Cannot call method '" + (method_pointer)->get_name() + "' on a null value."
 #define METHOD_CALL_ON_FREED_INSTANCE_ERROR(method_pointer) "Cannot call method '" + (method_pointer)->get_name() + "' on a previously freed instance."
 
-Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_args, int p_argcount, Callable::CallError &r_err, CallState *p_state) {
+Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_args, int p_argcount, Callable::CallError &r_err, CallState *p_state, const bool *p_initialized_members) { // wgodot-changes
 	GodotProfileZoneScript(this, source, name, name, _initial_line);
 
 	OPCODES_TABLE;
@@ -1810,6 +1816,47 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 				ip += 4;
 			}
 			DISPATCH_OPCODE;
+
+			// wgodot-changes::begin
+			OPCODE(OPCODE_CONSTRUCT_SCRIPT_FIELDS) {
+				LOAD_INSTRUCTION_ARGS
+				CHECK_SPACE(2 + instr_arg_count);
+				ip += instr_arg_count;
+				const int argc = _code_ptr[ip + 1];
+				const int field_count = _code_ptr[ip + 2];
+				CHECK_SPACE(2 + field_count);
+				GET_INSTRUCTION_ARG(script_value, argc + field_count);
+				GET_INSTRUCTION_ARG(destination, argc + field_count + 1);
+				Ref<GDScript> constructed_script = *script_value;
+				GD_ERR_BREAK(constructed_script.is_null());
+				Callable::CallError error;
+				*destination = constructed_script->wgodot_new_with_fields((const Variant **)instruction_args, argc, &_code_ptr[ip + 3], (const Variant **)&instruction_args[argc], field_count, error);
+				if (error.error != Callable::CallError::CALL_OK) {
+					err_text = "Failed to construct script with field initializers.";
+					OPCODE_BREAK;
+				}
+				ip += 3 + field_count;
+			}
+			DISPATCH_OPCODE;
+
+			OPCODE(OPCODE_SKIP_INITIALIZED_MEMBER) {
+				CHECK_SPACE(3);
+				const int member = _code_ptr[ip + 1];
+				ip = p_initialized_members && p_initialized_members[member] ? _code_ptr[ip + 2] : ip + 3;
+			}
+			DISPATCH_OPCODE;
+
+			OPCODE(OPCODE_CONSTRUCT_PACKED_LITERAL) {
+				LOAD_INSTRUCTION_ARGS
+				CHECK_SPACE(2 + instr_arg_count);
+				ip += instr_arg_count;
+				const int count = _code_ptr[ip + 1];
+				GET_INSTRUCTION_ARG(destination, count);
+				WGodotGDScriptConstruction::packed_literal(*destination, Variant::Type(_code_ptr[ip + 2]), (const Variant **)instruction_args, count);
+				ip += 3;
+			}
+			DISPATCH_OPCODE;
+			// wgodot-changes::end
 
 			OPCODE(OPCODE_CONSTRUCT) {
 				LOAD_INSTRUCTION_ARGS

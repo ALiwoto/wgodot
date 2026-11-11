@@ -145,6 +145,9 @@ void GDScriptAnalyzer::wgodot_resolve_implemented_interfaces(ClassNode *p_class)
 }
 
 bool GDScriptAnalyzer::wgodot_interface_type_accepts(const DataType &p_target, const DataType &p_source) {
+	if (!wgodot_immutable_types_match(p_target, p_source)) {
+		return false;
+	}
 	if (p_source.has_no_type()) {
 		return p_target.has_no_type();
 	}
@@ -189,7 +192,8 @@ bool GDScriptAnalyzer::wgodot_interface_native_method_matches(const GDScriptPars
 		}
 		index++;
 	}
-	const DataType actual_return = type_from_property(p_native.return_val, false, p_method);
+	DataType actual_return = type_from_property(p_native.return_val, false, p_method);
+	wgodot_qualify_native_resources(actual_return);
 	if (!wgodot_interface_type_accepts(p_method->return_type_constraint, actual_return)) {
 		r_error = vformat("returns '%s', but the contract requires '%s'", actual_return.to_string(), p_method->return_type_constraint.to_string());
 		return false;
@@ -247,7 +251,8 @@ bool GDScriptAnalyzer::wgodot_interface_native_member_matches(const ClassNode::M
 					property = getter.return_val;
 				}
 			}
-			const DataType actual = type_from_property(property, false, p_member.variable);
+			DataType actual = type_from_property(property, false, p_member.variable);
+			wgodot_qualify_native_resources(actual);
 			const DataType &expected = p_member.variable->type_constraint;
 			if (!wgodot_interface_type_accepts(expected, actual) || (!p_member.variable->wgodot_readonly && !wgodot_interface_type_accepts(actual, expected))) {
 				r_error = "incompatible native property type";

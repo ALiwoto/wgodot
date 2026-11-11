@@ -30,6 +30,10 @@
 
 #include "resource_format_binary.h"
 // wgodot-changes::begin
+#include "core/variant/variant_internal.h"
+#include "core/object/script_instance.h"
+// wgodot-changes::end
+// wgodot-changes::begin
 #include "core/io/wgodot_global_resources.h"
 #include "core/variant/container_type_validate.h"
 // wgodot-changes::end
@@ -171,7 +175,9 @@ StringName ResourceLoaderBinary::_get_string() {
 	return string_map[id];
 }
 
-Error ResourceLoaderBinary::parse_variant(Variant &r_v) {
+// wgodot-changes::begin
+Error ResourceLoaderBinary::parse_variant(Variant &r_v, bool p_initialize_owned) {
+// wgodot-changes::end
 	uint32_t prop_type = f->get_32();
 	// wgodot-changes::begin
 	if (prop_type == WGlobalResources::BINARY_REFERENCE) {
@@ -564,7 +570,14 @@ Error ResourceLoaderBinary::parse_variant(Variant &r_v) {
 			f->get_buffer(w, len);
 			_advance_padding(len);
 
-			r_v = array;
+			// wgodot-changes::begin
+			if (p_initialize_owned) {
+				ERR_FAIL_COND_V(f->get_error() != OK, ERR_FILE_CORRUPT);
+				VariantInternal::initialize_packed_storage(&r_v, array);
+			} else {
+				r_v = array;
+			}
+			// wgodot-changes::end
 
 		} break;
 		case VARIANT_PACKED_INT32_ARRAY: {
@@ -575,7 +588,14 @@ Error ResourceLoaderBinary::parse_variant(Variant &r_v) {
 			int32_t *w = array.ptrw();
 			f->get_buffer((uint8_t *)w, len * sizeof(int32_t));
 
-			r_v = array;
+			// wgodot-changes::begin
+			if (p_initialize_owned) {
+				ERR_FAIL_COND_V(f->get_error() != OK, ERR_FILE_CORRUPT);
+				VariantInternal::initialize_packed_storage(&r_v, array);
+			} else {
+				r_v = array;
+			}
+			// wgodot-changes::end
 		} break;
 		case VARIANT_PACKED_INT64_ARRAY: {
 			uint32_t len = f->get_32();
@@ -585,7 +605,14 @@ Error ResourceLoaderBinary::parse_variant(Variant &r_v) {
 			int64_t *w = array.ptrw();
 			f->get_buffer((uint8_t *)w, len * sizeof(int64_t));
 
-			r_v = array;
+			// wgodot-changes::begin
+			if (p_initialize_owned) {
+				ERR_FAIL_COND_V(f->get_error() != OK, ERR_FILE_CORRUPT);
+				VariantInternal::initialize_packed_storage(&r_v, array);
+			} else {
+				r_v = array;
+			}
+			// wgodot-changes::end
 		} break;
 		case VARIANT_PACKED_FLOAT32_ARRAY: {
 			uint32_t len = f->get_32();
@@ -595,7 +622,14 @@ Error ResourceLoaderBinary::parse_variant(Variant &r_v) {
 			float *w = array.ptrw();
 			f->get_buffer((uint8_t *)w, len * sizeof(float));
 
-			r_v = array;
+			// wgodot-changes::begin
+			if (p_initialize_owned) {
+				ERR_FAIL_COND_V(f->get_error() != OK, ERR_FILE_CORRUPT);
+				VariantInternal::initialize_packed_storage(&r_v, array);
+			} else {
+				r_v = array;
+			}
+			// wgodot-changes::end
 		} break;
 		case VARIANT_PACKED_FLOAT64_ARRAY: {
 			uint32_t len = f->get_32();
@@ -605,7 +639,14 @@ Error ResourceLoaderBinary::parse_variant(Variant &r_v) {
 			double *w = array.ptrw();
 			f->get_buffer((uint8_t *)w, len * sizeof(double));
 
-			r_v = array;
+			// wgodot-changes::begin
+			if (p_initialize_owned) {
+				ERR_FAIL_COND_V(f->get_error() != OK, ERR_FILE_CORRUPT);
+				VariantInternal::initialize_packed_storage(&r_v, array);
+			} else {
+				r_v = array;
+			}
+			// wgodot-changes::end
 		} break;
 		case VARIANT_PACKED_STRING_ARRAY: {
 			uint32_t len = f->get_32();
@@ -616,7 +657,14 @@ Error ResourceLoaderBinary::parse_variant(Variant &r_v) {
 				w[i] = get_unicode_string();
 			}
 
-			r_v = array;
+			// wgodot-changes::begin
+			if (p_initialize_owned) {
+				ERR_FAIL_COND_V(f->get_error() != OK, ERR_FILE_CORRUPT);
+				VariantInternal::initialize_packed_storage(&r_v, array);
+			} else {
+				r_v = array;
+			}
+			// wgodot-changes::end
 
 		} break;
 		case VARIANT_PACKED_VECTOR2_ARRAY: {
@@ -629,7 +677,14 @@ Error ResourceLoaderBinary::parse_variant(Variant &r_v) {
 			const Error err = read_reals(reinterpret_cast<real_t *>(w), f, len * 2);
 			ERR_FAIL_COND_V(err != OK, err);
 
-			r_v = array;
+			// wgodot-changes::begin
+			if (p_initialize_owned) {
+				ERR_FAIL_COND_V(f->get_error() != OK, ERR_FILE_CORRUPT);
+				VariantInternal::initialize_packed_storage(&r_v, array);
+			} else {
+				r_v = array;
+			}
+			// wgodot-changes::end
 
 		} break;
 		case VARIANT_PACKED_VECTOR3_ARRAY: {
@@ -642,7 +697,14 @@ Error ResourceLoaderBinary::parse_variant(Variant &r_v) {
 			const Error err = read_reals(reinterpret_cast<real_t *>(w), f, len * 3);
 			ERR_FAIL_COND_V(err != OK, err);
 
-			r_v = array;
+			// wgodot-changes::begin
+			if (p_initialize_owned) {
+				ERR_FAIL_COND_V(f->get_error() != OK, ERR_FILE_CORRUPT);
+				VariantInternal::initialize_packed_storage(&r_v, array);
+			} else {
+				r_v = array;
+			}
+			// wgodot-changes::end
 
 		} break;
 		case VARIANT_PACKED_COLOR_ARRAY: {
@@ -655,7 +717,14 @@ Error ResourceLoaderBinary::parse_variant(Variant &r_v) {
 			static_assert(sizeof(Color) == 4 * sizeof(float));
 			f->get_buffer((uint8_t *)w, len * sizeof(float) * 4);
 
-			r_v = array;
+			// wgodot-changes::begin
+			if (p_initialize_owned) {
+				ERR_FAIL_COND_V(f->get_error() != OK, ERR_FILE_CORRUPT);
+				VariantInternal::initialize_packed_storage(&r_v, array);
+			} else {
+				r_v = array;
+			}
+			// wgodot-changes::end
 		} break;
 		case VARIANT_PACKED_VECTOR4_ARRAY: {
 			uint32_t len = f->get_32();
@@ -667,7 +736,14 @@ Error ResourceLoaderBinary::parse_variant(Variant &r_v) {
 			const Error err = read_reals(reinterpret_cast<real_t *>(w), f, len * 4);
 			ERR_FAIL_COND_V(err != OK, err);
 
-			r_v = array;
+			// wgodot-changes::begin
+			if (p_initialize_owned) {
+				ERR_FAIL_COND_V(f->get_error() != OK, ERR_FILE_CORRUPT);
+				VariantInternal::initialize_packed_storage(&r_v, array);
+			} else {
+				r_v = array;
+			}
+			// wgodot-changes::end
 
 		} break;
 		default: {
@@ -751,6 +827,9 @@ Error ResourceLoaderBinary::load() {
 		String t = get_unicode_string();
 
 		Ref<Resource> res;
+		// wgodot-changes::begin
+		bool wgodot_initializing_owned = false;
+		// wgodot-changes::end
 		Resource *r = nullptr;
 
 		Ref<MissingResource> missing_resource;
@@ -795,6 +874,9 @@ Error ResourceLoaderBinary::load() {
 				}
 
 				res = Ref<Resource>(r);
+				// wgodot-changes::begin
+				wgodot_initializing_owned = cache_mode != ResourceFormatLoader::CACHE_MODE_REPLACE;
+				// wgodot-changes::end
 			}
 		}
 
@@ -835,6 +917,16 @@ Error ResourceLoaderBinary::load() {
 				ERR_FAIL_V(ERR_FILE_CORRUPT);
 			}
 
+			// wgodot-changes::begin
+			Variant *initialization_slot = wgodot_initializing_owned && res->get_script_instance() ? res->get_script_instance()->wgodot_packed_initialization_slot(name) : nullptr;
+			if (initialization_slot) {
+				const Variant::Type expected = initialization_slot->get_type();
+				error = parse_variant(*initialization_slot, true);
+				ERR_FAIL_COND_V(error != OK, error);
+				ERR_FAIL_COND_V(initialization_slot->get_type() != expected, ERR_FILE_CORRUPT);
+				continue;
+			}
+			// wgodot-changes::end
 			Variant value;
 
 			error = parse_variant(value);

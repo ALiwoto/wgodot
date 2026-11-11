@@ -1,9 +1,9 @@
 // wgodot-changes::file
-#include "wgodot_cpp_ast.h"
+#include "ast.h"
 
 using Parser = GDScriptParser;
 
-bool WGodotCppAstVisitor::walk(const Parser::Node *p_node) {
+bool WGodotGDScriptAstVisitor::walk(const Parser::Node *p_node) {
 	if (!p_node) {
 		return true;
 	}
@@ -79,6 +79,11 @@ bool WGodotCppAstVisitor::walk(const Parser::Node *p_node) {
 			}
 			for (const auto *argument : node->arguments) {
 				if (!walk(argument)) {
+					return false;
+				}
+			}
+			for (const auto &field : node->wgodot_field_initializers) {
+				if (!walk(field.value)) {
 					return false;
 				}
 			}

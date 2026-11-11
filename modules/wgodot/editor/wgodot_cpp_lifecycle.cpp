@@ -60,12 +60,12 @@ void WGodotCppEmitter::emit_class_lifecycle(const WGodotCppProject::Class &p_cla
 
 	String protected_members;
 	if (initialize_fields) {
-		protected_members += "\tvirtual void initialize_fields()" + String(inherited.fields ? " override" : "") + ";\n";
+		protected_members += "\tvirtual void initialize_fields(const bool *p_initialized = nullptr)" + String(inherited.fields ? " override" : "") + ";\n";
 		String initialization = lifecycle.prepare ? "\tprepare_game_class();\n" : String();
 		if (inherited.fields) {
-			initialization += "\t" + parent + "::initialize_fields();\n";
+			initialization += "\t" + parent + "::initialize_fields(p_initialized);\n";
 		}
-		r_definitions += "void " + name + "::initialize_fields() {\n" + initialization + p_initialization + "}\n\n";
+		r_definitions += "void " + name + "::initialize_fields(const bool *p_initialized) {\n" + initialization + p_initialization + "}\n\n";
 	}
 	if (initializer && owner->node == node) {
 		protected_members += "\tvirtual void initialize_default()" + String(inherited.constructor ? " override" : "") + ";\n";

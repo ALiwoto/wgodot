@@ -8,6 +8,16 @@ env_gdscript = env_modules.Clone()
 
 env_gdscript.add_source_files(env.modules_sources, "*.cpp")
 # wgodot-changes::begin
+import wgodot_builders
+from SCons.Scanner import Scanner
+
+builtin_effects = env_gdscript.CommandNoCache(
+    "wgodot_builtin_effects.gen.h",
+    ["#core/variant/variant_call.cpp"],
+    env.Run(wgodot_builders.builtin_effects),
+    source_scanner=Scanner({}),
+)
+env_gdscript.Depends("wgodot_immutability.cpp", builtin_effects)
 env_gdscript.add_source_files(env.modules_sources, "./wgodot_gd/*.cpp")
 # wgodot-changes::end
 

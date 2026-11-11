@@ -49,7 +49,10 @@ void WGodotCppEmitter::emit_resource_codecs() {
 				return;
 			}
 			const String accessor = symbol(variable->identifier->name);
-			fields += "\t\tBinding<" + game.cpp_name + ", " + field_type + ", &" + game.cpp_name + "::read_" + accessor + ", &" + game.cpp_name + "::write_" + accessor + ">::field_info(" + itos(i + 1) + "),\n";
+			const auto &datatype = variable->type_constraint;
+			const bool direct_container = variable->property == GDScriptParser::VariableNode::PROP_NONE && (is_warray(datatype) || is_wdictionary(datatype) || is_packed(datatype));
+			const String initialize = direct_container ? ", &" + game.cpp_name + "::v_" + accessor : String();
+			fields += "\t\tBinding<" + game.cpp_name + ", " + field_type + ", &" + game.cpp_name + "::read_" + accessor + ", &" + game.cpp_name + "::write_" + accessor + initialize + ">::field_info(" + itos(i + 1) + "),\n";
 		}
 		String source = source_header(game.script_path, game.cpp_name);
 		source += "#include \"modules/wgodot/native/wgodot_native_resource_protobuf.h\"\n#include " + quoted(game.cpp_name + ".h") + "\n";

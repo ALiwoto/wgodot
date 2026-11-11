@@ -339,6 +339,9 @@ WGodotCppEmitter::Value WGodotCppEmitter::lower_receiver(const Parser::Expressio
 }
 
 WGodotCppEmitter::Value WGodotCppEmitter::lower_call(const Parser::CallNode *p_call) {
+	if (p_call->wgodot_mutable_alias) {
+		return lower_converted(p_call->arguments[1], p_call->type_constraint, p_call);
+	}
 	if (p_call->is_super) {
 		return call(p_call);
 	}

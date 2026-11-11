@@ -8,6 +8,48 @@
 
 using Parser = GDScriptParser;
 
+WGodotResourceTypes::Qualification WGodotResourceTypes::Qualification::element(int p_index) const {
+	return p_index < elements.size() ? elements[p_index] : Qualification();
+}
+
+String WGodotResourceTypes::Qualification::text() const {
+	String result = immutable ? "i" : "m";
+	for (const Qualification &child : elements) {
+		result += "[" + child.text() + "]";
+	}
+	return result;
+}
+
+bool WGodotResourceTypes::Qualification::matches(const Qualification &p_other) const {
+	if (immutable != p_other.immutable) {
+		return false;
+	}
+	for (int i = 0; i < MAX(elements.size(), p_other.elements.size()); i++) {
+		if (!element(i).matches(p_other.element(i))) {
+			return false;
+		}
+	}
+	return true;
+}
+
+WGodotResourceTypes::Qualification WGodotResourceTypes::script_qualification(const Parser::DataType &p_type) {
+	Qualification result;
+	result.immutable = p_type.wgodot_immutable;
+	for (int i = 0; i < p_type.get_container_element_type_count(); i++) {
+		result.elements.push_back(script_qualification(p_type.get_container_element_type(i)));
+	}
+	return result;
+}
+
+WGodotResourceTypes::Qualification WGodotResourceTypes::native_qualification(const Type &p_type) {
+	Qualification result;
+	result.immutable = p_type.builtin == Variant::OBJECT && ClassDB::is_parent_class(p_type.name, SNAME("Resource"));
+	for (const Type &element : p_type.elements) {
+		result.elements.push_back(native_qualification(element));
+	}
+	return result;
+}
+
 WGodotResourceTypes::Type WGodotResourceTypes::script_type(const Parser::DataType &p_type) {
 	Type result;
 	if (!p_type.is_hard_type() || p_type.is_variant()) {
@@ -46,16 +88,18 @@ void WGodotResourceTypes::add_class(const Parser::ClassNode *p_class) {
 	Class type;
 	type.base = script_type(p_class->base_type).name;
 	type.abstract = p_class->is_abstract || p_class->wgodot_is_interface;
+	type.data_class = p_class->wgodot_data_class;
 	Vector<String> signature_parts;
-	signature_parts.push_back(String(type.base) + ":" + itos(type.abstract));
+	signature_parts.push_back(String(type.base) + ":" + itos(type.abstract) + ":" + itos(type.data_class));
 	for (const Parser::ClassNode::Member &member : p_class->members) {
 		if (member.type == Parser::ClassNode::Member::VARIABLE) {
 			const Parser::VariableNode *variable = member.variable;
 			Field field;
 			field.type = script_type(variable->type_constraint);
+			field.qualification = script_qualification(variable->type_constraint);
 			field.exposed = variable->exported && !variable->wgodot_private && !variable->wgodot_protected && !variable->is_static;
 			type.fields.insert(variable->identifier->name, field);
-			signature_parts.push_back(String(variable->identifier->name) + ":" + field.type.text() + ":" + itos(field.exposed));
+			signature_parts.push_back(String(variable->identifier->name) + ":" + field.type.text() + ":" + itos(field.exposed) + ":" + field.qualification.text());
 		} else if (member.type == Parser::ClassNode::Member::CLASS) {
 			add_class(member.m_class);
 		} else if (member.type == Parser::ClassNode::Member::FUNCTION || member.type == Parser::ClassNode::Member::SIGNAL) {
@@ -64,6 +108,7 @@ void WGodotResourceTypes::add_class(const Parser::ClassNode *p_class) {
 			const auto &parameters = signal ? member.signal->parameters : member.function->parameters;
 			for (const auto *parameter : parameters) {
 				function.parameters.push_back(script_type(parameter->type_constraint));
+				function.qualifications.push_back(script_qualification(parameter->type_constraint));
 				function.defaults += parameter->initializer != nullptr;
 			}
 			function.exposed = signal ? !member.signal->wgodot_private && !member.signal->wgodot_protected : !member.function->wgodot_private && !member.function->wgodot_protected && !member.function->is_static;
@@ -72,6 +117,9 @@ void WGodotResourceTypes::add_class(const Parser::ClassNode *p_class) {
 			String signature = String(signal ? "signal:" : "method:") + String(member.get_name()) + ":" + itos(function.defaults) + ":" + itos(function.exposed) + ":" + itos(function.variadic);
 			for (const Type &parameter : function.parameters) {
 				signature += ":" + parameter.text();
+			}
+			for (const Qualification &qualification : function.qualifications) {
+				signature += ":" + qualification.text();
 			}
 			signature_parts.push_back(signature);
 		}
@@ -123,6 +171,11 @@ bool WGodotResourceTypes::instantiable(const StringName &p_class) const {
 	return script ? !script->abstract : ClassDB::can_instantiate(p_class);
 }
 
+bool WGodotResourceTypes::immutable_resource(const StringName &p_class) const {
+	const Class *script = classes.getptr(p_class);
+	return script ? script->data_class : ClassDB::is_parent_class(p_class, SNAME("Resource"));
+}
+
 bool WGodotResourceTypes::has_resource_exports(const StringName &p_class) const {
 	const Class *type = classes.getptr(p_class);
 	if (!type) {
@@ -160,7 +213,9 @@ String WGodotResourceTypes::signature(const StringName &p_class) const {
 bool WGodotResourceTypes::field(const StringName &p_class, const StringName &p_name, Field &r_field, HashMap<String, String> &r_declarations) const {
 	StringName name = p_class;
 	while (!name.is_empty()) {
-		r_declarations.insert(name, signature(name));
+		if (!r_declarations.has(name)) {
+			r_declarations.insert(name, signature(name));
+		}
 		const Class *script = classes.getptr(name);
 		if (!script) {
 			PropertyInfo info;
@@ -168,6 +223,7 @@ bool WGodotResourceTypes::field(const StringName &p_class, const StringName &p_n
 				return false;
 			}
 			r_field.type = native_type(info);
+			r_field.qualification = native_qualification(r_field.type);
 			r_field.exposed = (info.usage & PROPERTY_USAGE_STORAGE) != 0 && p_name != SNAME("script");
 			return true;
 		}
@@ -182,7 +238,7 @@ bool WGodotResourceTypes::field(const StringName &p_class, const StringName &p_n
 }
 
 void WGodotResourceTypes::record(const Type &p_type, HashMap<String, String> &r_declarations) const {
-	if (p_type.builtin == Variant::OBJECT) {
+	if (p_type.builtin == Variant::OBJECT && !r_declarations.has(p_type.name)) {
 		r_declarations.insert(p_type.name, signature(p_type.name));
 	}
 	for (const Type &element : p_type.elements) {
@@ -193,7 +249,9 @@ void WGodotResourceTypes::record(const Type &p_type, HashMap<String, String> &r_
 bool WGodotResourceTypes::function(const StringName &p_class, const StringName &p_name, bool p_signal, Function &r_function, HashMap<String, String> &r_declarations) const {
 	StringName name = p_class;
 	while (!name.is_empty()) {
-		r_declarations.insert(name, signature(name));
+		if (!r_declarations.has(name)) {
+			r_declarations.insert(name, signature(name));
+		}
 		const Class *script = classes.getptr(name);
 		if (!script) {
 			MethodInfo info;
@@ -205,6 +263,7 @@ bool WGodotResourceTypes::function(const StringName &p_class, const StringName &
 			r_function.exposed = (info.flags & METHOD_FLAG_STATIC) == 0;
 			for (const PropertyInfo &parameter : info.arguments) {
 				r_function.parameters.push_back(native_type(parameter));
+				r_function.qualifications.push_back(Qualification());
 			}
 			break;
 		}

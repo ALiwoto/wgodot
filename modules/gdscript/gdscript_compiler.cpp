@@ -30,6 +30,9 @@
 
 #include "gdscript_compiler.h"
 // wgodot-changes::begin
+#include "wgodot_gd/construction.h"
+// wgodot-changes::end
+// wgodot-changes::begin
 #include "modules/wgodot/serialization/schema.h"
 // wgodot-changes::end
 
@@ -429,7 +432,9 @@ GDScriptCodeGenerator::Address GDScriptCompiler::_parse_expression(CodeGen &code
 								return temp;
 							} else {
 								// No getter or inside getter: direct variable access.
-								GDScriptCodeGenerator::Address temp = codegen.add_temporary(scr->static_variables_indices[identifier].data_type);
+								// wgodot-changes::begin
+								GDScriptCodeGenerator::Address temp = codegen.add_assignment_temporary(scr->static_variables_indices[identifier].data_type);
+								// wgodot-changes::end
 								GDScriptCodeGenerator::Address _class = codegen.add_constant(scr);
 								int index = scr->static_variables_indices[identifier].index;
 								gen->write_get_static_variable(temp, _class, index);
@@ -637,6 +642,19 @@ GDScriptCodeGenerator::Address GDScriptCompiler::_parse_expression(CodeGen &code
 		} break;
 		case GDScriptParser::Node::CALL: {
 			const GDScriptParser::CallNode *call = static_cast<const GDScriptParser::CallNode *>(p_expression);
+			// wgodot-changes::begin
+			if (call->wgodot_mutable_alias) {
+				return _parse_expression(codegen, r_error, call->arguments[1]);
+			}
+			// wgodot-changes::end
+			// wgodot-changes::begin
+			if (call->get_callee_type() == GDScriptParser::Node::IDENTIFIER && call->arguments.size() == 1 && call->arguments[0]->type == GDScriptParser::Node::ARRAY) {
+				const Variant::Type kind = GDScriptParser::get_builtin_type(call->function_name);
+				if (kind >= Variant::PACKED_BYTE_ARRAY && kind <= Variant::PACKED_VECTOR4_ARRAY) {
+					return _wgodot_parse_packed_literal(codegen, r_error, call);
+				}
+			}
+			// wgodot-changes::end
 			bool is_awaited = p_expression == awaited_node;
 			GDScriptCodeGenerator::Address result;
 			if (p_root) {
@@ -658,6 +676,11 @@ GDScriptCodeGenerator::Address GDScriptCompiler::_parse_expression(CodeGen &code
 				arguments.push_back(arg);
 			}
 
+			// wgodot-changes::begin
+			if (call->wgodot_has_field_initializers) {
+				_wgodot_construct_fields(codegen, r_error, call, result, arguments);
+			} else
+			// wgodot-changes::end
 			if (!call->is_super && call->callee->type == GDScriptParser::Node::IDENTIFIER && GDScriptParser::get_builtin_type(call->function_name) < Variant::VARIANT_MAX) {
 				gen->write_construct(result, GDScriptParser::get_builtin_type(call->function_name), arguments);
 			} else if (!call->is_super && call->callee->type == GDScriptParser::Node::IDENTIFIER && Variant::has_utility_function(call->function_name)) {
@@ -829,7 +852,11 @@ GDScriptCodeGenerator::Address GDScriptCompiler::_parse_expression(CodeGen &code
 		// Indexing operator.
 		case GDScriptParser::Node::SUBSCRIPT: {
 			const GDScriptParser::SubscriptNode *subscript = static_cast<const GDScriptParser::SubscriptNode *>(p_expression);
-			GDScriptCodeGenerator::Address result = codegen.add_temporary(_gdtype_from_datatype(subscript->type_constraint, codegen.script));
+			// wgodot-changes::begin
+			const auto result_type = _gdtype_from_datatype(subscript->type_constraint, codegen.script);
+			const bool object_attribute = subscript->is_attribute && subscript->base->type_constraint.builtin_type == Variant::OBJECT;
+			GDScriptCodeGenerator::Address result = object_attribute ? codegen.add_assignment_temporary(result_type) : codegen.add_temporary(result_type);
+			// wgodot-changes::end
 
 			GDScriptCodeGenerator::Address base = _parse_expression(codegen, r_error, subscript->base);
 			if (r_error) {
@@ -2454,10 +2481,21 @@ GDScriptFunction *GDScriptCompiler::_parse_function(Error &r_error, GDScript *p_
 
 			GDScriptDataType field_type = _gdtype_from_datatype(field->type_constraint, codegen.script);
 			if (field_type.has_type()) {
+				// wgodot-changes::begin
+				if (_wgodot_can_skip_empty_initializer(p_class, field)) {
+					continue;
+				}
+				const int initialization_jump = codegen.generator->write_skip_initialized_member(codegen.script->member_indices[field->identifier->name].index);
+				// wgodot-changes::end
 				codegen.generator->write_newline(field->start_line);
 
 				GDScriptCodeGenerator::Address dst_address(GDScriptCodeGenerator::Address::MEMBER, codegen.script->member_indices[field->identifier->name].index, field_type);
 
+				// wgodot-changes::begin
+				if (field->type_constraint.wgodot_immutable && field_type.kind == GDScriptDataType::BUILTIN) {
+					_wgodot_write_shared_empty(codegen, dst_address);
+				} else
+				// wgodot-changes::end
 				if (field_type.builtin_type == Variant::ARRAY && field_type.has_container_element_type(0)) {
 					codegen.generator->write_construct_typed_array(dst_address, field_type.get_container_element_type(0), Vector<GDScriptCodeGenerator::Address>());
 				} else if (field_type.builtin_type == Variant::DICTIONARY && field_type.has_container_element_types()) {
@@ -2467,6 +2505,9 @@ GDScriptFunction *GDScriptCompiler::_parse_function(Error &r_error, GDScript *p_
 					codegen.generator->write_construct(dst_address, field_type.builtin_type, Vector<GDScriptCodeGenerator::Address>());
 				}
 				// The `else` branch is for objects, in such case we leave it as `null`.
+				// wgodot-changes::begin
+				codegen.generator->write_end_member_initialization(initialization_jump);
+				// wgodot-changes::end
 			}
 		}
 	}
@@ -2488,6 +2529,16 @@ GDScriptFunction *GDScriptCompiler::_parse_function(Error &r_error, GDScript *p_
 			}
 
 			if (field->initializer) {
+				// wgodot-changes::begin
+				const int initialization_jump = codegen.generator->write_skip_initialized_member(codegen.script->member_indices[field->identifier->name].index);
+				if (WGodotGDScriptConstruction::shared_empty_initializer(field)) {
+					GDScriptCodeGenerator::Address target(GDScriptCodeGenerator::Address::MEMBER,
+							codegen.script->member_indices[field->identifier->name].index, _gdtype_from_datatype(field->type_constraint, codegen.script));
+					_wgodot_write_shared_empty(codegen, target);
+					codegen.generator->write_end_member_initialization(initialization_jump);
+					continue;
+				}
+				// wgodot-changes::end
 				codegen.generator->write_newline(field->initializer->start_line);
 
 				GDScriptCodeGenerator::Address src_address = _parse_expression(codegen, r_error, field->initializer, false, true);
@@ -2507,6 +2558,9 @@ GDScriptFunction *GDScriptCompiler::_parse_function(Error &r_error, GDScript *p_
 				if (src_address.mode == GDScriptCodeGenerator::Address::TEMPORARY) {
 					codegen.generator->pop_temporary();
 				}
+				// wgodot-changes::begin
+				codegen.generator->write_end_member_initialization(initialization_jump);
+				// wgodot-changes::end
 			}
 		}
 	}
@@ -2640,6 +2694,11 @@ GDScriptFunction *GDScriptCompiler::_make_static_initializer(Error &r_error, GDS
 			continue;
 		}
 
+		// wgodot-changes::begin
+		if (_wgodot_can_skip_empty_initializer(p_class, field)) {
+			continue;
+		}
+		// wgodot-changes::end
 		GDScriptDataType field_type = _gdtype_from_datatype(field->type_constraint, codegen.script);
 		if (field_type.has_type()) {
 			codegen.generator->write_newline(field->start_line);

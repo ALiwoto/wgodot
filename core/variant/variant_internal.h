@@ -46,6 +46,19 @@ class VariantInternal {
 	friend class Variant;
 
 public:
+	// wgodot-changes::begin
+	// Initialization only: the caller owns the destination slot and has not
+	// published it. Never overwrite an element buffer that may be COW-shared.
+	template <typename T>
+	static void initialize_packed_storage(Variant *p_destination, const Vector<T> &p_values) {
+		constexpr Variant::Type kind = GetTypeInfo<Vector<T>>::VARIANT_TYPE;
+		if (p_destination->type == kind && p_destination->_data.packed_array->refcount.get() == 1) {
+			static_cast<Variant::PackedArrayRef<T> *>(p_destination->_data.packed_array)->array = p_values;
+		} else {
+			*p_destination = p_values;
+		}
+	}
+	// wgodot-changes::end
 	// Set type.
 	_FORCE_INLINE_ static void set_type(Variant &r_variant, Variant::Type p_type) {
 		r_variant.type = p_type;

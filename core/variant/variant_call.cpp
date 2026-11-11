@@ -2604,15 +2604,27 @@ static void _register_variant_builtin_methods_misc() {
 	bind_method(Dictionary, assign, sarray("dictionary"), varray());
 	bind_method(Dictionary, sort, sarray(), varray());
 	bind_method(Dictionary, merge, sarray("dictionary", "overwrite"), varray(false));
+	// wgodot-changes::begin
+	// wgodot-fresh-result
 	bind_method(Dictionary, merged, sarray("dictionary", "overwrite"), varray(false));
+	// wgodot-changes::end
 	bind_method(Dictionary, has, sarray("key"), varray());
 	bind_method(Dictionary, has_all, sarray("keys"), varray());
 	bind_method(Dictionary, find_key, sarray("value"), varray());
 	bind_method(Dictionary, erase, sarray("key"), varray());
 	bind_method(Dictionary, hash, sarray(), varray());
+	// wgodot-changes::begin
+	// wgodot-fresh-result
 	bind_method(Dictionary, keys, sarray(), varray());
+	// wgodot-changes::end
+	// wgodot-changes::begin
+	// wgodot-fresh-result
 	bind_method(Dictionary, values, sarray(), varray());
+	// wgodot-changes::end
+// wgodot-changes::begin
+	// wgodot-fresh-result
 	bind_method(Dictionary, duplicate, sarray("deep"), varray(false));
+// wgodot-changes::end
 	bind_method(Dictionary, duplicate_deep, sarray("deep_subresources_mode"), varray(RESOURCE_DEEP_DUPLICATE_INTERNAL));
 	bind_method(Dictionary, get, sarray("key", "default"), varray(Variant()));
 	bind_method(Dictionary, get_or_add, sarray("key", "default"), varray(Variant()));
@@ -2674,10 +2686,19 @@ static void _register_variant_builtin_methods_array() {
 	bind_method(Array, bsearch, sarray("value", "before"), varray(true));
 	bind_method(Array, bsearch_custom, sarray("value", "func", "before"), varray(true));
 	bind_method(Array, reverse, sarray(), varray());
+// wgodot-changes::begin
+	// wgodot-fresh-result
 	bind_method(Array, duplicate, sarray("deep"), varray(false));
+// wgodot-changes::end
 	bind_method(Array, duplicate_deep, sarray("deep_subresources_mode"), varray(RESOURCE_DEEP_DUPLICATE_INTERNAL));
+// wgodot-changes::begin
+	// wgodot-fresh-result
 	bind_method(Array, slice, sarray("begin", "end", "step", "deep"), varray(INT_MAX, 1, false));
+// wgodot-changes::end
+	// wgodot-changes::begin
+	// wgodot-fresh-result
 	bind_method(Array, filter, sarray("callable"), varray());
+	// wgodot-changes::end
 	bind_method(Array, map, sarray("callable"), varray());
 	bind_method(Array, reduce, sarray("callable", "accum"), varray(Variant()));
 	bind_method(Array, any, sarray("callable"), varray());
@@ -2728,10 +2749,16 @@ static void _register_variant_builtin_methods_array() {
 	bind_method(PackedByteArray, clear, sarray(), varray());
 	bind_method(PackedByteArray, has, sarray("value"), varray());
 	bind_method(PackedByteArray, reverse, sarray(), varray());
+// wgodot-changes::begin
+	// wgodot-fresh-result
 	bind_method(PackedByteArray, slice, sarray("begin", "end"), varray(INT_MAX));
+// wgodot-changes::end
 	bind_method(PackedByteArray, sort, sarray(), varray());
 	bind_method(PackedByteArray, bsearch, sarray("value", "before"), varray(true));
+// wgodot-changes::begin
+	// wgodot-fresh-result
 	bind_method(PackedByteArray, duplicate, sarray(), varray());
+// wgodot-changes::end
 #ifndef DISABLE_DEPRECATED
 	bind_compat_functionnc(PackedByteArray, duplicate, _duplicate_bind_compat_112290, _VariantCall::_duplicate_bind_compat_112290<uint8_t>, sarray(), varray());
 	bind_compat_functionnc(PackedByteArray, bsearch, _bsearch_bind_compat_112539, _VariantCall::_bsearch_bind_compat_112539<uint8_t>, sarray("value", "before"), varray(true));
@@ -2807,11 +2834,17 @@ static void _register_variant_builtin_methods_array() {
 	bind_method(PackedInt32Array, clear, sarray(), varray());
 	bind_method(PackedInt32Array, has, sarray("value"), varray());
 	bind_method(PackedInt32Array, reverse, sarray(), varray());
+// wgodot-changes::begin
+	// wgodot-fresh-result
 	bind_method(PackedInt32Array, slice, sarray("begin", "end"), varray(INT_MAX));
+// wgodot-changes::end
 	bind_method(PackedInt32Array, to_byte_array, sarray(), varray());
 	bind_method(PackedInt32Array, sort, sarray(), varray());
 	bind_method(PackedInt32Array, bsearch, sarray("value", "before"), varray(true));
+// wgodot-changes::begin
+	// wgodot-fresh-result
 	bind_method(PackedInt32Array, duplicate, sarray(), varray());
+// wgodot-changes::end
 #ifndef DISABLE_DEPRECATED
 	bind_compat_functionnc(PackedInt32Array, duplicate, _duplicate_bind_compat_112290, _VariantCall::_duplicate_bind_compat_112290<int32_t>, sarray(), varray());
 	bind_compat_functionnc(PackedInt32Array, bsearch, _bsearch_bind_compat_112539, _VariantCall::_bsearch_bind_compat_112539<int32_t>, sarray("value", "before"), varray(true));
@@ -2835,11 +2868,17 @@ static void _register_variant_builtin_methods_array() {
 	bind_method(PackedInt64Array, clear, sarray(), varray());
 	bind_method(PackedInt64Array, has, sarray("value"), varray());
 	bind_method(PackedInt64Array, reverse, sarray(), varray());
+// wgodot-changes::begin
+	// wgodot-fresh-result
 	bind_method(PackedInt64Array, slice, sarray("begin", "end"), varray(INT_MAX));
+// wgodot-changes::end
 	bind_method(PackedInt64Array, to_byte_array, sarray(), varray());
 	bind_method(PackedInt64Array, sort, sarray(), varray());
 	bind_method(PackedInt64Array, bsearch, sarray("value", "before"), varray(true));
+// wgodot-changes::begin
+	// wgodot-fresh-result
 	bind_method(PackedInt64Array, duplicate, sarray(), varray());
+// wgodot-changes::end
 #ifndef DISABLE_DEPRECATED
 	bind_compat_functionnc(PackedInt64Array, duplicate, _duplicate_bind_compat_112290, _VariantCall::_duplicate_bind_compat_112290<int64_t>, sarray(), varray());
 	bind_compat_functionnc(PackedInt64Array, bsearch, _bsearch_bind_compat_112539, _VariantCall::_bsearch_bind_compat_112539<int64_t>, sarray("value", "before"), varray(true));
@@ -2863,11 +2902,17 @@ static void _register_variant_builtin_methods_array() {
 	bind_method(PackedFloat32Array, clear, sarray(), varray());
 	bind_method(PackedFloat32Array, has, sarray("value"), varray());
 	bind_method(PackedFloat32Array, reverse, sarray(), varray());
+// wgodot-changes::begin
+	// wgodot-fresh-result
 	bind_method(PackedFloat32Array, slice, sarray("begin", "end"), varray(INT_MAX));
+// wgodot-changes::end
 	bind_method(PackedFloat32Array, to_byte_array, sarray(), varray());
 	bind_method(PackedFloat32Array, sort, sarray(), varray());
 	bind_method(PackedFloat32Array, bsearch, sarray("value", "before"), varray(true));
+// wgodot-changes::begin
+	// wgodot-fresh-result
 	bind_method(PackedFloat32Array, duplicate, sarray(), varray());
+// wgodot-changes::end
 #ifndef DISABLE_DEPRECATED
 	bind_compat_functionnc(PackedFloat32Array, duplicate, _duplicate_bind_compat_112290, _VariantCall::_duplicate_bind_compat_112290<float>, sarray(), varray());
 	bind_compat_functionnc(PackedFloat32Array, bsearch, _bsearch_bind_compat_112539, _VariantCall::_bsearch_bind_compat_112539<float>, sarray("value", "before"), varray(true));
@@ -2891,11 +2936,17 @@ static void _register_variant_builtin_methods_array() {
 	bind_method(PackedFloat64Array, clear, sarray(), varray());
 	bind_method(PackedFloat64Array, has, sarray("value"), varray());
 	bind_method(PackedFloat64Array, reverse, sarray(), varray());
+// wgodot-changes::begin
+	// wgodot-fresh-result
 	bind_method(PackedFloat64Array, slice, sarray("begin", "end"), varray(INT_MAX));
+// wgodot-changes::end
 	bind_method(PackedFloat64Array, to_byte_array, sarray(), varray());
 	bind_method(PackedFloat64Array, sort, sarray(), varray());
 	bind_method(PackedFloat64Array, bsearch, sarray("value", "before"), varray(true));
+// wgodot-changes::begin
+	// wgodot-fresh-result
 	bind_method(PackedFloat64Array, duplicate, sarray(), varray());
+// wgodot-changes::end
 #ifndef DISABLE_DEPRECATED
 	bind_compat_functionnc(PackedFloat64Array, duplicate, _duplicate_bind_compat_112290, _VariantCall::_duplicate_bind_compat_112290<double>, sarray(), varray());
 	bind_compat_functionnc(PackedFloat64Array, bsearch, _bsearch_bind_compat_112539, _VariantCall::_bsearch_bind_compat_112539<double>, sarray("value", "before"), varray(true));
@@ -2919,11 +2970,17 @@ static void _register_variant_builtin_methods_array() {
 	bind_method(PackedStringArray, clear, sarray(), varray());
 	bind_method(PackedStringArray, has, sarray("value"), varray());
 	bind_method(PackedStringArray, reverse, sarray(), varray());
+// wgodot-changes::begin
+	// wgodot-fresh-result
 	bind_method(PackedStringArray, slice, sarray("begin", "end"), varray(INT_MAX));
+// wgodot-changes::end
 	bind_function(PackedStringArray, to_byte_array, _VariantCall::func_PackedStringArray_to_byte_array, sarray(), varray());
 	bind_method(PackedStringArray, sort, sarray(), varray());
 	bind_method(PackedStringArray, bsearch, sarray("value", "before"), varray(true));
+// wgodot-changes::begin
+	// wgodot-fresh-result
 	bind_method(PackedStringArray, duplicate, sarray(), varray());
+// wgodot-changes::end
 #ifndef DISABLE_DEPRECATED
 	bind_compat_functionnc(PackedStringArray, duplicate, _duplicate_bind_compat_112290, _VariantCall::_duplicate_bind_compat_112290<String>, sarray(), varray());
 	bind_compat_functionnc(PackedStringArray, bsearch, _bsearch_bind_compat_112539, _VariantCall::_bsearch_bind_compat_112539<String>, sarray("value", "before"), varray(true));
@@ -2947,11 +3004,17 @@ static void _register_variant_builtin_methods_array() {
 	bind_method(PackedVector2Array, clear, sarray(), varray());
 	bind_method(PackedVector2Array, has, sarray("value"), varray());
 	bind_method(PackedVector2Array, reverse, sarray(), varray());
+// wgodot-changes::begin
+	// wgodot-fresh-result
 	bind_method(PackedVector2Array, slice, sarray("begin", "end"), varray(INT_MAX));
+// wgodot-changes::end
 	bind_method(PackedVector2Array, to_byte_array, sarray(), varray());
 	bind_method(PackedVector2Array, sort, sarray(), varray());
 	bind_method(PackedVector2Array, bsearch, sarray("value", "before"), varray(true));
+// wgodot-changes::begin
+	// wgodot-fresh-result
 	bind_method(PackedVector2Array, duplicate, sarray(), varray());
+// wgodot-changes::end
 #ifndef DISABLE_DEPRECATED
 	bind_compat_functionnc(PackedVector2Array, duplicate, _duplicate_bind_compat_112290, _VariantCall::_duplicate_bind_compat_112290<Vector2>, sarray(), varray());
 	bind_compat_functionnc(PackedVector2Array, bsearch, _bsearch_bind_compat_112539, _VariantCall::_bsearch_bind_compat_112539<Vector2>, sarray("value", "before"), varray(true));
@@ -2975,11 +3038,17 @@ static void _register_variant_builtin_methods_array() {
 	bind_method(PackedVector3Array, clear, sarray(), varray());
 	bind_method(PackedVector3Array, has, sarray("value"), varray());
 	bind_method(PackedVector3Array, reverse, sarray(), varray());
+// wgodot-changes::begin
+	// wgodot-fresh-result
 	bind_method(PackedVector3Array, slice, sarray("begin", "end"), varray(INT_MAX));
+// wgodot-changes::end
 	bind_method(PackedVector3Array, to_byte_array, sarray(), varray());
 	bind_method(PackedVector3Array, sort, sarray(), varray());
 	bind_method(PackedVector3Array, bsearch, sarray("value", "before"), varray(true));
+// wgodot-changes::begin
+	// wgodot-fresh-result
 	bind_method(PackedVector3Array, duplicate, sarray(), varray());
+// wgodot-changes::end
 #ifndef DISABLE_DEPRECATED
 	bind_compat_functionnc(PackedVector3Array, duplicate, _duplicate_bind_compat_112290, _VariantCall::_duplicate_bind_compat_112290<Vector3>, sarray(), varray());
 	bind_compat_functionnc(PackedVector3Array, bsearch, _bsearch_bind_compat_112539, _VariantCall::_bsearch_bind_compat_112539<Vector3>, sarray("value", "before"), varray(true));
@@ -3003,11 +3072,17 @@ static void _register_variant_builtin_methods_array() {
 	bind_method(PackedColorArray, clear, sarray(), varray());
 	bind_method(PackedColorArray, has, sarray("value"), varray());
 	bind_method(PackedColorArray, reverse, sarray(), varray());
+// wgodot-changes::begin
+	// wgodot-fresh-result
 	bind_method(PackedColorArray, slice, sarray("begin", "end"), varray(INT_MAX));
+// wgodot-changes::end
 	bind_method(PackedColorArray, to_byte_array, sarray(), varray());
 	bind_method(PackedColorArray, sort, sarray(), varray());
 	bind_method(PackedColorArray, bsearch, sarray("value", "before"), varray(true));
+// wgodot-changes::begin
+	// wgodot-fresh-result
 	bind_method(PackedColorArray, duplicate, sarray(), varray());
+// wgodot-changes::end
 #ifndef DISABLE_DEPRECATED
 	bind_compat_functionnc(PackedColorArray, duplicate, _duplicate_bind_compat_112290, _VariantCall::_duplicate_bind_compat_112290<Color>, sarray(), varray());
 	bind_compat_functionnc(PackedColorArray, bsearch, _bsearch_bind_compat_112539, _VariantCall::_bsearch_bind_compat_112539<Color>, sarray("value", "before"), varray(true));
@@ -3031,11 +3106,17 @@ static void _register_variant_builtin_methods_array() {
 	bind_method(PackedVector4Array, clear, sarray(), varray());
 	bind_method(PackedVector4Array, has, sarray("value"), varray());
 	bind_method(PackedVector4Array, reverse, sarray(), varray());
+// wgodot-changes::begin
+	// wgodot-fresh-result
 	bind_method(PackedVector4Array, slice, sarray("begin", "end"), varray(INT_MAX));
+// wgodot-changes::end
 	bind_method(PackedVector4Array, to_byte_array, sarray(), varray());
 	bind_method(PackedVector4Array, sort, sarray(), varray());
 	bind_method(PackedVector4Array, bsearch, sarray("value", "before"), varray(true));
+// wgodot-changes::begin
+	// wgodot-fresh-result
 	bind_method(PackedVector4Array, duplicate, sarray(), varray());
+// wgodot-changes::end
 #ifndef DISABLE_DEPRECATED
 	bind_compat_functionnc(PackedVector4Array, duplicate, _duplicate_bind_compat_112290, _VariantCall::_duplicate_bind_compat_112290<Vector4>, sarray(), varray());
 	bind_compat_functionnc(PackedVector4Array, bsearch, _bsearch_bind_compat_112539, _VariantCall::_bsearch_bind_compat_112539<Vector4>, sarray("value", "before"), varray(true));

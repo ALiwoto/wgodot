@@ -175,23 +175,23 @@ GDScriptFunction *GDScript::_super_constructor(GDScript *p_script) {
 	}
 }
 
-void GDScript::_super_implicit_constructor(GDScript *p_script, GDScriptInstance *p_instance, Callable::CallError &r_error) {
+void GDScript::_super_implicit_constructor(GDScript *p_script, GDScriptInstance *p_instance, Callable::CallError &r_error, const bool *p_initialized_members) { // wgodot-changes
 	GDScript *base_src = p_script->base.ptr();
 	if (base_src != nullptr) {
-		_super_implicit_constructor(base_src, p_instance, r_error);
+		_super_implicit_constructor(base_src, p_instance, r_error, p_initialized_members); // wgodot-changes
 		if (r_error.error != Callable::CallError::CALL_OK) {
 			return;
 		}
 	}
 	ERR_FAIL_NULL(p_script->implicit_initializer);
 	if (likely(p_script->valid)) {
-		p_script->implicit_initializer->call(p_instance, nullptr, 0, r_error);
+		p_script->implicit_initializer->call(p_instance, nullptr, 0, r_error, nullptr, p_initialized_members); // wgodot-changes
 	} else {
 		r_error.error = Callable::CallError::CALL_ERROR_INVALID_METHOD;
 	}
 }
 
-GDScriptInstance *GDScript::_create_instance(const Variant **p_args, int p_argcount, Object *p_owner, Callable::CallError &r_error) {
+GDScriptInstance *GDScript::_create_instance(const Variant **p_args, int p_argcount, Object *p_owner, Callable::CallError &r_error, const int *p_fields, const Variant **p_values, int p_field_count) { // wgodot-changes
 	/* STEP 1, CREATE */
 
 	GDScriptInstance *instance = memnew(GDScriptInstance);
@@ -207,7 +207,17 @@ GDScriptInstance *GDScript::_create_instance(const Variant **p_args, int p_argco
 		instances.add(&instance->script_instance_list);
 	}
 
-	_super_implicit_constructor(this, instance, r_error);
+	// wgodot-changes::begin
+	bool *initialized = p_field_count ? static_cast<bool *>(alloca(member_indices.size() * sizeof(bool))) : nullptr;
+	if (initialized) {
+		memset(initialized, 0, member_indices.size() * sizeof(bool));
+		for (int i = 0; i < p_field_count; i++) {
+			instance->members[p_fields[i]] = *p_values[i];
+			initialized[p_fields[i]] = true;
+		}
+	}
+	_super_implicit_constructor(this, instance, r_error, initialized);
+	// wgodot-changes::end
 	if (r_error.error != Callable::CallError::CALL_OK) {
 		String error_text = Variant::get_call_error_text(instance->owner, "@implicit_new", nullptr, 0, r_error);
 		instance->script = Ref<GDScript>();
@@ -242,6 +252,12 @@ GDScriptInstance *GDScript::_create_instance(const Variant **p_args, int p_argco
 }
 
 Variant GDScript::_new(const Variant **p_args, int p_argcount, Callable::CallError &r_error) {
+	// wgodot-changes::begin
+	return wgodot_new_with_fields(p_args, p_argcount, nullptr, nullptr, 0, r_error);
+}
+
+Variant GDScript::wgodot_new_with_fields(const Variant **p_args, int p_argcount, const int *p_fields, const Variant **p_values, int p_field_count, Callable::CallError &r_error) {
+	// wgodot-changes::end
 	/* STEP 1, CREATE */
 
 	r_error.error = Callable::CallError::CALL_ERROR_INVALID_METHOD;
@@ -280,7 +296,7 @@ Variant GDScript::_new(const Variant **p_args, int p_argcount, Callable::CallErr
 		return "Can't inherit from a virtual class.";
 	}
 
-	GDScriptInstance *instance = _create_instance(p_args, p_argcount, owner, r_error);
+	GDScriptInstance *instance = _create_instance(p_args, p_argcount, owner, r_error, p_fields, p_values, p_field_count); // wgodot-changes
 	if (!instance) {
 		if (ref.is_null()) {
 			memdelete(owner);

@@ -8,6 +8,15 @@
 
 namespace WGodotResourceProtobuf {
 template <class T>
+T decode_destination() {
+	if constexpr (std::is_constructible_v<T, WGodotNative::DeferredInitialization>) {
+		return T(WGodotNative::DeferredInitialization{});
+	} else {
+		return T{};
+	}
+}
+
+template <class T>
 struct IsResourceRef : std::false_type {};
 template <class T>
 struct IsResourceRef<Ref<T>> : std::is_base_of<Resource, T> {};
@@ -23,7 +32,7 @@ struct Value<WGodotNative::WArray<T, Kind>> {
 		if (!Sequence<T>::read(r_reader, values, p_context)) {
 			return false;
 		}
-		r_value = Array::from_native(values);
+		r_value.initialize_native(values);
 		return true;
 	}
 };
@@ -45,14 +54,14 @@ struct Value<WGodotNative::WDictionary<K, V>> {
 	}
 	static bool read(Reader &r_reader, Dictionary &r_value, Context &p_context) {
 		Reader contents = r_reader.slice(r_reader.varint());
-		Dictionary values;
+		typename Dictionary::Native values;
 		while (contents.valid && contents.remaining()) {
 			if (contents.varint() != 10) {
 				return false;
 			}
 			Reader entry = contents.slice(contents.varint());
-			K key{};
-			V value{};
+			K key = decode_destination<K>();
+			V value = decode_destination<V>();
 			const uint64_t key_tag = entry.varint();
 			if ((key_tag >> 3) != 1 || !field(entry, key_tag & 7, key, p_context)) {
 				return false;
@@ -61,17 +70,23 @@ struct Value<WGodotNative::WDictionary<K, V>> {
 			if ((value_tag >> 3) != 2 || !field(entry, value_tag & 7, value, p_context) || entry.remaining() || !entry.valid || values.has(key)) {
 				return false;
 			}
-			values.set(key, value);
+			values.insert(key, value);
 		}
-		r_value = values;
-		return contents.valid;
+		if (!contents.valid) {
+			return false;
+		}
+		r_value.initialize_native(std::move(values));
+		return true;
 	}
 };
 
-template <class Owner, class T, auto Read, auto Write>
+template <class Owner, class T, auto Read, auto Write, auto Initialize = nullptr>
 struct Binding {
 	static bool read(Resource *p_resource, Reader &r_reader, int p_wire, Context &p_context) {
-		T value{};
+		if constexpr (Initialize != nullptr) {
+			return field(r_reader, p_wire, static_cast<Owner *>(p_resource)->*Initialize, p_context);
+		}
+		T value = decode_destination<T>();
 		if (!field(r_reader, p_wire, value, p_context)) {
 			return false;
 		}
@@ -99,7 +114,7 @@ struct Binding {
 			}
 			return false;
 		}
-		T value{};
+		T value = decode_destination<T>();
 		p_field.copy(p_source, &value);
 		(static_cast<Owner *>(p_resource)->*Write)(value);
 		return true;

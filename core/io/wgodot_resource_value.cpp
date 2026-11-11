@@ -2,6 +2,8 @@
 #include "wgodot_resource_value.h"
 
 #include "core/object/class_db.h"
+#include "core/object/script_instance.h"
+#include "core/variant/variant_internal.h"
 
 #include <limits>
 #include <type_traits>
@@ -131,7 +133,7 @@ Error packed_repeat(Variant &r_value, const Variant &p_value, Variant::Type p_el
 	Vector<T> values;
 	RETURN_IF_ERROR(values.resize(p_count));
 	values.fill(p_value);
-	r_value = values;
+	VariantInternal::initialize_packed_storage(&r_value, values);
 	return OK;
 }
 
@@ -173,7 +175,7 @@ Error packed_literal(Variant &r_value, Variant::Type p_element, VP::Stream *p_st
 	if (count) {
 		RETURN_IF_ERROR(flush());
 	}
-	r_value = values;
+	VariantInternal::initialize_packed_storage(&r_value, values);
 	return OK;
 }
 } // namespace
@@ -220,18 +222,32 @@ WGodotResourceValueParser::WGodotResourceValueParser(const StringName &p_native,
 }
 
 Error WGodotResourceValueParser::parse(const String &p_name, VP::Token &p_token, VP::Stream *p_stream, int &r_line, String &r_error, VP::ResourceParser *p_resources) {
-	if (!custom) {
-		return OK;
+	if (custom) {
+		const Error error = custom->parse(p_name, p_token, p_stream, r_line, r_error, p_resources);
+		handled = custom->handled;
+		if (error != OK || handled) {
+			return error;
+		}
 	}
-	const Error error = custom->parse(p_name, p_token, p_stream, r_line, r_error, p_resources);
-	handled = custom->handled;
-	return error;
+	if (initializing && initializing->get_script_instance()) {
+		Variant *slot = initializing->get_script_instance()->wgodot_packed_initialization_slot(p_name);
+		const Type *type = fields.getptr(p_name);
+		if (slot && type) {
+			RETURN_IF_ERROR(value(p_token, *slot, *type, p_stream, r_line, r_error, p_resources));
+			if (slot->get_type() != type->builtin) {
+				r_error = "Packed resource initializer does not match its declared field type.";
+				return ERR_PARSE_ERROR;
+			}
+			handled = true;
+		}
+	}
+	return OK;
 }
 
 Error WGodotResourceValueParser::parse_value(const String &p_name, VP::Token &p_token, Variant &r_value, VP::Stream *p_stream, int &r_line, String &r_error, VP::ResourceParser *p_resources) {
 	const Type *type = fields.getptr(p_name);
 	if (!type) {
-		return VP::parse_value(p_token, r_value, p_stream, r_line, r_error, p_resources);
+		return VP::parse_value(p_token, r_value, p_stream, r_line, r_error, p_resources, true);
 	}
 	return value(p_token, r_value, *type, p_stream, r_line, r_error, p_resources);
 }
@@ -294,7 +310,7 @@ Error WGodotResourceValueParser::value(VP::Token &p_token, Variant &r_value, con
 		return OK;
 	}
 	if (p_token.type != VP::TK_BRACKET_OPEN && p_token.type != VP::TK_CURLY_BRACKET_OPEN) {
-		return VP::parse_value(p_token, r_value, p_stream, r_line, r_error, p_resources);
+		return VP::parse_value(p_token, r_value, p_stream, r_line, r_error, p_resources, true);
 	}
 	if (p_token.type == VP::TK_BRACKET_OPEN && p_type.builtin >= Variant::PACKED_BYTE_ARRAY && p_type.builtin < Variant::VARIANT_MAX) {
 		const Variant::Type element = Type::packed_element(p_type.builtin).builtin;
@@ -325,14 +341,16 @@ Error WGodotResourceValueParser::value(VP::Token &p_token, Variant &r_value, con
 	const Type &key_type = p_type.elements[0];
 	const Ref<Script> key_script = element_script(key_type);
 	const StringName key_native = key_script.is_valid() ? key_script->get_instance_base_type() : key_type.name;
-	Array array;
-	Dictionary map;
+	Variant decoded;
+	VariantInternal::initialize(&decoded, p_type.builtin);
+	Array *array = dictionary ? nullptr : VariantInternal::get_array(&decoded);
+	Dictionary *map = dictionary ? VariantInternal::get_dictionary(&decoded) : nullptr;
 	if (dictionary) {
 		const Type &value_type = p_type.elements[1];
 		const Ref<Script> value_script = element_script(value_type);
-		map.set_typed(key_type.builtin, key_native, key_script, value_type.builtin, value_script.is_valid() ? value_script->get_instance_base_type() : value_type.name, value_script);
+		map->set_typed(key_type.builtin, key_native, key_script, value_type.builtin, value_script.is_valid() ? value_script->get_instance_base_type() : value_type.name, value_script);
 	} else {
-		array.set_typed(key_type.builtin, key_native, key_script);
+		array->set_typed(key_type.builtin, key_native, key_script);
 	}
 	const VP::TokenType end = dictionary ? VP::TK_CURLY_BRACKET_CLOSE : VP::TK_BRACKET_CLOSE;
 	RETURN_IF_ERROR(VP::get_token(p_stream, p_token, r_line, r_error));
@@ -348,14 +366,14 @@ Error WGodotResourceValueParser::value(VP::Token &p_token, Variant &r_value, con
 			RETURN_IF_ERROR(VP::get_token(p_stream, p_token, r_line, r_error));
 			Variant mapped;
 			RETURN_IF_ERROR(value(p_token, mapped, p_type.elements[1], p_stream, r_line, r_error, p_resources, p_depth + 1));
-			if (!map.set(item, mapped)) {
+			if (!map->set(item, mapped)) {
 				r_error = "Dictionary entry does not match its declared types.";
 				return ERR_PARSE_ERROR;
 			}
 		} else {
-			const int64_t size = array.size();
-			array.push_back(item);
-			if (array.size() != size + 1) {
+			const int64_t size = array->size();
+			array->push_back(item);
+			if (array->size() != size + 1) {
 				r_error = "Array entry does not match its declared element type.";
 				return ERR_PARSE_ERROR;
 			}
@@ -370,6 +388,6 @@ Error WGodotResourceValueParser::value(VP::Token &p_token, Variant &r_value, con
 		}
 		RETURN_IF_ERROR(VP::get_token(p_stream, p_token, r_line, r_error));
 	}
-	r_value = dictionary ? Variant(map) : Variant(array);
+	r_value = decoded;
 	return OK;
 }

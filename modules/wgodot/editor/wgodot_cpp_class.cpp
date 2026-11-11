@@ -6,6 +6,7 @@
 #include "core/object/class_db.h"
 
 #include "modules/gdscript/wgodot_gd/inline_constants.h"
+#include "modules/gdscript/wgodot_gd/construction.h"
 
 using Parser = GDScriptParser;
 using namespace WGodotCppNames;
@@ -102,6 +103,9 @@ void WGodotCppEmitter::emit_class_uncached(const WGodotCppProject::Class &p_clas
 	String property_writes;
 	String property_list;
 	String initialization;
+	String container_initialization;
+	String static_container_initialization;
+	const auto construction_fields = WGodotGDScriptConstruction::fields(node);
 	String static_fields;
 	String static_initialization;
 	String native_copy;
@@ -160,17 +164,28 @@ void WGodotCppEmitter::emit_class_uncached(const WGodotCppProject::Class &p_clas
 					unsupported(variable, "serialized callback/signal field " + entry.get_name());
 				}
 				const String field_name = "v_" + symbol(variable->identifier->name);
+				const bool container = is_warray(datatype) || is_wdictionary(datatype) || is_packed(datatype);
+				const String storage_initialization = container ? "{WGodotNative::DeferredInitialization{}}" : "{}";
 				if (variable->is_static) {
-					static_fields += "\t\t" + field_type + " " + field_name + "{};\n";
+					static_fields += "\t\t" + field_type + " " + field_name + storage_initialization + ";\n";
 				} else {
-					fields += "\t" + field_type + " " + field_name + "{};\n";
+					fields += "\t" + field_type + " " + field_name + storage_initialization + ";\n";
+				}
+				const String initialize_condition = "!p_initialized || !p_initialized[" + itos(construction_fields.find(variable)) + "]";
+				if (container && !WGodotGDScriptConstruction::can_skip_empty(node, variable)) {
+					const String empty = datatype.wgodot_immutable ? field_type + "::shared_empty()" : field_type + "()";
+					if (variable->is_static) {
+						static_container_initialization += "\tfields." + field_name + " = " + empty + ";\n";
+					} else {
+						container_initialization += "\tif (" + initialize_condition + ") {\n\t\t" + field_name + " = " + empty + ";\n\t}\n";
+					}
 				}
 				if (variable->initializer) {
-					const String value = converted(variable->initializer, datatype, variable);
+					const String value = WGodotGDScriptConstruction::shared_empty_initializer(variable) ? field_type + "::shared_empty()" : converted(variable->initializer, datatype, variable);
 					if (variable->is_static) {
 						static_initialization += "\tfields." + field_name + " = " + value + ";\n";
 					} else {
-						initialization += "\t" + field_name + " = " + value + ";\n";
+						initialization += "\tif (" + initialize_condition + ") {\n\t\t" + field_name + " = " + value + ";\n\t}\n";
 					}
 				}
 				const String getter = "read_" + symbol(variable->identifier->name);
@@ -293,7 +308,7 @@ void WGodotCppEmitter::emit_class_uncached(const WGodotCppProject::Class &p_clas
 		declaration += "protected:\n\tvoid _wgodot_native_copy_signals(Node *p_copy, const Node *p_root) const override;\npublic:\n";
 		definitions += "void " + name + "::_wgodot_native_copy_signals(Node *p_copy, const Node *p_root) const {\n\t" + parent + "::_wgodot_native_copy_signals(p_copy, p_root);\n" + native_signals + "}\n\n";
 	}
-	emit_class_lifecycle(p_class, initialization, static_fields, static_initialization, declaration, definitions);
+	emit_class_lifecycle(p_class, container_initialization + initialization, static_fields, static_container_initialization + static_initialization, declaration, definitions);
 	if (!is_static) {
 		emit_virtuals(p_class, declaration, definitions);
 	}

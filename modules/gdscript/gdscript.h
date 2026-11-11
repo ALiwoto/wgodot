@@ -199,8 +199,10 @@ private:
 	SelfList<GDScriptFunctionState>::List pending_func_states;
 
 	GDScriptFunction *_super_constructor(GDScript *p_script);
-	void _super_implicit_constructor(GDScript *p_script, GDScriptInstance *p_instance, Callable::CallError &r_error);
-	GDScriptInstance *_create_instance(const Variant **p_args, int p_argcount, Object *p_owner, Callable::CallError &r_error);
+	// wgodot-changes::begin
+	void _super_implicit_constructor(GDScript *p_script, GDScriptInstance *p_instance, Callable::CallError &r_error, const bool *p_initialized_members = nullptr);
+	GDScriptInstance *_create_instance(const Variant **p_args, int p_argcount, Object *p_owner, Callable::CallError &r_error, const int *p_fields = nullptr, const Variant **p_values = nullptr, int p_field_count = 0);
+	// wgodot-changes::end
 
 	String _get_debug_path() const;
 
@@ -301,6 +303,9 @@ public:
 	StringName debug_get_static_var_by_index(int p_idx) const;
 
 	Variant _new(const Variant **p_args, int p_argcount, Callable::CallError &r_error);
+	// wgodot-changes::begin
+	Variant wgodot_new_with_fields(const Variant **p_args, int p_argcount, const int *p_fields, const Variant **p_values, int p_field_count, Callable::CallError &r_error);
+	// wgodot-changes::end
 	virtual bool can_instantiate() const override;
 
 	virtual Ref<Script> get_base_script() const override;
@@ -398,6 +403,9 @@ public:
 	virtual Object *get_owner() { return owner; }
 
 	virtual bool set(const StringName &p_name, const Variant &p_value);
+	// wgodot-changes::begin
+	Variant *wgodot_packed_initialization_slot(const StringName &p_name) override;
+	// wgodot-changes::end
 	virtual bool get(const StringName &p_name, Variant &r_ret) const;
 	virtual void get_property_list(List<PropertyInfo> *r_properties) const;
 	virtual Variant::Type get_property_type(const StringName &p_name, bool *r_is_valid = nullptr) const;

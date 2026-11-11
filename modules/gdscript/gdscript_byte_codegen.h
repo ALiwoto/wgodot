@@ -100,7 +100,12 @@ class GDScriptByteCodeGenerator : public GDScriptCodeGenerator {
 	int current_line = 0;
 	int instr_args_max = 0;
 
-	HashMap<Variant, int> constant_map;
+	// wgodot-changes::begin
+	struct ConstantComparator {
+		static bool compare(const Variant &p_left, const Variant &p_right);
+	};
+	HashMap<Variant, int, HashMapHasherDefault, ConstantComparator> constant_map;
+	// wgodot-changes::end
 	RBMap<StringName, int> name_map;
 	RBMap<Variant::ValidatedOperatorEvaluator, int> operator_func_map;
 	RBMap<Variant::ValidatedSetter, int> setters_map;
@@ -526,6 +531,12 @@ public:
 	virtual void write_lambda(const Address &p_target, GDScriptFunction *p_function, const Vector<Address> &p_captures, bool p_use_self) override;
 	virtual void write_construct(const Address &p_target, Variant::Type p_type, const Vector<Address> &p_arguments) override;
 	virtual void write_construct_array(const Address &p_target, const Vector<Address> &p_arguments) override;
+	// wgodot-changes::begin
+	virtual void write_construct_script_fields(const Address &p_target, const Address &p_script, const Vector<Address> &p_arguments, const Vector<int> &p_fields, const Vector<Address> &p_values) override;
+	virtual int write_skip_initialized_member(int p_member) override;
+	virtual void write_end_member_initialization(int p_jump) override;
+	virtual void write_construct_packed_literal(const Address &p_target, Variant::Type p_type, const Vector<Address> &p_values) override;
+	// wgodot-changes::end
 	virtual void write_construct_typed_array(const Address &p_target, const GDScriptDataType &p_element_type, const Vector<Address> &p_arguments) override;
 	virtual void write_construct_dictionary(const Address &p_target, const Vector<Address> &p_arguments) override;
 	virtual void write_construct_typed_dictionary(const Address &p_target, const GDScriptDataType &p_key_type, const GDScriptDataType &p_value_type, const Vector<Address> &p_arguments) override;

@@ -624,6 +624,24 @@ void GDScriptFunction::disassemble(const Vector<String> &p_code_lines) const {
 
 				incr += 3 + argc * 2;
 			} break;
+			// wgodot-changes::begin
+			case OPCODE_CONSTRUCT_SCRIPT_FIELDS: {
+				const int operands = _code_ptr[++ip];
+				const int arguments = _code_ptr[ip + operands + 1];
+				const int fields = _code_ptr[ip + operands + 2];
+				text += "construct_script_fields args=" + itos(arguments) + " fields=" + itos(fields);
+				ip += operands + fields + 3;
+			} break;
+			case OPCODE_SKIP_INITIALIZED_MEMBER: {
+				text += "skip_initialized_member " + itos(_code_ptr[ip + 1]) + " to " + itos(_code_ptr[ip + 2]);
+				ip += 3;
+			} break;
+			case OPCODE_CONSTRUCT_PACKED_LITERAL: {
+				const int operands = _code_ptr[++ip];
+				text += "construct_packed_literal " + Variant::get_type_name(Variant::Type(_code_ptr[ip + operands + 2]));
+				ip += operands + 3;
+			} break;
+			// wgodot-changes::end
 			case OPCODE_CONSTRUCT_TYPED_DICTIONARY: {
 				int instr_var_args = _code_ptr[++ip];
 				int argc = _code_ptr[ip + 1 + instr_var_args];

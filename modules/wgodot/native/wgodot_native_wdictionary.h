@@ -38,7 +38,7 @@ class WDictionary {
 	Storage *storage;
 
 	static void release(Storage *p_storage) {
-		if (p_storage->references.unref()) {
+		if (p_storage && p_storage->references.unref()) {
 			memdelete(p_storage);
 		}
 	}
@@ -50,8 +50,13 @@ class WDictionary {
 public:
 	using Key = K;
 	using Value = V;
+	using Native = Map;
 
 	WDictionary() : storage(memnew(Storage)) {}
+	explicit WDictionary(DeferredInitialization) : storage(nullptr) {}
+	static WDictionary shared_empty() {
+		return StaticStorage<WDictionary>::get();
+	}
 	WDictionary(std::initializer_list<KeyValue<K, V>> p_entries) : WDictionary() {
 		for (const auto &entry : p_entries) {
 			storage->entries.insert(entry.key, entry.value);
@@ -72,6 +77,13 @@ public:
 	bool is_read_only() const { return storage->read_only; }
 	void make_read_only() { storage->read_only = true; }
 	const Map &native() const { return storage->entries; }
+	void initialize_native(Map &&p_values) {
+		if (!storage || storage->references.get() != 1) {
+			release(storage);
+			storage = memnew(Storage);
+		}
+		storage->entries = std::move(p_values);
+	}
 	bool has(const K &p_key) const { return storage->entries.has(p_key); }
 	const V *getptr(const K &p_key) const { return storage->entries.getptr(p_key); }
 	V at(const K &p_key) const {

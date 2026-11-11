@@ -698,6 +698,9 @@ Error GDScriptAnalyzer::resolve_class_inheritance(GDScriptParser::ClassNode *p_c
 		resolve_annotation(E);
 		E->apply(parser, p_class, p_class->outer);
 	}
+	// wgodot-changes::begin
+	wgodot_validate_data_class(p_class);
+	// wgodot-changes::end
 
 	parser->current_class = previous_class;
 
@@ -1071,6 +1074,12 @@ GDScriptParser::DataType GDScriptAnalyzer::resolve_datatype(GDScriptParser::Type
 	if (!wgodot_validate_strict_datatype(result, p_type, "type hint")) {
 		return bad_type;
 	}
+	result.wgodot_immutable = p_type->wgodot_immutable;
+	GDScriptParser::DataType wgodot_instance_type = result;
+	wgodot_instance_type.is_meta_type = false; // A type annotation denotes instances.
+	if (!wgodot_validate_immutable_type(wgodot_instance_type, p_type)) {
+		return bad_type;
+	}
 	// wgodot-changes::end
 
 	p_type->resolved_type = result;
@@ -1168,12 +1177,25 @@ void GDScriptAnalyzer::resolve_class_member(GDScriptParser::ClassNode *p_class, 
 				check_class_member_name_conflict(p_class, member.variable->identifier->name, member.variable);
 
 				member.variable->type_constraint = resolving_datatype;
+				// wgodot-changes::begin
+				for (auto *annotation : member.variable->annotations) {
+					if (annotation->name == SNAME("@immutable")) {
+						resolve_annotation(annotation);
+						annotation->apply(parser, member.variable, p_class);
+					}
+				}
+				// wgodot-changes::end
 				resolve_variable(member.variable, false);
 				resolve_pending_lambda_bodies();
+				// wgodot-changes::begin
+				wgodot_validate_initializer_effects(member.variable);
+				// wgodot-changes::end
 
 				// Apply annotations.
 				for (GDScriptParser::AnnotationNode *&E : member.variable->annotations) {
-					if (E->name != SNAME("@warning_ignore")) {
+					// wgodot-changes::begin
+					if (E->name != SNAME("@warning_ignore") && E->name != SNAME("@immutable")) {
+					// wgodot-changes::end
 						resolve_annotation(E);
 						E->apply(parser, member.variable, p_class);
 					}
@@ -1558,6 +1580,9 @@ void GDScriptAnalyzer::resolve_class_body(GDScriptParser::ClassNode *p_class, co
 				if (member.variable->getter != nullptr) {
 					member.variable->getter->return_type = member.variable->datatype_specifier;
 					member.variable->getter->return_type_constraint = member.get_datatype();
+					// wgodot-changes::begin
+					member.variable->getter->wgodot_readonly = p_class->wgodot_data_class;
+					// wgodot-changes::end
 
 					resolve_function_body(member.variable->getter);
 				}
@@ -1601,6 +1626,12 @@ void GDScriptAnalyzer::resolve_class_body(GDScriptParser::ClassNode *p_class, co
 						push_error(vformat(R"(Getter "%s" not found.)", member.variable->getter_pointer->name), member.variable);
 					} else {
 						GDScriptParser::DataType return_datatype = getter_function->return_type_constraint;
+						// wgodot-changes::begin
+						if ((p_class->wgodot_data_class && !getter_function->wgodot_readonly) ||
+								!wgodot_immutable_types_match(member.variable->type_constraint, return_datatype)) {
+							push_error("A data-class getter must be @readonly and preserve its property's immutable qualifications.", member.variable);
+						}
+						// wgodot-changes::end
 						if (getter_function->return_type != nullptr) {
 							return_datatype = getter_function->return_type->resolved_type;
 							return_datatype.is_meta_type = false;
@@ -1639,6 +1670,11 @@ void GDScriptAnalyzer::resolve_class_body(GDScriptParser::ClassNode *p_class, co
 
 					} else {
 						has_valid_setter = true;
+						// wgodot-changes::begin
+						if (!wgodot_immutable_types_match(member.variable->type_constraint, setter_function->parameters[0]->type_constraint)) {
+							push_error("A setter must preserve its property's immutable qualifications.", member.variable);
+						}
+						// wgodot-changes::end
 
 #ifdef DEBUG_ENABLED
 						if (member.variable->type_constraint.builtin_type == Variant::FLOAT && setter_function->parameters[0]->type_constraint.builtin_type == Variant::INT) {
@@ -1999,6 +2035,9 @@ void GDScriptAnalyzer::resolve_function_signature(GDScriptParser::FunctionNode *
 			p_function->return_type_constraint = return_type;
 		}
 
+		// wgodot-changes::begin
+		wgodot_resolve_immutable_function(p_function);
+		// wgodot-changes::end
 #ifdef TOOLS_ENABLED
 		// Check if the function signature matches the parent. If not it's an error since it breaks polymorphism.
 		// Not for the constructor which can vary in signature.
@@ -2018,6 +2057,16 @@ void GDScriptAnalyzer::resolve_function_signature(GDScriptParser::FunctionNode *
 			// wgodot-changes::end
 
 			bool valid = p_function->is_static == method_flags.has_flag(METHOD_FLAG_STATIC);
+			// wgodot-changes::begin
+			valid = valid && (!method_flags.has_flag(METHOD_FLAG_CONST) || p_function->wgodot_readonly);
+			valid = valid && wgodot_immutable_types_match(parent_return_type, p_function->return_type_constraint);
+			for (const auto *parent = base_type.class_type; parent; parent = parent->base_type.class_type) {
+				if (parent->has_function(function_name)) {
+					valid = valid && parent->get_member(function_name).function->wgodot_immutable_clone == p_function->wgodot_immutable_clone;
+					break;
+				}
+			}
+			// wgodot-changes::end
 
 			if (p_function->return_type == nullptr) {
 				// GH-118877. We decided to make an exception to maintain compatibility, since the problem can only be detected at runtime.
@@ -2068,6 +2117,9 @@ void GDScriptAnalyzer::resolve_function_signature(GDScriptParser::FunctionNode *
 						break;
 					}
 					const GDScriptParser::DataType &current_par_type = p_function->parameters[i]->type_constraint;
+					// wgodot-changes::begin
+					valid = valid && wgodot_immutable_types_match(parent_par_type, current_par_type);
+					// wgodot-changes::end
 					i++;
 					// Check parameter type contravariance.
 					if (parent_par_type.is_variant() && parent_par_type.is_hard_type()) {
@@ -2190,6 +2242,9 @@ void GDScriptAnalyzer::resolve_function_body(GDScriptParser::FunctionNode *p_fun
 	static_context = p_function->is_static;
 
 	resolve_suite(p_function->body);
+	// wgodot-changes::begin
+	wgodot_validate_function_effects(p_function);
+	// wgodot-changes::end
 #ifdef DEBUG_ENABLED
 	const StringName function_name = p_function->identifier != nullptr ? p_function->identifier->name : StringName();
 	String function_visible_name = function_name;
@@ -2446,6 +2501,9 @@ void GDScriptAnalyzer::resolve_assignable(GDScriptParser::AssignableNode *p_assi
 
 	type.is_constant = is_constant;
 	type.is_read_only = false;
+	// wgodot-changes::begin
+	wgodot_resolve_immutable_variable(p_assignable, type);
+	// wgodot-changes::end
 	p_assignable->type_constraint = type;
 	// wgodot-changes::begin
 	if (p_assignable->type != GDScriptParser::Node::PARAMETER) {
@@ -2478,6 +2536,12 @@ void GDScriptAnalyzer::resolve_constant(GDScriptParser::ConstantNode *p_constant
 }
 
 void GDScriptAnalyzer::resolve_parameter(GDScriptParser::ParameterNode *p_parameter) {
+	// wgodot-changes::begin
+	for (GDScriptParser::AnnotationNode *annotation : p_parameter->annotations) {
+		resolve_annotation(annotation);
+		annotation->apply(parser, p_parameter, parser->current_class);
+	}
+	// wgodot-changes::end
 	static constexpr const char *kind = "parameter";
 	resolve_assignable(p_parameter, kind);
 }
@@ -2593,6 +2657,11 @@ void GDScriptAnalyzer::resolve_for(GDScriptParser::ForNode *p_for) {
 	if (p_for->variable) {
 		if (p_for->datatype_specifier) {
 			GDScriptParser::DataType specified_type = type_from_metatype(resolve_datatype(p_for->datatype_specifier));
+			// wgodot-changes::begin
+			if (!wgodot_immutable_types_match(specified_type, variable_type)) {
+				push_error("The iterator declaration must retain its element's immutable qualification.", p_for->datatype_specifier);
+			}
+			// wgodot-changes::end
 			if (!specified_type.is_variant()) {
 				if (variable_type.is_variant() || !variable_type.is_hard_type()) {
 					mark_node_unsafe(p_for->variable);
@@ -2772,7 +2841,12 @@ void GDScriptAnalyzer::resolve_match_pattern(GDScriptParser::PatternNode *p_matc
 
 void GDScriptAnalyzer::resolve_return(GDScriptParser::ReturnNode *p_return) {
 	const bool has_expected_type = parser->current_function != nullptr;
-	const GDScriptParser::DataType expected_type = has_expected_type ? parser->current_function->return_type_constraint : GDScriptParser::DataType();
+	GDScriptParser::DataType expected_type = has_expected_type ? parser->current_function->return_type_constraint : GDScriptParser::DataType();
+	// wgodot-changes::begin
+	if (has_expected_type && parser->current_function->wgodot_immutable_clone) {
+		expected_type.wgodot_immutable = true;
+	}
+	// wgodot-changes::end
 
 	GDScriptParser::DataType result;
 
@@ -2826,6 +2900,11 @@ void GDScriptAnalyzer::resolve_return(GDScriptParser::ReturnNode *p_return) {
 			result = p_return->return_value->type_constraint;
 		}
 	}
+	// wgodot-changes::begin
+	if (has_expected_type && p_return->return_value) {
+		wgodot_validate_immutable_value(expected_type, p_return->return_value);
+	}
+	// wgodot-changes::end
 
 	if (has_expected_type && !expected_type.is_variant() && expected_type.is_hard_type()) {
 		if (result.is_variant() || !result.is_hard_type()) {
@@ -2953,6 +3032,9 @@ void GDScriptAnalyzer::reduce_expression(GDScriptParser::ExpressionNode *p_expre
 		dummy.kind = GDScriptParser::DataType::VARIANT;
 		p_expression->type_constraint = dummy;
 	}
+	// wgodot-changes::begin
+	wgodot_reduce_immutable_expression(p_expression);
+	// wgodot-changes::end
 }
 
 void GDScriptAnalyzer::reduce_array(GDScriptParser::ArrayNode *p_array) {
@@ -3040,6 +3122,7 @@ void GDScriptAnalyzer::update_array_literal_element_type(GDScriptParser::ArrayNo
 
 	for (GDScriptParser::ExpressionNode *element_node : p_array->elements) {
 		// wgodot-changes::begin
+		wgodot_validate_immutable_value(expected_type, element_node);
 		if (!wgodot_validate_resource_path_argument(element_node, expected_type)) {
 			return;
 		}
@@ -3078,6 +3161,7 @@ void GDScriptAnalyzer::update_dictionary_literal_element_type(GDScriptParser::Di
 	for (uint32_t i = 0; i < p_dictionary->elements.size(); i++) {
 		GDScriptParser::ExpressionNode *key_element_node = p_dictionary->elements[i].key;
 		// wgodot-changes::begin
+		wgodot_validate_immutable_value(expected_key_type, key_element_node);
 		if (!wgodot_validate_resource_path_argument(key_element_node, expected_key_type)) {
 			return;
 		}
@@ -3099,6 +3183,7 @@ void GDScriptAnalyzer::update_dictionary_literal_element_type(GDScriptParser::Di
 
 		GDScriptParser::ExpressionNode *value_element_node = p_dictionary->elements[i].value;
 		// wgodot-changes::begin
+		wgodot_validate_immutable_value(expected_value_type, value_element_node);
 		if (!wgodot_validate_resource_path_argument(value_element_node, expected_value_type)) {
 			return;
 		}
@@ -3191,6 +3276,7 @@ void GDScriptAnalyzer::reduce_assignment(GDScriptParser::AssignmentNode *p_assig
 	if (!wgodot_validate_readonly_assignment(p_assignment)) {
 		return;
 	}
+	wgodot_validate_immutable_assignment(p_assignment);
 	// wgodot-changes::end
 
 	GDScriptParser::DataType assignee_type = p_assignment->assignee->type_constraint;
@@ -3245,6 +3331,11 @@ void GDScriptAnalyzer::reduce_assignment(GDScriptParser::AssignmentNode *p_assig
 	}
 
 	GDScriptParser::DataType assigned_value_type = p_assignment->assigned_value->type_constraint;
+	// wgodot-changes::begin
+	if (!wgodot_is_native_packed_property(p_assignment->assignee)) {
+		wgodot_validate_immutable_value(assignee_type, p_assignment->assigned_value);
+	}
+	// wgodot-changes::end
 
 	bool assignee_is_variant = assignee_type.is_variant();
 	bool assignee_is_hard = assignee_type.is_hard_type();
@@ -3546,6 +3637,11 @@ const char *check_for_renamed_identifier(String identifier, GDScriptParser::Node
 #endif // SUGGEST_GODOT4_RENAMES
 
 void GDScriptAnalyzer::reduce_call(GDScriptParser::CallNode *p_call, bool p_is_await, bool p_is_root) {
+	// wgodot-changes::begin
+	if (wgodot_reduce_mutable_alias(p_call)) {
+		return;
+	}
+	// wgodot-changes::end
 	bool all_is_constant = true;
 	HashMap<int, GDScriptParser::ArrayNode *> arrays; // For array literal to potentially type when passing.
 	HashMap<int, GDScriptParser::DictionaryNode *> dictionaries; // Same, but for dictionaries.
@@ -3770,6 +3866,9 @@ void GDScriptAnalyzer::reduce_call(GDScriptParser::CallNode *p_call, bool p_is_a
 			p_call->type_constraint = call_type;
 			return;
 		} else if (GDScriptUtilityFunctions::function_exists(function_name)) {
+			// wgodot-changes::begin
+			p_call->wgodot_native_call = true;
+			// wgodot-changes::end
 			MethodInfo function_info = GDScriptUtilityFunctions::get_function_info(function_name);
 			// wgodot-changes::begin
 			if (!wgodot_validate_resource_utility(p_call, function_info)) {
@@ -3824,8 +3923,16 @@ void GDScriptAnalyzer::reduce_call(GDScriptParser::CallNode *p_call, bool p_is_a
 				validate_call_arg(function_info, p_call);
 			}
 			p_call->type_constraint = type_from_property(function_info.return_val, false, p_call);
+			// wgodot-changes::begin
+			if (function_name == SNAME("load") && !wgodot_is_ignored_script()) {
+				p_call->type_constraint.wgodot_immutable = true;
+			}
+			// wgodot-changes::end
 			return;
 		} else if (Variant::has_utility_function(function_name)) {
+			// wgodot-changes::begin
+			p_call->wgodot_native_call = true;
+			// wgodot-changes::end
 			MethodInfo function_info = info_from_utility_func(function_name);
 			// wgodot-changes::begin
 			if (!wgodot_validate_resource_utility(p_call, function_info)) {
@@ -3987,6 +4094,10 @@ void GDScriptAnalyzer::reduce_call(GDScriptParser::CallNode *p_call, bool p_is_a
 	if (wgodot_group_call || get_function_signature(p_call, is_constructor, base_type, p_call->function_name, return_type, par_types, default_arg_count, method_flags)) {
 	// wgodot-changes::end
 		p_call->is_static = method_flags.has_flag(METHOD_FLAG_STATIC);
+		// wgodot-changes::begin
+		wgodot_validate_immutable_call(p_call, base_type, method_flags, is_self, is_constructor);
+		wgodot_resolve_field_initializers(p_call, base_type);
+		// wgodot-changes::end
 		// If the method is implemented in the class hierarchy, the virtual/abstract flag will not be set for that `MethodInfo` and the search stops there.
 		// Virtual/abstract check only possible for super calls because class hierarchy is known. Objects may have scripts attached we don't know of at compile-time.
 		if (p_call->is_super) {
@@ -4175,6 +4286,14 @@ void GDScriptAnalyzer::reduce_cast(GDScriptParser::CastNode *p_cast) {
 	reduce_expression(p_cast->operand);
 
 	GDScriptParser::DataType cast_type = type_from_metatype(resolve_datatype(p_cast->cast_type));
+	// wgodot-changes::begin
+	cast_type.wgodot_immutable = cast_type.wgodot_immutable || p_cast->operand->type_constraint.wgodot_immutable;
+	wgodot_validate_immutable_type(cast_type, p_cast);
+	if (!wgodot_validate_immutable_value(cast_type, p_cast->operand)) {
+		return;
+	}
+	p_cast->wgodot_fresh_value = p_cast->operand->wgodot_fresh_value;
+	// wgodot-changes::end
 
 	if (!cast_type.is_set()) {
 		mark_node_unsafe(p_cast);
@@ -4550,6 +4669,9 @@ void GDScriptAnalyzer::reduce_identifier_from_base(GDScriptParser::IdentifierNod
 					}
 					if (Variant::has_builtin_method(base.builtin_type, name)) {
 						p_identifier->type_constraint = make_callable_type(Variant::get_builtin_method_info(base.builtin_type, name));
+						// wgodot-changes::begin
+						wgodot_validate_native_callable(base, p_identifier->type_constraint.method_info, p_identifier);
+						// wgodot-changes::end
 						return;
 					}
 					if (base.is_hard_type()) {
@@ -4660,6 +4782,12 @@ void GDScriptAnalyzer::reduce_identifier_from_base(GDScriptParser::IdentifierNod
 				case GDScriptParser::ClassNode::Member::FUNCTION: {
 					if (is_base && (!base.is_meta_type || member.function->is_static || is_constructor)) {
 						p_identifier->type_constraint = make_callable_type(member.function->info);
+						// wgodot-changes::begin
+						p_identifier->type_constraint.wgodot_callable_signature = member.function;
+						if (base.wgodot_immutable && !member.function->is_static && !member.function->wgodot_readonly) {
+							push_error("Cannot bind a mutable method through an @immutable reference.", p_identifier);
+						}
+						// wgodot-changes::end
 						p_identifier->source = GDScriptParser::IdentifierNode::MEMBER_FUNCTION;
 						p_identifier->function_source = member.function;
 						p_identifier->function_source_is_static = member.function->is_static;
@@ -4699,7 +4827,10 @@ void GDScriptAnalyzer::reduce_identifier_from_base(GDScriptParser::IdentifierNod
 				continue;
 			}
 
-			const GDScriptParser::DataType property_type = GDScriptAnalyzer::type_from_property(property_info, false, p_identifier);
+			GDScriptParser::DataType property_type = GDScriptAnalyzer::type_from_property(property_info, false, p_identifier);
+			// wgodot-changes::begin
+			wgodot_qualify_native_resources(property_type);
+			// wgodot-changes::end
 
 			p_identifier->type_constraint = property_type;
 			p_identifier->source = GDScriptParser::IdentifierNode::MEMBER_VARIABLE;
@@ -4784,6 +4915,9 @@ void GDScriptAnalyzer::reduce_identifier_from_base(GDScriptParser::IdentifierNod
 			if (getter != nullptr) {
 				bool has_setter = ClassDB::get_property_setter(native, name) != StringName();
 				GDScriptParser::DataType ptype = type_from_property(getter->get_return_info(), false, p_identifier);
+				// wgodot-changes::begin
+				wgodot_qualify_native_resources(ptype);
+				// wgodot-changes::end
 				ptype.is_read_only = !has_setter;
 				p_identifier->type_constraint = ptype;
 				p_identifier->source = GDScriptParser::IdentifierNode::INHERITED_VARIABLE;
@@ -4808,6 +4942,9 @@ void GDScriptAnalyzer::reduce_identifier_from_base(GDScriptParser::IdentifierNod
 			// wgodot-changes::end
 			// Method is callable.
 			p_identifier->type_constraint = make_callable_type(method_info);
+			// wgodot-changes::begin
+			wgodot_validate_native_callable(base, method_info, p_identifier);
+			// wgodot-changes::end
 			p_identifier->source = GDScriptParser::IdentifierNode::INHERITED_VARIABLE;
 			return;
 		}
@@ -5125,6 +5262,12 @@ void GDScriptAnalyzer::reduce_identifier(GDScriptParser::IdentifierNode *p_ident
 	}
 
 	if (Variant::has_utility_function(name) || GDScriptUtilityFunctions::function_exists(name)) {
+		// wgodot-changes::begin
+		if (name == SNAME("load") || name == SNAME("dangerous_return_as_mutable")) {
+			push_error("This utility requires a statically checked direct call; use a typed wrapper function.", p_identifier);
+			return;
+		}
+		// wgodot-changes::end
 		p_identifier->is_constant = true;
 		p_identifier->reduced_value = Callable(memnew(GDScriptUtilityCallable(name)));
 		MethodInfo method_info;
@@ -5172,6 +5315,9 @@ void GDScriptAnalyzer::reduce_lambda(GDScriptParser::LambdaNode *p_lambda) {
 	lambda_type.type_source = GDScriptParser::DataType::ANNOTATED_INFERRED;
 	lambda_type.kind = GDScriptParser::DataType::BUILTIN;
 	lambda_type.builtin_type = Variant::CALLABLE;
+	// wgodot-changes::begin
+	lambda_type.wgodot_callable_signature = p_lambda->function;
+	// wgodot-changes::end
 	p_lambda->type_constraint = lambda_type;
 
 	if (p_lambda->function == nullptr) {
@@ -6525,6 +6671,32 @@ bool GDScriptAnalyzer::get_function_signature(GDScriptParser::Node *p_source, bo
 		*r_native_class = StringName();
 	}
 	StringName function_name = p_function;
+	// wgodot-changes::begin
+	if (p_base_type.kind == GDScriptParser::DataType::BUILTIN && p_base_type.builtin_type == Variant::CALLABLE && p_base_type.wgodot_callable_signature) {
+		auto *function = p_base_type.wgodot_callable_signature;
+		if (p_function == SNAME("call")) {
+			r_return_type = function->return_type_constraint;
+			r_method_flags = METHOD_FLAG_CONST;
+			r_default_arg_count = function->default_arg_values.size();
+			const uint32_t captures = function->source_lambda ? function->source_lambda->captures.size() : 0;
+			for (uint32_t i = captures; i < function->parameters.size(); i++) {
+				r_par_types.push_back(function->parameters[i]->type_constraint);
+			}
+			if (p_source && p_source->type == GDScriptParser::Node::CALL) {
+				static_cast<GDScriptParser::CallNode *>(p_source)->wgodot_resolved_function = function;
+			}
+			return true;
+		}
+		if (p_function == SNAME("bind") || p_function == SNAME("bindv") || p_function == SNAME("unbind") || p_function == SNAME("callv") || p_function == SNAME("call_deferred")) {
+			GDScriptParser::DataType erased = p_base_type;
+			erased.wgodot_callable_signature = nullptr;
+			if (!wgodot_immutable_types_match(erased, p_base_type)) {
+				push_error("This callable operation erases an immutable signature; use a typed wrapper function and direct call instead.", p_source);
+				return false;
+			}
+		}
+	}
+	// wgodot-changes::end
 
 	bool was_enum = false;
 	if (p_base_type.kind == GDScriptParser::DataType::ENUM) {
@@ -6555,6 +6727,10 @@ bool GDScriptAnalyzer::get_function_signature(GDScriptParser::Node *p_source, bo
 				function_signature_from_info(E, r_return_type, r_par_types, r_default_arg_count, r_method_flags, p_source);
 				// wgodot-changes::begin
 				wgodot_resource_container_signature(p_base_type, p_function, r_return_type, r_par_types);
+				wgodot_qualify_native_resources(r_return_type);
+				if (p_source && p_source->type == GDScriptParser::Node::CALL) {
+					static_cast<GDScriptParser::CallNode *>(p_source)->wgodot_native_call = true;
+				}
 				// wgodot-changes::end
 				// Cannot use non-const methods on enums.
 				if (!r_method_flags.has_flag(METHOD_FLAG_STATIC) && was_enum && !(E.flags & METHOD_FLAG_CONST)) {
@@ -6655,6 +6831,14 @@ bool GDScriptAnalyzer::get_function_signature(GDScriptParser::Node *p_source, bo
 	}
 	// wgodot-changes::end
 	if (found_function != nullptr) {
+		// wgodot-changes::begin
+		if (found_function->wgodot_readonly) {
+			r_method_flags.set_flag(METHOD_FLAG_CONST);
+		}
+		if (p_source && p_source->type == GDScriptParser::Node::CALL) {
+			static_cast<GDScriptParser::CallNode *>(p_source)->wgodot_resolved_function = found_function;
+		}
+		// wgodot-changes::end
 		if (found_function->is_abstract) {
 			r_method_flags.set_flag(METHOD_FLAG_VIRTUAL_REQUIRED);
 		}
@@ -6723,6 +6907,10 @@ bool GDScriptAnalyzer::get_function_signature(GDScriptParser::Node *p_source, bo
 			if (contract->factory_methods.has(function_name)) {
 				r_return_type = wgodot_native_factory_type(p_base_type, p_source);
 			}
+			wgodot_qualify_native_resources(r_return_type);
+			if (p_source->type == GDScriptParser::Node::CALL) {
+				static_cast<GDScriptParser::CallNode *>(p_source)->wgodot_native_call = true;
+			}
 			return valid;
 		}
 	}
@@ -6732,9 +6920,28 @@ bool GDScriptAnalyzer::get_function_signature(GDScriptParser::Node *p_source, bo
 		// wgodot-changes::begin
 		if (p_source->type == GDScriptParser::Node::CALL) {
 			wgodot_validate_strict_native_property_access(base_native, function_name, p_source);
+			static_cast<GDScriptParser::CallNode *>(p_source)->wgodot_native_call = true;
 		}
 		// wgodot-changes::end
 		bool valid = function_signature_from_info(info, r_return_type, r_par_types, r_default_arg_count, r_method_flags, p_source);
+		// wgodot-changes::begin
+		wgodot_native_resource_signature(base_native, function_name, p_source, r_return_type, r_par_types);
+		if (base_native == SNAME("ResourceLoader")) {
+			if (function_name == SNAME("load") || function_name == SNAME("load_threaded_get") || function_name == SNAME("get_cached_ref")) {
+				r_return_type.wgodot_immutable = true;
+			}
+			if (p_source->type == GDScriptParser::Node::CALL && (function_name == SNAME("load") || function_name == SNAME("load_threaded_request")) && !wgodot_is_ignored_script()) {
+				const auto *call = static_cast<const GDScriptParser::CallNode *>(p_source);
+				const uint32_t cache_argument = function_name == SNAME("load") ? 2 : 3;
+				if (call->arguments.size() > cache_argument) {
+					const auto *mode = call->arguments[cache_argument];
+					if (!mode->is_constant || int(mode->reduced_value) == ResourceLoader::CACHE_MODE_REPLACE || int(mode->reduced_value) == ResourceLoader::CACHE_MODE_REPLACE_DEEP) {
+						push_error("Resource cache mode must be a constant that preserves published instances; CACHE_MODE_REPLACE is not allowed.", mode);
+					}
+				}
+			}
+		}
+		// wgodot-changes::end
 		if (valid && Engine::get_singleton()->has_singleton(base_native)) {
 			r_method_flags.set_flag(METHOD_FLAG_STATIC);
 		}
@@ -6783,10 +6990,16 @@ void GDScriptAnalyzer::validate_call_arg(const List<GDScriptParser::DataType> &p
 	for (uint32_t i = 0; i < p_call->arguments.size(); ++par_itr, ++i) {
 		if (i >= (uint32_t)p_par_types.size()) {
 			// Already on vararg place.
+			// wgodot-changes::begin
+			for (uint32_t extra = i; extra < p_call->arguments.size(); extra++) {
+				wgodot_validate_immutable_argument(GDScriptParser::DataType::get_variant_type(), p_call->arguments[extra], p_call);
+			}
+			// wgodot-changes::end
 			break;
 		}
 		GDScriptParser::DataType par_type = *par_itr;
 		// wgodot-changes::begin
+		wgodot_validate_immutable_argument(par_type, p_call->arguments[i], p_call);
 		if (!wgodot_validate_resource_path_argument(p_call->arguments[i], par_type)) {
 			continue;
 		}

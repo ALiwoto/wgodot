@@ -92,7 +92,9 @@ class ResourceLoaderBinary {
 
 	friend class ResourceFormatLoaderBinary;
 
-	Error parse_variant(Variant &r_v);
+	// wgodot-changes::begin
+	Error parse_variant(Variant &r_v, bool p_initialize_owned = false);
+	// wgodot-changes::end
 
 	HashMap<String, Ref<Resource>> dependency_cache;
 

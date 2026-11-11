@@ -49,9 +49,14 @@ char32_t WGodotResourceValidation::peek(Stream *p_stream, int &r_line) const {
 }
 
 Error WGodotResourceValidation::class_type(const StringName &p_type, const StringName &p_base, String &r_error) {
-	result.declarations.insert(p_type, types->signature(p_type));
+	if (!result.declarations.has(p_type)) {
+		result.declarations.insert(p_type, types->signature(p_type));
+	}
 	if (!types->exists(p_type) || !types->derives(p_type, p_base) || !types->instantiable(p_type)) {
 		return fail("Expected a concrete " + String(p_base) + " class, got '" + String(p_type) + "'.", r_error);
+	}
+	if (p_base == SNAME("Resource") && !types->immutable_resource(p_type)) {
+		return fail("Cached script resources must declare or inherit @data_class: " + String(p_type), r_error);
 	}
 	if (p_base == SNAME("Resource") && !types->has_resource_exports(p_type)) {
 		return fail("Resource class '" + String(p_type) + "' has no public @export fields; no resource codec is generated for it.", r_error);
@@ -59,7 +64,7 @@ Error WGodotResourceValidation::class_type(const StringName &p_type, const Strin
 	return types->check_exports(p_type, r_error);
 }
 
-Error WGodotResourceValidation::field(const StringName &p_class, const StringName &p_name, Type &r_type, String &r_error) {
+Error WGodotResourceValidation::field(const StringName &p_class, const StringName &p_name, Type &r_type, Qualification &r_qualification, String &r_error) {
 	WGodotResourceTypes::Field declaration;
 	if (!types->field(p_class, p_name, declaration, result.declarations)) {
 		return fail("Unknown field '" + String(p_name) + "' on " + String(p_class) + ". Dynamic properties are forbidden.", r_error);
@@ -71,6 +76,7 @@ Error WGodotResourceValidation::field(const StringName &p_class, const StringNam
 		return fail(String(p_class) + "." + String(p_name) + " must have a concrete type, including every container element/key/value; got " + declaration.type.text() + ".", r_error);
 	}
 	r_type = declaration.type;
+	r_qualification = declaration.qualification;
 	return OK;
 }
 
@@ -120,7 +126,9 @@ Error WGodotResourceValidation::annotation(Token p_token, Stream *p_stream, Type
 	if (r_type.builtin == Variant::VARIANT_MAX && types->exists(name)) {
 		r_type.builtin = Variant::OBJECT;
 		r_type.name = name;
-		result.declarations.insert(name, types->signature(name));
+		if (!result.declarations.has(name)) {
+			result.declarations.insert(name, types->signature(name));
+		}
 	}
 	if (r_type.builtin == Variant::ARRAY || r_type.builtin == Variant::DICTIONARY) {
 		RETURN_IF_ERROR(expect(p_stream, VP::TK_BRACKET_OPEN, r_line, r_error));
@@ -139,7 +147,7 @@ Error WGodotResourceValidation::annotation(Token p_token, Stream *p_stream, Type
 	return r_type.concrete() ? OK : fail("Dynamic or unsupported type: " + name, r_error);
 }
 
-Error WGodotResourceValidation::container(Stream *p_stream, const Type &p_type, int &r_line, String &r_error, int p_depth) {
+Error WGodotResourceValidation::container(Stream *p_stream, const Type &p_type, const Qualification &p_qualification, int &r_line, String &r_error, int p_depth) {
 	const bool dictionary = p_type.builtin == Variant::DICTIONARY;
 	const Type element = p_type.builtin >= Variant::PACKED_BYTE_ARRAY ? Type::packed_element(p_type.builtin) : p_type.elements[0];
 	const TokenType end = dictionary ? VP::TK_CURLY_BRACKET_CLOSE : VP::TK_BRACKET_CLOSE;
@@ -147,7 +155,7 @@ Error WGodotResourceValidation::container(Stream *p_stream, const Type &p_type, 
 	RETURN_IF_ERROR(token(p_stream, next, r_line, r_error));
 	while (next.type != end) {
 		Type actual;
-		RETURN_IF_ERROR(value(next, p_stream, element, actual, r_line, r_error, p_depth + 1));
+		RETURN_IF_ERROR(value(next, p_stream, element, p_qualification.element(0), actual, r_line, r_error, p_depth + 1));
 		if (p_type.builtin == Variant::PACKED_BYTE_ARRAY || p_type.builtin == Variant::PACKED_INT32_ARRAY) {
 			const int64_t number = next.value;
 			if (next.type != VP::TK_NUMBER || (p_type.builtin == Variant::PACKED_BYTE_ARRAY ? number < 0 || number > UINT8_MAX : number < INT32_MIN || number > INT32_MAX)) {
@@ -157,7 +165,7 @@ Error WGodotResourceValidation::container(Stream *p_stream, const Type &p_type, 
 		if (dictionary) {
 			RETURN_IF_ERROR(expect(p_stream, VP::TK_COLON, r_line, r_error));
 			RETURN_IF_ERROR(token(p_stream, next, r_line, r_error));
-			RETURN_IF_ERROR(value(next, p_stream, p_type.elements[1], actual, r_line, r_error, p_depth + 1));
+			RETURN_IF_ERROR(value(next, p_stream, p_type.elements[1], p_qualification.element(1), actual, r_line, r_error, p_depth + 1));
 		}
 		RETURN_IF_ERROR(token(p_stream, next, r_line, r_error));
 		if (next.type == end) {
@@ -171,7 +179,7 @@ Error WGodotResourceValidation::container(Stream *p_stream, const Type &p_type, 
 	return OK;
 }
 
-Error WGodotResourceValidation::reference(Stream *p_stream, const String &p_kind, Type &r_type, int &r_line, String &r_error) {
+Error WGodotResourceValidation::reference(Stream *p_stream, const String &p_kind, Type &r_type, Qualification &r_qualification, int &r_line, String &r_error) {
 	RETURN_IF_ERROR(expect(p_stream, VP::TK_PARENTHESIS_OPEN, r_line, r_error));
 	Token id;
 	RETURN_IF_ERROR(token(p_stream, id, r_line, r_error));
@@ -181,6 +189,7 @@ Error WGodotResourceValidation::reference(Stream *p_stream, const String &p_kind
 	const String name = id.value;
 	RETURN_IF_ERROR(expect(p_stream, VP::TK_PARENTHESIS_CLOSE, r_line, r_error));
 	r_type.builtin = Variant::OBJECT;
+	r_qualification.immutable = true;
 	if (p_kind == "GlobalResource") {
 		const String *source = global_paths.getptr(name);
 		if (!source) {
@@ -194,7 +203,7 @@ Error WGodotResourceValidation::reference(Stream *p_stream, const String &p_kind
 				return fail("Expected a declared global resource field.", r_error);
 			}
 			const StringName owner = r_type.name;
-			RETURN_IF_ERROR(field(owner, String(id.value), r_type, r_error));
+			RETURN_IF_ERROR(field(owner, String(id.value), r_type, r_qualification, r_error));
 		}
 	} else {
 		const Reference *source = p_kind == "ExtResource" ? external.getptr(name) : internal.getptr(name);
@@ -206,7 +215,7 @@ Error WGodotResourceValidation::reference(Stream *p_stream, const String &p_kind
 	return OK;
 }
 
-Error WGodotResourceValidation::value(Token p_token, Stream *p_stream, const Type &p_expected, Type &r_actual, int &r_line, String &r_error, int p_depth) {
+Error WGodotResourceValidation::value(Token p_token, Stream *p_stream, const Type &p_expected, const Qualification &p_qualification, Type &r_actual, int &r_line, String &r_error, int p_depth) {
 	r_actual = Type();
 	if (p_depth > 64) {
 		return fail("Resource value nesting is too deep.", r_error);
@@ -221,7 +230,7 @@ Error WGodotResourceValidation::value(Token p_token, Stream *p_stream, const Typ
 			return fail("Container literal requires a fully typed " + Variant::get_type_name(kind) + " destination.", r_error);
 		}
 		r_actual = p_expected;
-		RETURN_IF_ERROR(container(p_stream, r_actual, r_line, r_error, p_depth));
+		RETURN_IF_ERROR(container(p_stream, r_actual, p_qualification, r_line, r_error, p_depth));
 	} else if (p_token.type == VP::TK_NUMBER || p_token.type == VP::TK_STRING || p_token.type == VP::TK_STRING_NAME || p_token.type == VP::TK_COLOR) {
 		r_actual.builtin = p_token.value.get_type();
 		if (p_expected.resource_path) {
@@ -244,7 +253,7 @@ Error WGodotResourceValidation::value(Token p_token, Stream *p_stream, const Typ
 			RETURN_IF_ERROR(token(p_stream, p_token, r_line, r_error));
 			const Type element = packed ? Type::packed_element(p_expected.builtin) : p_expected.elements[0];
 			Type actual;
-			RETURN_IF_ERROR(value(p_token, p_stream, element, actual, r_line, r_error, p_depth + 1));
+			RETURN_IF_ERROR(value(p_token, p_stream, element, p_qualification.element(0), actual, r_line, r_error, p_depth + 1));
 			if (p_expected.builtin == Variant::PACKED_BYTE_ARRAY || p_expected.builtin == Variant::PACKED_INT32_ARRAY) {
 				const int64_t number = p_token.value;
 				if (p_token.type != VP::TK_NUMBER || (p_expected.builtin == Variant::PACKED_BYTE_ARRAY ? number < 0 || number > UINT8_MAX : number < INT32_MIN || number > INT32_MAX)) {
@@ -259,7 +268,11 @@ Error WGodotResourceValidation::value(Token p_token, Stream *p_stream, const Typ
 		} else if (name == "null" || name == "nil") {
 			r_actual.builtin = Variant::NIL;
 		} else if (name == "ExtResource" || name == "SubResource" || name == "GlobalResource") {
-			RETURN_IF_ERROR(reference(p_stream, name, r_actual, r_line, r_error));
+			Qualification actual_qualification;
+			RETURN_IF_ERROR(reference(p_stream, name, r_actual, actual_qualification, r_line, r_error));
+			if (!p_qualification.matches(actual_qualification)) {
+				return fail("Shared resource references must preserve their declared @immutable qualifications.", r_error);
+			}
 		} else if (name == "Array" || name == "Dictionary") {
 			RETURN_IF_ERROR(annotation(p_token, p_stream, r_actual, r_line, r_error));
 			if (!types->accepts(p_expected, r_actual)) {
@@ -267,7 +280,7 @@ Error WGodotResourceValidation::value(Token p_token, Stream *p_stream, const Typ
 			}
 			RETURN_IF_ERROR(expect(p_stream, VP::TK_PARENTHESIS_OPEN, r_line, r_error));
 			RETURN_IF_ERROR(expect(p_stream, r_actual.builtin == Variant::ARRAY ? VP::TK_BRACKET_OPEN : VP::TK_CURLY_BRACKET_OPEN, r_line, r_error));
-			RETURN_IF_ERROR(container(p_stream, p_expected, r_line, r_error, p_depth));
+			RETURN_IF_ERROR(container(p_stream, p_expected, p_qualification, r_line, r_error, p_depth));
 			RETURN_IF_ERROR(expect(p_stream, VP::TK_PARENTHESIS_CLOSE, r_line, r_error));
 		} else {
 			r_actual.builtin = Variant::get_type_by_name(name);
@@ -405,9 +418,10 @@ Error WGodotResourceValidation::parse(const String &p_name, Token &p_token, Stre
 	}
 	handled = true;
 	Type expected;
-	RETURN_IF_ERROR(field(owner_type, p_name, expected, r_error));
+	Qualification qualification;
+	RETURN_IF_ERROR(field(owner_type, p_name, expected, qualification, r_error));
 	Type actual;
-	return value(p_token, p_stream, expected, actual, r_line, r_error);
+	return value(p_token, p_stream, expected, qualification, actual, r_line, r_error);
 }
 
 Error WGodotResourceValidation::marker(Stream *p_stream, Ref<Resource> &r_resource, int &r_line, String &r_error, bool p_external) {
@@ -640,7 +654,7 @@ Error WGodotResourceValidation::tag_fields(const VP::Tag &p_tag, String &r_error
 	return OK;
 }
 
-Error WGodotResourceValidation::literal(const Variant &p_value, const Type &p_expected, String &r_error) {
+Error WGodotResourceValidation::literal(const Variant &p_value, const Type &p_expected, const Qualification &p_qualification, String &r_error) {
 	if (!p_expected.concrete()) {
 		return fail("Connection arguments require concrete declared types.", r_error);
 	}
@@ -648,14 +662,14 @@ Error WGodotResourceValidation::literal(const Variant &p_value, const Type &p_ex
 	actual.builtin = p_value.get_type();
 	if (actual.builtin == Variant::ARRAY && p_expected.builtin == Variant::ARRAY) {
 		for (const Variant &element : Array(p_value)) {
-			RETURN_IF_ERROR(literal(element, p_expected.elements[0], r_error));
+			RETURN_IF_ERROR(literal(element, p_expected.elements[0], p_qualification.element(0), r_error));
 		}
 		return OK;
 	}
 	if (actual.builtin == Variant::DICTIONARY && p_expected.builtin == Variant::DICTIONARY) {
 		for (const auto &entry : Dictionary(p_value)) {
-			RETURN_IF_ERROR(literal(entry.key, p_expected.elements[0], r_error));
-			RETURN_IF_ERROR(literal(entry.value, p_expected.elements[1], r_error));
+			RETURN_IF_ERROR(literal(entry.key, p_expected.elements[0], p_qualification.element(0), r_error));
+			RETURN_IF_ERROR(literal(entry.value, p_expected.elements[1], p_qualification.element(1), r_error));
 		}
 		return OK;
 	}
@@ -670,6 +684,9 @@ Error WGodotResourceValidation::literal(const Variant &p_value, const Type &p_ex
 			return fail("Unknown connection resource reference.", r_error);
 		}
 		actual.name = reference->type;
+		if (!p_qualification.immutable) {
+			return fail("A bound resource reference requires an @immutable parameter.", r_error);
+		}
 	}
 	if (p_expected.resource_path && actual.builtin == Variant::STRING) {
 		StringName resource;
@@ -701,12 +718,12 @@ Error WGodotResourceValidation::connection(const VP::Tag &p_tag, String &r_error
 		return fail("Connection argument count does not match its target method.", r_error);
 	}
 	for (int i = 0; i < passed; i++) {
-		if (!signal.parameters[i].concrete() || !types->accepts(method.parameters[i], signal.parameters[i])) {
+		if (!signal.parameters[i].concrete() || !types->accepts(method.parameters[i], signal.parameters[i]) || !method.qualifications[i].matches(signal.qualifications[i])) {
 			return fail("Connection signal argument " + itos(i) + " is incompatible with its target method.", r_error);
 		}
 	}
 	for (int i = 0; i < binds.size(); i++) {
-		RETURN_IF_ERROR(literal(binds[i], method.parameters[passed + i], r_error));
+		RETURN_IF_ERROR(literal(binds[i], method.parameters[passed + i], method.qualifications[passed + i], r_error));
 	}
 	return OK;
 }

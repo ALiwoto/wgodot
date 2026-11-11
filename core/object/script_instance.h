@@ -42,6 +42,11 @@ class CSharpInstance;
 class ScriptInstance {
 public:
 	virtual bool set(const StringName &p_name, const Variant &p_value) = 0;
+	// wgodot-changes::begin
+	// Resource loaders only: the instance must still be privately owned and
+	// unpublished. Accessors and non-packed fields are never exposed here.
+	virtual Variant *wgodot_packed_initialization_slot(const StringName &p_name) { return nullptr; }
+	// wgodot-changes::end
 	virtual bool get(const StringName &p_name, Variant &r_ret) const = 0;
 	virtual void get_property_list(List<PropertyInfo> *r_properties) const = 0;
 	virtual Variant::Type get_property_type(const StringName &p_name, bool *r_is_valid = nullptr) const = 0;

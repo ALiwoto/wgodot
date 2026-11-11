@@ -10,6 +10,7 @@
 // workers; references, parser state and dependency tracking belong to this file.
 class WGodotResourceValidation : public VariantParser::AssignmentParser {
 	using Type = WGodotResourceTypes::Type;
+	using Qualification = WGodotResourceTypes::Qualification;
 	using Token = VariantParser::Token;
 	using Stream = VariantParser::Stream;
 	using TokenType = VariantParser::TokenType;
@@ -52,14 +53,14 @@ class WGodotResourceValidation : public VariantParser::AssignmentParser {
 	Error expect(Stream *p_stream, TokenType p_type, int &r_line, String &r_error) const;
 	char32_t peek(Stream *p_stream, int &r_line) const;
 	Error annotation(Token p_token, Stream *p_stream, Type &r_type, int &r_line, String &r_error);
-	Error value(Token p_token, Stream *p_stream, const Type &p_expected, Type &r_actual, int &r_line, String &r_error, int p_depth = 0);
-	Error container(Stream *p_stream, const Type &p_type, int &r_line, String &r_error, int p_depth);
-	Error reference(Stream *p_stream, const String &p_kind, Type &r_type, int &r_line, String &r_error);
-	Error field(const StringName &p_class, const StringName &p_name, Type &r_type, String &r_error);
+	Error value(Token p_token, Stream *p_stream, const Type &p_expected, const Qualification &p_qualification, Type &r_actual, int &r_line, String &r_error, int p_depth = 0);
+	Error container(Stream *p_stream, const Type &p_type, const Qualification &p_qualification, int &r_line, String &r_error, int p_depth);
+	Error reference(Stream *p_stream, const String &p_kind, Type &r_type, Qualification &r_qualification, int &r_line, String &r_error);
+	Error field(const StringName &p_class, const StringName &p_name, Type &r_type, Qualification &r_qualification, String &r_error);
 	Error resource_type(const String &p_path, StringName &r_type, String &r_error);
 	Error instance(const Reference &p_reference, const String &p_prefix, String &r_error);
 	Error class_type(const StringName &p_type, const StringName &p_base, String &r_error);
-	Error literal(const Variant &p_value, const Type &p_expected, String &r_error);
+	Error literal(const Variant &p_value, const Type &p_expected, const Qualification &p_qualification, String &r_error);
 	Error connection(const VariantParser::Tag &p_tag, String &r_error);
 	Error tag_fields(const VariantParser::Tag &p_tag, String &r_error);
 	static Error parse_external(void *p_self, Stream *p_stream, Ref<Resource> &r_resource, int &r_line, String &r_error);

@@ -5,6 +5,7 @@
 #include "core/object/class_db.h"
 
 #include "modules/gdscript/wgodot_gd/interface_helpers.h"
+#include "modules/gdscript/wgodot_gd/construction.h"
 
 using Parser = GDScriptParser;
 using namespace WGodotCppNames;
@@ -110,10 +111,60 @@ WGodotCppEmitter::Value WGodotCppEmitter::call(const Parser::CallNode *p_call) {
 	if (evaluate_receiver) {
 		operands.push_back(lower(base));
 	}
+	for (const auto &field : p_call->wgodot_field_initializers) {
+		Value value = lower_converted(field.value, field.field->type_constraint, field.field);
+		// A later field expression may reassign this expression's source binding.
+		value.borrowed = false;
+		operands.push_back(value);
+	}
 	Value result = sequence(operands);
 	Vector<String> arguments;
 	for (uint32_t i = 0; i < p_call->arguments.size(); i++) {
 		arguments.push_back(operands[i].code);
+	}
+	if (construct && p_call->wgodot_has_field_initializers) {
+		// Even pure field reads precede allocation and static initialization.
+		for (uint32_t i = p_call->arguments.size(); i < uint32_t(operands.size()); i++) {
+			if (!operands[i].borrowed && !operands[i].invariant) {
+				materialize(operands.write[i], result.setup);
+			}
+		}
+		class_call_headers.insert("modules/wgodot/native/wgodot_native_construction.h");
+		const String target = class_name(base_type, p_call);
+		const auto fields = WGodotGDScriptConstruction::fields(base_type.class_type);
+		Vector<String> mask;
+		mask.resize(MAX(1, fields.size()));
+		mask.fill("false");
+		String assignments;
+		for (uint32_t i = 0; i < p_call->wgodot_field_initializers.size(); i++) {
+			const auto &field = p_call->wgodot_field_initializers[i];
+			mask.write[fields.find(field.field)] = "true";
+			assignments += "\tobject->v_" + symbol(field.name->name) + " = " + operands[p_call->arguments.size() + i].code + ";\n";
+		}
+		bool prepare = false;
+		for (const auto *node = base_type.class_type; node; node = node->base_type.class_type) {
+			prepare |= node->has_function(SNAME("_static_init"));
+			for (const auto &member : node->members) {
+				prepare |= member.type == Parser::ClassNode::Member::VARIABLE && member.variable->is_static;
+			}
+		}
+		const String instance = "constructed_" + itos(temporary_index++);
+		String construction = type(p_call->type_constraint, p_call) + " " + instance + " = [&]() {\n";
+		if (prepare) {
+			construction += "\t" + target + "::prepare_game_class();\n";
+		}
+		construction += "\tauto *object = ::new (DefaultAllocator{}) " + target + "(" + String(method ? "WGodotNative::Construction::EXPLICIT" : "") + ");\n";
+		construction += assignments;
+		construction += "\tconst bool supplied[] = {" + String(", ").join(mask) + "};\n";
+		construction += "\tWGodotNative::ConstructionFields fields(object, supplied);\n\treturn _post_initialize(object);\n}();";
+		result.setup.push_back(construction);
+		if (method) {
+			result.setup.push_back(instance + "->m_" + symbol(name) + "(" + String(", ").join(arguments) + ");");
+		}
+		result.code = instance;
+		result.cpp_type = type(p_call->type_constraint, p_call);
+		result.effects = true;
+		return result;
 	}
 	String receiver;
 	if (construct || (method && method->is_static)) {

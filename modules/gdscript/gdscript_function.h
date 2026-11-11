@@ -193,6 +193,11 @@ public:
 		OPCODE_CONSTRUCT_TYPED_ARRAY,
 		OPCODE_CONSTRUCT_DICTIONARY,
 		OPCODE_CONSTRUCT_TYPED_DICTIONARY,
+		// wgodot-changes::begin
+		OPCODE_CONSTRUCT_SCRIPT_FIELDS,
+		OPCODE_SKIP_INITIALIZED_MEMBER,
+		OPCODE_CONSTRUCT_PACKED_LITERAL,
+		// wgodot-changes::end
 		OPCODE_CALL,
 		OPCODE_CALL_RETURN,
 		OPCODE_CALL_ASYNC,
@@ -533,7 +538,7 @@ public:
 	Variant get_constant(int p_idx) const;
 	StringName get_global_name(int p_idx) const;
 
-	Variant call(GDScriptInstance *p_instance, const Variant **p_args, int p_argcount, Callable::CallError &r_err, CallState *p_state = nullptr);
+	Variant call(GDScriptInstance *p_instance, const Variant **p_args, int p_argcount, Callable::CallError &r_err, CallState *p_state = nullptr, const bool *p_initialized_members = nullptr); // wgodot-changes
 	void debug_get_stack_member_state(int p_line, List<Pair<StringName, int>> *r_stackvars) const;
 
 #ifdef DEBUG_ENABLED

@@ -236,6 +236,12 @@ struct GDScriptUtilityFunctionsDefinitions {
 		DEBUG_VALIDATE_ARG_TYPE(0, Variant::STRING);
 		*r_ret = ResourceLoader::load(*p_args[0]);
 	}
+	// wgodot-changes::begin
+	static inline void dangerous_return_as_mutable(Variant *r_ret, const Variant **p_args, int p_arg_count, Callable::CallError &r_error) {
+		DEBUG_VALIDATE_ARG_COUNT(2, 2);
+		*r_ret = *p_args[1];
+	}
+	// wgodot-changes::end
 
 #ifndef DISABLE_DEPRECATED
 
@@ -570,6 +576,7 @@ void GDScriptUtilityFunctions::register_functions() {
 	REGISTER_FUNC( range,          false, RET(ARRAY),         NOARGS,                                  true,  varray(     ));
 	// wgodot-changes::begin
 	REGISTER_FUNC( load,           false, RETCLS("Resource"), ARGS( PropertyInfo(Variant::STRING, "path", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_DEFAULT, "WResPath") ), false, varray(     ));
+	REGISTER_FUNC( dangerous_return_as_mutable, false, RET(OBJECT), ARGS(ARG("type", OBJECT), ARG("object", OBJECT)), false, varray());
 	// wgodot-changes::end
 #ifndef DISABLE_DEPRECATED
 	REGISTER_FUNC( inst_to_dict,   false, RET(DICTIONARY),    ARGS( ARG("instance", OBJECT)         ), false, varray(     ));

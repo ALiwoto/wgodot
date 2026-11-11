@@ -20,7 +20,7 @@ Parser::DataType GDScriptAnalyzer::wgodot_resource_path_runtime_type(const Parse
 void GDScriptAnalyzer::wgodot_resource_container_signature(const Parser::DataType &p_container, const StringName &p_method, Parser::DataType &r_result, List<Parser::DataType> &r_arguments) {
 	const auto key = p_container.get_container_element_type_or_variant(0);
 	const auto value = p_container.get_container_element_type_or_variant(1);
-	if (!key.wgodot_resource_path && !value.wgodot_resource_path) {
+	if (!p_container.has_container_element_types()) {
 		return;
 	}
 	const String method = p_method;
@@ -62,6 +62,7 @@ void GDScriptAnalyzer::wgodot_resource_container_signature(const Parser::DataTyp
 		}
 		if (method == "duplicate" || method == "merged") {
 			r_result = p_container;
+			r_result.wgodot_immutable = false;
 		}
 	} else if (p_container.builtin_type == Variant::ARRAY) {
 		if (method == "append" || method == "push_back" || method == "push_front" || method == "erase" || method == "fill" || method == "has" || method == "find" || method == "rfind" || method == "count" || method == "bsearch") {
@@ -78,6 +79,7 @@ void GDScriptAnalyzer::wgodot_resource_container_signature(const Parser::DataTyp
 		}
 		if (method == "duplicate" || method == "slice" || method == "filter") {
 			r_result = p_container;
+			r_result.wgodot_immutable = false;
 		}
 	}
 }

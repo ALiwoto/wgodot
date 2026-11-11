@@ -174,7 +174,9 @@ public:
 	static Error parse_tag_assign_eof(Stream *p_stream, int &r_line, String &r_err_str, Tag &r_tag, String &r_assign, Variant &r_value, ResourceParser *p_res_parser = nullptr, bool p_simple_tag = false, AssignmentParser *p_assignment_parser = nullptr);
 	// wgodot-changes::end
 
-	static Error parse_value(Token &r_token, Variant &r_value, Stream *p_stream, int &r_line, String &r_err_str, ResourceParser *p_res_parser = nullptr);
+	// wgodot-changes::begin
+	static Error parse_value(Token &r_token, Variant &r_value, Stream *p_stream, int &r_line, String &r_err_str, ResourceParser *p_res_parser = nullptr, bool p_initialize_owned = false);
+	// wgodot-changes::end
 	static Error get_token(Stream *p_stream, Token &r_token, int &r_line, String &r_err_str);
 	static Error parse(Stream *p_stream, Variant &r_ret, String &r_err_str, int &r_err_line, ResourceParser *p_res_parser = nullptr);
 };

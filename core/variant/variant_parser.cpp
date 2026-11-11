@@ -30,6 +30,9 @@
 
 #include "variant_parser.h"
 // wgodot-changes::begin
+#include "variant_internal.h"
+// wgodot-changes::end
+// wgodot-changes::begin
 #include "core/io/wgodot_global_resources.h"
 #include "core/io/wgodot_resource_value.h"
 // wgodot-changes::end
@@ -763,7 +766,9 @@ Error VariantParser::_parse_byte_array(Stream *p_stream, Vector<uint8_t> &r_cons
 	return OK;
 }
 
-Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_stream, int &r_line, String &r_err_str, ResourceParser *p_res_parser) {
+// wgodot-changes::begin
+Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_stream, int &r_line, String &r_err_str, ResourceParser *p_res_parser, bool p_initialize_owned) {
+// wgodot-changes::end
 	if (r_token.type == TK_CURLY_BRACKET_OPEN) {
 		Dictionary d;
 		RETURN_IF_ERROR(_parse_dictionary(d, p_stream, r_line, r_err_str, p_res_parser));
@@ -1529,7 +1534,13 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 
 			// wgodot-changes::begin
 			// Packed arrays share the parsed buffer until a caller writes to it.
-			r_value = args;
+			// wgodot-changes::begin
+			if (p_initialize_owned) {
+				VariantInternal::initialize_packed_storage(&r_value, args);
+			} else {
+				r_value = args;
+			}
+			// wgodot-changes::end
 			// wgodot-changes::end
 		} else if (id == "PackedInt32Array" || id == "PackedIntArray" || id == "PoolIntArray" || id == "IntArray") {
 			Vector<int32_t> args;
@@ -1537,7 +1548,13 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 
 			// wgodot-changes::begin
 			// Packed arrays share the parsed buffer until a caller writes to it.
-			r_value = args;
+			// wgodot-changes::begin
+			if (p_initialize_owned) {
+				VariantInternal::initialize_packed_storage(&r_value, args);
+			} else {
+				r_value = args;
+			}
+			// wgodot-changes::end
 			// wgodot-changes::end
 		} else if (id == "PackedInt64Array") {
 			Vector<int64_t> args;
@@ -1545,7 +1562,13 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 
 			// wgodot-changes::begin
 			// Packed arrays share the parsed buffer until a caller writes to it.
-			r_value = args;
+			// wgodot-changes::begin
+			if (p_initialize_owned) {
+				VariantInternal::initialize_packed_storage(&r_value, args);
+			} else {
+				r_value = args;
+			}
+			// wgodot-changes::end
 			// wgodot-changes::end
 		} else if (id == "PackedFloat32Array" || id == "PackedRealArray" || id == "PoolRealArray" || id == "FloatArray") {
 			Vector<float> args;
@@ -1553,7 +1576,13 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 
 			// wgodot-changes::begin
 			// Packed arrays share the parsed buffer until a caller writes to it.
-			r_value = args;
+			// wgodot-changes::begin
+			if (p_initialize_owned) {
+				VariantInternal::initialize_packed_storage(&r_value, args);
+			} else {
+				r_value = args;
+			}
+			// wgodot-changes::end
 			// wgodot-changes::end
 		} else if (id == "PackedFloat64Array") {
 			Vector<double> args;
@@ -1561,7 +1590,13 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 
 			// wgodot-changes::begin
 			// Packed arrays share the parsed buffer until a caller writes to it.
-			r_value = args;
+			// wgodot-changes::begin
+			if (p_initialize_owned) {
+				VariantInternal::initialize_packed_storage(&r_value, args);
+			} else {
+				r_value = args;
+			}
+			// wgodot-changes::end
 			// wgodot-changes::end
 		} else if (id == "PackedStringArray" || id == "PoolStringArray" || id == "StringArray") {
 			get_token(p_stream, r_token, r_line, r_err_str);
@@ -1608,7 +1643,13 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 				}
 			}
 
-			r_value = arr;
+			// wgodot-changes::begin
+			if (p_initialize_owned) {
+				VariantInternal::initialize_packed_storage(&r_value, arr);
+			} else {
+				r_value = arr;
+			}
+			// wgodot-changes::end
 		} else if (id == "PackedVector2Array" || id == "PoolVector2Array" || id == "Vector2Array") {
 			Vector<real_t> args;
 			RETURN_IF_ERROR(_parse_construct<real_t>(p_stream, args, r_line, r_err_str));
@@ -1623,7 +1664,13 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 				}
 			}
 
-			r_value = arr;
+			// wgodot-changes::begin
+			if (p_initialize_owned) {
+				VariantInternal::initialize_packed_storage(&r_value, arr);
+			} else {
+				r_value = arr;
+			}
+			// wgodot-changes::end
 		} else if (id == "PackedVector3Array" || id == "PoolVector3Array" || id == "Vector3Array") {
 			Vector<real_t> args;
 			RETURN_IF_ERROR(_parse_construct<real_t>(p_stream, args, r_line, r_err_str));
@@ -1638,7 +1685,13 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 				}
 			}
 
-			r_value = arr;
+			// wgodot-changes::begin
+			if (p_initialize_owned) {
+				VariantInternal::initialize_packed_storage(&r_value, arr);
+			} else {
+				r_value = arr;
+			}
+			// wgodot-changes::end
 		} else if (id == "PackedVector4Array" || id == "PoolVector4Array" || id == "Vector4Array") {
 			Vector<real_t> args;
 			RETURN_IF_ERROR(_parse_construct<real_t>(p_stream, args, r_line, r_err_str));
@@ -1653,7 +1706,13 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 				}
 			}
 
-			r_value = arr;
+			// wgodot-changes::begin
+			if (p_initialize_owned) {
+				VariantInternal::initialize_packed_storage(&r_value, arr);
+			} else {
+				r_value = arr;
+			}
+			// wgodot-changes::end
 		} else if (id == "PackedColorArray" || id == "PoolColorArray" || id == "ColorArray") {
 			Vector<float> args;
 			RETURN_IF_ERROR(_parse_construct<float>(p_stream, args, r_line, r_err_str));
@@ -1668,7 +1727,13 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 				}
 			}
 
-			r_value = arr;
+			// wgodot-changes::begin
+			if (p_initialize_owned) {
+				VariantInternal::initialize_packed_storage(&r_value, arr);
+			} else {
+				r_value = arr;
+			}
+			// wgodot-changes::end
 		} else {
 			r_err_str = vformat("Unexpected identifier '%s'", id);
 			return ERR_PARSE_ERROR;

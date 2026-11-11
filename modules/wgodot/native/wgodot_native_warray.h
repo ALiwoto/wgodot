@@ -4,8 +4,10 @@
 #include "wgodot_native_array_fwd.h"
 #include "wgodot_native_array_storage.h"
 #include "wgodot_native_callback_fwd.h"
+#include "wgodot_native_construction.h"
 #include "wgodot_native_container_ops.h"
 #include "wgodot_native_dictionary_fwd.h"
+#include "wgodot_native_static.h"
 
 #include "core/math/math_funcs.h"
 #include "core/templates/safe_refcount.h"
@@ -55,15 +57,27 @@ public:
 	static constexpr Variant::Type KIND = Kind;
 
 	WArray() : storage(Storage::create()) {}
+	// native-array: internal
+	explicit WArray(DeferredInitialization) : storage(nullptr) {}
+	// native-array: internal
+	static WArray shared_empty() {
+		return StaticStorage<WArray>::get();
+	}
 	WArray(std::initializer_list<T> p_values) : storage(Storage::create(p_values)) {}
 	WArray(const WArray &p_other) : storage(p_other.storage) { Storage::retain(storage); }
-	~WArray() { Storage::release(storage); }
+	~WArray() {
+		if (storage) {
+			Storage::release(storage);
+		}
+	}
 
 	WArray &operator=(const WArray &p_other) {
 		auto *previous = storage;
 		Storage::retain(p_other.storage);
 		storage = p_other.storage;
-		Storage::release(previous);
+		if (previous) {
+			Storage::release(previous);
+		}
 		return *this;
 	}
 
@@ -90,6 +104,18 @@ public:
 	void make_read_only() { Storage::make_read_only(storage); }
 	// native-array: internal
 	const Vector<T> &native() const { return elements(); }
+	// native-array: internal
+	// The resource decoder owns an unpublished destination. Commit only after
+	// successful decoding; shared defaults keep their original wrapper/buffer.
+	void initialize_native(const Vector<T> &p_values) {
+		if (!storage || !Storage::exclusive(storage)) {
+			if (storage) {
+				Storage::release(storage);
+			}
+			storage = Storage::create();
+		}
+		elements() = p_values;
+	}
 	// native-array: internal
 	// Payloads already own a writable COW vector. Preserve that ownership rather
 	// than generating or executing one assignment for every stored element.

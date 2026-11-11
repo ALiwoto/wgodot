@@ -16,6 +16,7 @@ struct PackedStorage {
 	static void retain(Data *p_data) { p_data->reference(); }
 	static void release(Data *p_data) { Variant::PackedArrayRefBase::destroy(p_data); }
 	static Vector<T> &elements(Data *p_data) { return p_data->array; }
+	static bool exclusive(const Data *p_data) { return p_data->refcount.get() == 1; }
 	static bool read_only(const Data *) { return false; }
 	static void make_read_only(Data *) {} // GDScript packed arrays have no read-only flag.
 
@@ -67,6 +68,7 @@ struct ArrayStorage<T, Variant::ARRAY> {
 		}
 	}
 	static Vector<T> &elements(Data *p_data) { return p_data->values; }
+	static bool exclusive(const Data *p_data) { return p_data->references.get() == 1; }
 	static bool read_only(const Data *p_data) { return p_data->read_only; }
 	static void make_read_only(Data *p_data) { p_data->read_only = true; }
 };

@@ -1667,11 +1667,19 @@ GDScriptParser::ConstantNode *GDScriptParser::parse_constant(bool p_is_static) {
 }
 
 GDScriptParser::ParameterNode *GDScriptParser::parse_parameter() {
+	// wgodot-changes::begin
+	ParameterNode *parameter = alloc_node<ParameterNode>();
+	while (match(GDScriptTokenizer::Token::ANNOTATION)) {
+		AnnotationNode *annotation = parse_annotation(AnnotationInfo::PARAMETER);
+		if (annotation) {
+			parameter->annotations.push_back(annotation);
+		}
+	}
+	// wgodot-changes::end
 	if (!consume(GDScriptTokenizer::Token::IDENTIFIER, R"(Expected parameter name.)")) {
 		return nullptr;
 	}
 
-	ParameterNode *parameter = alloc_node<ParameterNode>();
 	parameter->identifier = parse_identifier();
 
 	if (match(GDScriptTokenizer::Token::COLON)) {
@@ -2955,7 +2963,7 @@ GDScriptParser::ExpressionNode *GDScriptParser::parse_precedence(Precedence p_pr
 		}
 		// Also switch multiline mode on here for infix operators.
 		switch (current.type) {
-			// case GDScriptTokenizer::Token::BRACE_OPEN: // Not an infix operator.
+			case GDScriptTokenizer::Token::BRACE_OPEN: // wgodot-changes:: C-phase field initializers.
 			case GDScriptTokenizer::Token::PARENTHESIS_OPEN:
 			case GDScriptTokenizer::Token::BRACKET_OPEN:
 				push_multiline(true);
@@ -4014,6 +4022,14 @@ GDScriptParser::ExpressionNode *GDScriptParser::parse_invalid_token(ExpressionNo
 
 GDScriptParser::TypeNode *GDScriptParser::parse_type(bool p_allow_void) {
 	TypeNode *type = alloc_node<TypeNode>();
+	// wgodot-changes::begin
+	while (match(GDScriptTokenizer::Token::ANNOTATION)) {
+		AnnotationNode *annotation = parse_annotation(AnnotationInfo::TYPE_USAGE);
+		if (annotation) {
+			annotation->apply(this, type, current_class);
+		}
+	}
+	// wgodot-changes::end
 	make_completion_context(p_allow_void ? COMPLETION_TYPE_NAME_OR_VOID : COMPLETION_TYPE_NAME, type);
 	if (!match(GDScriptTokenizer::Token::IDENTIFIER)) {
 		if (match(GDScriptTokenizer::Token::TK_VOID)) {
@@ -4498,7 +4514,7 @@ GDScriptParser::ParseRule *GDScriptParser::get_rule(GDScriptTokenizer::Token::Ty
 		// Punctuation
 		{ &GDScriptParser::parse_array,                  	&GDScriptParser::parse_subscript,            	PREC_SUBSCRIPT }, // BRACKET_OPEN,
 		{ nullptr,                                          nullptr,                                        PREC_NONE }, // BRACKET_CLOSE,
-		{ &GDScriptParser::parse_dictionary,             	nullptr,                                        PREC_NONE }, // BRACE_OPEN,
+		{ &GDScriptParser::parse_dictionary,             	&GDScriptParser::wgodot_parse_field_initializers, PREC_CALL }, // BRACE_OPEN, wgodot-changes
 		{ nullptr,                                          nullptr,                                        PREC_NONE }, // BRACE_CLOSE,
 		{ &GDScriptParser::parse_grouping,               	&GDScriptParser::parse_call,                 	PREC_CALL }, // PARENTHESIS_OPEN,
 		{ nullptr,                                          nullptr,                                        PREC_NONE }, // PARENTHESIS_CLOSE,

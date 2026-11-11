@@ -37,11 +37,15 @@ bool GDScriptAnalyzer::wgodot_reduce_native_interface_member(const DataType &p_b
 		if (contract->factory_methods.has(name)) {
 			type.method_info.return_val = wgodot_native_factory_type(p_base, p_identifier).to_property_info("");
 		}
+		if (method) {
+			wgodot_validate_native_callable(p_base, type.method_info, p_identifier);
+		}
 		p_identifier->source = Parser::IdentifierNode::INHERITED_VARIABLE;
 		return true;
 	}
 	if (const auto *property = contract->properties.getptr(name)) {
 		type = type_from_property(property->info, false, p_identifier);
+		wgodot_qualify_native_resources(type);
 		type.is_read_only = property->setter.is_empty();
 		p_identifier->source = Parser::IdentifierNode::INHERITED_VARIABLE;
 		return true;
@@ -115,6 +119,7 @@ void GDScriptAnalyzer::wgodot_validate_native_interfaces(Parser::ClassNode *p_cl
 			Parser::FunctionNode *function = actual.function;
 			const MethodInfo &required = entry.value;
 			bool valid = function->is_static == bool(required.flags & METHOD_FLAG_STATIC) && !function->wgodot_private && !function->wgodot_protected && !function->is_coroutine;
+			valid = valid && (!(required.flags & METHOD_FLAG_CONST) || function->wgodot_readonly);
 			const int required_min = required.arguments.size() - required.default_arguments.size();
 			const int actual_min = function->parameters.size() - function->default_arg_values.size();
 			valid = valid && actual_min <= required_min && int(function->parameters.size()) >= required.arguments.size();
@@ -125,7 +130,8 @@ void GDScriptAnalyzer::wgodot_validate_native_interfaces(Parser::ClassNode *p_cl
 				}
 				valid = valid && wgodot_interface_type_accepts(function->parameters[index++]->type_constraint, type_from_property(argument, true, function));
 			}
-			const DataType result = contract->factory_methods.has(entry.key) ? type_from_metatype(p_class->self_type) : type_from_property(required.return_val, false, function);
+			DataType result = contract->factory_methods.has(entry.key) ? type_from_metatype(p_class->self_type) : type_from_property(required.return_val, false, function);
+			wgodot_qualify_native_resources(result);
 			valid = valid && wgodot_interface_type_accepts(result, function->return_type_constraint);
 			if (!valid) {
 				mismatch(entry.key);
@@ -141,7 +147,8 @@ void GDScriptAnalyzer::wgodot_validate_native_interfaces(Parser::ClassNode *p_cl
 				continue;
 			}
 			Parser::VariableNode *variable = actual.variable;
-			const DataType required = type_from_property(entry.value.info, false, variable);
+			DataType required = type_from_property(entry.value.info, false, variable);
+			wgodot_qualify_native_resources(required);
 			bool valid = !variable->is_static && !variable->wgodot_private && !variable->wgodot_protected && wgodot_interface_type_accepts(required, variable->type_constraint);
 			if (!entry.value.setter.is_empty()) {
 				valid = valid && !variable->wgodot_readonly && wgodot_interface_type_accepts(variable->type_constraint, required);

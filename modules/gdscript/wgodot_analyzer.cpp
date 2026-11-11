@@ -1431,6 +1431,12 @@ bool GDScriptAnalyzer::wgodot_interface_methods_conflict(const GDScriptParser::F
 bool GDScriptAnalyzer::wgodot_interface_method_signature_matches(const GDScriptParser::FunctionNode *p_interface_function, const GDScriptParser::FunctionNode *p_implementation_function, String &r_error) {
 	ERR_FAIL_NULL_V(p_interface_function, false);
 	ERR_FAIL_NULL_V(p_implementation_function, false);
+	if ((p_interface_function->wgodot_readonly && !p_implementation_function->wgodot_readonly) ||
+			p_interface_function->wgodot_immutable_clone != p_implementation_function->wgodot_immutable_clone ||
+			!wgodot_immutable_types_match(p_interface_function->return_type_constraint, p_implementation_function->return_type_constraint)) {
+		r_error = "implementation changes the readonly or immutable result contract";
+		return false;
+	}
 
 	if (p_implementation_function->is_static) {
 		r_error = "implementation is static";
@@ -1457,7 +1463,7 @@ bool GDScriptAnalyzer::wgodot_interface_method_signature_matches(const GDScriptP
 		}
 		const GDScriptParser::DataType interface_parameter_type = i < p_interface_function->parameters.size() ? p_interface_function->parameters[i]->type_constraint : GDScriptParser::DataType::get_variant_type();
 		const GDScriptParser::DataType &implementation_parameter_type = p_implementation_function->parameters[i]->type_constraint;
-		if (!wgodot_interface_type_accepts(implementation_parameter_type, interface_parameter_type)) {
+		if (!wgodot_immutable_types_match(interface_parameter_type, implementation_parameter_type) || !wgodot_interface_type_accepts(implementation_parameter_type, interface_parameter_type)) {
 			r_error = vformat("parameter %d expects \"%s\" in the interface, but implementation accepts \"%s\"",
 					i + 1, interface_parameter_type.to_string(), implementation_parameter_type.to_string());
 			return false;

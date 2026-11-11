@@ -23,7 +23,8 @@ void WGodotCppEmitter::emit_virtuals(const WGodotCppProject::Class &p_class, Str
 			r_definitions += "\tgame_initialized = true;\n";
 		}
 		if (lifecycle.fields) {
-			r_definitions += "\tinitialize_fields();\n";
+			class_call_headers.insert("modules/wgodot/native/wgodot_native_construction.h");
+			r_definitions += "\tinitialize_fields(WGodotNative::ConstructionFields::for_object(this));\n";
 		}
 		if (lifecycle.constructor) {
 			r_definitions += "\tif (construction_mode == WGodotNative::Construction::SCENE) { initialize_default(); }\n";
