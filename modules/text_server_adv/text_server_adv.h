@@ -38,6 +38,9 @@
 #include "script_iterator.h"
 
 #include "core/extension/ext_wrappers.gen.h"
+// wgodot-changes::begin
+#include "core/os/mutex.h"
+// wgodot-changes::end
 #include "core/templates/hash_map.h"
 #include "core/templates/rid_owner.h"
 #include "core/templates/safe_refcount.h"
@@ -131,6 +134,12 @@ class TextServerAdvanced : public TextServerExtension {
 	mutable USet *allowed = nullptr;
 	mutable USpoofChecker *sc_spoof = nullptr;
 	mutable USpoofChecker *sc_conf = nullptr;
+	// wgodot-changes::begin
+	mutable THREADING_NAMESPACE::once_flag spoof_init_once;
+	mutable THREADING_NAMESPACE::once_flag confusable_init_once;
+	mutable UErrorCode spoof_init_status = U_ZERO_ERROR;
+	mutable UErrorCode confusable_init_status = U_ZERO_ERROR;
+	// wgodot-changes::end
 
 	mutable HashMap<String, UBreakIterator *> line_break_iterators_per_language;
 

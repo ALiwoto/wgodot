@@ -3252,13 +3252,15 @@ void GDScriptCompiler::make_scripts(GDScript *p_script, const GDScriptParser::Cl
 		if (old_subclasses.has(name)) {
 			subclass = old_subclasses[name];
 		// wgodot-changes::begin
-		} else if (p_use_orphan_subclasses) {
-		// wgodot-changes::end
+		} else if (p_use_orphan_subclasses && !p_script->wgodot_analysis_only) {
+			// wgodot-changes::end
 			subclass = GDScriptLanguage::get_singleton()->get_orphan_subclass(inner_class->fqcn);
 		}
 
 		if (subclass.is_null()) {
-			subclass.instantiate();
+			// wgodot-changes::begin
+			subclass.instantiate(p_script->wgodot_analysis_only);
+			// wgodot-changes::end
 		}
 
 		subclass->_owner = p_script;

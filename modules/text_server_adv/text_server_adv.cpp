@@ -7924,10 +7924,14 @@ int64_t TextServerAdvanced::_is_confusable(const String &p_string, const PackedS
 	Vector<UChar *> skeletons;
 	skeletons.resize(p_dict.size());
 
-	if (sc_conf == nullptr) {
-		sc_conf = uspoof_open(&status);
-		uspoof_setChecks(sc_conf, USPOOF_CONFUSABLE, &status);
-	}
+	// wgodot-changes::begin
+	// ICU checks are thread-safe after configuration; only initialization is serialized.
+	THREADING_NAMESPACE::call_once(confusable_init_once, [this]() {
+		sc_conf = uspoof_open(&confusable_init_status);
+		uspoof_setChecks(sc_conf, USPOOF_CONFUSABLE, &confusable_init_status);
+	});
+	ERR_FAIL_COND_V_MSG(U_FAILURE(confusable_init_status), -1, u_errorName(confusable_init_status));
+	// wgodot-changes::end
 	for (int i = 0; i < p_dict.size(); i++) {
 		Char16String word = p_dict[i].utf16();
 		int32_t len = uspoof_getSkeleton(sc_conf, 0, word.get_data(), -1, nullptr, 0, &status);
@@ -7966,16 +7970,26 @@ bool TextServerAdvanced::_spoof_check(const String &p_string) const {
 	UErrorCode status = U_ZERO_ERROR;
 	Char16String utf16 = p_string.utf16();
 
-	if (allowed == nullptr) {
+	// wgodot-changes::begin
+	THREADING_NAMESPACE::call_once(spoof_init_once, [this]() {
+		const USet *recommended = uspoof_getRecommendedSet(&spoof_init_status);
+		const USet *inclusion = uspoof_getInclusionSet(&spoof_init_status);
+		if (U_FAILURE(spoof_init_status)) {
+			return;
+		}
 		allowed = uset_openEmpty();
-		uset_addAll(allowed, uspoof_getRecommendedSet(&status));
-		uset_addAll(allowed, uspoof_getInclusionSet(&status));
-	}
-	if (sc_spoof == nullptr) {
-		sc_spoof = uspoof_open(&status);
-		uspoof_setAllowedChars(sc_spoof, allowed, &status);
+		if (allowed == nullptr) {
+			spoof_init_status = U_MEMORY_ALLOCATION_ERROR;
+			return;
+		}
+		uset_addAll(allowed, recommended);
+		uset_addAll(allowed, inclusion);
+		sc_spoof = uspoof_open(&spoof_init_status);
+		uspoof_setAllowedChars(sc_spoof, allowed, &spoof_init_status);
 		uspoof_setRestrictionLevel(sc_spoof, USPOOF_MODERATELY_RESTRICTIVE);
-	}
+	});
+	ERR_FAIL_COND_V_MSG(U_FAILURE(spoof_init_status), false, u_errorName(spoof_init_status));
+	// wgodot-changes::end
 
 	int32_t bitmask = uspoof_check(sc_spoof, utf16.get_data(), -1, nullptr, &status);
 	ERR_FAIL_COND_V_MSG(U_FAILURE(status), false, u_errorName(status));

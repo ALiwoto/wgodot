@@ -8,7 +8,8 @@ param(
 	[switch]$Optimize,
 	[switch]$KeepGoing,
 	[switch]$DryRun,
-	[switch]$Symbols,
+	[switch]$LLVM,
+	[switch]$Symbols = $true,
 	[ValidateRange(0, 2147483647)]
 	[int]$Jobs = 0,
 	[string]$LLVMDirectory = $env:LLVM_DIR,
@@ -108,7 +109,7 @@ try {
 
 	$sconsArgs = @(
 		"platform=windows",
-		"use_llvm=yes",
+		"use_llvm=$($LLVM.IsPresent.ToString().ToLowerInvariant())",
 		"arch=x86_64",
 		"target=$target",
 		"debug_symbols=$debugSymbols",
@@ -178,28 +179,39 @@ try {
 	}
 	# SCons initializes the target's SDK/CRT environment. Running DevShell here
 	# repeats that setup before SCons configures the same toolchain again.
-	if (!$LLVMDirectory) {
-		$clangCommand = Get-Command clang-cl -ErrorAction SilentlyContinue
-		$candidates = @(
-			"$env:ProgramFiles/LLVM"
-			if ($clangCommand) { Split-Path (Split-Path $clangCommand.Source -Parent) -Parent }
-			"$vs/VC/Tools/Llvm/x64"
-		)
-		$LLVMDirectory = $candidates | Where-Object {
-			Test-Path -LiteralPath "$_/bin/clang-cl.exe" -PathType Leaf
-		} | Select-Object -First 1
+	if ($LLVM) {
+		if (!$LLVMDirectory) {
+			$clangCommand = Get-Command clang-cl -ErrorAction SilentlyContinue
+			$candidates = @(
+				"$env:ProgramFiles/LLVM"
+				if ($clangCommand) { Split-Path (Split-Path $clangCommand.Source -Parent) -Parent }
+				"$vs/VC/Tools/Llvm/x64"
+			)
+			$LLVMDirectory = $candidates | Where-Object {
+				Test-Path -LiteralPath "$_/bin/clang-cl.exe" -PathType Leaf
+			} | Select-Object -First 1
+		}
+		if (!$LLVMDirectory) {
+			throw 'LLVM was not found in Program Files, on PATH, or in Visual Studio. Install LLVM or supply -LLVMDirectory for a different location.'
+		}
+		$LLVMDirectory = (Resolve-Path -LiteralPath $LLVMDirectory).Path
+		foreach ($tool in @('clang-cl', 'lld-link', 'llvm-lib')) {
+			if (!(Test-Path -LiteralPath "$LLVMDirectory/bin/$tool.exe" -PathType Leaf)) {
+				throw "LLVM tool is missing: $LLVMDirectory/bin/$tool.exe"
+			}
+		}
+		$env:PATH = "$LLVMDirectory/bin;$env:PATH"
+		Write-Host "Using LLVM compiler and linker: $LLVMDirectory"
+	} else {
+		Write-Host "Using MSVC compiler and linker: $vs"
 	}
-	if (!$LLVMDirectory) {
-		throw 'LLVM was not found in Program Files, on PATH, or in Visual Studio. Install LLVM or supply -LLVMDirectory for a different location.'
-	}
-	$LLVMDirectory = (Resolve-Path -LiteralPath $LLVMDirectory).Path
-	foreach ($tool in @('clang-cl', 'lld-link', 'llvm-lib', 'llvm-readobj')) {
-		if (!(Test-Path -LiteralPath "$LLVMDirectory/bin/$tool.exe" -PathType Leaf)) {
-			throw "LLVM tool is missing: $LLVMDirectory/bin/$tool.exe"
+	if ($withPostgreSQL) {
+		$msvcToolsVersion = Get-Content -LiteralPath "$vs/VC/Auxiliary/Build/Microsoft.VCToolsVersion.default.txt"
+		$dumpbinPath = "$vs/VC/Tools/MSVC/$msvcToolsVersion/bin/Hostx64/x64/dumpbin.exe"
+		if (!(Test-Path -LiteralPath $dumpbinPath -PathType Leaf)) {
+			throw "MSVC dependency inspector is missing: $dumpbinPath"
 		}
 	}
-	$env:PATH = "$LLVMDirectory/bin;$env:PATH"
-	Write-Host "Using LLVM compiler and linker: $LLVMDirectory"
 
 	# Run SCons in the selected interpreter. A pip-generated scons.exe can
 	# still point at an uninstalled Python after an interpreter upgrade.
@@ -219,7 +231,9 @@ try {
 			throw 'Build diagnostics require our SCons fork. Select its interpreter with -PythonExecutable.'
 		}
 		$env:SCONS_DIAGNOSTICS = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($DiagnosticsDirectory)
-		$sconsArgs += "llvm_diagnostics=$env:SCONS_DIAGNOSTICS/llvm"
+		if ($LLVM) {
+			$sconsArgs += "llvm_diagnostics=$env:SCONS_DIAGNOSTICS/llvm"
+		}
 		if (!$LogPath) {
 			$LogPath = Join-Path $env:SCONS_DIAGNOSTICS "build-$target-$(Get-Date -Format 'yyyyMMdd-HHmmss')-$PID.log"
 		}
@@ -270,12 +284,12 @@ try {
 				continue
 			}
 			$libraryPath = Join-Path $PostgreSQLPath "bin/$libraryName"
-			$dependencies = & "$LLVMDirectory/bin/llvm-readobj.exe" --coff-imports $libraryPath
+			$dependencies = & $dumpbinPath /NOLOGO /DEPENDENTS $libraryPath
 			if ($LASTEXITCODE -ne 0) {
 				throw "Cannot inspect PostgreSQL runtime dependencies: $libraryPath"
 			}
 			foreach ($line in $dependencies) {
-				if ($line -match '^\s+Name: ([\w.-]+\.dll)\s*$') {
+				if ($line -match '^\s+([\w.-]+\.dll)\s*$') {
 					$dependency = $matches[1]
 					if (Test-Path -LiteralPath (Join-Path $PostgreSQLPath "bin/$dependency") -PathType Leaf) {
 						$pendingLibraries += $dependency

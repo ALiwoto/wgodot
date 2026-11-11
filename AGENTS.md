@@ -34,3 +34,5 @@ in case the entire file is for us, add this at the beginning of the file:
   - don't hammer github's infrastructure with thousands of repeated caches
 
 8. DO NOT hardcode names into cpp emitter, that's gonna get it bloated, and then tomorrow if godot changes their methods names we will have to constantly rework our cpp emitter. if you CANNOT do something WITHOUT hardcoding the name in the cpp emitter, then stop it and tell me, we will find some solution.
+
+9. when writing code that touches multi-threading (or other code-paths are touching this code-path through multi-threading), be extremely extremely cautious about thread-safety, try to find possible race conditions in the code you just wrote and fix them properly, in a way that also doesn't hurt performance (e.g. we have lots of parallel works for speeding up things such as resource loading etc).

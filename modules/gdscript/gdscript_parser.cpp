@@ -68,9 +68,10 @@ Variant::Type GDScriptParser::get_builtin_type(const StringName &p_type) {
 }
 
 #ifdef DEBUG_ENABLED
-bool GDScriptParser::is_project_ignoring_warnings = false;
-GDScriptWarning::WarnLevel GDScriptParser::warning_levels[GDScriptWarning::WARNING_MAX];
-LocalVector<GDScriptParser::WarningDirectoryRule> GDScriptParser::warning_directory_rules;
+// wgodot-changes::begin
+Mutex GDScriptParser::warning_settings_mutex;
+GDScriptParser::WarningSettings GDScriptParser::project_warning_settings;
+// wgodot-changes::end
 #endif // DEBUG_ENABLED
 
 #ifdef TOOLS_ENABLED
@@ -101,11 +102,17 @@ bool GDScriptParser::annotation_exists(const String &p_annotation_name) const {
 
 #ifdef DEBUG_ENABLED
 void GDScriptParser::update_project_settings() {
-	is_project_ignoring_warnings = !GLOBAL_GET("debug/gdscript/warnings/enable").booleanize();
+	// wgodot-changes::begin
+	// Build the replacement before publishing it to concurrent parsers.
+	WarningSettings settings;
+	settings.is_project_ignoring_warnings = !GLOBAL_GET("debug/gdscript/warnings/enable").booleanize();
+	// wgodot-changes::end
 
 	for (int i = 0; i < GDScriptWarning::WARNING_MAX; i++) {
 		const String setting_path = GDScriptWarning::get_setting_path_from_code((GDScriptWarning::Code)i);
-		warning_levels[i] = (GDScriptWarning::WarnLevel)(int)GLOBAL_GET(setting_path);
+		// wgodot-changes::begin
+		settings.warning_levels[i] = (GDScriptWarning::WarnLevel)(int)GLOBAL_GET(setting_path);
+		// wgodot-changes::end
 	}
 
 #ifndef DISABLE_DEPRECATED
@@ -120,8 +127,6 @@ void GDScriptParser::update_project_settings() {
 	}
 #endif // DISABLE_DEPRECATED
 
-	warning_directory_rules.clear();
-
 	const Dictionary rules = GLOBAL_GET("debug/gdscript/warnings/directory_rules");
 	for (const KeyValue<Variant, Variant> &kv : rules) {
 		String dir = kv.key.operator String().simplify_path();
@@ -133,7 +138,9 @@ void GDScriptParser::update_project_settings() {
 		const int decision = kv.value;
 		ERR_CONTINUE(decision < 0 || decision >= WarningDirectoryRule::DECISION_MAX);
 
-		warning_directory_rules.push_back({ dir, (WarningDirectoryRule::Decision)decision });
+		// wgodot-changes::begin
+		settings.warning_directory_rules.push_back({ dir, (WarningDirectoryRule::Decision)decision });
+		// wgodot-changes::end
 	}
 
 	struct RuleSort {
@@ -142,7 +149,11 @@ void GDScriptParser::update_project_settings() {
 		}
 	};
 
-	warning_directory_rules.sort_custom<RuleSort>();
+	// wgodot-changes::begin
+	settings.warning_directory_rules.sort_custom<RuleSort>();
+	MutexLock lock(warning_settings_mutex);
+	project_warning_settings = settings;
+	// wgodot-changes::end
 }
 #endif // DEBUG_ENABLED
 
@@ -298,11 +309,15 @@ void GDScriptParser::push_warning(const Node *p_source, GDScriptWarning::Code p_
 void GDScriptParser::push_warning(int p_start_line, int p_start_column, int p_end_line, int p_end_column, GDScriptWarning::Code p_code, const Vector<String> &p_symbols) {
 	ERR_FAIL_INDEX(p_code, GDScriptWarning::WARNING_MAX);
 
-	if (is_project_ignoring_warnings || is_script_ignoring_warnings) {
+	// wgodot-changes::begin
+	if (warning_settings.is_project_ignoring_warnings || is_script_ignoring_warnings) {
+		// wgodot-changes::end
 		return;
 	}
 
-	const GDScriptWarning::WarnLevel warn_level = warning_levels[p_code];
+	// wgodot-changes::begin
+	const GDScriptWarning::WarnLevel warn_level = warning_settings.warning_levels[p_code];
+	// wgodot-changes::end
 	if (warn_level == GDScriptWarning::IGNORE) {
 		return;
 	}
@@ -359,8 +374,18 @@ void GDScriptParser::apply_pending_warnings() {
 }
 
 void GDScriptParser::evaluate_warning_directory_rules_for_script_path() {
+	// wgodot-changes::begin
+	{
+		// One snapshot per parse, retained through analysis and linting. Vector shares
+		// immutable rule storage, so capture does not copy every directory string.
+		MutexLock lock(warning_settings_mutex);
+		warning_settings = project_warning_settings;
+	}
+	// wgodot-changes::end
 	is_script_ignoring_warnings = false;
-	for (const WarningDirectoryRule &rule : warning_directory_rules) {
+	// wgodot-changes::begin
+	for (const WarningDirectoryRule &rule : std::as_const(warning_settings.warning_directory_rules)) {
+		// wgodot-changes::end
 		if (script_path.begins_with(rule.directory_path)) {
 			switch (rule.decision) {
 				case WarningDirectoryRule::DECISION_EXCLUDE:

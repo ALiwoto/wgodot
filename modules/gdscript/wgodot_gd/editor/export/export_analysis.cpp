@@ -151,7 +151,8 @@ Ref<GDScript> ExportAnalysis::get_shallow_script(const String &p_path, Error &r_
 		return Ref<GDScript>();
 	}
 	Ref<GDScript> script;
-	script.instantiate();
+	// Keep this worker's snapshot out of the editor's live-script registry.
+	script.instantiate(true);
 	script->set_path_cache(path);
 	script->set_source_code(project.get_source(path)->get_text());
 	GDScriptCompiler::make_scripts(script.ptr(), parser->get_parser()->get_tree(), false, false);

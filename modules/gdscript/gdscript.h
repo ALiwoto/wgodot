@@ -191,6 +191,10 @@ private:
 	String fully_qualified_name;
 	String simplified_icon_path;
 	SelfList<GDScript> script_list;
+	// wgodot-changes::begin
+	// Analysis snapshots are private to their worker, including their inner classes.
+	bool wgodot_analysis_only = false;
+	// wgodot-changes::end
 
 	SelfList<GDScriptFunctionState>::List pending_func_states;
 
@@ -360,7 +364,9 @@ public:
 	virtual bool is_placeholder_fallback_enabled() const override { return placeholder_fallback_enabled; }
 #endif
 
-	GDScript();
+	// wgodot-changes::begin
+	explicit GDScript(bool p_analysis_only = false);
+	// wgodot-changes::end
 	~GDScript();
 };
 

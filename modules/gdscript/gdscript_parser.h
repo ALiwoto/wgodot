@@ -44,6 +44,9 @@
 #include "core/io/resource.h"
 #include "core/object/ref_counted.h"
 #include "core/object/script_language.h"
+// wgodot-changes::begin
+#include "core/os/mutex.h"
+// wgodot-changes::end
 #include "core/string/string_name.h"
 #include "core/string/ustring.h"
 #include "core/templates/hash_map.h"
@@ -1497,9 +1500,16 @@ private:
 		Vector<String> symbols;
 	};
 
-	static bool is_project_ignoring_warnings;
-	static GDScriptWarning::WarnLevel warning_levels[GDScriptWarning::WARNING_MAX];
-	static LocalVector<WarningDirectoryRule> warning_directory_rules;
+	// wgodot-changes::begin
+	struct WarningSettings {
+		bool is_project_ignoring_warnings = false;
+		GDScriptWarning::WarnLevel warning_levels[GDScriptWarning::WARNING_MAX] = {};
+		Vector<WarningDirectoryRule> warning_directory_rules;
+	};
+	static Mutex warning_settings_mutex;
+	static WarningSettings project_warning_settings;
+	WarningSettings warning_settings;
+	// wgodot-changes::end
 
 	List<GDScriptWarning> warnings;
 	List<PendingWarning> pending_warnings;

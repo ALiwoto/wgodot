@@ -7,6 +7,7 @@
 #include "core/io/dir_access.h"
 #include "core/io/file_access.h"
 #include "core/object/callable_mp.h"
+#include "core/os/os.h"
 #include "core/os/time.h"
 #include "editor/docks/editor_dock.h"
 #include "editor/editor_interface.h"
@@ -69,7 +70,7 @@ CinematicsEditorPanel::CinematicsEditorPanel() {
 	viewport->set_size_2d_override_stretch(true);
 	viewport->set_use_own_world_3d(true);
 	viewport->set_scaling_3d_scale(1.0);
-	viewport->set_use_taa(true);
+	viewport->set_use_taa(OS::get_singleton()->get_current_rendering_method() == "forward_plus");
 	viewport->set_disable_input(true);
 	viewport->set_update_mode(SubViewport::UPDATE_DISABLED);
 	add_child(viewport);

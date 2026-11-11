@@ -1420,9 +1420,11 @@ void GDScript::get_script_signal_list(List<MethodInfo> *r_signals) const {
 	_get_script_signal_list(r_signals, true);
 }
 
-GDScript::GDScript() :
-		script_list(this) {
-	{
+// wgodot-changes::begin
+GDScript::GDScript(bool p_analysis_only) :
+		script_list(this), wgodot_analysis_only(p_analysis_only) {
+	if (!wgodot_analysis_only) {
+		// wgodot-changes::end
 		MutexLock lock(GDScriptLanguage::get_singleton()->mutex);
 
 		GDScriptLanguage::get_singleton()->script_list.add(&script_list);
@@ -1440,6 +1442,11 @@ void GDScript::_save_orphaned_subclasses() {
 	// collect subclasses ObjectID and name
 	for (KeyValue<StringName, Ref<GDScript>> &E : subclasses) {
 		E.value->_owner = nullptr; //bye, you are no longer owned cause I died
+		// wgodot-changes::begin
+		if (wgodot_analysis_only) {
+			continue; // Never publish analysis classes to the shared orphan cache.
+		}
+		// wgodot-changes::end
 		ClassRefWithName subclass;
 		subclass.id = E.value->get_instance_id();
 		subclass.fully_qualified_name = E.value->fully_qualified_name;
@@ -1608,7 +1615,9 @@ void GDScript::clear() {
 
 	cancel_pending_functions(false);
 
-	{
+	// wgodot-changes::begin
+	if (!wgodot_analysis_only) {
+		// wgodot-changes::end
 		MutexLock lock(GDScriptLanguage::get_singleton()->mutex);
 
 		script_list.remove_from_list();
