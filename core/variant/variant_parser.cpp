@@ -31,6 +31,7 @@
 #include "variant_parser.h"
 // wgodot-changes::begin
 #include "core/io/wgodot_global_resources.h"
+#include "core/io/wgodot_resource_value.h"
 // wgodot-changes::end
 
 // wgodot-changes::begin
@@ -778,6 +779,22 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 		// wgodot-changes::begin
 		if (id == "GlobalResource") {
 			return WGlobalResources::parse(p_stream, r_line, r_err_str, r_value, p_res_parser && p_res_parser->syntax_only);
+		}
+		if (id == "repeat" && p_res_parser && p_res_parser->syntax_only) {
+			// Class/dependency scans consume the expression without allocating the
+			// expanded array. Loading and validation use the destination declaration.
+			RETURN_IF_ERROR(get_token(p_stream, r_token, r_line, r_err_str));
+			if (r_token.type != TK_PARENTHESIS_OPEN) {
+				r_err_str = "Expected '(' after repeat.";
+				return ERR_PARSE_ERROR;
+			}
+			RETURN_IF_ERROR(get_token(p_stream, r_token, r_line, r_err_str));
+			Variant item;
+			RETURN_IF_ERROR(parse_value(r_token, item, p_stream, r_line, r_err_str, p_res_parser));
+			int count;
+			RETURN_IF_ERROR(WGodotResourceValueParser::parse_repeat_count(p_stream, count, r_line, r_err_str));
+			r_value = Variant();
+			return OK;
 		}
 		// wgodot-changes::end
 		if (id == "true") {
@@ -1972,6 +1989,7 @@ Error VariantParser::parse_tag_assign_eof(Stream *p_stream, int &r_line, String 
 					if (p_assignment_parser->handled) {
 						return OK;
 					}
+					return p_assignment_parser->parse_value(what, token, r_value, p_stream, r_line, r_err_str, p_res_parser);
 				}
 				// wgodot-changes::end
 				Error err = parse_value(token, r_value, p_stream, r_line, r_err_str, p_res_parser);

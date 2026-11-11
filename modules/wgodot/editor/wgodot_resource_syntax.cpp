@@ -1,6 +1,65 @@
 // wgodot-changes::file
 #include "wgodot_resource_syntax.h"
 
+#include "wgodot_export_target.h"
+#include "wgodot_resource_check.h"
+#include "wgodot_resource_validation.h"
+
+#include "core/io/dir_access.h"
+#include "core/os/os.h"
+
+namespace {
+struct ProjectResources {
+	const WGodotExportTarget &target;
+	Vector<String> paths;
+	Error collect(const String &p_path) {
+		Error error = OK;
+		Ref<DirAccess> directory = DirAccess::open(p_path, &error);
+		if (directory.is_null()) {
+			return error;
+		}
+		if (directory->file_exists(".gdignore")) {
+			return OK;
+		}
+		RETURN_IF_ERROR(directory->list_dir_begin());
+		for (String name = directory->get_next(); !name.is_empty(); name = directory->get_next()) {
+			if (name.begins_with(".")) {
+				continue;
+			}
+			const String path = p_path.path_join(name);
+			if (directory->current_is_dir()) {
+				ERR_FAIL_COND_V_MSG(directory->is_link(name), ERR_UNAVAILABLE, "Resource checking does not follow directory symlinks: " + path);
+				RETURN_IF_ERROR(collect(path));
+			} else if (target.includes(path) && (name.get_extension() == "tres" || name.get_extension() == "tscn")) {
+				paths.push_back(path);
+			}
+		}
+		return OK;
+	}
+};
+} //namespace
+
+Error WGodotResourceSyntax::check_project(const WGodotResourceTypes &p_types, const WGodotExportTarget &p_target, Vector<String> &r_diagnostics) {
+	ProjectResources check{ p_target };
+	RETURN_IF_ERROR(check.collect("res://"));
+	Ref<WGodotResourceCheck> validation;
+	validation.instantiate();
+	validation->start(check.paths, p_types);
+	Dictionary result = validation->poll();
+	while (result.is_empty()) {
+		OS::get_singleton()->delay_usec(1000);
+		result = validation->poll();
+	}
+	const Array diagnostics = result["diagnostics"];
+	for (const Dictionary &diagnostic : diagnostics) {
+		if (!bool(diagnostic["warning"])) {
+			r_diagnostics.push_back(String(diagnostic["path"]) + ":" + itos(diagnostic["line"]) + ": " + String(diagnostic["message"]));
+		}
+	}
+	print_line(vformat("Resource types: %d parsed, %d cached in %d ms", result["resource_parsed_count"], result["resource_cached_count"], result["resource_elapsed_msec"]));
+	return int(result["resource_error_count"]) == 0 ? OK : ERR_PARSE_ERROR;
+}
+
 #include "core/io/wgodot_named_types.h"
 #include "core/variant/variant_parser.h"
 #include "scene/resources/resource_format_text.h"
@@ -65,8 +124,9 @@ Error require_fields(const VariantParser::Tag &p_tag, std::initializer_list<cons
 
 } // namespace
 
-WGodotResourceSyntax::Result WGodotResourceSyntax::check(const Ref<FileAccess> &p_file) {
+WGodotResourceSyntax::Result WGodotResourceSyntax::check(const Ref<FileAccess> &p_file, const WGodotResourceTypes *p_types, HashSet<String> *p_scene_stack, bool p_collect_properties) {
 	Result result;
+	WGodotResourceValidation validation(p_file->get_path(), p_types, result, p_scene_stack, p_collect_properties);
 	VariantParser::StreamFile stream;
 	stream.f = p_file;
 	VariantParser::ResourceParser resources;
@@ -74,6 +134,7 @@ WGodotResourceSyntax::Result WGodotResourceSyntax::check(const Ref<FileAccess> &
 	resources.sub_func = parse_reference;
 	resources.skip_class_loading = true;
 	resources.syntax_only = true;
+	validation.configure(resources);
 	VariantParser::Tag tag;
 	result.error = VariantParser::parse_tag(&stream, result.line, result.message, tag, &resources);
 	if (result.error != OK) {
@@ -84,6 +145,17 @@ WGodotResourceSyntax::Result WGodotResourceSyntax::check(const Ref<FileAccess> &
 		result.error = ERR_PARSE_ERROR;
 		result.message = "Expected [gd_scene] or [gd_resource] header.";
 		return result;
+	}
+	if (p_types) {
+		for (const auto &field : tag.fields) {
+			const bool integer = field.key == "load_steps" || field.key == "format";
+			const bool string = field.key == "type" || field.key == "uid" || field.key == "script_class";
+			if ((!integer && !string) || field.value.get_type() != (integer ? Variant::INT : Variant::STRING)) {
+				result.error = ERR_PARSE_ERROR;
+				result.message = "Unknown or incorrectly typed resource header field: " + field.key;
+				return result;
+			}
+		}
 	}
 	if (!scene) {
 		result.error = require_fields(tag, { "type" }, result.message);
@@ -97,6 +169,10 @@ WGodotResourceSyntax::Result WGodotResourceSyntax::check(const Ref<FileAccess> &
 		return result;
 	}
 	const String resource_type = scene ? String("PackedScene") : String(tag.fields["type"]);
+	result.error = validation.header(resource_type, result.message);
+	if (result.error != OK) {
+		return result;
+	}
 	StringName assignment_type;
 	bool allows_properties = false;
 	bool has_body = false;
@@ -110,6 +186,9 @@ WGodotResourceSyntax::Result WGodotResourceSyntax::check(const Ref<FileAccess> &
 				result.error = ERR_PARSE_ERROR;
 				result.message = scene ? "Scene has no nodes." : "Missing [resource] section.";
 			}
+			if (result.error == OK) {
+				result.error = validation.finish(result.message);
+			}
 			return result;
 		}
 		const int record_line = result.line;
@@ -120,8 +199,7 @@ WGodotResourceSyntax::Result WGodotResourceSyntax::check(const Ref<FileAccess> &
 		String assignment;
 		Variant value;
 		tag = VariantParser::Tag();
-		WResourceCodec::Assignment codec(nullptr, assignment_type);
-		result.error = VariantParser::parse_tag_assign_eof(&stream, result.line, result.message, tag, assignment, value, &resources, false, &codec);
+		result.error = VariantParser::parse_tag_assign_eof(&stream, result.line, result.message, tag, assignment, value, &resources, false, &validation);
 		if (result.error != OK) {
 			// EOF is only a successful terminator between complete records.
 			if (result.error == ERR_FILE_EOF) {
@@ -180,6 +258,9 @@ WGodotResourceSyntax::Result WGodotResourceSyntax::check(const Ref<FileAccess> &
 		} else {
 			result.error = ERR_PARSE_ERROR;
 			result.message = vformat("Unexpected [%s] section.", tag.name);
+		}
+		if (result.error == OK) {
+			result.error = validation.tag(tag, resource_type, result.message);
 		}
 		if (result.error != OK) {
 			result.line = record_line;

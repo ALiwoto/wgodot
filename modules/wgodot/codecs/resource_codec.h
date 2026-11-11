@@ -44,6 +44,10 @@ public:
 	virtual bool requires_native_factory() const { return false; }
 	virtual bool owns_assignment(const String &p_name) const = 0;
 	virtual Error read(Resource *p_resource, VariantParser::Token &p_token, VariantParser::Stream *p_stream, int &r_line, String &r_error, VariantParser::ResourceParser *p_resources) const = 0;
+	virtual Error check_types(VariantParser::Token &p_token, VariantParser::Stream *p_stream, int &r_line, String &r_error, VariantParser::ResourceParser *p_resources) const {
+		r_error = "Resource codec does not provide static type validation.";
+		return ERR_UNAVAILABLE;
+	}
 	virtual Error write(const Resource *p_resource, String &r_text, VariantWriter::EncodeResourceFunc p_encode, void *p_userdata) const = 0;
 	virtual Error write_native(const Resource *p_resource, const String &p_target, NativeWriter &p_writer) const = 0;
 	virtual ~WResourceCodec() = default;

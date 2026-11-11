@@ -23,6 +23,7 @@ class Reader {
 	int version = 0;
 	WAnimation *animation = nullptr;
 	bool wide_values = false;
+	bool strict_types = false;
 #ifdef W_ANIMATION_CODEC_DIAGNOSTICS
 	WAnimationCodecProfile profile;
 #endif
@@ -167,6 +168,9 @@ class Reader {
 	}
 
 	Error read_value(Variant &r_value, const String &p_type) {
+		if (strict_types && (p_type == "variant" || p_type == "resource")) {
+			return fail("dynamic animation values require a concrete declared payload type");
+		}
 		if (p_type == "float") {
 			double value;
 			RETURN_IF_ERROR(number(value, true));
@@ -223,6 +227,9 @@ class Reader {
 	}
 
 	Error read_method(WAnimation::MethodKey &r_key) {
+		if (strict_types) {
+			return fail("method tracks have no declared target signature for static type checking");
+		}
 		Variant value;
 		RETURN_IF_ERROR(variant(value));
 		if (value.get_type() != Variant::DICTIONARY) {
@@ -547,8 +554,8 @@ class Reader {
 	}
 
 public:
-	Reader(Parser::Token p_token, Parser::Stream *p_stream, int &r_line, String &r_error, Parser::ResourceParser *p_resources) :
-			stream(p_stream), line(r_line), error(r_error), resources(p_resources), token(p_token) {}
+	Reader(Parser::Token p_token, Parser::Stream *p_stream, int &r_line, String &r_error, Parser::ResourceParser *p_resources, bool p_strict_types = false) :
+			stream(p_stream), line(r_line), error(r_error), resources(p_resources), token(p_token), strict_types(p_strict_types) {}
 
 	void report(WAnimation *p_target, Error p_status) {
 #ifdef W_ANIMATION_CODEC_DIAGNOSTICS
@@ -652,4 +659,9 @@ Error WAnimationCodec::read(Resource *p_resource, VariantParser::Token &p_token,
 	Error result = reader.read(animation);
 	reader.report(animation, result);
 	return result;
+}
+
+Error WAnimationCodec::check_types(VariantParser::Token &p_token, VariantParser::Stream *p_stream, int &r_line, String &r_error, VariantParser::ResourceParser *p_resources) const {
+	Reader reader(p_token, p_stream, r_line, r_error, p_resources, true);
+	return reader.read(nullptr);
 }

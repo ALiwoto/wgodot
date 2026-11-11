@@ -4,19 +4,6 @@
 #include "core/io/resource.h"
 #include "core/variant/variant_parser.h"
 
-// A data-only collection of named values. No generated script is needed for
-// resource tables whose fields are defined by an importer.
-class WGlobalResource : public Resource {
-	GDCLASS(WGlobalResource, Resource);
-	HashMap<StringName, Variant> values;
-
-protected:
-	static void _bind_methods() {}
-	bool _set(const StringName &p_name, const Variant &p_value);
-	bool _get(const StringName &p_name, Variant &r_value) const;
-	void _get_property_list(List<PropertyInfo> *p_properties) const;
-};
-
 namespace WGlobalResources {
 inline constexpr uint32_t BINARY_REFERENCE = 0x57475201;
 

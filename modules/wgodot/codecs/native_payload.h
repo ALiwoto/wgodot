@@ -15,7 +15,7 @@
 // does not change offsets embedded in generated code.
 namespace WGodotNativePayload {
 constexpr uint32_t MAGIC = 0x31504757; // WGP1
-constexpr uint32_t VERSION = 1;
+constexpr uint32_t VERSION = 2;
 String path(int64_t p_resource);
 
 struct Input {
@@ -123,6 +123,20 @@ struct Value<Vector<T>> {
 	static Vector<T> read(Input &p_input) {
 		Vector<T> result;
 		const int64_t count = Value<int64_t>::read(p_input);
+		if (count < 0) {
+			// A negative count stores one value followed by runtime expansion.
+			if (count < -int64_t(INT32_MAX)) {
+				p_input.valid = false;
+				return result;
+			}
+			const T item = Value<T>::read(p_input);
+			if (!p_input.valid || result.resize(-count) != OK) {
+				p_input.valid = false;
+				return result;
+			}
+			result.fill(item);
+			return result;
+		}
 		if constexpr (std::is_same_v<T, String>) {
 			p_input.valid = p_input.valid && count >= 0 && uint64_t(count) <= (p_input.end - p_input.file->get_position()) / 4;
 		} else {
@@ -143,6 +157,20 @@ struct Value<Vector<T>> {
 		return result;
 	}
 	static void write(FileAccess &p_file, const Vector<T> &p_value) {
+		bool repeated = p_value.size() > 4;
+		for (int64_t i = 1; repeated && i < p_value.size(); i++) {
+			if constexpr (std::is_same_v<T, String>) {
+				repeated = p_value[0] == p_value[i];
+			} else {
+				static_assert(sizeof(T) % Value<T>::COMPONENT_SIZE == 0);
+				repeated = memcmp(p_value.ptr(), p_value.ptr() + i, sizeof(T)) == 0;
+			}
+		}
+		if (repeated) {
+			p_file.store_64(-p_value.size());
+			Value<T>::write(p_file, p_value[0]);
+			return;
+		}
 		p_file.store_64(p_value.size());
 		if constexpr (std::is_same_v<T, String>) {
 			for (const T &value : p_value) {

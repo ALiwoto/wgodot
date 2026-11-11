@@ -62,6 +62,7 @@
 #include "wgodot_scene_types.h"
 
 #include "core/io/wgodot_named_types.h"
+#include "core/io/wgodot_resource_value.h"
 // wgodot-changes::end
 #include "scene/property_utils.h"
 #include "scene/resources/packed_scene.h"
@@ -365,11 +366,19 @@ Ref<PackedScene> ResourceLoaderText::_parse_node_tag(const Ref<PackedScene> &p_c
 				}
 			}
 
+			// wgodot-changes::begin
+			const WGodotSceneTypes::Type inherited_value_type = inherited_types.resolve(node_path);
+			WGodotResourceValueParser value_assignment(
+					declared_type.is_empty() ? inherited_value_type.native : WGodotNamedTypes::native_type(declared_type),
+					named_script.is_valid() ? named_script : inherited_value_type.script, named_types);
+			// wgodot-changes::end
 			while (true) {
 				String assign;
 				Variant value;
 
-				error = VariantParser::parse_tag_assign_eof(&stream, lines, error_text, next_tag, assign, value, &p_parser);
+				// wgodot-changes::begin
+				error = VariantParser::parse_tag_assign_eof(&stream, lines, error_text, next_tag, assign, value, &p_parser, false, &value_assignment);
+				// wgodot-changes::end
 
 				// ERR_FILE_MISSING_DEPENDENCIES = Resource loading error, just skip it.
 				if (error && error != ERR_FILE_MISSING_DEPENDENCIES) {
@@ -729,20 +738,23 @@ Error ResourceLoaderText::load() {
 		// wgodot-changes::end
 		Dictionary missing_resource_properties;
 
+		// wgodot-changes::begin
+#ifdef MODULE_WGODOT_ENABLED
+		WResourceCodec::Assignment codec_assignment(res.ptr(), type, do_assign);
+		WGodotResourceValueParser value_assignment(res->get_class(), res->get_script(), named_types, &codec_assignment);
+#else
+		WGodotResourceValueParser value_assignment(res->get_class(), res->get_script(), named_types);
+#endif
+		// wgodot-changes::end
 		while (true) {
 			String assign;
 			Variant value;
 
 			// wgodot-changes::begin
-#ifdef MODULE_WGODOT_ENABLED
-			WResourceCodec::Assignment codec_assignment(res.ptr(), type, do_assign);
-			error = VariantParser::parse_tag_assign_eof(&stream, lines, error_text, next_tag, assign, value, &rp, false, &codec_assignment);
-			if (error == OK && codec_assignment.handled) {
+			error = VariantParser::parse_tag_assign_eof(&stream, lines, error_text, next_tag, assign, value, &rp, false, &value_assignment);
+			if (error == OK && value_assignment.handled) {
 				continue;
 			}
-#else
-			error = VariantParser::parse_tag_assign_eof(&stream, lines, error_text, next_tag, assign, value, &rp);
-#endif
 			// wgodot-changes::end
 
 			ERR_FAIL_COND_V_MSG(error, error, _get_error_string());
@@ -924,20 +936,23 @@ Error ResourceLoaderText::load() {
 		// wgodot-changes::end
 		Dictionary missing_resource_properties;
 
+		// wgodot-changes::begin
+#ifdef MODULE_WGODOT_ENABLED
+		WResourceCodec::Assignment codec_assignment(resource.ptr(), res_type);
+		WGodotResourceValueParser value_assignment(is_scene ? StringName("PackedScene") : StringName(resource->get_class()), is_scene ? Ref<Script>() : Ref<Script>(resource->get_script()), named_types, &codec_assignment);
+#else
+		WGodotResourceValueParser value_assignment(is_scene ? StringName("PackedScene") : StringName(resource->get_class()), is_scene ? Ref<Script>() : Ref<Script>(resource->get_script()), named_types);
+#endif
+		// wgodot-changes::end
 		while (true) {
 			String assign;
 			Variant value;
 
 			// wgodot-changes::begin
-#ifdef MODULE_WGODOT_ENABLED
-			WResourceCodec::Assignment codec_assignment(resource.ptr(), res_type);
-			error = VariantParser::parse_tag_assign_eof(&stream, lines, error_text, next_tag, assign, value, &rp, false, &codec_assignment);
-			if (error == OK && codec_assignment.handled) {
+			error = VariantParser::parse_tag_assign_eof(&stream, lines, error_text, next_tag, assign, value, &rp, false, &value_assignment);
+			if (error == OK && value_assignment.handled) {
 				continue;
 			}
-#else
-			error = VariantParser::parse_tag_assign_eof(&stream, lines, error_text, next_tag, assign, value, &rp);
-#endif
 			// wgodot-changes::end
 
 			bool empty_assign = assign.is_empty();
@@ -1415,6 +1430,7 @@ Error ResourceLoaderText::get_classes_used(HashSet<StringName> *r_classes) {
 	rp_new.userdata = &dummy_read;
 	// wgodot-changes::begin
 	rp_new.skip_class_loading = true;
+	rp_new.syntax_only = true;
 	// wgodot-changes::end
 
 	while (next_tag.name == "ext_resource") {

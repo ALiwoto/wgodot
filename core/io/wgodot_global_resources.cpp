@@ -7,34 +7,6 @@
 #include "core/os/mutex.h"
 #include "core/variant/variant_internal.h"
 
-bool WGlobalResource::_set(const StringName &p_name, const Variant &p_value) {
-	if (!String(p_name).is_valid_identifier()) {
-		return false;
-	}
-	values.insert(p_name, p_value);
-	return true;
-}
-
-bool WGlobalResource::_get(const StringName &p_name, Variant &r_value) const {
-	const Variant *found = values.getptr(p_name);
-	if (!found) {
-		return false;
-	}
-	r_value = *found;
-	return true;
-}
-
-void WGlobalResource::_get_property_list(List<PropertyInfo> *p_properties) const {
-	Vector<String> names;
-	for (const auto &entry : values) {
-		names.push_back(entry.key);
-	}
-	names.sort();
-	for (const String &name : names) {
-		p_properties->push_back(PropertyInfo(values[name].get_type(), name));
-	}
-}
-
 namespace WGlobalResources {
 namespace {
 struct Entry {

@@ -3992,7 +3992,11 @@ Error Main::setup2(bool p_show_boot_logo) {
 	// This loads global classes, so it must happen before custom loaders and savers are registered
 	ScriptServer::init_languages();
 	// wgodot-changes::begin
-	if (!project_manager) {
+	bool load_global_resources = !project_manager && !editor;
+#ifdef MODULE_WGODOT_ENABLED
+	load_global_resources &= !WGodotCLI::is_command_requested();
+#endif
+	if (load_global_resources) {
 		Error global_error = WGlobalResources::start();
 		ERR_FAIL_COND_V_MSG(global_error != OK, global_error, "Global resources could not be loaded.");
 	}

@@ -8,16 +8,20 @@
 #include "wgodot_export_scene.h"
 #include "wgodot_native_resource_policy.h"
 #include "wgodot_native_resource_selection.h"
+#include "wgodot_resource_encode.h"
 #include "wgodot_resource_rewrite.h"
+#include "wgodot_resource_schema.h"
+#include "wgodot_resource_syntax.h"
+#include "wgodot_resource_types.h"
 
 #include "core/config/project_settings.h"
 #include "core/io/dir_access.h"
 #include "core/io/file_access.h"
-#include "core/io/wgodot_global_resources.h"
 #include "core/io/resource_loader.h"
-#include "core/io/wgodot_resource_load_priority.h"
 #include "core/io/resource_uid.h"
 #include "core/io/wgodot_file_stamp.h"
+#include "core/io/wgodot_global_resources.h"
+#include "core/io/wgodot_resource_load_priority.h"
 #include "core/object/class_db.h"
 #include "core/object/script_language.h"
 #include "core/object/worker_thread_pool.h"
@@ -46,6 +50,8 @@ class WGodotCppResources {
 	struct StoredProperty {
 		StringName name;
 		Variant value;
+		int64_t shared_resource = 0;
+		uint32_t shared_field = 0;
 	};
 	Vector<Vector<StoredProperty>> stored_properties;
 	HashMap<const PackedScene *, Ref<SceneState>> prepared_scenes;
@@ -233,11 +239,46 @@ class WGodotCppResources {
 		return Value(field_name, type);
 	}
 
+	Value global_value(const WGlobalResources::Reference &p_reference) {
+		const Ref<Resource> resource = WGlobalResources::value(p_reference.resource, StringName());
+		const auto *game = resource.is_valid() ? resource_class(resource) : nullptr;
+		if (!game) {
+			error("Shared resources require a declared script class: " + String(p_reference.resource));
+			return Value("{}", "Variant");
+		}
+		emitter->class_dependencies.insert(game->cpp_name);
+		const String path = resource->get_path();
+		String dependency;
+		if (const String *existing = dependencies.getptr(path)) {
+			dependency = *existing;
+		} else {
+			dependency = "dependency_" + itos(dependencies.size());
+			dependencies.insert(path, dependency);
+			body += "\tRef<" + game->cpp_name + "> " + dependency + " = ResourceLoader::load(WGodotResourcePaths::to_path(" + itos(emitter->resource_id(path)) + "), String(), dependency_cache);\n\tERR_FAIL_COND_V(" + dependency + ".is_null(), Ref<Resource>());\n";
+		}
+		const String reference = "Ref<" + game->cpp_name + ">(" + dependency + ")";
+		Value result(reference, "Ref<" + game->cpp_name + ">");
+		if (!p_reference.member.is_empty()) {
+			const auto *variable = field(game, p_reference.member);
+			if (!variable || !variable->exported || variable->is_static || variable->wgodot_private || variable->wgodot_protected) {
+				error("Shared value must name a public @export field: " + p_reference.text());
+				return Value("{}", "Variant");
+			}
+			result = Value(reference + "->read_" + symbol(p_reference.member) + "()", emitter->type(variable->type_constraint, &origin));
+		}
+		if (emitting_scene) {
+			const String field_name = "shared_" + itos(temporary++);
+			scene_fields += "\t" + result.cpp_type + " " + field_name + ";\n";
+			body += "\t" + scene_data + "->" + field_name + " = " + result.code + ";\n";
+			result.code = field_name;
+		}
+		return result;
+	}
+
 	Value value(const Variant &p_value) {
 		WGlobalResources::Reference global;
 		if (WGlobalResources::reference(p_value, global, source_path)) {
-			emitter->class_native_headers.insert("core/io/wgodot_global_resources.h");
-			return Value("WGlobalResources::value(StringName(" + quoted(global.resource) + "), StringName(" + quoted(global.member) + "))", "Variant");
+			return global_value(global);
 		}
 		if (p_value.get_type() == Variant::STRING || p_value.get_type() == Variant::STRING_NAME) {
 			const String rewritten = rewritten_string(p_value);
@@ -371,11 +412,8 @@ class WGodotCppResources {
 		if (index != WGodotCppSceneReferences::RUNTIME_PATH) {
 			return Value("p_context.node<" + p_class + ">(" + itos(index) + ")", p_class + " *");
 		}
-		String lookup = "p_node->get_node_or_null(" + value(p_path).code + ")";
-		if (p_class != "Node") {
-			lookup = "Object::cast_to<" + p_class + ">(" + lookup + ")";
-		}
-		return Value(lookup, p_class + " *");
+		error("Node reference cannot be resolved in the authored scene: " + path_text(p_path));
+		return Value("nullptr", p_class + " *");
 	}
 
 	bool object_handle(const Parser::DataType &p_type) const {
@@ -405,8 +443,7 @@ class WGodotCppResources {
 		const String type = emitter->type(p_type, &origin);
 		WGlobalResources::Reference global;
 		if (WGlobalResources::reference(p_value, global, source_path)) {
-			emitter->class_native_headers.insert("modules/wgodot/native/wgodot_native_globals.h");
-			return "WGodotNative::global_value<" + type + ">(StringName(" + quoted(global.resource) + "), StringName(" + quoted(global.member) + "))";
+			return emitter->convert_value(global_value(global), type);
 		}
 		if (type == "Variant") {
 			error("Native construction requires a concrete type, not Variant.");
@@ -518,6 +555,10 @@ class WGodotCppResources {
 
 	void assign(const String &p_target, const StringName &p_native_type, const WGodotCppProject::Class *p_class, const StringName &p_name, const Variant &p_value, bool p_node = false) {
 		if (const auto *variable = field(p_class, p_name)) {
+			if (!variable->exported || variable->is_static || variable->wgodot_private || variable->wgodot_protected) {
+				error("Serialized fields must be public @export instance fields: " + String(p_name));
+				return;
+			}
 			const Parser::DataType type = emitter->variable_type(variable);
 			const String argument = typed_value(p_value, type, emitting_scene ? p_target + "->read_" + symbol(p_name) + "()" : String());
 			emit("\t" + p_target + "->write_" + symbol(p_name) + "(" + argument + ");\n");
@@ -555,8 +596,8 @@ class WGodotCppResources {
 			}
 			const PropertyInfo parameter = method->get_argument_info(index_args);
 			const String argument_type = emitter->native_argument_type(parameter, &origin);
-			if (emitting_scene && argument_type == "Variant") {
-				error("Scene property requires a typed native setter: " + String(p_native_type) + ":" + String(p_name));
+			if (argument_type == "Variant") {
+				error("Resource/scene property requires a typed native setter: " + String(p_native_type) + ":" + String(p_name));
 				return;
 			}
 			Value argument;
@@ -591,11 +632,8 @@ class WGodotCppResources {
 			// Array here would force the engine's typed setter to validate it again.
 			arguments.push_back(parameter.type == Variant::ARRAY ? argument.code : emitter->convert_value(argument, emitter->native_argument_type(parameter, &origin)));
 			emit("\t" + emitter->native_access(method, &origin) + "(" + String(", ").join(arguments) + ");\n");
-		} else if (emitting_scene) {
-			error("No typed native setter for " + String(p_native_type) + ":" + String(p_name));
 		} else {
-			const String argument = value(p_value).code;
-			emit("\t" + p_target + "->set(StringName(" + quoted(p_name) + "), " + argument + ");\n");
+			error("No typed native setter for " + String(p_native_type) + ":" + String(p_name));
 		}
 	}
 
@@ -885,8 +923,30 @@ class WGodotCppResources {
 		}
 	}
 
-	void prepare_factory(const String &p_path, const Ref<Resource> &p_resource, bool p_script_autoload) {
+	void schema_dependencies(const WGodotCppProject::Class *p_class) {
+		for (const auto *node = p_class->node; node; node = node->base_type.kind == GDScriptParser::DataType::CLASS ? node->base_type.class_type : nullptr) {
+			if (const auto *game = emitter->project.find_class(node)) {
+				emitter->unit_resource_paths.insert(game->script_path);
+			}
+		}
+	}
+
+	void prepare_factory(const String &p_path, const Ref<Resource> &p_resource, bool p_script_autoload, const WGodotResourceTypes &p_types) {
 		source_path = p_path;
+		const bool resource_data = p_path.get_extension() == "tres";
+		WGodotResourceSyntax::Result authored;
+		if (resource_data) {
+			const Ref<FileAccess> source = FileAccess::open(p_path, FileAccess::READ);
+			if (source.is_null()) {
+				error("Cannot read authored resource fields.");
+				return;
+			}
+			authored = WGodotResourceSyntax::check(source, &p_types, nullptr, true);
+			if (authored.error != OK) {
+				error(authored.message);
+				return;
+			}
+		}
 		embedded.clear();
 		graph.clear();
 		resource_dependencies.clear();
@@ -927,6 +987,11 @@ class WGodotCppResources {
 			graph[i]->get_property_list(&properties);
 			const auto *game = resource_class(graph[i]);
 			const WResourceCodec *codec = WResourceCodec::find(graph[i]->get_class());
+			const auto *present = resource_data ? authored.properties.getptr(i == 0 ? String() : graph[i]->get_scene_unique_id()) : nullptr;
+			if (resource_data && !present) {
+				error("Cannot match loaded subresource to its authored declaration: " + graph[i]->get_path());
+				return;
+			}
 			Vector<StoredProperty> stored;
 			for (const PropertyInfo &property : properties) {
 				if (game && emitter->project.is_editor_member(game->node, property.name)) {
@@ -935,19 +1000,39 @@ class WGodotCppResources {
 				if (!(property.usage & PROPERTY_USAGE_STORAGE) || property.name == SNAME("script") || property.name == SNAME("resource_path") || (packed.is_valid() && property.name == SNAME("_bundled")) || (codec && codec->owns_native_property(property.name))) {
 					continue;
 				}
-				const Variant value = graph[i]->get(property.name);
-				const Variant default_value = PropertyUtils::get_property_default_value(graph[i].ptr(), property.name, nullptr, nullptr, false);
-				if (default_value.get_type() != Variant::NIL && bool(Variant::evaluate(Variant::OP_EQUAL, value, default_value))) {
+				if (resource_data && (!present || !present->has(property.name))) {
 					continue;
 				}
-				if (property.type == Variant::OBJECT && value.is_zero() && !(property.usage & PROPERTY_USAGE_STORE_IF_NULL)) {
+				const Variant value = graph[i]->get(property.name);
+				if (!resource_data) {
+					const Variant default_value = PropertyUtils::get_property_default_value(graph[i].ptr(), property.name, nullptr, nullptr, false);
+					if (default_value.get_type() != Variant::NIL && bool(Variant::evaluate(Variant::OP_EQUAL, value, default_value))) {
+						continue;
+					}
+				}
+				if (!resource_data && property.type == Variant::OBJECT && value.is_zero() && !(property.usage & PROPERTY_USAGE_STORE_IF_NULL)) {
 					continue;
 				}
 				collect(value);
 				if (const auto *variable = field(game, property.name)) {
 					encode(value, emitter->variable_type(variable));
 				}
-				stored.push_back({ property.name, value });
+				StoredProperty entry{ property.name, value };
+				WGlobalResources::Reference shared;
+				if (resource_data && WGlobalResources::reference(value, shared, source_path) && !shared.member.is_empty()) {
+					const Ref<Resource> owner = WGlobalResources::value(shared.resource, StringName());
+					const auto *owner_class = owner.is_valid() ? resource_class(owner) : nullptr;
+					const auto *target_field = field(game, property.name);
+					const auto *source_field = field(owner_class, shared.member);
+					if (!source_field || !target_field || (source_field->type_constraint.to_string() != target_field->type_constraint.to_string() && (source_field->type_constraint.builtin_type != Variant::OBJECT || target_field->type_constraint.builtin_type != Variant::OBJECT))) {
+						error("Shared resource member requires the same declared type: " + String(property.name));
+						return;
+					}
+					entry.shared_resource = emitter->resource_id(owner->get_path());
+					schema_dependencies(owner_class);
+					entry.shared_field = WGodotResourceSchema(owner_class->node).field_id(shared.member);
+				}
+				stored.push_back(entry);
 			}
 			stored_properties.push_back(std::move(stored));
 			if (codec) {
@@ -963,10 +1048,98 @@ class WGodotCppResources {
 		}
 	}
 
+	void emit_protobuf() {
+		using namespace WGodotResourceProtobuf;
+		class EncodeContext : public Context {
+			WGodotCppResources &owner;
+
+		public:
+			explicit EncodeContext(WGodotCppResources &p_owner) : owner(p_owner) {}
+			Ref<Resource> resolve(const Reference &) override { return Ref<Resource>(); }
+			Reference identify(const Ref<Resource> &p_resource) override {
+				if (p_resource.is_null()) {
+					return {};
+				}
+				if (const int *index = owner.embedded.getptr(p_resource.ptr())) {
+					return { uint64_t(*index) + 1, 0 };
+				}
+				return { 0, owner.emitter->resource_id(p_resource->get_path()) };
+			}
+		} context(*this);
+		const String name = "resource_" + itos(emitter->resource_id(source_path)) + ".wgp";
+		const Ref<FileAccess> output = FileAccess::open(emitter->staging_directory.path_join(name), FileAccess::WRITE);
+		if (output.is_null()) {
+			error("Cannot create resource protobuf payload.");
+			return;
+		}
+		output->store_32(0x42504757);
+		output->store_8(1);
+		for (int i = 0; i < graph.size(); i++) {
+			const auto *game = resource_class(graph[i]);
+			if (!game) {
+				error("Resource protobuf requires a declared exported class: " + String(graph[i]->get_class()));
+				return;
+			}
+			const WGodotResourceSchema schema(game->node);
+			if (schema.fields.is_empty() || game->node->is_abstract) {
+				error("Resource class has no concrete public @export schema: " + game->node->fqcn);
+				return;
+			}
+			emitter->class_dependencies.insert(game->cpp_name);
+			schema_dependencies(game);
+			Writer fields;
+			Writer shared;
+			for (const StoredProperty &property : stored_properties[i]) {
+				const uint32_t id = schema.field_id(property.name);
+				if (!id) {
+					error("Resource field is not a public @export: " + game->node->fqcn + "." + String(property.name));
+					return;
+				}
+				if (property.shared_resource) {
+					Writer link;
+					link.tag(1, 0);
+					link.varint(id);
+					link.tag(2, 0);
+					link.varint(property.shared_resource);
+					link.tag(3, 0);
+					link.varint(property.shared_field);
+					shared.tag(1, 2);
+					message(shared, link);
+				} else if (WGodotResourceEncode::field(fields, id, property.value, schema.fields[id - 1]->type_constraint, context, [&](const String &p_path) { return emitter->resource_id(p_path); }) != OK) {
+					error("Cannot encode typed resource field: " + game->node->fqcn + "." + String(property.name));
+					return;
+				}
+			}
+			Writer record;
+			record.tag(1, 0);
+			record.varint(schema.id);
+			record.tag(2, 1);
+			record.fixed(schema.fingerprint, 8);
+			record.tag(3, 2);
+			message(record, fields);
+			record.tag(4, 2);
+			message(record, shared);
+			Writer prefix;
+			prefix.tag(1, 2);
+			prefix.varint(record.data.size());
+			output->store_buffer(prefix.data.ptr(), prefix.data.size());
+			output->store_buffer(record.data.ptr(), record.data.size());
+		}
+		emitter->output_error = output->get_error();
+		emitter->files.insert(name, String());
+		emitter->compiled_resources[source_path] = resource_class(graph[0])->cpp_name;
+		contribution = emitter->capture_contribution();
+	}
+
 	void emit_factory(WGodotCppEmitter &p_worker) {
 		emitter = &p_worker;
 		emitter->clear_contribution();
 		emitter->unit_resource_paths = preparation_paths;
+		if (source_path.get_extension() == "tres") {
+			emitter->class_dependencies.clear();
+			emit_protobuf();
+			return;
+		}
 		const String &p_path = source_path;
 		const int64_t id = emitter->resource_id(p_path);
 		const String name = "resource_" + itos(id);
@@ -1083,7 +1256,7 @@ class WGodotCppResources {
 			source += "#include " + quoted(include) + "\n";
 		}
 		source += "\nnamespace WGodotGame {\n";
-		const String function = "Ref<Resource> create_resource_" + itos(id) + "(ResourceFormatLoader::CacheMode p_cache_mode) {\n\tWGodotNativePayload::Reader payload(" + itos(id) + ");\n\tERR_FAIL_COND_V(!payload.is_valid(), Ref<Resource>());\n\tconst auto dependency_cache = p_cache_mode == ResourceFormatLoader::CACHE_MODE_IGNORE_DEEP || p_cache_mode == ResourceFormatLoader::CACHE_MODE_REPLACE_DEEP ? p_cache_mode : ResourceFormatLoader::CACHE_MODE_REUSE;\n";
+		const String function = "Ref<Resource> create_resource_" + itos(id) + "(int64_t, ResourceFormatLoader::CacheMode p_cache_mode) {\n\tWGodotNativePayload::Reader payload(" + itos(id) + ");\n\tERR_FAIL_COND_V(!payload.is_valid(), Ref<Resource>());\n\tconst auto dependency_cache = p_cache_mode == ResourceFormatLoader::CACHE_MODE_IGNORE_DEEP || p_cache_mode == ResourceFormatLoader::CACHE_MODE_REPLACE_DEEP ? p_cache_mode : ResourceFormatLoader::CACHE_MODE_REUSE;\n";
 		emitter->store_source(name + ".cpp", source, declarations, function, body, "}\n}\n");
 		const auto *game = resource_class(resource);
 		emitter->compiled_resources[p_path] = game ? game->cpp_name : String(resource->get_class());
@@ -1205,6 +1378,10 @@ class WGodotCppResources {
 	}
 
 	void generate_reachable() {
+		WGodotResourceTypes types;
+		for (const auto &game : emitter->project.get_classes()) {
+			types.add_class(game.node);
+		}
 		const WGodotResourceLoadPriority load_priority(true);
 		WorkerThreadPool *pool = WorkerThreadPool::get_singleton();
 		const int concurrency = MIN(emitter->jobs, pool->get_thread_count());
@@ -1258,7 +1435,7 @@ class WGodotCppResources {
 			WGodotCppMemoryProfile::sample("batch-released", String(), completed);
 			const uint64_t now = OS::get_singleton()->get_ticks_msec();
 			if (now - last_progress >= 5000) {
-				print_line(vformat("Native factories: %d generated, %d reused; load %d ms, reuse %d ms, prepare %d ms, emit %d ms", completed, reused, loading_msec, reuse_msec, preparation_msec, generation_msec));
+				print_line(vformat("Native resources: %d generated, %d reused; load %d ms, reuse %d ms, prepare %d ms, emit %d ms", completed, reused, loading_msec, reuse_msec, preparation_msec, generation_msec));
 				last_progress = now;
 			}
 		};
@@ -1267,11 +1444,16 @@ class WGodotCppResources {
 			WGodotCppResources *factory = memnew(WGodotCppResources(*emitter));
 			HashSet<String> previous_paths;
 			SWAP(emitter->unit_resource_paths, previous_paths);
-			factory->prepare_factory(p_path, p_resource, p_script_autoload);
+			factory->prepare_factory(p_path, p_resource, p_script_autoload, types);
 			factory->preparation_paths = emitter->unit_resource_paths;
 			SWAP(emitter->unit_resource_paths, previous_paths);
 			WGodotCppMemoryProfile::sample("factory-prepared", p_path, factory->graph.size());
 			preparation_msec += OS::get_singleton()->get_ticks_msec() - started;
+			if (!emitter->diagnostics.is_empty() || emitter->output_error != OK) {
+				memdelete(factory);
+				failed = true;
+				return;
+			}
 			batch.factories.push_back(factory);
 			if (batch.factories.size() == concurrency) {
 				flush();
@@ -1417,9 +1599,9 @@ class WGodotCppResources {
 			}
 			memdelete(worker);
 		}
-		print_line(vformat("Native factories: %d generated, %d reused (%d workers)", completed, reused, concurrency));
-		print_line(vformat("Native factory preparation: %d ms; parallel generation/write: %d ms", preparation_msec, generation_msec));
-		print_line(vformat("Native factory loading: %d ms; cache reuse: %d ms", loading_msec, reuse_msec));
+		print_line(vformat("Native resources: %d generated, %d reused (%d workers)", completed, reused, concurrency));
+		print_line(vformat("Native resource preparation: %d ms; parallel generation/write: %d ms", preparation_msec, generation_msec));
+		print_line(vformat("Native resource loading: %d ms; cache reuse: %d ms", loading_msec, reuse_msec));
 	}
 
 public:
@@ -1503,6 +1685,9 @@ public:
 		// distribute additions among stable buckets without another content hash.
 		Vector<String> buckets[256];
 		for (const String &path : paths) {
+			if (path.get_extension() == "tres") {
+				continue;
+			}
 			const int64_t id = emitter->resource_id(path);
 			buckets[id & 255].push_back("resource_" + itos(id) + ".cpp");
 		}
@@ -1537,16 +1722,19 @@ public:
 			flush();
 		}
 
-		String registration = "// wgodot-changes::file\n#include \"core/io/wgodot_native_resources.h\"\n#include \"core/io/wgodot_global_resources.h\"\n\nnamespace WGodotGame {\n";
+		String registration = "// Generated by WGodot. DO NOT EDIT.\n#include \"core/io/wgodot_native_resources.h\"\n#include \"core/io/wgodot_global_resources.h\"\n#include \"modules/wgodot/codecs/resource_protobuf.h\"\nvoid register_main_game_resource_codecs();\n\nnamespace WGodotGame {\n";
 		for (const String &path : paths) {
-			registration += "Ref<Resource> create_resource_" + itos(emitter->resource_id(path)) + "(ResourceFormatLoader::CacheMode p_cache_mode);\n";
+			if (path.get_extension() != "tres") {
+				registration += "Ref<Resource> create_resource_" + itos(emitter->resource_id(path)) + "(int64_t, ResourceFormatLoader::CacheMode p_cache_mode);\n";
+			}
 		}
-		registration += "}\n\nvoid register_main_game_resources() {\n";
+		registration += "}\n\nvoid register_main_game_resources() {\n\tregister_main_game_resource_codecs();\n";
 		if (!paths.is_empty()) {
 			registration += "\tstatic const WGodotNativeResources::Definition definitions[] = {\n";
 			for (const String &path : paths) {
 				const int64_t id = emitter->resource_id(path);
-				registration += "\t\t{" + itos(id) + ", " + quoted(emitter->compiled_resources[path]) + ", &WGodotGame::create_resource_" + itos(id) + "},\n";
+				const String factory = path.get_extension() == "tres" ? String("WGodotResourceProtobuf::load") : "WGodotGame::create_resource_" + itos(id);
+				registration += "\t\t{" + itos(id) + ", " + quoted(emitter->compiled_resources[path]) + ", &" + factory + "},\n";
 			}
 			registration += "\t};\n\tWGodotNativeResources::initialize(definitions, " + itos(paths.size()) + ");\n";
 		}
@@ -1560,6 +1748,7 @@ public:
 };
 
 void WGodotCppEmitter::emit_resources() {
+	emit_resource_codecs();
 	compiled_resources.clear();
 	compiled_resource_aliases.clear();
 	resource_sources.clear();

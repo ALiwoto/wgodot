@@ -40,6 +40,7 @@ class WGodotCppEmitter {
 	void clear_contribution();
 	void emit_class_uncached(const WGodotCppProject::Class &p_class);
 	void emit_serialization(const WGodotCppProject::Class &p_class, String &r_declaration, String &r_definitions);
+	void emit_resource_codecs();
 	uint64_t reused_classes = 0;
 	const HashMap<String, int64_t> *prepared_resource_ids = nullptr;
 	void store_file(const String &p_name, const String &p_contents);

@@ -72,7 +72,7 @@ Dictionary WGodotProjectCheck::run_standalone(uint64_t p_timeout_msec) {
 	operation.check.instantiate();
 	operation.resources.instantiate();
 	operation.check->start(scripts);
-	operation.resources->start(resource_paths);
+	operation.resources->start(resource_paths, operation.check->get_project());
 	while (OS::get_singleton()->get_ticks_msec() - operation.started_msec < p_timeout_msec) {
 		Dictionary result = operation.poll();
 		if (!result.is_empty()) {
@@ -118,6 +118,6 @@ Dictionary WGodotProjectCheck::poll() {
 	resources.instantiate();
 	started_msec = OS::get_singleton()->get_ticks_msec();
 	check->start();
-	resources->start();
+	resources->start(check->get_project());
 	return Dictionary();
 }

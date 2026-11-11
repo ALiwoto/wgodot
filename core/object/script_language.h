@@ -38,6 +38,9 @@
 #include "core/variant/typed_array.h"
 
 class ScriptLanguage;
+// wgodot-changes::begin
+struct WGodotResourceDataType;
+// wgodot-changes::end
 template <typename T>
 class TypedArray;
 
@@ -199,6 +202,9 @@ public:
 	virtual void update_exports() {} //editor tool
 	virtual void get_script_method_list(List<MethodInfo> *r_list) const = 0;
 	virtual void get_script_property_list(List<PropertyInfo> *r_list) const = 0;
+	// wgodot-changes::begin
+	virtual bool wgodot_get_declared_property_type(const StringName &p_name, WGodotResourceDataType &r_type) const { return false; }
+	// wgodot-changes::end
 
 	virtual int get_member_line(const StringName &p_member) const { return -1; }
 

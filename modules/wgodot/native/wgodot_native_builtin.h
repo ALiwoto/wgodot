@@ -66,8 +66,13 @@ Result invoke_vararg(const char *p_name, const Args &...p_args) {
 
 // Taking the address inside this call also supports temporary receivers. Both
 // the receiver and its arguments stay alive for the entire native invocation.
-template <class Result, class Method, class Base, class... Args>
-Result invoke_builtin(Method p_method, Base &&p_base, Args &&...p_args) {
+template <class Result, class Owner, class Return, class... Params, class Base, class... Args>
+Result invoke_builtin(Return (Owner::*p_method)(Params...), Base &&p_base, Args &&...p_args) {
+	return invoke_member<Result>(p_method, &p_base, std::forward<Args>(p_args)...);
+}
+
+template <class Result, class Owner, class Return, class... Params, class Base, class... Args>
+Result invoke_builtin(Return (Owner::*p_method)(Params...) const, Base &&p_base, Args &&...p_args) {
 	return invoke_member<Result>(p_method, &p_base, std::forward<Args>(p_args)...);
 }
 

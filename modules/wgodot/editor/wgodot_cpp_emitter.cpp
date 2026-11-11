@@ -19,6 +19,7 @@
 
 #include "modules/gdscript/wgodot_gd/interface_helpers.h"
 #include "modules/gdscript/wgodot_gd/partial_classes.h"
+#include "modules/wgodot/codecs/native_payload.h"
 
 #include <charconv>
 
@@ -714,7 +715,7 @@ Error WGodotCppEmitter::generate(const String &p_directory, int p_jobs, WGodotCp
 		source_list += quoted(name) + ", ";
 	}
 	store_file("native_pch.cpp", "// wgodot-changes::file\n#include \"modules/wgodot/native/wgodot_native_pch.h\"\n");
-	store_file("SCsub", "# wgodot-changes::file\nImport('env')\nImport('env_modules')\nenv_game = env_modules.Clone()\nenv_game.PrependUnique(CPPPATH=env.get('wgodot_public_includes', []))\nif env.msvc:\n    env_game.Append(CPPPATH=[Dir('#modules/wgodot/native')], CXXFLAGS=['/FIwgodot_native_pch.h'])\n    env_game['PCHSTOP'] = 'wgodot_native_pch.h'\n    pch, pch_object = env_game.PCH('native_pch' + env['OBJSUFFIX'] + '.pch', 'native_pch.cpp')\n    env_game['PCH'] = pch\n    env.modules_sources.append(pch_object)\ngame_objects = []\nenv_game.add_source_files(game_objects, [" + source_list + "])\nenv_game.add_source_files(game_objects, [File('#modules/wgodot/native/wgodot_native_task.cpp'), File('#modules/wgodot/native/wgodot_native_connections.cpp'), File('#modules/wgodot/native/wgodot_native_debug.cpp'), File('#modules/wgodot/native/wgodot_native_string_format.cpp'), File('#modules/wgodot/wgodot_preloads.cpp'), File('#modules/wgodot/native/wgodot_native_runtime.cpp'), File('#modules/wgodot/codecs/native_payload.cpp'), File('#modules/wgodot/codecs/w_animation.cpp'), File('#modules/wgodot/serialization/wire.cpp'), File('#modules/wgodot/serialization/serializable.cpp')])\nif env.msvc:\n    env_game.Depends(game_objects, pch)\nenv.modules_sources.extend(game_objects)\n");
+	store_file("SCsub", "# wgodot-changes::file\nImport('env')\nImport('env_modules')\nenv_game = env_modules.Clone()\nenv_game.PrependUnique(CPPPATH=env.get('wgodot_public_includes', []))\nif env.msvc:\n    env_game.Append(CPPPATH=[Dir('#modules/wgodot/native')], CXXFLAGS=['/FIwgodot_native_pch.h'])\n    env_game['PCHSTOP'] = 'wgodot_native_pch.h'\n    pch, pch_object = env_game.PCH('native_pch' + env['OBJSUFFIX'] + '.pch', 'native_pch.cpp')\n    env_game['PCH'] = pch\n    env.modules_sources.append(pch_object)\ngame_objects = []\nenv_game.add_source_files(game_objects, [" + source_list + "])\nenv_game.add_source_files(game_objects, [File('#modules/wgodot/native/wgodot_native_task.cpp'), File('#modules/wgodot/native/wgodot_native_connections.cpp'), File('#modules/wgodot/native/wgodot_native_debug.cpp'), File('#modules/wgodot/native/wgodot_native_string_format.cpp'), File('#modules/wgodot/wgodot_preloads.cpp'), File('#modules/wgodot/native/wgodot_native_runtime.cpp'), File('#modules/wgodot/codecs/native_payload.cpp'), File('#modules/wgodot/codecs/resource_protobuf.cpp'), File('#modules/wgodot/codecs/w_animation.cpp'), File('#modules/wgodot/serialization/wire.cpp'), File('#modules/wgodot/serialization/serializable.cpp')])\nif env.msvc:\n    env_game.Depends(game_objects, pch)\nenv.modules_sources.extend(game_objects)\n");
 	String config = "# wgodot-changes::file\ndef can_build(env, platform):\n    return not env.editor_build\n\ndef configure(env):\n    env.AppendUnique(CPPDEFINES=['WGODOT_NATIVE_GAME'])\n";
 	if (trace_enabled) {
 		config += "    env.AppendUnique(CPPDEFINES=['WGODOT_NATIVE_TRACE_ENABLED'])\n";
@@ -837,7 +838,7 @@ Error WGodotCppEmitter::write(const String &p_directory) const {
 	}
 	Dictionary manifest;
 	manifest["format"] = 1;
-	manifest["resource_payload_version"] = 1;
+	manifest["resource_payload_version"] = WGodotNativePayload::VERSION;
 	manifest["enforce_resource_paths"] = bool(GLOBAL_GET("wgodot/gdscript/enforce_resource_paths"));
 	manifest["target"] = project.get_target().get_name();
 	manifest["target_fingerprint"] = project.get_target().get_fingerprint();

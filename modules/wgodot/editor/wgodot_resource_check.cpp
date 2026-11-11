@@ -5,6 +5,7 @@
 #include "core/io/dir_access.h"
 #include "core/io/wgodot_build_fingerprint.h"
 #include "core/io/wgodot_file_stamp.h"
+#include "core/io/wgodot_global_resources.h"
 #include "core/object/class_db.h"
 #include "core/object/script_language.h"
 #include "core/os/os.h"
@@ -12,9 +13,7 @@
 #include "editor/file_system/editor_file_system.h"
 
 HashMap<String, WGodotResourceCheck::Entry> WGodotResourceCheck::cache;
-HashSet<String> WGodotResourceCheck::trusted;
 String WGodotResourceCheck::context;
-uint64_t WGodotResourceCheck::revision = 0;
 
 namespace {
 
@@ -44,6 +43,9 @@ String get_class_identity() {
 	for (const StringName &name : classes) {
 		declarations.push_back(String(name) + ":" + ScriptServer::get_global_class_native_base(name));
 	}
+	for (const auto &entry : WGlobalResources::paths()) {
+		declarations.push_back(String(entry.key) + "=" + entry.value);
+	}
 	declarations.sort();
 	return String("\n").join(declarations).md5_text();
 }
@@ -52,43 +54,48 @@ String get_class_identity() {
 
 void WGodotResourceCheck::invalidate(const HashSet<String> &p_paths, bool p_all) {
 	if (p_all) {
-		trusted.clear();
-		revision++;
+		cache.clear();
 		return;
 	}
 	for (const String &path : p_paths) {
 		const String extension = path.get_extension();
 		if (extension == "tscn" || extension == "tres") {
-			trusted.erase(path);
-			revision++;
+			cache.erase(path);
 		} else if (extension.is_empty()) {
 			// Directory moves/deletions can affect every descendant without
 			// generating a separate notification for each resource.
-			trusted.clear();
-			revision++;
+			cache.clear();
 		}
 	}
 }
 
-void WGodotResourceCheck::start() {
+void WGodotResourceCheck::start(const WGodotGDScriptExportTransform::ExportProject &p_project) {
 	Vector<String> paths;
 	collect_resources(EditorFileSystem::get_singleton()->get_filesystem(), paths);
-	start(paths);
+	start(paths, p_project);
 }
 
-void WGodotResourceCheck::start(const Vector<String> &p_paths) {
+void WGodotResourceCheck::start(const Vector<String> &p_paths, const WGodotGDScriptExportTransform::ExportProject &p_project) {
+	project = p_project;
+	start_paths(p_paths);
+}
+
+void WGodotResourceCheck::start(const Vector<String> &p_paths, const WGodotResourceTypes &p_types) {
+	types = std::make_unique<const WGodotResourceTypes>(p_types);
+	start_paths(p_paths);
+}
+
+void WGodotResourceCheck::start_paths(const Vector<String> &p_paths) {
 	class_identity = get_class_identity();
 	const String &build = WGodotBuildFingerprint::get();
 	if (!build.is_empty()) {
 		// Use the same engine identity and disposable directory as binary resources.
-		cache_path = ProjectSettings::get_singleton()->get_project_data_path().path_join("resource_cache").path_join(build).path_join("syntax.bin");
+		cache_path = ProjectSettings::get_singleton()->get_project_data_path().path_join("resource_cache").path_join(build).path_join("typed.bin");
 	}
 	cache_context = ProjectSettings::get_singleton()->get_resource_path() + "\n" + build + "\n" + class_identity;
 	if (context != cache_context) {
 		context = cache_context;
 		cache.clear();
-		trusted.clear();
-		revision++;
 		const Ref<FileAccess> file = cache_path.is_empty() ? Ref<FileAccess>() : FileAccess::open(cache_path, FileAccess::READ);
 		if (file.is_valid()) {
 			const Variant data = file->get_var(false);
@@ -104,6 +111,14 @@ void WGodotResourceCheck::start(const Vector<String> &p_paths) {
 						entry.syntax.line = value.get("line", 1);
 						entry.syntax.message = value.get("message", "");
 						entry.syntax.missing_newlines = value.get("missing_newlines", PackedInt32Array());
+						const Dictionary dependencies = value.get("dependencies", Dictionary());
+						for (const KeyValue<Variant, Variant> &dependency : dependencies) {
+							entry.syntax.dependencies.insert(dependency.key, dependency.value);
+						}
+						const Dictionary declarations = value.get("declarations", Dictionary());
+						for (const KeyValue<Variant, Variant> &declaration : declarations) {
+							entry.syntax.declarations.insert(declaration.key, declaration.value);
+						}
 						cache.insert(key, entry);
 					}
 				}
@@ -118,11 +133,9 @@ void WGodotResourceCheck::start(const Vector<String> &p_paths) {
 		item.path = path;
 		if (const Entry *entry = cache.getptr(path)) {
 			item.entry = *entry;
-			item.trusted = trusted.has(path);
 		}
 		items.push_back(item);
 	}
-	start_revision = revision;
 	task = WorkerThreadPool::get_singleton()->add_native_task(&WGodotResourceCheck::run, this, false, "Check resource syntax");
 }
 
@@ -133,7 +146,14 @@ void WGodotResourceCheck::check_item(uint32_t p_index, Item **p_pending) {
 	Item &item = *p_pending[p_index];
 	Entry &entry = item.entry;
 	const String digest = WGodotFileStamp::get(item.path);
-	if (!digest.is_empty() && digest == entry.digest) {
+	bool reusable = !digest.is_empty() && digest == entry.digest && entry.syntax.error == OK;
+	for (const auto &dependency : entry.syntax.dependencies) {
+		reusable &= WGodotFileStamp::get(dependency.key) == dependency.value;
+	}
+	for (const auto &declaration : entry.syntax.declarations) {
+		reusable &= types->signature(declaration.key) == declaration.value;
+	}
+	if (reusable) {
 		return;
 	}
 	item.changed = true;
@@ -148,8 +168,12 @@ void WGodotResourceCheck::check_item(uint32_t p_index, Item **p_pending) {
 		return;
 	}
 	item.parsed = true;
-	entry.syntax = WGodotResourceSyntax::check(file);
-	if (WGodotFileStamp::get(item.path) != digest) {
+	entry.syntax = WGodotResourceSyntax::check(file, types.get());
+	bool stable = WGodotFileStamp::get(item.path) == digest;
+	for (const auto &dependency : entry.syntax.dependencies) {
+		stable &= WGodotFileStamp::get(dependency.key) == dependency.value;
+	}
+	if (!stable) {
 		entry.digest = String();
 		entry.syntax.error = ERR_BUSY;
 		entry.syntax.message = "Resource changed during validation; run check again.";
@@ -159,9 +183,16 @@ void WGodotResourceCheck::check_item(uint32_t p_index, Item **p_pending) {
 void WGodotResourceCheck::run(void *p_userdata) {
 	auto *check = static_cast<WGodotResourceCheck *>(p_userdata);
 	const uint64_t started = OS::get_singleton()->get_ticks_msec();
+	String declaration_error;
+	Error declaration_result = OK;
+	if (!check->types) {
+		auto declarations = std::make_unique<WGodotResourceTypes>();
+		declaration_result = declarations->build(check->project, declaration_error);
+		check->types = std::move(declarations);
+	}
 	Vector<Item *> pending;
 	for (Item &item : check->items) {
-		if (!item.trusted) {
+		if (declaration_result == OK) {
 			pending.push_back(&item);
 		}
 	}
@@ -181,7 +212,20 @@ void WGodotResourceCheck::run(void *p_userdata) {
 	bool changed = check->inventory_changed;
 	PackedStringArray output;
 	Array diagnostics;
+	if (declaration_result != OK) {
+		errors++;
+		output.push_back("wgodot-check: error: " + declaration_error);
+		Dictionary diagnostic;
+		diagnostic["path"] = "res://";
+		diagnostic["line"] = 1;
+		diagnostic["message"] = declaration_error;
+		diagnostic["warning"] = false;
+		diagnostics.push_back(diagnostic);
+	}
 	for (const Item &item : check->items) {
+		if (declaration_result != OK) {
+			break;
+		}
 		parsed += item.parsed;
 		cached += !item.changed;
 		changed |= item.changed;
@@ -204,7 +248,7 @@ void WGodotResourceCheck::run(void *p_userdata) {
 			diagnostic(line, "Missing newline between resource records; accepted by Godot, but difficult to read.", true);
 		}
 	}
-	if (changed) {
+	if (changed && declaration_result == OK) {
 		check->save_cache();
 	}
 	const int64_t elapsed = OS::get_singleton()->get_ticks_msec() - started;
@@ -235,6 +279,16 @@ void WGodotResourceCheck::save_cache() const {
 		entry["line"] = item.entry.syntax.line;
 		entry["message"] = item.entry.syntax.message;
 		entry["missing_newlines"] = item.entry.syntax.missing_newlines;
+		Dictionary dependencies;
+		for (const auto &dependency : item.entry.syntax.dependencies) {
+			dependencies[dependency.key] = dependency.value;
+		}
+		entry["dependencies"] = dependencies;
+		Dictionary declarations;
+		for (const auto &declaration : item.entry.syntax.declarations) {
+			declarations[declaration.key] = declaration.value;
+		}
+		entry["declarations"] = declarations;
 		entries[item.path] = entry;
 	}
 	Dictionary saved;
@@ -266,12 +320,8 @@ Dictionary WGodotResourceCheck::poll() {
 			return result;
 		}
 		cache.clear();
-		trusted.clear();
 		for (const Item &item : items) {
 			cache.insert(item.path, item.entry);
-			if (revision == start_revision && !item.entry.digest.is_empty()) {
-				trusted.insert(item.path);
-			}
 		}
 	}
 	return result;

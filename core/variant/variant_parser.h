@@ -150,6 +150,9 @@ public:
 	public:
 		bool handled = false;
 		virtual Error parse(const String &p_name, Token &p_token, Stream *p_stream, int &r_line, String &r_error, ResourceParser *p_resources) = 0;
+		virtual Error parse_value(const String &p_name, Token &p_token, Variant &r_value, Stream *p_stream, int &r_line, String &r_error, ResourceParser *p_resources) {
+			return VariantParser::parse_value(p_token, r_value, p_stream, r_line, r_error, p_resources);
+		}
 		virtual ~AssignmentParser() = default;
 	};
 	// wgodot-changes::end

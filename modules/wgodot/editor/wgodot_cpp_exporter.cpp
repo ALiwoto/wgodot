@@ -6,6 +6,8 @@
 #include "wgodot_cpp_emitter.h"
 #include "wgodot_cpp_memory_profile.h"
 #include "wgodot_cpp_project.h"
+#include "wgodot_resource_syntax.h"
+#include "wgodot_resource_types.h"
 
 #include "core/config/project_settings.h"
 #include "core/error/error_macros.h"
@@ -291,6 +293,14 @@ Dictionary WGodotCppExporter::execute(const Dictionary &p_options) {
 	print_line(vformat("Native analysis: %d ms", OS::get_singleton()->get_ticks_msec() - started));
 	Dictionary report = project.describe();
 	Vector<String> diagnostics = project.get_diagnostics();
+	if (result == OK) {
+		WGodotResourceTypes types;
+		for (const auto &game : project.get_classes()) {
+			types.add_class(game.node);
+		}
+		print_line("Type-checking authored scenes and resources...");
+		result = WGodotResourceSyntax::check_project(types, project.get_target(), diagnostics);
+	}
 	bool output_started = false;
 	if (result == OK && !analyze_only) {
 		project.cache_dependencies(cache);
@@ -299,7 +309,7 @@ Dictionary WGodotCppExporter::execute(const Dictionary &p_options) {
 		}
 		WGodotCppEmitter emitter(project, trace_enabled);
 		started = OS::get_singleton()->get_ticks_msec();
-		print_line(vformat("Generating native scripts and authored scene/resource factories (up to %d workers)...", jobs));
+		print_line(vformat("Generating native scripts, resource codecs/data, and scene factories (up to %d workers)...", jobs));
 		result = emitter.generate(output, jobs, &cache);
 		if (result == OK && engine_errors.any()) {
 			result = ERR_COMPILATION_FAILED;

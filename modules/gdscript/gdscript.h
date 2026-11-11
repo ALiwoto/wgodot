@@ -343,6 +343,9 @@ public:
 	virtual MethodInfo get_method_info(const StringName &p_method) const override;
 
 	virtual void get_script_property_list(List<PropertyInfo> *p_list) const override;
+	// wgodot-changes::begin
+	bool wgodot_get_declared_property_type(const StringName &p_name, WGodotResourceDataType &r_type) const override;
+	// wgodot-changes::end
 
 	virtual ScriptLanguage *get_language() const override;
 

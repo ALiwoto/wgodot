@@ -17,6 +17,7 @@ class WAnimationCodec : public WResourceCodec {
 public:
 	virtual bool owns_property(const StringName &p_name) const override;
 	virtual bool owns_assignment(const String &p_name) const override;
+	virtual Error check_types(VariantParser::Token &p_token, VariantParser::Stream *p_stream, int &r_line, String &r_error, VariantParser::ResourceParser *p_resources) const override;
 	virtual Error read(Resource *p_resource, VariantParser::Token &p_token, VariantParser::Stream *p_stream, int &r_line, String &r_error, VariantParser::ResourceParser *p_resources) const override;
 	virtual Error write(const Resource *p_resource, String &r_text, VariantWriter::EncodeResourceFunc p_encode, void *p_userdata) const override;
 	virtual Error write_native(const Resource *p_resource, const String &p_target, NativeWriter &p_writer) const override;

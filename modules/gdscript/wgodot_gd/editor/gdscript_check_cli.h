@@ -20,6 +20,7 @@ class ProjectCheck : public RefCounted {
 	static void run(void *p_userdata);
 
 public:
+	const WGodotGDScriptExportTransform::ExportProject &get_project() const { return project; }
 	void start();
 	void start(const Vector<String> &p_paths);
 	Dictionary poll();

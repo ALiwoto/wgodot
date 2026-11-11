@@ -159,7 +159,6 @@ void register_core_types() {
 	// wgodot-changes::end
 	GDREGISTER_CLASS(Resource);
 	// wgodot-changes::begin
-	GDREGISTER_CLASS(WGlobalResource);
 	// wgodot-changes::end
 
 	GDREGISTER_CLASS(Time);
