@@ -332,6 +332,9 @@ bool GDScriptAnalyzer::wgodot_reduce_mutable_alias(Parser::CallNode *p_call) {
 }
 
 void GDScriptAnalyzer::wgodot_resolve_immutable_function(Parser::FunctionNode *p_function) {
+	if (!p_function->is_static && p_function->identifier && p_function->identifier->name == CoreStringName(_to_string) && !p_function->wgodot_readonly) {
+		push_error("_to_string() must be annotated @readonly; implicit string conversion can call it through an immutable reference.", p_function);
+	}
 	if (p_function->wgodot_immutable_return || p_function->wgodot_immutable_clone) {
 		Type result = p_function->return_type_constraint;
 		result.wgodot_immutable = true;

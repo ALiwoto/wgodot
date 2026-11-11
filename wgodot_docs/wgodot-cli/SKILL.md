@@ -520,6 +520,11 @@ Rename operates only on semantic GDScript references in project `.gd` files. It 
 
 ## GDScript check
 
+For data definitions and shared resource/container values, read
+[GDScript immutability](../gd_immutable.md) for `@data_class`, `@immutable`,
+readonly methods, qualified parameters/results, and `Type{field: value}.new()`
+construction syntax. Follow those contracts when resolving checker errors.
+
 After editing GDScript, scan all project `.gd` files for parser errors, analyzer errors, and active warnings:
 
 ```powershell

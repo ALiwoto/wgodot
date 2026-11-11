@@ -1832,7 +1832,9 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 				Callable::CallError error;
 				*destination = constructed_script->wgodot_new_with_fields((const Variant **)instruction_args, argc, &_code_ptr[ip + 3], (const Variant **)&instruction_args[argc], field_count, error);
 				if (error.error != Callable::CallError::CALL_OK) {
+#ifdef DEBUG_ENABLED
 					err_text = "Failed to construct script with field initializers.";
+#endif
 					OPCODE_BREAK;
 				}
 				ip += 3 + field_count;
