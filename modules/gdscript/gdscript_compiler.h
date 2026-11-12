@@ -178,6 +178,8 @@ class GDScriptCompiler {
 	GDScriptCodeGenerator::Address _parse_expression(CodeGen &codegen, Error &r_error, const GDScriptParser::ExpressionNode *p_expression, bool p_root = false, bool p_initializer = false);
 	// wgodot-changes::begin
 	GDScriptCodeGenerator::Address _wgodot_parse_packed_literal(CodeGen &codegen, Error &r_error, const GDScriptParser::CallNode *p_call);
+	bool _wgodot_mutating_value_call(CodeGen &p_codegen, Error &r_error, const GDScriptParser::CallNode *p_call, const GDScriptCodeGenerator::Address &p_result, const Vector<GDScriptCodeGenerator::Address> &p_arguments);
+	bool _wgodot_assign_value_path(CodeGen &p_codegen, Error &r_error, const GDScriptParser::AssignmentNode *p_assignment);
 	void _wgodot_construct_fields(CodeGen &codegen, Error &r_error, const GDScriptParser::CallNode *p_call, const GDScriptCodeGenerator::Address &p_result, const Vector<GDScriptCodeGenerator::Address> &p_arguments);
 	bool _wgodot_can_skip_empty_initializer(const GDScriptParser::ClassNode *p_class, const GDScriptParser::VariableNode *p_field) const;
 	void _wgodot_write_shared_empty(CodeGen &codegen, const GDScriptCodeGenerator::Address &p_target);
@@ -190,6 +192,7 @@ class GDScriptCompiler {
 	GDScriptFunction *_make_static_initializer(Error &r_error, GDScript *p_script, const GDScriptParser::ClassNode *p_class);
 	Error _parse_setter_getter(GDScript *p_script, const GDScriptParser::ClassNode *p_class, const GDScriptParser::VariableNode *p_variable, bool p_is_setter);
 	Error _prepare_compilation(GDScript *p_script, const GDScriptParser::ClassNode *p_class, bool p_keep_state);
+	Error _wgodot_compile_record(GDScript *p_script, const GDScriptParser::ClassNode *p_class);
 	Error _compile_class(GDScript *p_script, const GDScriptParser::ClassNode *p_class, bool p_keep_state);
 	FunctionLambdaInfo _get_function_replacement_info(GDScriptFunction *p_func, int p_index = -1, int p_depth = 0, GDScriptFunction *p_parent_func = nullptr);
 	Vector<FunctionLambdaInfo> _get_function_lambda_replacement_info(GDScriptFunction *p_func, int p_depth = 0, GDScriptFunction *p_parent_func = nullptr);

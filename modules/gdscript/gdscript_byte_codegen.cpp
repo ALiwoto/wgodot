@@ -35,6 +35,9 @@
 uint32_t GDScriptByteCodeGenerator::add_parameter(const StringName &p_name, bool p_is_optional, const GDScriptDataType &p_type) {
 	function->_argument_count++;
 	function->argument_types.push_back(p_type);
+	// wgodot-changes::begin
+	function->wgodot_storage_arguments |= p_type.wgodot_scalar != WGodotScalar::NONE || p_type.wgodot_value;
+	// wgodot-changes::end
 	if (p_is_optional) {
 		function->_default_arg_count++;
 	}
@@ -84,6 +87,10 @@ uint32_t GDScriptByteCodeGenerator::add_temporary(const GDScriptDataType &p_type
 			case Variant::PLANE:
 			case Variant::QUATERNION:
 			case Variant::AABB:
+			// wgodot-changes::begin
+			case Variant::WVECTOR3D:
+			case Variant::WTRANSFORM3D:
+			// wgodot-changes::end
 			case Variant::BASIS:
 			case Variant::TRANSFORM3D:
 			case Variant::PROJECTION:
@@ -467,10 +474,14 @@ void GDScriptByteCodeGenerator::write_type_adjust(const Address &p_target, Varia
 			append_opcode(GDScriptFunction::OPCODE_TYPE_ADJUST_TRANSFORM2D);
 			break;
 		case Variant::VECTOR4:
-			append_opcode(GDScriptFunction::OPCODE_TYPE_ADJUST_VECTOR3);
+			// wgodot-changes::begin
+			append_opcode(GDScriptFunction::OPCODE_TYPE_ADJUST_VECTOR4);
+			// wgodot-changes::end
 			break;
 		case Variant::VECTOR4I:
-			append_opcode(GDScriptFunction::OPCODE_TYPE_ADJUST_VECTOR3I);
+			// wgodot-changes::begin
+			append_opcode(GDScriptFunction::OPCODE_TYPE_ADJUST_VECTOR4I);
+			// wgodot-changes::end
 			break;
 		case Variant::PLANE:
 			append_opcode(GDScriptFunction::OPCODE_TYPE_ADJUST_PLANE);
@@ -550,6 +561,13 @@ void GDScriptByteCodeGenerator::write_type_adjust(const Address &p_target, Varia
 		case Variant::NIL:
 		case Variant::VARIANT_MAX:
 			return;
+		// wgodot-changes::begin
+		default:
+			append_opcode(GDScriptFunction::OPCODE_TYPE_ADJUST_BUILTIN);
+			append(p_target);
+			append(p_new_type);
+			return;
+		// wgodot-changes::end
 	}
 	append(p_target);
 }
@@ -564,6 +582,9 @@ void GDScriptByteCodeGenerator::write_unary_operator(const Address &p_target, Va
 		append(Address());
 		append(p_target);
 		append(op_func);
+		// wgodot-changes::begin
+		write_storage_adjust(p_target);
+		// wgodot-changes::end
 #ifdef DEBUG_ENABLED
 		add_debug_name(operator_names, get_operation_pos(op_func), Variant::get_operator_name(p_operator));
 #endif
@@ -582,6 +603,9 @@ void GDScriptByteCodeGenerator::write_unary_operator(const Address &p_target, Va
 	for (int i = 0; i < _pointer_size; i++) {
 		append(0); // Space for function pointer.
 	}
+	// wgodot-changes::begin
+	write_storage_adjust(p_target);
+	// wgodot-changes::end
 }
 
 void GDScriptByteCodeGenerator::write_binary_operator(const Address &p_target, Variant::Operator p_operator, const Address &p_left_operand, const Address &p_right_operand) {
@@ -621,6 +645,9 @@ void GDScriptByteCodeGenerator::write_binary_operator(const Address &p_target, V
 		append(p_right_operand);
 		append(p_target);
 		append(op_func);
+		// wgodot-changes::begin
+		write_storage_adjust(p_target);
+		// wgodot-changes::end
 #ifdef DEBUG_ENABLED
 		add_debug_name(operator_names, get_operation_pos(op_func), Variant::get_operator_name(p_operator));
 #endif
@@ -639,9 +666,28 @@ void GDScriptByteCodeGenerator::write_binary_operator(const Address &p_target, V
 	for (int i = 0; i < _pointer_size; i++) {
 		append(0); // Space for function pointer.
 	}
+	// wgodot-changes::begin
+	write_storage_adjust(p_target);
+	// wgodot-changes::end
 }
 
 void GDScriptByteCodeGenerator::write_type_test(const Address &p_target, const Address &p_source, const GDScriptDataType &p_type) {
+	// wgodot-changes::begin
+	if (p_type.wgodot_class_ref) {
+		append_opcode(GDScriptFunction::OPCODE_TYPE_TEST_CLASS_REF);
+		append(p_target);
+		append(p_source);
+		append(p_type.native_type);
+		return;
+	}
+	if (p_type.builtin_type == Variant::WRECORD) {
+		append_opcode(GDScriptFunction::OPCODE_TYPE_TEST_RECORD);
+		append(p_target);
+		append(p_source);
+		append(p_type.native_type);
+		return;
+	}
+	// wgodot-changes::end
 	switch (p_type.kind) {
 		case GDScriptDataType::BUILTIN: {
 			if (p_type.builtin_type == Variant::ARRAY && p_type.has_container_element_type(0)) {
@@ -909,6 +955,31 @@ void GDScriptByteCodeGenerator::write_get_static_variable(const Address &p_targe
 }
 
 void GDScriptByteCodeGenerator::write_assign_with_conversion(const Address &p_target, const Address &p_source) {
+	// wgodot-changes::begin
+	if (p_target.type.wgodot_class_ref) {
+		write_assign(p_target, p_source);
+		return;
+	}
+	if (p_target.type.builtin_type == Variant::WRECORD) {
+		write_record_assign(p_target, p_source);
+		return;
+	}
+	// wgodot-changes::end
+	// wgodot-changes::begin
+	if (p_target.type.wgodot_value) {
+		Address target = p_target;
+		target.type.wgodot_value = false;
+		write_assign_with_conversion(target, p_source);
+		write_storage_adjust(p_target);
+		return;
+	}
+	// wgodot-changes::end
+	// wgodot-changes::begin
+	if (p_target.type.wgodot_scalar != WGodotScalar::NONE) {
+		write_scalar_assign(p_target, p_source);
+		return;
+	}
+	// wgodot-changes::end
 	switch (p_target.type.kind) {
 		case GDScriptDataType::BUILTIN: {
 			if (p_target.type.builtin_type == Variant::ARRAY && p_target.type.has_container_element_type(0)) {
@@ -969,6 +1040,28 @@ void GDScriptByteCodeGenerator::write_assign_with_conversion(const Address &p_ta
 }
 
 void GDScriptByteCodeGenerator::write_assign(const Address &p_target, const Address &p_source) {
+	// wgodot-changes::begin
+	if (p_target.type.wgodot_class_ref) {
+		append_opcode(GDScriptFunction::OPCODE_ASSIGN_CLASS_REF);
+		append(p_target);
+		append(p_source);
+		append(p_target.type.native_type);
+		return;
+	}
+	if (p_target.type.wgodot_value) {
+		Address target = p_target;
+		target.type.wgodot_value = false;
+		write_assign(target, p_source);
+		write_storage_adjust(p_target);
+		return;
+	}
+	// wgodot-changes::end
+	// wgodot-changes::begin
+	if (p_target.type.wgodot_scalar != WGodotScalar::NONE && p_target.type.wgodot_scalar != p_source.type.wgodot_scalar) {
+		write_scalar_assign(p_target, p_source);
+		return;
+	}
+	// wgodot-changes::end
 	if (p_target.type.kind == GDScriptDataType::BUILTIN && p_target.type.builtin_type == Variant::ARRAY && p_target.type.has_container_element_type(0)) {
 		const GDScriptDataType &element_type = p_target.type.get_container_element_type(0);
 		append_opcode(GDScriptFunction::OPCODE_ASSIGN_TYPED_ARRAY);
@@ -1001,6 +1094,33 @@ void GDScriptByteCodeGenerator::write_assign(const Address &p_target, const Addr
 		append(p_source);
 	}
 }
+
+// wgodot-changes::begin
+void GDScriptByteCodeGenerator::write_record_assign(const Address &p_target, const Address &p_source, bool p_construct) {
+	append_opcode(GDScriptFunction::OPCODE_ASSIGN_RECORD);
+	append(p_target);
+	append(p_source);
+	append(p_target.type.native_type);
+	append(p_construct);
+}
+
+void GDScriptByteCodeGenerator::write_scalar_assign(const Address &p_target, const Address &p_source) {
+	append_opcode(GDScriptFunction::OPCODE_ASSIGN_SCALAR);
+	append(p_target);
+	append(p_source);
+	append(p_target.type.wgodot_scalar);
+}
+
+void GDScriptByteCodeGenerator::write_storage_adjust(const Address &p_target) {
+	if (p_target.type.wgodot_value) {
+		append_opcode(GDScriptFunction::OPCODE_MAKE_VALUE);
+		append(p_target);
+	}
+	if (p_target.type.wgodot_scalar != WGodotScalar::NONE) {
+		write_scalar_assign(p_target, p_target);
+	}
+}
+// wgodot-changes::end
 
 void GDScriptByteCodeGenerator::write_assign_null(const Address &p_target) {
 	append_opcode(GDScriptFunction::OPCODE_ASSIGN_NULL);
@@ -1039,6 +1159,21 @@ void GDScriptByteCodeGenerator::write_store_named_global(const Address &p_dst, c
 }
 
 void GDScriptByteCodeGenerator::write_cast(const Address &p_target, const Address &p_source, const GDScriptDataType &p_type) {
+	// wgodot-changes::begin
+	if (p_type.wgodot_class_ref) {
+		append_opcode(GDScriptFunction::OPCODE_CAST_CLASS_REF);
+		append(p_target);
+		append(p_source);
+		append(p_type.native_type);
+		return;
+	}
+	if (p_type.builtin_type == Variant::WRECORD) {
+		Address target = p_target;
+		target.type = p_type;
+		write_record_assign(target, p_source);
+		return;
+	}
+	// wgodot-changes::end
 	int index = 0;
 
 	switch (p_type.kind) {
@@ -1067,6 +1202,9 @@ void GDScriptByteCodeGenerator::write_cast(const Address &p_target, const Addres
 	append(p_source);
 	append(p_target);
 	append(index);
+	// wgodot-changes::begin
+	write_storage_adjust(p_target);
+	// wgodot-changes::end
 }
 
 GDScriptByteCodeGenerator::CallTarget GDScriptByteCodeGenerator::get_call_target(const GDScriptCodeGenerator::Address &p_target, Variant::Type p_type) {
@@ -1278,6 +1416,38 @@ void GDScriptByteCodeGenerator::write_call_builtin_type_static(const Address &p_
 	write_call_builtin_type(p_target, Address(), p_type, p_method, true, p_arguments);
 }
 
+// wgodot-changes::begin
+void GDScriptByteCodeGenerator::write_set_value_path(const Address &p_root, const Vector<Address> &p_keys, const Address &p_value, Variant::Operator p_operator) {
+	append_opcode_and_argcount(GDScriptFunction::OPCODE_SET_VALUE_PATH, 2 + p_keys.size());
+	append(p_root);
+	append(p_value);
+	for (const Address &key : p_keys) {
+		append(key);
+	}
+	append(int(p_operator));
+}
+
+void GDScriptByteCodeGenerator::write_call_value_builtin(const Address &p_target, const Address &p_root, const Vector<Address> &p_keys, const Vector<Address> &p_owners, const StringName &p_method, const Vector<Address> &p_arguments) {
+	CallTarget target = get_call_target(p_target);
+	append_opcode_and_argcount(GDScriptFunction::OPCODE_CALL_VALUE_BUILTIN, 2 + p_arguments.size() + 2 * p_keys.size());
+	for (const Address &argument : p_arguments) {
+		append(argument);
+	}
+	append(p_root);
+	append(target.target);
+	for (const Address &key : p_keys) {
+		append(key);
+	}
+	for (const Address &owner : p_owners) {
+		append(owner);
+	}
+	append(p_arguments.size());
+	append(p_keys.size());
+	append(p_method);
+	target.cleanup();
+}
+// wgodot-changes::end
+
 void GDScriptByteCodeGenerator::write_call_native_static(const Address &p_target, const StringName &p_class, const StringName &p_method, const Vector<Address> &p_arguments) {
 	const MethodBind *method = ClassDB::get_method(p_class, p_method);
 
@@ -1419,6 +1589,12 @@ void GDScriptByteCodeGenerator::write_lambda(const Address &p_target, GDScriptFu
 }
 
 void GDScriptByteCodeGenerator::write_construct(const Address &p_target, Variant::Type p_type, const Vector<Address> &p_arguments) {
+	// wgodot-changes::begin
+	if (p_type == Variant::WRECORD && p_arguments.is_empty() && p_target.type.native_type != StringName()) {
+		write_record_assign(p_target, Address(), true);
+		return;
+	}
+	// wgodot-changes::end
 	// Try to find an appropriate constructor.
 	bool all_have_type = true;
 	Vector<Variant::Type> arg_types;
@@ -1456,6 +1632,9 @@ void GDScriptByteCodeGenerator::write_construct(const Address &p_target, Variant
 			append(ct.target);
 			append(p_arguments.size());
 			append(Variant::get_validated_constructor(p_type, valid_constructor));
+			// wgodot-changes::begin
+			write_storage_adjust(ct.target);
+			// wgodot-changes::end
 			ct.cleanup();
 #ifdef DEBUG_ENABLED
 			add_debug_name(constructors_names, get_constructor_pos(Variant::get_validated_constructor(p_type, valid_constructor)), Variant::get_type_name(p_type));
@@ -1472,6 +1651,9 @@ void GDScriptByteCodeGenerator::write_construct(const Address &p_target, Variant
 	append(ct.target);
 	append(p_arguments.size());
 	append(p_type);
+	// wgodot-changes::begin
+	write_storage_adjust(ct.target);
+	// wgodot-changes::end
 	ct.cleanup();
 }
 
@@ -1483,6 +1665,9 @@ void GDScriptByteCodeGenerator::write_construct_array(const Address &p_target, c
 	CallTarget ct = get_call_target(p_target);
 	append(ct.target);
 	append(p_arguments.size());
+	// wgodot-changes::begin
+	write_storage_adjust(ct.target);
+	// wgodot-changes::end
 	ct.cleanup();
 }
 
@@ -1497,6 +1682,9 @@ void GDScriptByteCodeGenerator::write_construct_typed_array(const Address &p_tar
 	append(p_arguments.size());
 	append(p_element_type.builtin_type);
 	append(p_element_type.native_type);
+	// wgodot-changes::begin
+	write_storage_adjust(ct.target);
+	// wgodot-changes::end
 	ct.cleanup();
 }
 
@@ -1508,6 +1696,9 @@ void GDScriptByteCodeGenerator::write_construct_dictionary(const Address &p_targ
 	CallTarget ct = get_call_target(p_target);
 	append(ct.target);
 	append(p_arguments.size() / 2); // This is number of key-value pairs, so only half of actual arguments.
+	// wgodot-changes::begin
+	write_storage_adjust(ct.target);
+	// wgodot-changes::end
 	ct.cleanup();
 }
 
@@ -1525,6 +1716,9 @@ void GDScriptByteCodeGenerator::write_construct_typed_dictionary(const Address &
 	append(p_key_type.native_type);
 	append(p_value_type.builtin_type);
 	append(p_value_type.native_type);
+	// wgodot-changes::begin
+	write_storage_adjust(ct.target);
+	// wgodot-changes::end
 	ct.cleanup();
 }
 
@@ -1533,6 +1727,9 @@ void GDScriptByteCodeGenerator::write_await(const Address &p_target, const Addre
 	append(p_operand);
 	append_opcode(GDScriptFunction::OPCODE_AWAIT_RESUME);
 	append(p_target);
+	// wgodot-changes::begin
+	write_storage_adjust(p_target);
+	// wgodot-changes::end
 }
 
 void GDScriptByteCodeGenerator::write_if(const Address &p_condition) {
@@ -1773,6 +1970,11 @@ void GDScriptByteCodeGenerator::write_for(const Address &p_variable, bool p_use_
 			clear_address(temp); // Can contain `RefCounted`, so clear it.
 		}
 	}
+	// wgodot-changes::begin
+	if (!p_use_conversion) {
+		write_storage_adjust(p_variable);
+	}
+	// wgodot-changes::end
 }
 
 void GDScriptByteCodeGenerator::write_endfor(bool p_is_range) {
@@ -1859,6 +2061,26 @@ void GDScriptByteCodeGenerator::write_newline(int p_line) {
 }
 
 void GDScriptByteCodeGenerator::write_return(const Address &p_return_value, bool p_use_conversion) {
+	// wgodot-changes::begin
+	if (function->return_type.wgodot_class_ref || function->return_type.wgodot_value || function->return_type.builtin_type == Variant::WRECORD) {
+		Address converted(Address::TEMPORARY, add_temporary(function->return_type), function->return_type);
+		write_assign_with_conversion(converted, p_return_value);
+		append_opcode(GDScriptFunction::OPCODE_RETURN);
+		append(converted);
+		pop_temporary();
+		return;
+	}
+	// wgodot-changes::end
+	// wgodot-changes::begin
+	if (function->return_type.wgodot_scalar != WGodotScalar::NONE && function->return_type.wgodot_scalar != p_return_value.type.wgodot_scalar) {
+		Address converted(Address::TEMPORARY, add_temporary(function->return_type), function->return_type);
+		write_scalar_assign(converted, p_return_value);
+		append_opcode(GDScriptFunction::OPCODE_RETURN);
+		append(converted);
+		pop_temporary();
+		return;
+	}
+	// wgodot-changes::end
 	if (!p_use_conversion) {
 		append_opcode(GDScriptFunction::OPCODE_RETURN);
 		append(p_return_value);

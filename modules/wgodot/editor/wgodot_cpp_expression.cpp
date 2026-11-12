@@ -1,11 +1,14 @@
 // wgodot-changes::file
 #include "wgodot_cpp_emitter.h"
+#include "wgodot_cpp_names.h"
 
 #include "core/config/engine.h"
 #include "core/io/resource.h"
 #include "core/object/class_db.h"
+#include "core/object/wgodot_class_references.h"
 
 using Parser = GDScriptParser;
+using namespace WGodotCppNames;
 
 namespace {
 String indented(const String &p_code, int p_indent) {
@@ -191,7 +194,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::value_facts(const Parser::ExpressionNo
 		result.invariant = !result.effects;
 		if (p_expression->reduced_value.get_type() == Variant::NIL && !datatype.is_meta_type) {
 			result.cpp_type = "Variant";
-		} else if (p_expression->reduced_value.get_type() >= Variant::PACKED_BYTE_ARRAY) {
+		} else if (Variant::is_packed_array_type(p_expression->reduced_value.get_type())) {
 			// literal() constructs the engine packed array, before its shared
 			// script-storage wrapper is built at the destination.
 			result.cpp_type = Variant::get_type_name(p_expression->reduced_value.get_type());
@@ -268,8 +271,19 @@ WGodotCppEmitter::Value WGodotCppEmitter::lower(const Parser::ExpressionNode *p_
 	if (expression_type(p_expression).wgodot_resource_path && p_expression->is_constant && p_expression->reduced) {
 		return resource_path_constant(p_expression->reduced_value);
 	}
+	if (expression_type(p_expression).wgodot_class_ref && p_expression->is_constant) {
+		const String name = class_reference_constant(p_expression);
+		if (!name.is_empty()) {
+			const String target = type(expression_type(p_expression), p_expression);
+			return Value(target + "::from_name(" + quoted(name) + ")", target);
+		}
+	}
 	if (can_inline_constant(p_expression)) {
-		return value_facts(p_expression, leaf_expression(p_expression));
+		Value constant = value_facts(p_expression, leaf_expression(p_expression));
+		if (expression_type(p_expression).wgodot_scalar != WGodotScalar::NONE) {
+			constant.code = "static_cast<" + constant.cpp_type + ">(" + constant.code + ")";
+		}
+		return constant;
 	}
 	switch (p_expression->type) {
 		case Parser::Node::ASSIGNMENT:
@@ -372,6 +386,16 @@ WGodotCppEmitter::Value WGodotCppEmitter::lower_index(const Parser::SubscriptNod
 }
 
 WGodotCppEmitter::Value WGodotCppEmitter::lower_converted(const Parser::ExpressionNode *p_expression, const Parser::DataType &p_target, const Parser::Node *p_target_origin, bool p_parameter) {
+	if (p_target.wgodot_value) {
+		auto plain_type = p_target;
+		plain_type.wgodot_value = false;
+		Value result = lower_converted(p_expression, plain_type, p_target_origin, p_parameter);
+		class_call_headers.insert("modules/wgodot/native/wgodot_native_value.h");
+		result.code = "WGodotNative::value_container(" + result.code + ")";
+		result.borrowed = false;
+		result.effects = true;
+		return result;
+	}
 	if (p_target.wgodot_resource_path && p_expression->is_constant && p_expression->reduced) {
 		return resource_path_constant(p_expression->reduced_value);
 	}
@@ -383,6 +407,12 @@ WGodotCppEmitter::Value WGodotCppEmitter::lower_converted(const Parser::Expressi
 		return result;
 	}
 	const String target = type(p_target, p_target_origin ? p_target_origin : p_expression);
+	if (p_target.wgodot_class_ref && expression_type(p_expression).is_meta_type) {
+		const String name = class_reference_name(expression_type(p_expression), p_expression);
+		Value result(target + "::from_name(" + quoted(name) + ")", target);
+		result.effects = true;
+		return result;
+	}
 	if (p_expression->type == Parser::Node::ARRAY && is_warray(p_target)) {
 		return array_literal(static_cast<const Parser::ArrayNode *>(p_expression), p_target);
 	}
@@ -399,7 +429,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::lower_converted(const Parser::Expressi
 		return Value();
 	}
 	if (p_expression->is_constant && p_expression->reduced && p_expression->reduced_value.get_type() == Variant::NIL) {
-		Value result(p_target.kind == Parser::DataType::CLASS || p_target.kind == Parser::DataType::NATIVE ? target + "()" : "Variant()", target);
+		Value result(p_target.wgodot_class_ref || p_target.kind == Parser::DataType::CLASS || p_target.kind == Parser::DataType::NATIVE ? target + "()" : "Variant()", target);
 		result.effects = false;
 		result.invariant = true;
 		return result;
@@ -534,6 +564,11 @@ WGodotCppEmitter::Value WGodotCppEmitter::lower_binary(const Parser::BinaryOpNod
 	}
 	auto left_type = expression_type(p_binary->left_operand);
 	auto right_type = expression_type(p_binary->right_operand);
+	if (left_type.wgodot_class_ref && right_type.is_meta_type) {
+		right_type = left_type;
+	} else if (right_type.wgodot_class_ref && left_type.is_meta_type) {
+		left_type = right_type;
+	}
 	if (is_warray(left_type) && p_binary->right_operand->type == Parser::Node::ARRAY) {
 		right_type = left_type;
 	} else if (is_warray(right_type) && p_binary->left_operand->type == Parser::Node::ARRAY) {

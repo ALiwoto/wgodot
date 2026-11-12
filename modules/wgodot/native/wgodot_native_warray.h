@@ -44,8 +44,18 @@ class WArray {
 	Vector<T> &elements() { return Storage::elements(storage); }
 	const Vector<T> &elements() const { return Storage::elements(storage); }
 
-	bool writable() const {
+	void detach() {
+		if (!Storage::exclusive(storage)) {
+			auto *previous = storage;
+			storage = Storage::copy(previous);
+			Storage::release(previous);
+		}
+	}
+	bool writable() {
 		ERR_FAIL_COND_V_MSG(is_read_only(), false, "WArray is read-only.");
+		if (Storage::is_value(storage)) {
+			detach();
+		}
 		return true;
 	}
 
@@ -93,15 +103,35 @@ public:
 	// native-array: internal
 	explicit operator bool() const { return !is_empty(); }
 	// native-array: internal
-	Vector<T> &packed_native() const {
+	const Vector<T> &packed_native() const {
 		static_assert(Kind != Variant::ARRAY);
 		return Storage::elements(storage);
 	}
+	// native-array: internal
+	Vector<T> &packed_native() {
+		static_assert(Kind != Variant::ARRAY);
+		writable();
+		return Storage::elements(storage);
+	}
+	// native-array: internal
+	void make_value() {
+		if (!Storage::is_value(storage) || is_read_only()) {
+			detach();
+			Storage::make_value(storage);
+		}
+	}
+	// native-array: internal
+	bool is_value() const { return Storage::is_value(storage); }
 
 	int64_t size() const { return elements().size(); }
 	bool is_empty() const { return elements().is_empty(); }
 	bool is_read_only() const { return Storage::read_only(storage); }
-	void make_read_only() { Storage::make_read_only(storage); }
+	void make_read_only() {
+		if (Storage::is_value(storage)) {
+			detach();
+		}
+		Storage::make_read_only(storage);
+	}
 	// native-array: internal
 	const Vector<T> &native() const { return elements(); }
 	// native-array: internal
@@ -424,6 +454,9 @@ public:
 	// native-array: internal
 	WArray recursive_duplicate(bool p_deep, ResourceDeepDuplicateMode p_mode, int p_depth) const {
 		WArray result;
+		if (is_value()) {
+			result.make_value();
+		}
 		ERR_FAIL_COND_V_MSG(p_depth > Variant::MAX_RECURSION_DEPTH, result, "Maximum container copy recursion reached.");
 		result.elements() = elements();
 		if constexpr (container_needs_deep_copy<T>) {

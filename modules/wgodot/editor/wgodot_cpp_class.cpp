@@ -4,6 +4,7 @@
 #include "wgodot_cpp_names.h"
 
 #include "core/object/class_db.h"
+#include "core/object/wgodot_class_references.h"
 
 #include "modules/gdscript/wgodot_gd/inline_constants.h"
 #include "modules/gdscript/wgodot_gd/construction.h"
@@ -53,6 +54,13 @@ String WGodotCppEmitter::function(const Parser::FunctionNode *p_function, String
 		return async.generate(p_function, name, parameters, r_declaration);
 	}
 	String body = suite(p_function->body, 1);
+	String parameter_storage;
+	for (const auto *parameter : p_function->parameters) {
+		if (parameter->type_constraint.wgodot_value) {
+			parameter_storage += "\tv_" + symbol(parameter->identifier->name) + ".make_value();\n";
+		}
+	}
+	body = parameter_storage + body;
 	if (return_type == "Variant" && !p_function->body->has_return) {
 		body += "\treturn Variant();\n";
 	}
@@ -75,6 +83,10 @@ void WGodotCppEmitter::emit_class_uncached(const WGodotCppProject::Class &p_clas
 	class_uses_tasks = false;
 	if (p_class.node->wgodot_is_interface) {
 		emit_interface(p_class);
+		return;
+	}
+	if (p_class.node->wgodot_record) {
+		emit_record(p_class);
 		return;
 	}
 	const Parser::ClassNode *node = p_class.node;
@@ -160,6 +172,9 @@ void WGodotCppEmitter::emit_class_uncached(const WGodotCppProject::Class &p_clas
 				}
 				const auto datatype = variable_type(variable);
 				const String field_type = type(datatype, variable);
+				if (datatype.kind == Parser::DataType::CLASS && datatype.class_type->wgodot_record) {
+					class_native_headers.insert(field_type + ".h");
+				}
 				if (WGodotCppSignatures::contains_signature(datatype) && (variable->exported || variable->wgodot_export_reflection)) {
 					unsupported(variable, "serialized callback/signal field " + entry.get_name());
 				}
@@ -173,7 +188,11 @@ void WGodotCppEmitter::emit_class_uncached(const WGodotCppProject::Class &p_clas
 				}
 				const String initialize_condition = "!p_initialized || !p_initialized[" + itos(construction_fields.find(variable)) + "]";
 				if (container && !WGodotGDScriptConstruction::can_skip_empty(node, variable)) {
-					const String empty = datatype.wgodot_immutable ? field_type + "::shared_empty()" : field_type + "()";
+					String empty = datatype.wgodot_immutable ? field_type + "::shared_empty()" : field_type + "()";
+					if (datatype.wgodot_value) {
+						class_call_headers.insert("modules/wgodot/native/wgodot_native_value.h");
+						empty = "WGodotNative::value_container(" + empty + ")";
+					}
 					if (variable->is_static) {
 						static_container_initialization += "\tfields." + field_name + " = " + empty + ";\n";
 					} else {
@@ -206,7 +225,11 @@ void WGodotCppEmitter::emit_class_uncached(const WGodotCppProject::Class &p_clas
 				}
 				if (serialized || scene_field || node_field || interface_property_setters.has(variable)) {
 					declaration += "\t" + static_modifier + "void " + setter + "(" + field_type + " p_value);\n";
-					definitions += "void " + name + "::" + setter + "(" + field_type + " p_value) { " + (property_setter.is_empty() ? storage + " = p_value" : "m_" + symbol(property_setter) + "(p_value)") + "; }\n";
+					const String value = datatype.wgodot_value ? "WGodotNative::value_container(p_value)" : "p_value";
+					if (datatype.wgodot_value) {
+						class_call_headers.insert("modules/wgodot/native/wgodot_native_value.h");
+					}
+					definitions += "void " + name + "::" + setter + "(" + field_type + " p_value) { " + (property_setter.is_empty() ? storage + " = " + value : "m_" + symbol(property_setter) + "(" + value + ")") + "; }\n";
 				}
 				if (serialized) {
 					const String property = quoted(variable->identifier->name);
@@ -366,8 +389,44 @@ void WGodotCppEmitter::emit_class_uncached(const WGodotCppProject::Class &p_clas
 	store_file(name + ".cpp", source);
 }
 
+String WGodotCppEmitter::class_reference_name(const Parser::DataType &p_type, const Parser::Node *p_origin) {
+	const String name = class_name(p_type, p_origin);
+	if (p_type.kind == Parser::DataType::CLASS) {
+		class_reference_classes.insert(name);
+	}
+	return name;
+}
+
+String WGodotCppEmitter::class_reference_constant(const Parser::ExpressionNode *p_expression) {
+	const auto source = expression_type(p_expression);
+	if (source.is_meta_type) {
+		return class_reference_name(source, p_expression);
+	}
+	if (p_expression->is_constant && p_expression->reduced) {
+		const StringName name = WGodotClassReferences::name(p_expression->reduced_value);
+		if (const auto *entry = project.find_named_class(name)) {
+			return class_reference_name(entry->node->self_type, p_expression);
+		}
+		return name;
+	}
+	return String();
+}
+
+String WGodotCppEmitter::class_reference_expression(const Parser::ExpressionNode *p_expression) {
+	const String name = class_reference_constant(p_expression);
+	if (!name.is_empty()) {
+		class_call_headers.insert("core/object/wgodot_class_references.h");
+		return "WGodotClassReferences::resolve(" + quoted(name) + ")";
+	}
+	return expression(p_expression);
+}
+
 void WGodotCppEmitter::register_class(const WGodotCppProject::Class &p_class, HashSet<String> &r_registered, String &r_code) {
 	if (r_registered.has(p_class.cpp_name) || p_class.node->wgodot_static_class || p_class.node->wgodot_is_interface || !files.has(p_class.cpp_name + ".h")) {
+		return;
+	}
+	if (p_class.node->wgodot_record) {
+		r_registered.insert(p_class.cpp_name);
 		return;
 	}
 	if (p_class.node->base_type.kind == Parser::DataType::CLASS) {
@@ -378,6 +437,18 @@ void WGodotCppEmitter::register_class(const WGodotCppProject::Class &p_class, Ha
 	}
 	r_registered.insert(p_class.cpp_name);
 	r_code += String(p_class.node->is_abstract ? "\tGDREGISTER_ABSTRACT_CLASS(" : "\tGDREGISTER_CLASS(") + p_class.cpp_name + ");\n";
+	if (class_reference_classes.has(p_class.cpp_name)) {
+		const auto *owner = member_owner(p_class.node, SNAME("_init"));
+		const auto *initializer = owner ? owner->node->get_member(SNAME("_init")).function : nullptr;
+		bool constructible = !p_class.node->is_abstract;
+		if (initializer) {
+			for (const auto *parameter : initializer->parameters) {
+				constructible &= parameter->initializer != nullptr;
+			}
+		}
+		const String factory = constructible ? "+[](const StringName &) -> Variant { return " + p_class.cpp_name + "::create(); }" : "nullptr";
+		r_code += "\tWGodotClassReferences::register_native(" + quoted(p_class.cpp_name) + ", " + factory + ");\n";
+	}
 	if (p_class.node->wgodot_export_reflection) {
 		r_code += "\tClassDB::add_compatibility_class(" + quoted(p_class.node->fqcn) + ", " + quoted(p_class.cpp_name) + ");\n";
 	}

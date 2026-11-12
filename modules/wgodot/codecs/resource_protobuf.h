@@ -4,6 +4,7 @@
 #include "native_payload.h"
 
 #include "core/io/resource_loader.h"
+#include "core/object/wgodot_class_references.h"
 
 #include "modules/wgodot/serialization/wire.h"
 
@@ -22,6 +23,7 @@ class Context {
 public:
 	virtual Ref<Resource> resolve(const Reference &p_reference) = 0;
 	virtual Reference identify(const Ref<Resource> &p_resource) = 0;
+	virtual StringName identify_class(const Variant &p_reference) { return WGodotClassReferences::name(p_reference); }
 	virtual ~Context() = default;
 };
 
@@ -138,6 +140,25 @@ struct Value<T, std::enable_if_t<!std::is_arithmetic_v<T>, std::void_t<decltype(
 		memcpy(&r_value, bytes, sizeof(T));
 		WGodotNativePayload::Value<T>::swap_components(&r_value, sizeof(T));
 		return true;
+	}
+};
+
+template <>
+struct Value<WTransform3d> {
+	static constexpr int WIRE = 2;
+	static void write(Writer &r_writer, const WTransform3d &p_value, Context &p_context) {
+		Writer contents;
+		Value<Quaternion>::write(contents, p_value.rotation, p_context);
+		Value<WVector3d>::write(contents, p_value.origin, p_context);
+		Value<Vector3>::write(contents, p_value.scale, p_context);
+		message(r_writer, contents);
+	}
+	static bool read(Reader &r_reader, WTransform3d &r_value, Context &p_context) {
+		Reader contents = r_reader.slice(r_reader.varint());
+		return Value<Quaternion>::read(contents, r_value.rotation, p_context) &&
+				Value<WVector3d>::read(contents, r_value.origin, p_context) &&
+				Value<Vector3>::read(contents, r_value.scale, p_context) &&
+				contents.valid && !contents.remaining();
 	}
 };
 

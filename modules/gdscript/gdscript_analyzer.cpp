@@ -817,6 +817,8 @@ GDScriptParser::DataType GDScriptAnalyzer::resolve_datatype(GDScriptParser::Type
 		// wgodot-changes::begin
 		} else if (first == SNAME("WResPath")) {
 			result = wgodot_resource_path_type();
+		} else if (first == SNAME("ClassRef")) {
+			result = wgodot_resolve_class_ref(p_type);
 		// wgodot-changes::end
 		} else if (GDScriptParser::get_builtin_type(first) < Variant::VARIANT_MAX) {
 			// Built-in types.
@@ -839,9 +841,18 @@ GDScriptParser::DataType GDScriptAnalyzer::resolve_datatype(GDScriptParser::Type
 
 			result.kind = GDScriptParser::DataType::BUILTIN;
 			result.builtin_type = builtin_type;
+			// wgodot-changes::begin
+			result.wgodot_scalar = WGodotScalar::from_name(first);
+			// wgodot-changes::end
 
 			if (builtin_type == Variant::ARRAY) {
 				GDScriptParser::DataType container_type = type_from_metatype(resolve_datatype(p_type->get_container_type_or_null(0)));
+				// wgodot-changes::begin
+				if (container_type.wgodot_scalar != WGodotScalar::NONE) {
+					push_error("Narrow scalar arrays require a packed array type.", p_type);
+					return bad_type;
+				}
+				// wgodot-changes::end
 				if (container_type.kind != GDScriptParser::DataType::VARIANT) {
 					container_type.is_constant = false;
 					result.set_container_element_type(0, container_type);
@@ -854,6 +865,12 @@ GDScriptParser::DataType GDScriptAnalyzer::resolve_datatype(GDScriptParser::Type
 					result.set_container_element_type(0, key_type);
 				}
 				GDScriptParser::DataType value_type = type_from_metatype(resolve_datatype(p_type->get_container_type_or_null(1)));
+				// wgodot-changes::begin
+				if (key_type.wgodot_scalar != WGodotScalar::NONE || value_type.wgodot_scalar != WGodotScalar::NONE) {
+					push_error("Narrow scalar dictionary entries are not supported; use int or float entries.", p_type);
+					return bad_type;
+				}
+				// wgodot-changes::end
 				if (value_type.kind != GDScriptParser::DataType::VARIANT) {
 					value_type.is_constant = false;
 					result.set_container_element_type(1, value_type);
@@ -1042,7 +1059,9 @@ GDScriptParser::DataType GDScriptAnalyzer::resolve_datatype(GDScriptParser::Type
 	if (!p_type->container_types.is_empty()) {
 		// wgodot-changes::begin
 		bool wgodot_value_container_type_hint_valid = true;
-		if (wgodot_try_resolve_value_container_type_hint(p_type, result, wgodot_value_container_type_hint_valid)) {
+		if (result.wgodot_class_ref) {
+			// Its constrained base was resolved with the ClassRef type itself.
+		} else if (wgodot_try_resolve_value_container_type_hint(p_type, result, wgodot_value_container_type_hint_valid)) {
 			if (!wgodot_value_container_type_hint_valid) {
 				return bad_type;
 			}
@@ -1075,6 +1094,10 @@ GDScriptParser::DataType GDScriptAnalyzer::resolve_datatype(GDScriptParser::Type
 		return bad_type;
 	}
 	result.wgodot_immutable = p_type->wgodot_immutable;
+	result.wgodot_value = p_type->wgodot_value;
+	if (!wgodot_validate_value_type(result, p_type)) {
+		return bad_type;
+	}
 	GDScriptParser::DataType wgodot_instance_type = result;
 	wgodot_instance_type.is_meta_type = false; // A type annotation denotes instances.
 	if (!wgodot_validate_immutable_type(wgodot_instance_type, p_type)) {
@@ -1179,7 +1202,7 @@ void GDScriptAnalyzer::resolve_class_member(GDScriptParser::ClassNode *p_class, 
 				member.variable->type_constraint = resolving_datatype;
 				// wgodot-changes::begin
 				for (auto *annotation : member.variable->annotations) {
-					if (annotation->name == SNAME("@immutable")) {
+					if (annotation->name == SNAME("@immutable") || annotation->name == SNAME("@value")) {
 						resolve_annotation(annotation);
 						annotation->apply(parser, member.variable, p_class);
 					}
@@ -1194,7 +1217,7 @@ void GDScriptAnalyzer::resolve_class_member(GDScriptParser::ClassNode *p_class, 
 				// Apply annotations.
 				for (GDScriptParser::AnnotationNode *&E : member.variable->annotations) {
 					// wgodot-changes::begin
-					if (E->name != SNAME("@warning_ignore") && E->name != SNAME("@immutable")) {
+					if (E->name != SNAME("@warning_ignore") && E->name != SNAME("@immutable") && E->name != SNAME("@value")) {
 					// wgodot-changes::end
 						resolve_annotation(E);
 						E->apply(parser, member.variable, p_class);
@@ -1488,6 +1511,7 @@ void GDScriptAnalyzer::resolve_class_interface(GDScriptParser::ClassNode *p_clas
 		wgodot_validate_static_class(p_class);
 		wgodot_validate_interface_class(p_class);
 		wgodot_validate_implemented_interfaces(p_class);
+		wgodot_validate_record_layout(p_class);
 		// wgodot-changes::end
 
 #ifdef DEBUG_ENABLED
@@ -2087,6 +2111,9 @@ void GDScriptAnalyzer::resolve_function_signature(GDScriptParser::FunctionNode *
 			} else {
 				// Check return type covariance.
 				GDScriptParser::DataType return_type = p_function->return_type_constraint;
+				// wgodot-changes::begin
+				valid = valid && parent_return_type.wgodot_scalar == return_type.wgodot_scalar;
+				// wgodot-changes::end
 				if (return_type.is_variant()) {
 					// `is_type_compatible()` returns `true` if one of the types is `Variant`.
 					// Don't allow an explicitly specified `Variant` if the parent return type is narrower.
@@ -2119,6 +2146,7 @@ void GDScriptAnalyzer::resolve_function_signature(GDScriptParser::FunctionNode *
 					const GDScriptParser::DataType &current_par_type = p_function->parameters[i]->type_constraint;
 					// wgodot-changes::begin
 					valid = valid && wgodot_immutable_types_match(parent_par_type, current_par_type);
+					valid = valid && parent_par_type.wgodot_scalar == current_par_type.wgodot_scalar;
 					// wgodot-changes::end
 					i++;
 					// Check parameter type contravariance.
@@ -2379,6 +2407,15 @@ void GDScriptAnalyzer::resolve_assignable(GDScriptParser::AssignableNode *p_assi
 	if (has_specified_type) {
 		specified_type = type_from_metatype(resolve_datatype(p_assignable->datatype_specifier));
 		type = specified_type;
+		// wgodot-changes::begin
+		if (p_assignable->type == GDScriptParser::Node::VARIABLE && parser->current_class->wgodot_record) {
+			// A finite recursive default may construct another record and
+			// override this field while its own initializer is being resolved.
+			p_assignable->type_constraint = specified_type;
+			p_assignable->type_constraint.wgodot_value = p_assignable->wgodot_value || p_assignable->datatype_specifier->wgodot_value;
+			p_assignable->type_constraint.wgodot_immutable = p_assignable->wgodot_immutable || p_assignable->datatype_specifier->wgodot_immutable;
+		}
+		// wgodot-changes::end
 	}
 
 	if (p_assignable->initializer != nullptr) {
@@ -3091,6 +3128,11 @@ void GDScriptAnalyzer::update_const_expression_builtin_type(GDScriptParser::Expr
 #endif // DEBUG_ENABLED
 
 	if (value_type.builtin_type == p_type.builtin_type) {
+		// wgodot-changes::begin
+		if (p_type.wgodot_scalar != WGodotScalar::NONE) {
+			p_expression->reduced_value = WGodotScalar::narrow(p_expression->reduced_value, p_type.wgodot_scalar);
+		}
+		// wgodot-changes::end
 		p_expression->type_constraint = p_type;
 		return;
 	}
@@ -3111,6 +3153,11 @@ void GDScriptAnalyzer::update_const_expression_builtin_type(GDScriptParser::Expr
 #endif // DEBUG_ENABLED
 
 	p_expression->reduced_value = converted_to;
+	// wgodot-changes::begin
+	if (p_type.wgodot_scalar != WGodotScalar::NONE) {
+		p_expression->reduced_value = WGodotScalar::narrow(p_expression->reduced_value, p_type.wgodot_scalar);
+	}
+	// wgodot-changes::end
 	p_expression->type_constraint = p_type;
 }
 
@@ -3118,7 +3165,11 @@ void GDScriptAnalyzer::update_const_expression_builtin_type(GDScriptParser::Expr
 // This function determines which type is that (if any).
 void GDScriptAnalyzer::update_array_literal_element_type(GDScriptParser::ArrayNode *p_array, const GDScriptParser::DataType &p_element_type) {
 	GDScriptParser::DataType expected_type = p_element_type;
-	expected_type.container_element_types.clear(); // Nested types (like `Array[Array[int]]`) are not currently supported.
+	// wgodot-changes::begin
+	if (!expected_type.wgodot_class_ref) {
+		expected_type.container_element_types.clear(); // Nested containers are not supported; ClassRef's parameter is its base class.
+	}
+	// wgodot-changes::end
 
 	for (GDScriptParser::ExpressionNode *element_node : p_array->elements) {
 		// wgodot-changes::begin
@@ -3155,8 +3206,14 @@ void GDScriptAnalyzer::update_array_literal_element_type(GDScriptParser::ArrayNo
 void GDScriptAnalyzer::update_dictionary_literal_element_type(GDScriptParser::DictionaryNode *p_dictionary, const GDScriptParser::DataType &p_key_element_type, const GDScriptParser::DataType &p_value_element_type) {
 	GDScriptParser::DataType expected_key_type = p_key_element_type;
 	GDScriptParser::DataType expected_value_type = p_value_element_type;
-	expected_key_type.container_element_types.clear(); // Nested types (like `Dictionary[String, Array[int]]`) are not currently supported.
-	expected_value_type.container_element_types.clear();
+	// wgodot-changes::begin
+	if (!expected_key_type.wgodot_class_ref) {
+		expected_key_type.container_element_types.clear();
+	}
+	if (!expected_value_type.wgodot_class_ref) {
+		expected_value_type.container_element_types.clear();
+	}
+	// wgodot-changes::end
 
 	for (uint32_t i = 0; i < p_dictionary->elements.size(); i++) {
 		GDScriptParser::ExpressionNode *key_element_node = p_dictionary->elements[i].key;
@@ -3546,6 +3603,10 @@ void GDScriptAnalyzer::reduce_binary_op(GDScriptParser::BinaryOpNode *p_binary_o
 			ERR_PRINT("Parser bug: unknown binary operation.");
 		}
 		p_binary_op->type_constraint = type_from_variant(p_binary_op->reduced_value, p_binary_op);
+		// wgodot-changes::begin
+		p_binary_op->type_constraint.wgodot_scalar = WGodotScalar::operation_type(left_type.wgodot_scalar, right_type.wgodot_scalar, p_binary_op->reduced_value.get_type());
+		p_binary_op->reduced_value = WGodotScalar::narrow(p_binary_op->reduced_value, p_binary_op->type_constraint.wgodot_scalar);
+		// wgodot-changes::end
 
 		return;
 	}
@@ -3689,6 +3750,9 @@ void GDScriptAnalyzer::reduce_call(GDScriptParser::CallNode *p_call, bool p_is_a
 			call_type.type_source = GDScriptParser::DataType::ANNOTATED_EXPLICIT;
 			call_type.kind = GDScriptParser::DataType::BUILTIN;
 			call_type.builtin_type = builtin_type;
+			// wgodot-changes::begin
+			call_type.wgodot_scalar = WGodotScalar::from_name(function_name);
+			// wgodot-changes::end
 
 			// Reference types are not suited for compile-time construction.
 			// Because in this case they would be the same reference in all constructed values.
@@ -3741,7 +3805,9 @@ void GDScriptAnalyzer::reduce_call(GDScriptParser::CallNode *p_call, bool p_is_a
 						break; // Can't happen in a builtin constructor.
 					case Callable::CallError::CALL_OK:
 						p_call->is_constant = true;
-						p_call->reduced_value = value;
+						// wgodot-changes::begin
+						p_call->reduced_value = WGodotScalar::narrow(value, call_type.wgodot_scalar);
+						// wgodot-changes::end
 						break;
 				}
 			} else {
@@ -3827,6 +3893,11 @@ void GDScriptAnalyzer::reduce_call(GDScriptParser::CallNode *p_call, bool p_is_a
 						}
 						match = true;
 						call_type = type_from_property(info.return_val, false, p_call);
+						// wgodot-changes::begin
+						// Variant constructor metadata carries the wide base type.
+						// Keep explicit scalar width when converting another type.
+						call_type.wgodot_scalar = WGodotScalar::from_name(function_name);
+						// wgodot-changes::end
 						break;
 					}
 				}
@@ -4310,6 +4381,14 @@ void GDScriptAnalyzer::reduce_cast(GDScriptParser::CastNode *p_cast) {
 	}
 	// wgodot-changes::end
 	p_cast->type_constraint = cast_type;
+	// wgodot-changes::begin
+	if (cast_type.wgodot_class_ref || p_cast->operand->type_constraint.wgodot_class_ref) {
+		if (!cast_type.wgodot_class_ref && !cast_type.is_variant()) {
+			push_error("ClassRef can only be cast to another ClassRef or Variant.", p_cast);
+		}
+		return; // Class identity and inheritance are checked by the runtime cast.
+	}
+	// wgodot-changes::end
 	if (p_cast->operand->is_constant) {
 		update_const_expression_builtin_type(p_cast->operand, cast_type, "cast", true);
 		if (cast_type.is_variant() || p_cast->operand->type_constraint == cast_type) {
@@ -4876,6 +4955,10 @@ void GDScriptAnalyzer::reduce_identifier_from_base(GDScriptParser::IdentifierNod
 	// Check native members. No need for native class recursion because Node exposes all Object's properties.
 	// wgodot-changes::begin
 	const auto &default_base = p_base ? *p_base : parser->current_class->self_type;
+	if (default_base.kind == GDScriptParser::DataType::CLASS && default_base.class_type->wgodot_record && !default_base.is_meta_type) {
+		push_error(vformat("Record '%s' has no field '%s'.", default_base.to_string(), p_identifier->name), p_identifier);
+		return;
+	}
 	if (default_base.kind == GDScriptParser::DataType::CLASS) {
 		const auto *provider = default_base.class_type->wgodot_default_methods.getptr(p_identifier->name);
 		if (provider && provider->kind == GDScriptParser::DataType::CLASS && provider->class_type != default_base.class_type) {
@@ -5162,6 +5245,9 @@ void GDScriptAnalyzer::reduce_identifier(GDScriptParser::IdentifierNode *p_ident
 	if (builtin_type < Variant::VARIANT_MAX) {
 		if (can_be_builtin) {
 			p_identifier->type_constraint = make_builtin_meta_type(builtin_type);
+			// wgodot-changes::begin
+			p_identifier->type_constraint.wgodot_scalar = WGodotScalar::from_name(name);
+			// wgodot-changes::end
 			return;
 		} else {
 			push_error(R"(Builtin type cannot be used as a name on its own.)", p_identifier);
@@ -5455,6 +5541,10 @@ void GDScriptAnalyzer::reduce_subscript(GDScriptParser::SubscriptNode *p_subscri
 		push_error("WResPath has no string members or character indexing.", p_subscript);
 		return;
 	}
+	if (p_subscript->base->type_constraint.wgodot_class_ref) {
+		push_error("ClassRef exposes construction with new(); it has no properties or indexing.", p_subscript);
+		return;
+	}
 	// wgodot-changes::end
 
 	GDScriptParser::DataType result_type;
@@ -5647,6 +5737,9 @@ void GDScriptAnalyzer::reduce_subscript(GDScriptParser::SubscriptNode *p_subscri
 							case Variant::RECT2I:
 							case Variant::PLANE:
 							case Variant::QUATERNION:
+							// wgodot-changes::begin
+							case Variant::WTRANSFORM3D:
+							// wgodot-changes::end
 							case Variant::AABB:
 							case Variant::OBJECT:
 								error = index_type.builtin_type != Variant::STRING && index_type.builtin_type != Variant::STRING_NAME;
@@ -5655,6 +5748,9 @@ void GDScriptAnalyzer::reduce_subscript(GDScriptParser::SubscriptNode *p_subscri
 							case Variant::BASIS:
 							case Variant::VECTOR2:
 							case Variant::VECTOR2I:
+							// wgodot-changes::begin
+							case Variant::WVECTOR3D:
+							// wgodot-changes::end
 							case Variant::VECTOR3:
 							case Variant::VECTOR3I:
 							case Variant::VECTOR4:
@@ -5693,7 +5789,9 @@ void GDScriptAnalyzer::reduce_subscript(GDScriptParser::SubscriptNode *p_subscri
 											// Objects are parsed for validity in a similar manner to container types.
 											case Variant::OBJECT:
 												if (key_type.builtin_type == Variant::OBJECT) {
-													error = !key_type.can_reference(index_type);
+													// wgodot-changes::begin
+													error = key_type.wgodot_class_ref ? !wgodot_class_ref_compatible(key_type, index_type, p_subscript) : !key_type.can_reference(index_type);
+													// wgodot-changes::end
 												} else {
 													error = key_type.builtin_type != Variant::NIL;
 												}
@@ -5765,6 +5863,9 @@ void GDScriptAnalyzer::reduce_subscript(GDScriptParser::SubscriptNode *p_subscri
 					case Variant::PACKED_FLOAT32_ARRAY:
 					case Variant::PACKED_FLOAT64_ARRAY:
 					case Variant::VECTOR2:
+					// wgodot-changes::begin
+					case Variant::WVECTOR3D:
+					// wgodot-changes::end
 					case Variant::VECTOR3:
 					case Variant::VECTOR4:
 					case Variant::QUATERNION:
@@ -5800,6 +5901,9 @@ void GDScriptAnalyzer::reduce_subscript(GDScriptParser::SubscriptNode *p_subscri
 						result_type.builtin_type = Variant::VECTOR4;
 						break;
 					// Depends on the index.
+					// wgodot-changes::begin
+					case Variant::WTRANSFORM3D:
+					// wgodot-changes::end
 					case Variant::TRANSFORM3D:
 					case Variant::PROJECTION:
 					case Variant::PLANE:
@@ -5918,6 +6022,11 @@ void GDScriptAnalyzer::reduce_ternary_op(GDScriptParser::TernaryOpNode *p_ternar
 		}
 	}
 	result.type_source = true_type.is_hard_type() && false_type.is_hard_type() ? GDScriptParser::DataType::ANNOTATED_INFERRED : GDScriptParser::DataType::INFERRED;
+	// wgodot-changes::begin
+	if (true_type.wgodot_scalar != false_type.wgodot_scalar) {
+		result.wgodot_scalar = WGodotScalar::NONE;
+	}
+	// wgodot-changes::end
 
 	p_ternary_op->type_constraint = result;
 }
@@ -5937,6 +6046,15 @@ void GDScriptAnalyzer::reduce_type_test(GDScriptParser::TypeTestNode *p_type_tes
 	GDScriptParser::DataType operand_type = p_type_test->operand->type_constraint;
 	GDScriptParser::DataType test_type = type_from_metatype(resolve_datatype(p_type_test->test_type));
 	p_type_test->test_datatype = test_type;
+	// wgodot-changes::begin
+	if (test_type.wgodot_class_ref) {
+		return; // A class object is tested against the referenced inheritance tree.
+	}
+	if (test_type.wgodot_scalar != WGodotScalar::NONE) {
+		push_error("Scalar widths describe storage and arithmetic, not Variant tags; test against int or float instead.", p_type_test);
+		return;
+	}
+	// wgodot-changes::end
 
 	if (!operand_type.is_set() || !test_type.is_set()) {
 		return;
@@ -6009,6 +6127,11 @@ void GDScriptAnalyzer::reduce_unary_op(GDScriptParser::UnaryOpNode *p_unary_op) 
 	}
 
 	p_unary_op->type_constraint = result;
+	// wgodot-changes::begin
+	if (p_unary_op->is_constant) {
+		p_unary_op->reduced_value = WGodotScalar::narrow(p_unary_op->reduced_value, result.wgodot_scalar);
+	}
+	// wgodot-changes::end
 }
 
 Variant GDScriptAnalyzer::make_expression_reduced_value(GDScriptParser::ExpressionNode *p_expression, bool &r_is_reduced) {
@@ -6313,6 +6436,12 @@ Variant GDScriptAnalyzer::make_type_test_reduced_value(GDScriptParser::TypeTestN
 
 Array GDScriptAnalyzer::make_array_from_element_datatype(const GDScriptParser::DataType &p_element_datatype, const GDScriptParser::Node *p_source_node) {
 	Array array;
+	// wgodot-changes::begin
+	if (p_element_datatype.wgodot_class_ref) {
+		array.set_typed(Variant::OBJECT, p_element_datatype.to_property_info_hint_string(), Variant());
+		return array;
+	}
+	// wgodot-changes::end
 
 	if (p_element_datatype.builtin_type == Variant::OBJECT) {
 		Ref<Script> script_type = p_element_datatype.script_type;
@@ -6353,7 +6482,9 @@ Dictionary GDScriptAnalyzer::make_dictionary_from_element_datatype(const GDScrip
 			script_type.reference_ptr(scr->find_class(p_key_element_datatype.class_type->fqcn));
 		}
 
-		key_name = p_key_element_datatype.native_type;
+		// wgodot-changes::begin
+		key_name = p_key_element_datatype.wgodot_class_ref ? StringName(p_key_element_datatype.to_property_info_hint_string()) : p_key_element_datatype.native_type;
+		// wgodot-changes::end
 		key_script = script_type;
 	}
 
@@ -6369,7 +6500,9 @@ Dictionary GDScriptAnalyzer::make_dictionary_from_element_datatype(const GDScrip
 			script_type.reference_ptr(scr->find_class(p_value_element_datatype.class_type->fqcn));
 		}
 
-		value_name = p_value_element_datatype.native_type;
+		// wgodot-changes::begin
+		value_name = p_value_element_datatype.wgodot_class_ref ? StringName(p_value_element_datatype.to_property_info_hint_string()) : p_value_element_datatype.native_type;
+		// wgodot-changes::end
 		value_script = script_type;
 	}
 
@@ -6476,6 +6609,11 @@ GDScriptParser::DataType GDScriptAnalyzer::type_from_variant(const Variant &p_va
 
 	if (p_value.get_type() == Variant::ARRAY) {
 		const Array &array = p_value;
+		// wgodot-changes::begin
+		if (String(array.get_typed_class_name()).begins_with("ClassRef[")) {
+			result.set_container_element_type(0, type_from_property_hint_string(array.get_typed_class_name(), p_source));
+		} else
+		// wgodot-changes::end
 		if (array.get_typed_script()) {
 			result.set_container_element_type(0, type_from_metatype(type_from_script(array.get_typed_script(), p_source, true)));
 		} else if (array.get_typed_class_name()) {
@@ -6485,6 +6623,11 @@ GDScriptParser::DataType GDScriptAnalyzer::type_from_variant(const Variant &p_va
 		}
 	} else if (p_value.get_type() == Variant::DICTIONARY) {
 		const Dictionary &dict = p_value;
+		// wgodot-changes::begin
+		if (String(dict.get_typed_key_class_name()).begins_with("ClassRef[")) {
+			result.set_container_element_type(0, type_from_property_hint_string(dict.get_typed_key_class_name(), p_source));
+		} else
+		// wgodot-changes::end
 		if (dict.get_typed_key_script()) {
 			result.set_container_element_type(0, type_from_metatype(type_from_script(dict.get_typed_key_script(), p_source, true)));
 		} else if (dict.get_typed_key_class_name()) {
@@ -6492,6 +6635,11 @@ GDScriptParser::DataType GDScriptAnalyzer::type_from_variant(const Variant &p_va
 		} else if (dict.get_typed_key_builtin() != Variant::NIL) {
 			result.set_container_element_type(0, type_from_metatype(make_builtin_meta_type((Variant::Type)dict.get_typed_key_builtin())));
 		}
+		// wgodot-changes::begin
+		if (String(dict.get_typed_value_class_name()).begins_with("ClassRef[")) {
+			result.set_container_element_type(1, type_from_property_hint_string(dict.get_typed_value_class_name(), p_source));
+		} else
+		// wgodot-changes::end
 		if (dict.get_typed_value_script()) {
 			result.set_container_element_type(1, type_from_metatype(type_from_script(dict.get_typed_value_script(), p_source, true)));
 		} else if (dict.get_typed_value_class_name()) {
@@ -6561,12 +6709,36 @@ GDScriptParser::DataType GDScriptAnalyzer::type_from_property_hint_string(const 
 	if (p_type_name == "WResPath") {
 		return wgodot_resource_path_type();
 	}
+	if (p_type_name.begins_with("ClassRef[") && p_type_name.ends_with("]")) {
+		result.kind = GDScriptParser::DataType::BUILTIN;
+		result.builtin_type = Variant::OBJECT;
+		result.wgodot_class_ref = true;
+		result.set_container_element_type(0, type_from_property_hint_string(p_type_name.substr(9, p_type_name.length() - 10), p_source));
+		return result;
+	}
+	if (p_type_name.contains("::")) {
+		const StringName root = p_type_name.get_slice("::", 0);
+		if (WGodotGDScriptResolution::is_global_class(root)) {
+			const String path = WGodotGDScriptResolution::get_global_class_path(root);
+			Ref<GDScriptParserRef> ref = parser->get_depended_parser_for(path);
+			if (ref.is_valid() && ref->raise_status(GDScriptParserRef::INHERITANCE_SOLVED) == OK) {
+				if (const GDScriptParser::ClassNode *nested = ref->get_parser()->find_class(p_type_name)) {
+					return type_from_metatype(nested->self_type);
+				}
+			}
+			push_error(vformat("Could not resolve nested class '%s' from property metadata.", p_type_name), p_source);
+			return result;
+		}
+	}
 	// wgodot-changes::end
 	const Variant::Type builtin_type = GDScriptParser::get_builtin_type(p_type_name);
 	if (builtin_type < Variant::VARIANT_MAX) {
 		// Built-in type.
 		result.kind = GDScriptParser::DataType::BUILTIN;
 		result.builtin_type = builtin_type;
+		// wgodot-changes::begin
+		result.wgodot_scalar = WGodotScalar::from_name(p_type_name);
+		// wgodot-changes::end
 	} else if (class_exists(p_type_name)) {
 		result.kind = GDScriptParser::DataType::NATIVE;
 		result.builtin_type = Variant::OBJECT;
@@ -6603,6 +6775,9 @@ GDScriptParser::DataType GDScriptAnalyzer::type_from_property(const PropertyInfo
 	result.builtin_type = p_property.type;
 	if (p_property.type == Variant::OBJECT) {
 		// wgodot-changes::begin
+		if (String(p_property.class_name).begins_with("ClassRef[")) {
+			return type_from_property_hint_string(p_property.class_name, p_source);
+		}
 		if (wgodot_type_from_interface_property(p_property, p_source, result)) {
 			return result;
 		}
@@ -6670,6 +6845,22 @@ bool GDScriptAnalyzer::get_function_signature(GDScriptParser::Node *p_source, bo
 	if (r_native_class) {
 		*r_native_class = StringName();
 	}
+	// wgodot-changes::begin
+	if (p_base_type.wgodot_class_ref) {
+		if (p_function != SNAME("new")) {
+			push_error("ClassRef exposes construction with new(); it does not expose Script object methods.", p_source);
+			return false;
+		}
+		r_return_type = p_base_type.get_container_element_type(0);
+		r_method_flags.set_flag(METHOD_FLAG_CONST);
+		if (p_source && p_source->type == GDScriptParser::Node::CALL) {
+			auto *call = static_cast<GDScriptParser::CallNode *>(p_source);
+			call->wgodot_class_ref_constructor = true;
+			call->wgodot_fresh_value = true;
+		}
+		return true;
+	}
+	// wgodot-changes::end
 	StringName function_name = p_function;
 	// wgodot-changes::begin
 	if (p_base_type.kind == GDScriptParser::DataType::BUILTIN && p_base_type.builtin_type == Variant::CALLABLE && p_base_type.wgodot_callable_signature) {
@@ -7244,6 +7435,9 @@ GDScriptParser::DataType GDScriptAnalyzer::get_operation_type(Variant::Operator 
 		result.type_source = hard_operation ? GDScriptParser::DataType::ANNOTATED_INFERRED : GDScriptParser::DataType::INFERRED;
 		result.kind = GDScriptParser::DataType::BUILTIN;
 		result.builtin_type = Variant::get_operator_return_type(p_operation, a_type, b_type);
+		// wgodot-changes::begin
+		result.wgodot_scalar = WGodotScalar::operation_type(p_a.wgodot_scalar, p_b.wgodot_scalar, result.builtin_type, b_type == Variant::NIL);
+		// wgodot-changes::end
 	} else {
 		r_valid = !hard_operation;
 		result.kind = GDScriptParser::DataType::VARIANT;
@@ -7297,6 +7491,9 @@ bool GDScriptAnalyzer::is_type_compatible_strict_collections(const GDScriptParse
 // TODO: Add safe/unsafe return variable (for variant cases)
 bool GDScriptAnalyzer::check_type_compatibility(const GDScriptParser::DataType &p_target, const GDScriptParser::DataType &p_source, bool p_allow_implicit_conversion, const GDScriptParser::Node *p_source_node) {
 	// wgodot-changes::begin
+	if (p_target.wgodot_class_ref || p_source.wgodot_class_ref) {
+		return wgodot_class_ref_compatible(p_target, p_source, p_source_node);
+	}
 	if (p_target.wgodot_resource_path || p_source.wgodot_resource_path) {
 		if (p_target.wgodot_resource_path == p_source.wgodot_resource_path) {
 			return true;
@@ -7318,6 +7515,13 @@ bool GDScriptAnalyzer::check_type_compatibility(const GDScriptParser::DataType &
 		// TODO: This is acceptable but unsafe. Make sure unsafe line is set.
 		return true;
 	}
+	// wgodot-changes::begin
+	const bool target_record = !p_target.is_meta_type && p_target.kind == GDScriptParser::DataType::CLASS && p_target.class_type->wgodot_record;
+	const bool source_record = !p_source.is_meta_type && p_source.kind == GDScriptParser::DataType::CLASS && p_source.class_type->wgodot_record;
+	if (target_record || source_record) {
+		return target_record && source_record && p_target.class_type == p_source.class_type;
+	}
+	// wgodot-changes::end
 
 	if (p_target.kind == GDScriptParser::DataType::BUILTIN) {
 		bool valid = p_source.kind == GDScriptParser::DataType::BUILTIN && p_target.builtin_type == p_source.builtin_type;

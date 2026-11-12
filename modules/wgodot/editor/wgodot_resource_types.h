@@ -41,6 +41,8 @@ public:
 		String signature;
 		bool abstract = false;
 		bool data_class = false;
+		bool value_record = false;
+		bool class_reference = false;
 	};
 
 private:
@@ -54,6 +56,8 @@ public:
 	Error build(const WGodotGDScriptExportTransform::ExportProject &p_project, String &r_error);
 	void add_class(const GDScriptParser::ClassNode *p_class);
 	bool exists(const StringName &p_class) const;
+	bool class_reference(const StringName &p_class) const;
+	bool is_record(const StringName &p_class) const;
 	bool derives(const StringName &p_class, const StringName &p_base) const;
 	bool instantiable(const StringName &p_class) const;
 	bool immutable_resource(const StringName &p_class) const;

@@ -38,6 +38,9 @@ static void add_destructor() {
 }
 
 void Variant::_register_variant_destructors() {
+	// wgodot-changes::begin
+	add_destructor<VariantDestruct<WRecord>>();
+	// wgodot-changes::end
 	add_destructor<VariantDestruct<String>>();
 	add_destructor<VariantDestruct<StringName>>();
 	add_destructor<VariantDestruct<NodePath>>();

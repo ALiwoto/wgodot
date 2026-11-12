@@ -1,5 +1,6 @@
 // wgodot-changes::file
 #include "wgodot_resource_types.h"
+#include "core/object/wgodot_class_references.h"
 
 #include "core/object/class_db.h"
 
@@ -52,14 +53,20 @@ WGodotResourceTypes::Qualification WGodotResourceTypes::native_qualification(con
 
 WGodotResourceTypes::Type WGodotResourceTypes::script_type(const Parser::DataType &p_type) {
 	Type result;
+	if (p_type.wgodot_class_ref) {
+		result.builtin = Variant::OBJECT;
+		result.name = p_type.to_property_info_hint_string();
+		return result;
+	}
 	if (!p_type.is_hard_type() || p_type.is_variant()) {
 		return result;
 	}
 	result.resource_path = p_type.wgodot_resource_path;
+	result.value_container = p_type.wgodot_value;
 	if (p_type.kind == Parser::DataType::ENUM) {
 		result.builtin = Variant::INT;
 	} else if (p_type.kind == Parser::DataType::CLASS) {
-		result.builtin = Variant::OBJECT;
+		result.builtin = p_type.class_type->wgodot_record ? Variant::WRECORD : Variant::OBJECT;
 		result.name = p_type.class_type->get_global_name();
 		if (result.name.is_empty()) {
 			result.name = p_type.class_type->fqcn;
@@ -86,20 +93,26 @@ void WGodotResourceTypes::add_class(const Parser::ClassNode *p_class) {
 		name = p_class->fqcn;
 	}
 	Class type;
-	type.base = script_type(p_class->base_type).name;
+	type.base = p_class->wgodot_record ? StringName() : script_type(p_class->base_type).name;
 	type.abstract = p_class->is_abstract || p_class->wgodot_is_interface;
 	type.data_class = p_class->wgodot_data_class;
+	type.value_record = p_class->wgodot_record;
+	const Parser::ClassNode *root = p_class;
+	while (root->outer) {
+		root = root->outer;
+	}
+	type.class_reference = root->get_global_name() != StringName() && !p_class->wgodot_record && !p_class->wgodot_is_interface && !p_class->wgodot_static_class;
 	Vector<String> signature_parts;
-	signature_parts.push_back(String(type.base) + ":" + itos(type.abstract) + ":" + itos(type.data_class));
+	signature_parts.push_back(String(type.base) + ":" + itos(type.abstract) + ":" + itos(type.data_class) + ":" + itos(type.class_reference));
 	for (const Parser::ClassNode::Member &member : p_class->members) {
 		if (member.type == Parser::ClassNode::Member::VARIABLE) {
 			const Parser::VariableNode *variable = member.variable;
 			Field field;
 			field.type = script_type(variable->type_constraint);
 			field.qualification = script_qualification(variable->type_constraint);
-			field.exposed = variable->exported && !variable->wgodot_private && !variable->wgodot_protected && !variable->is_static;
+			field.exposed = (variable->exported || type.value_record) && !variable->wgodot_private && !variable->wgodot_protected && !variable->is_static;
 			type.fields.insert(variable->identifier->name, field);
-			signature_parts.push_back(String(variable->identifier->name) + ":" + field.type.text() + ":" + itos(field.exposed) + ":" + field.qualification.text());
+			signature_parts.push_back(String(variable->identifier->name) + ":" + field.type.text() + ":" + itos(field.exposed) + ":" + field.qualification.text() + ":" + itos(variable->type_constraint.wgodot_scalar));
 		} else if (member.type == Parser::ClassNode::Member::CLASS) {
 			add_class(member.m_class);
 		} else if (member.type == Parser::ClassNode::Member::FUNCTION || member.type == Parser::ClassNode::Member::SIGNAL) {
@@ -120,6 +133,9 @@ void WGodotResourceTypes::add_class(const Parser::ClassNode *p_class) {
 			}
 			for (const Qualification &qualification : function.qualifications) {
 				signature += ":" + qualification.text();
+			}
+			for (const auto *parameter : parameters) {
+				signature += ":" + itos(parameter->type_constraint.wgodot_scalar);
 			}
 			signature_parts.push_back(signature);
 		}
@@ -149,6 +165,16 @@ Error WGodotResourceTypes::build(const WGodotGDScriptExportTransform::ExportProj
 
 bool WGodotResourceTypes::exists(const StringName &p_class) const {
 	return classes.has(p_class) || ClassDB::class_exists(p_class);
+}
+
+bool WGodotResourceTypes::class_reference(const StringName &p_class) const {
+	const Class *type = classes.getptr(p_class);
+	return type ? type->class_reference : ClassDB::class_exists(p_class);
+}
+
+bool WGodotResourceTypes::is_record(const StringName &p_class) const {
+	const Class *type = classes.getptr(p_class);
+	return type && type->value_record;
 }
 
 bool WGodotResourceTypes::derives(const StringName &p_class, const StringName &p_base) const {
@@ -238,8 +264,20 @@ bool WGodotResourceTypes::field(const StringName &p_class, const StringName &p_n
 }
 
 void WGodotResourceTypes::record(const Type &p_type, HashMap<String, String> &r_declarations) const {
-	if (p_type.builtin == Variant::OBJECT && !r_declarations.has(p_type.name)) {
+	const StringName base = WGodotClassReferences::constraint_base(p_type.name);
+	if (base != StringName()) {
+		r_declarations.insert(base, signature(base));
+		return;
+	}
+	if ((p_type.builtin == Variant::OBJECT || p_type.builtin == Variant::WRECORD) && !r_declarations.has(p_type.name)) {
 		r_declarations.insert(p_type.name, signature(p_type.name));
+		if (p_type.builtin == Variant::WRECORD) {
+			if (const Class *type = classes.getptr(p_type.name)) {
+				for (const auto &field : type->fields) {
+					record(field.value.type, r_declarations);
+				}
+			}
+		}
 	}
 	for (const Type &element : p_type.elements) {
 		record(element, r_declarations);
@@ -295,7 +333,15 @@ bool WGodotResourceTypes::accepts(const Type &p_expected, const Type &p_actual) 
 	if (p_expected.builtin != p_actual.builtin) {
 		return false;
 	}
+	if (p_expected.builtin == Variant::WRECORD) {
+		return p_expected.name == p_actual.name;
+	}
 	if (p_expected.builtin == Variant::OBJECT) {
+		const StringName expected = WGodotClassReferences::constraint_base(p_expected.name);
+		const StringName actual = WGodotClassReferences::constraint_base(p_actual.name);
+		if (expected != StringName() || actual != StringName()) {
+			return expected != StringName() && actual != StringName() && derives(actual, expected);
+		}
 		return derives(p_actual.name, p_expected.name);
 	}
 	if (p_expected.elements.size() != p_actual.elements.size()) {

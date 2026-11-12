@@ -50,6 +50,9 @@
 #include "core/math/vector3i.h"
 #include "core/math/vector4.h"
 #include "core/math/vector4i.h"
+// wgodot-changes::begin
+#include "core/math/wgodot_transform3d.h"
+// wgodot-changes::end
 #include "core/object/object_id.h"
 #include "core/string/node_path.h"
 #include "core/string/ustring.h"
@@ -96,6 +99,10 @@ namespace WGodotNative {
 template <class T>
 struct PackedStorage;
 }
+// wgodot-changes::end
+
+// wgodot-changes::begin
+class WRecord;
 // wgodot-changes::end
 
 class _WARN_UNUSED_ Variant {
@@ -149,9 +156,20 @@ public:
 		PACKED_VECTOR3_ARRAY,
 		PACKED_COLOR_ARRAY,
 		PACKED_VECTOR4_ARRAY,
+		// wgodot-changes::begin
+		// Append extensions so existing serialized type IDs remain stable.
+		WVECTOR3D,
+		WTRANSFORM3D,
+		WRECORD,
+		// wgodot-changes::end
 
 		VARIANT_MAX
 	};
+	// wgodot-changes::begin
+	static constexpr bool is_packed_array_type(Type p_type) {
+		return p_type >= PACKED_BYTE_ARRAY && p_type <= PACKED_VECTOR4_ARRAY;
+	}
+	// wgodot-changes::end
 
 	enum {
 		// Maximum recursion depth allowed when serializing variants.
@@ -204,6 +222,18 @@ private:
 	/* array helpers */
 	struct PackedArrayRefBase {
 		SafeRefCount refcount;
+		// wgodot-changes::begin
+		bool value_semantics = false;
+		virtual PackedArrayRefBase *value_copy() const = 0;
+		static _FORCE_INLINE_ PackedArrayRefBase *writable(PackedArrayRefBase *p_from) {
+			if (!p_from->value_semantics || p_from->refcount.get() == 1) {
+				return p_from;
+			}
+			PackedArrayRefBase *copy = p_from->value_copy();
+			destroy(p_from);
+			return copy;
+		}
+		// wgodot-changes::end
 		_FORCE_INLINE_ PackedArrayRefBase *reference() {
 			if (refcount.ref()) {
 				return this;
@@ -236,6 +266,13 @@ private:
 	template <typename T>
 	struct PackedArrayRef : public PackedArrayRefBase {
 		Vector<T> array;
+		// wgodot-changes::begin
+		PackedArrayRefBase *value_copy() const override {
+			PackedArrayRef<T> *copy = create(array);
+			copy->value_semantics = true;
+			return copy;
+		}
+		// wgodot-changes::end
 		static _FORCE_INLINE_ PackedArrayRef<T> *create() {
 			return memnew(PackedArrayRef<T>);
 		}
@@ -272,6 +309,10 @@ private:
 		Basis *_basis;
 		Transform3D *_transform3d;
 		Projection *_projection;
+		// wgodot-changes::begin
+		WVector3d *_wvector3d;
+		WTransform3d *_wtransform3d;
+		// wgodot-changes::end
 		PackedArrayRefBase *packed_array;
 		void *_ptr; //generic pointer
 		uint8_t _mem[sizeof(ObjData) > (sizeof(real_t) * 4) ? sizeof(ObjData) : (sizeof(real_t) * 4)]{ 0 };
@@ -325,6 +366,11 @@ private:
 		true, //PACKED_VECTOR3_ARRAY,
 		true, //PACKED_COLOR_ARRAY,
 		true, //PACKED_VECTOR4_ARRAY,
+		// wgodot-changes::begin
+		true, //WVECTOR3D,
+		true, //WTRANSFORM3D,
+		true, //WRECORD,
+		// wgodot-changes::end
 	};
 
 	_FORCE_INLINE_ void clear() {
@@ -394,6 +440,11 @@ private:
 	Variant(const Variant **) {}
 
 public:
+	// wgodot-changes::begin
+	void wgodot_make_value_container();
+	bool wgodot_is_value_container() const;
+	// wgodot-changes::end
+
 	_FORCE_INLINE_ Type get_type() const {
 		return type;
 	}
@@ -452,6 +503,11 @@ public:
 	operator Vector4i() const;
 	operator Plane() const;
 	operator ::AABB() const;
+	// wgodot-changes::begin
+	operator WVector3d() const;
+	operator WTransform3d() const;
+	operator WRecord() const;
+	// wgodot-changes::end
 	operator Quaternion() const;
 	operator Basis() const;
 	operator Transform2D() const;
@@ -529,6 +585,11 @@ public:
 	Variant(const Vector4i &p_vector4i);
 	Variant(const Plane &p_plane);
 	Variant(const ::AABB &p_aabb);
+	// wgodot-changes::begin
+	Variant(const WVector3d &p_vector);
+	Variant(const WTransform3d &p_transform);
+	Variant(const WRecord &p_record);
+	// wgodot-changes::end
 	Variant(const Quaternion &p_quat);
 	Variant(const Basis &p_matrix);
 	Variant(const Transform2D &p_transform);
@@ -698,6 +759,10 @@ public:
 	static int get_constructor_argument_count(Variant::Type p_type, int p_constructor);
 	static Variant::Type get_constructor_argument_type(Variant::Type p_type, int p_constructor, int p_argument);
 	static String get_constructor_argument_name(Variant::Type p_type, int p_constructor, int p_argument);
+	// wgodot-changes::begin
+	// Constructor whose arguments exactly cover the named value members.
+	static int get_member_constructor(Type p_type);
+	// wgodot-changes::end
 	static void construct(Variant::Type p_type, Variant &r_base, const Variant **p_args, int p_argcount, Callable::CallError &r_error);
 
 	static void get_constructor_list(Type p_type, List<MethodInfo> *r_list); //convenience

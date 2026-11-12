@@ -36,6 +36,8 @@
 #include "core/object/script_language.h"
 #include "core/string/string_name.h"
 // wgodot-changes::begin
+#include "wgodot_scalar.h"
+
 #include "core/templates/hash_set.h"
 // wgodot-changes::end
 #include "core/templates/pair.h"
@@ -60,6 +62,11 @@ public:
 	Kind kind = VARIANT;
 
 	Variant::Type builtin_type = Variant::NIL;
+	// wgodot-changes::begin
+	WGodotScalar::Type wgodot_scalar = WGodotScalar::NONE;
+	bool wgodot_value = false;
+	bool wgodot_class_ref = false;
+	// wgodot-changes::end
 	StringName native_type;
 	Script *script_type = nullptr;
 	Ref<Script> script_type_ref;
@@ -81,6 +88,7 @@ public:
 						return get_container_element_type_or_variant(0).can_contain_object() || get_container_element_type_or_variant(1).can_contain_object();
 					}
 					return true;
+				case Variant::WRECORD:
 				case Variant::NIL:
 				case Variant::OBJECT:
 					return true;
@@ -126,6 +134,9 @@ public:
 				builtin_type == p_other.builtin_type &&
 				native_type == p_other.native_type &&
 				// wgodot-changes::begin
+				wgodot_scalar == p_other.wgodot_scalar &&
+				wgodot_value == p_other.wgodot_value &&
+				wgodot_class_ref == p_other.wgodot_class_ref &&
 				script_type == p_other.script_type &&
 				// wgodot-changes::end
 				container_element_types == p_other.container_element_types;
@@ -138,6 +149,11 @@ public:
 	void operator=(const GDScriptDataType &p_other) {
 		kind = p_other.kind;
 		builtin_type = p_other.builtin_type;
+		// wgodot-changes::begin
+		wgodot_scalar = p_other.wgodot_scalar;
+		wgodot_value = p_other.wgodot_value;
+		wgodot_class_ref = p_other.wgodot_class_ref;
+		// wgodot-changes::end
 		native_type = p_other.native_type;
 		script_type = p_other.script_type;
 		script_type_ref = p_other.script_type_ref;
@@ -176,6 +192,15 @@ public:
 		OPCODE_SET_STATIC_VARIABLE, // Only for GDScript.
 		OPCODE_GET_STATIC_VARIABLE, // Only for GDScript.
 		OPCODE_ASSIGN,
+		// wgodot-changes::begin
+		OPCODE_ASSIGN_SCALAR,
+		OPCODE_MAKE_VALUE,
+		OPCODE_ASSIGN_RECORD,
+		OPCODE_TYPE_TEST_RECORD,
+		OPCODE_ASSIGN_CLASS_REF,
+		OPCODE_CAST_CLASS_REF,
+		OPCODE_TYPE_TEST_CLASS_REF,
+		// wgodot-changes::end
 		OPCODE_ASSIGN_NULL,
 		OPCODE_ASSIGN_TRUE,
 		OPCODE_ASSIGN_FALSE,
@@ -205,6 +230,10 @@ public:
 		OPCODE_CALL_UTILITY_VALIDATED,
 		OPCODE_CALL_GDSCRIPT_UTILITY,
 		OPCODE_CALL_BUILTIN_TYPE_VALIDATED,
+		// wgodot-changes::begin
+		OPCODE_CALL_VALUE_BUILTIN,
+		OPCODE_SET_VALUE_PATH,
+		// wgodot-changes::end
 		OPCODE_CALL_SELF_BASE,
 		OPCODE_CALL_SUPER_AS, // wgodot-changes
 		OPCODE_CALL_METHOD_BIND,
@@ -314,6 +343,9 @@ public:
 		OPCODE_TYPE_ADJUST_PACKED_VECTOR3_ARRAY,
 		OPCODE_TYPE_ADJUST_PACKED_COLOR_ARRAY,
 		OPCODE_TYPE_ADJUST_PACKED_VECTOR4_ARRAY,
+		// wgodot-changes::begin
+		OPCODE_TYPE_ADJUST_BUILTIN,
+		// wgodot-changes::end
 		OPCODE_ASSERT,
 		OPCODE_BREAKPOINT,
 		OPCODE_LINE,
@@ -357,6 +389,9 @@ private:
 	StringName source;
 	bool _static = false;
 	Vector<GDScriptDataType> argument_types;
+	// wgodot-changes::begin
+	bool wgodot_storage_arguments = false;
+	// wgodot-changes::end
 	// NOTE: This is the expected return type, but coroutines can actually return a `GDScriptFunctionState` object.
 	// In VM it is currently only used to return a default value on error (as a fallback).
 	GDScriptDataType return_type;

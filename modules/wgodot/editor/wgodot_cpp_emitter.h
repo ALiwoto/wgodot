@@ -39,6 +39,7 @@ class WGodotCppEmitter {
 	bool restore_contribution(const Dictionary &p_payload);
 	void clear_contribution();
 	void emit_class_uncached(const WGodotCppProject::Class &p_class);
+	void emit_record(const WGodotCppProject::Class &p_class);
 	void emit_serialization(const WGodotCppProject::Class &p_class, String &r_declaration, String &r_definitions);
 	void emit_resource_codecs();
 	uint64_t reused_classes = 0;
@@ -57,6 +58,7 @@ class WGodotCppEmitter {
 	HashSet<String> used_native_headers;
 	HashSet<String> class_native_headers;
 	HashSet<String> class_dependencies;
+	HashSet<String> class_reference_classes;
 	HashSet<const GDScriptParser::ClassNode *> required_classes;
 	HashSet<const GDScriptParser::ClassNode *> inherited_classes;
 	HashSet<String> reflection_default_classes;
@@ -111,6 +113,7 @@ class WGodotCppEmitter {
 
 	Value lower(const GDScriptParser::ExpressionNode *p_expression);
 	Value lower_call(const GDScriptParser::CallNode *p_call);
+	Value value_container_call(const GDScriptParser::CallNode *p_call);
 	Value lower_converted(const GDScriptParser::ExpressionNode *p_expression, const GDScriptParser::DataType &p_target, const GDScriptParser::Node *p_target_origin = nullptr, bool p_parameter = false);
 	Value lower_engine_argument(const GDScriptParser::ExpressionNode *p_expression, Variant::Type p_target);
 	Value lower_receiver(const GDScriptParser::ExpressionNode *p_expression);
@@ -142,6 +145,9 @@ class WGodotCppEmitter {
 	String debug_source_arguments(const GDScriptParser::Node *p_node);
 	String trace_call(const GDScriptParser::Node *p_node, const String &p_code);
 	String class_name(const GDScriptParser::DataType &p_type, const GDScriptParser::Node *p_origin);
+	String class_reference_name(const GDScriptParser::DataType &p_type, const GDScriptParser::Node *p_origin);
+	String class_reference_constant(const GDScriptParser::ExpressionNode *p_expression);
+	String class_reference_expression(const GDScriptParser::ExpressionNode *p_expression);
 	StringName native_base(const GDScriptParser::DataType &p_type) const;
 	String type(const GDScriptParser::DataType &p_type, const GDScriptParser::Node *p_origin);
 	String signature_type(const GDScriptParser::Node *p_origin, bool p_signal = false);

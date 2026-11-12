@@ -4,10 +4,18 @@
 #include "wgodot_resource_identity.h"
 
 namespace {
-String schema_type(const GDScriptParser::DataType &p_type) {
-	String signature = p_type.to_string() + ":" + itos(p_type.wgodot_resource_path);
+String schema_type(const GDScriptParser::DataType &p_type, HashSet<const GDScriptParser::ClassNode *> &r_records) {
+	String signature = p_type.to_string() + ":" + itos(p_type.wgodot_resource_path) + ":" + itos(p_type.wgodot_scalar) + ":" + itos(p_type.wgodot_value);
 	for (int i = 0; i < p_type.get_container_element_type_count(); i++) {
-		signature += "[" + schema_type(p_type.get_container_element_type(i)) + "]";
+		signature += "[" + schema_type(p_type.get_container_element_type(i), r_records) + "]";
+	}
+	if (p_type.kind == GDScriptParser::DataType::CLASS && p_type.class_type->wgodot_record && !r_records.has(p_type.class_type)) {
+		r_records.insert(p_type.class_type);
+		for (const auto &member : p_type.class_type->members) {
+			if (member.type == GDScriptParser::ClassNode::Member::VARIABLE) {
+				signature += "{" + String(member.variable->identifier->name) + ":" + schema_type(member.variable->type_constraint, r_records) + "}";
+			}
+		}
 	}
 	return signature;
 }
@@ -31,9 +39,10 @@ WGodotResourceSchema::WGodotResourceSchema(const GDScriptParser::ClassNode *p_cl
 		}
 	};
 	fields.sort_custom<Order>();
-	String signature = "resource-protobuf-v2:" + itos(sizeof(real_t));
+	String signature = "resource-protobuf-v3:" + itos(sizeof(real_t));
+	HashSet<const GDScriptParser::ClassNode *> records;
 	for (const auto *field : fields) {
-		signature += "\n" + String(field->identifier->name) + ":" + schema_type(field->type_constraint);
+		signature += "\n" + String(field->identifier->name) + ":" + schema_type(field->type_constraint, records);
 	}
 	fingerprint = WGodotResourceIdentity::from_path(signature);
 }

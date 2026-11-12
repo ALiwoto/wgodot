@@ -23,6 +23,7 @@
 #include "core/io/wgodot_global_resources.h"
 #include "core/io/wgodot_resource_load_priority.h"
 #include "core/object/class_db.h"
+#include "core/object/wgodot_class_references.h"
 #include "core/object/script_language.h"
 #include "core/object/worker_thread_pool.h"
 #include "core/os/os.h"
@@ -126,6 +127,22 @@ class WGodotCppResources {
 		type.kind = Parser::DataType::NATIVE;
 		type.native_type = p_name;
 		return emitter->class_name(type, &origin);
+	}
+
+	String reference_class(const Variant &p_value) {
+		if (p_value.is_null()) {
+			return String();
+		}
+		const StringName name = WGodotClassReferences::name(p_value);
+		const Ref<Script> script = p_value;
+		if (script.is_valid()) {
+			if (const auto *entry = emitter->project.find_named_class(name)) {
+				return emitter->class_reference_name(entry->node->self_type, &origin);
+			}
+			error("No generated native class for ClassRef '" + String(name) + "'.");
+			return String();
+		}
+		return native_class(name);
 	}
 
 	const WGodotCppProject::Class *resource_class(const Ref<Resource> &p_resource) {
@@ -276,6 +293,10 @@ class WGodotCppResources {
 	}
 
 	Value value(const Variant &p_value) {
+		if (WGodotClassReferences::name(p_value) != StringName()) {
+			emitter->class_native_headers.insert("core/object/wgodot_class_references.h");
+			return Value("WGodotClassReferences::resolve(" + quoted(reference_class(p_value)) + ")", "Variant");
+		}
 		WGlobalResources::Reference global;
 		if (WGlobalResources::reference(p_value, global, source_path)) {
 			return global_value(global);
@@ -417,7 +438,7 @@ class WGodotCppResources {
 	}
 
 	bool object_handle(const Parser::DataType &p_type) const {
-		return p_type.builtin_type == Variant::OBJECT && !emitter->is_interface_type(p_type) &&
+		return !p_type.wgodot_class_ref && p_type.builtin_type == Variant::OBJECT && !emitter->is_interface_type(p_type) &&
 				!ClassDB::is_parent_class(emitter->native_base(p_type), "RefCounted");
 	}
 
@@ -441,6 +462,12 @@ class WGodotCppResources {
 
 	String typed_value(const Variant &p_value, const Parser::DataType &p_type, const String &p_existing = String()) {
 		const String type = emitter->type(p_type, &origin);
+		if (p_type.wgodot_class_ref) {
+			if (p_value.is_null()) {
+				return type + "()";
+			}
+			return type + "::from_name(" + quoted(reference_class(p_value)) + ")";
+		}
 		WGlobalResources::Reference global;
 		if (WGlobalResources::reference(p_value, global, source_path)) {
 			return emitter->convert_value(global_value(global), type);
@@ -1056,6 +1083,7 @@ class WGodotCppResources {
 		public:
 			explicit EncodeContext(WGodotCppResources &p_owner) : owner(p_owner) {}
 			Ref<Resource> resolve(const Reference &) override { return Ref<Resource>(); }
+			StringName identify_class(const Variant &p_reference) override { return owner.reference_class(p_reference); }
 			Reference identify(const Ref<Resource> &p_resource) override {
 				if (p_resource.is_null()) {
 					return {};

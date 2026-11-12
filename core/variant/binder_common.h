@@ -63,7 +63,9 @@ void call_with_variant_args_helper(T *p_instance, void (T::*p_method)(P...), con
 }
 
 template <typename T, typename... P, size_t... Is>
-void call_with_variant_argsc_helper(T *p_instance, void (T::*p_method)(P...) const, const Variant **p_args, Callable::CallError &r_error, IndexSequence<Is...>) {
+// wgodot-changes::begin
+void call_with_variant_argsc_helper(const T *p_instance, void (T::*p_method)(P...) const, const Variant **p_args, Callable::CallError &r_error, IndexSequence<Is...>) {
+// wgodot-changes::end
 	r_error.error = Callable::CallError::CALL_OK;
 
 #ifdef DEBUG_ENABLED
@@ -80,7 +82,9 @@ void call_with_ptr_args_helper(T *p_instance, void (T::*p_method)(P...), const v
 }
 
 template <typename T, typename... P, size_t... Is>
-void call_with_ptr_argsc_helper(T *p_instance, void (T::*p_method)(P...) const, const void **p_args, IndexSequence<Is...>) {
+// wgodot-changes::begin
+void call_with_ptr_argsc_helper(const T *p_instance, void (T::*p_method)(P...) const, const void **p_args, IndexSequence<Is...>) {
+// wgodot-changes::end
 	(p_instance->*p_method)(PtrToArg<P>::convert(p_args[Is])...);
 }
 
@@ -90,7 +94,9 @@ void call_with_ptr_args_ret_helper(T *p_instance, R (T::*p_method)(P...), const 
 }
 
 template <typename T, typename R, typename... P, size_t... Is>
-void call_with_ptr_args_retc_helper(T *p_instance, R (T::*p_method)(P...) const, const void **p_args, void *r_ret, IndexSequence<Is...>) {
+// wgodot-changes::begin
+void call_with_ptr_args_retc_helper(const T *p_instance, R (T::*p_method)(P...) const, const void **p_args, void *r_ret, IndexSequence<Is...>) {
+// wgodot-changes::end
 	PtrToArg<R>::encode((p_instance->*p_method)(PtrToArg<P>::convert(p_args[Is])...), r_ret);
 }
 
@@ -120,7 +126,9 @@ void call_with_validated_variant_args_helper(T *p_instance, void (T::*p_method)(
 }
 
 template <typename T, typename... P, size_t... Is>
-void call_with_validated_variant_argsc_helper(T *p_instance, void (T::*p_method)(P...) const, const Variant **p_args, IndexSequence<Is...>) {
+// wgodot-changes::begin
+void call_with_validated_variant_argsc_helper(const T *p_instance, void (T::*p_method)(P...) const, const Variant **p_args, IndexSequence<Is...>) {
+// wgodot-changes::end
 	(p_instance->*p_method)((VariantInternalAccessor<std::decay_t<P>>::get(p_args[Is]))...);
 }
 
@@ -130,7 +138,9 @@ void call_with_validated_variant_args_ret_helper(T *p_instance, R (T::*p_method)
 }
 
 template <typename T, typename R, typename... P, size_t... Is>
-void call_with_validated_variant_args_retc_helper(T *p_instance, R (T::*p_method)(P...) const, const Variant **p_args, Variant *r_ret, IndexSequence<Is...>) {
+// wgodot-changes::begin
+void call_with_validated_variant_args_retc_helper(const T *p_instance, R (T::*p_method)(P...) const, const Variant **p_args, Variant *r_ret, IndexSequence<Is...>) {
+// wgodot-changes::end
 	VariantInternalAccessor<std::decay_t<R>>::set(r_ret, (p_instance->*p_method)((VariantInternalAccessor<std::decay_t<P>>::get(p_args[Is]))...));
 }
 
@@ -206,7 +216,9 @@ void call_with_variant_args_dv(T *p_instance, void (T::*p_method)(P...), const V
 }
 
 template <typename T, typename... P>
-void call_with_variant_argsc(T *p_instance, void (T::*p_method)(P...) const, const Variant **p_args, int p_argcount, Callable::CallError &r_error) {
+// wgodot-changes::begin
+void call_with_variant_argsc(const T *p_instance, void (T::*p_method)(P...) const, const Variant **p_args, int p_argcount, Callable::CallError &r_error) {
+// wgodot-changes::end
 #ifdef DEBUG_ENABLED
 	if ((size_t)p_argcount > sizeof...(P)) {
 		r_error.error = Callable::CallError::CALL_ERROR_TOO_MANY_ARGUMENTS;
@@ -224,7 +236,9 @@ void call_with_variant_argsc(T *p_instance, void (T::*p_method)(P...) const, con
 }
 
 template <typename T, typename... P>
-void call_with_variant_argsc_dv(T *p_instance, void (T::*p_method)(P...) const, const Variant **p_args, int p_argcount, Callable::CallError &r_error, const Vector<Variant> &p_default_values) {
+// wgodot-changes::begin
+void call_with_variant_argsc_dv(const T *p_instance, void (T::*p_method)(P...) const, const Variant **p_args, int p_argcount, Callable::CallError &r_error, const Vector<Variant> &p_default_values) {
+// wgodot-changes::end
 #ifdef DEBUG_ENABLED
 	if ((size_t)p_argcount > sizeof...(P)) {
 		r_error.error = Callable::CallError::CALL_ERROR_TOO_MANY_ARGUMENTS;
@@ -290,7 +304,9 @@ void call_with_variant_args_ret_dv(T *p_instance, R (T::*p_method)(P...), const 
 }
 
 template <typename T, typename R, typename... P>
-void call_with_variant_args_retc_dv(T *p_instance, R (T::*p_method)(P...) const, const Variant **p_args, int p_argcount, Variant &r_ret, Callable::CallError &r_error, const Vector<Variant> &p_default_values) {
+// wgodot-changes::begin
+void call_with_variant_args_retc_dv(const T *p_instance, R (T::*p_method)(P...) const, const Variant **p_args, int p_argcount, Variant &r_ret, Callable::CallError &r_error, const Vector<Variant> &p_default_values) {
+// wgodot-changes::end
 #ifdef DEBUG_ENABLED
 	if ((size_t)p_argcount > sizeof...(P)) {
 		r_error.error = Callable::CallError::CALL_ERROR_TOO_MANY_ARGUMENTS;
@@ -328,7 +344,9 @@ void call_with_ptr_args(T *p_instance, void (T::*p_method)(P...), const void **p
 }
 
 template <typename T, typename... P>
-void call_with_ptr_argsc(T *p_instance, void (T::*p_method)(P...) const, const void **p_args) {
+// wgodot-changes::begin
+void call_with_ptr_argsc(const T *p_instance, void (T::*p_method)(P...) const, const void **p_args) {
+// wgodot-changes::end
 	call_with_ptr_argsc_helper<T, P...>(p_instance, p_method, p_args, BuildIndexSequence<sizeof...(P)>{});
 }
 
@@ -338,7 +356,9 @@ void call_with_ptr_args_ret(T *p_instance, R (T::*p_method)(P...), const void **
 }
 
 template <typename T, typename R, typename... P>
-void call_with_ptr_args_retc(T *p_instance, R (T::*p_method)(P...) const, const void **p_args, void *r_ret) {
+// wgodot-changes::begin
+void call_with_ptr_args_retc(const T *p_instance, R (T::*p_method)(P...) const, const void **p_args, void *r_ret) {
+// wgodot-changes::end
 	call_with_ptr_args_retc_helper<T, R, P...>(p_instance, p_method, p_args, r_ret, BuildIndexSequence<sizeof...(P)>{});
 }
 
@@ -375,7 +395,9 @@ void call_with_validated_variant_args_ret(Variant *p_base, R (T::*p_method)(P...
 }
 
 template <typename T, typename R, typename... P>
-void call_with_validated_variant_args_retc(Variant *p_base, R (T::*p_method)(P...) const, const Variant **p_args, Variant *r_ret) {
+// wgodot-changes::begin
+void call_with_validated_variant_args_retc(const Variant *p_base, R (T::*p_method)(P...) const, const Variant **p_args, Variant *r_ret) {
+// wgodot-changes::end
 	call_with_validated_variant_args_retc_helper<T, R, P...>(&VariantInternalAccessor<T>::get(p_base), p_method, p_args, r_ret, BuildIndexSequence<sizeof...(P)>{});
 }
 
@@ -551,7 +573,9 @@ void call_with_variant_args_ret(T *p_instance, R (T::*p_method)(P...), const Var
 }
 
 template <typename T, typename R, typename... P, size_t... Is>
-void call_with_variant_args_retc_helper(T *p_instance, R (T::*p_method)(P...) const, const Variant **p_args, Variant &r_ret, Callable::CallError &r_error, IndexSequence<Is...>) {
+// wgodot-changes::begin
+void call_with_variant_args_retc_helper(const T *p_instance, R (T::*p_method)(P...) const, const Variant **p_args, Variant &r_ret, Callable::CallError &r_error, IndexSequence<Is...>) {
+// wgodot-changes::end
 	r_error.error = Callable::CallError::CALL_OK;
 
 #ifdef DEBUG_ENABLED
@@ -599,7 +623,9 @@ void call_with_variant_args_static(void (*p_method)(P...), const Variant **p_arg
 }
 
 template <typename T, typename R, typename... P>
-void call_with_variant_args_retc(T *p_instance, R (T::*p_method)(P...) const, const Variant **p_args, int p_argcount, Variant &r_ret, Callable::CallError &r_error) {
+// wgodot-changes::begin
+void call_with_variant_args_retc(const T *p_instance, R (T::*p_method)(P...) const, const Variant **p_args, int p_argcount, Variant &r_ret, Callable::CallError &r_error) {
+// wgodot-changes::end
 #ifdef DEBUG_ENABLED
 	if ((size_t)p_argcount > sizeof...(P)) {
 		r_error.error = Callable::CallError::CALL_ERROR_TOO_MANY_ARGUMENTS;

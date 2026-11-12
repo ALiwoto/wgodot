@@ -30,6 +30,10 @@
 
 #include "resource_format_binary.h"
 // wgodot-changes::begin
+#include "core/variant/wgodot_record_serialization.h"
+#include "core/object/wgodot_class_references.h"
+// wgodot-changes::end
+// wgodot-changes::begin
 #include "core/variant/variant_internal.h"
 #include "core/object/script_instance.h"
 // wgodot-changes::end
@@ -106,6 +110,11 @@ enum {
 	// wgodot-changes::begin
 	VARIANT_TYPED_ARRAY = 0x57474101,
 	VARIANT_TYPED_DICTIONARY = 0x57474401,
+	VARIANT_WVECTOR3D = 0x57475601,
+	VARIANT_WTRANSFORM3D = 0x57475401,
+	VARIANT_WRECORD = 0x57475201,
+	VARIANT_CLASS_REF = 0x57474C01,
+	VARIANT_WVALUE = 0x57474301,
 	// wgodot-changes::end
 	OBJECT_EMPTY = 0,
 	OBJECT_EXTERNAL_RESOURCE = 1,
@@ -179,6 +188,27 @@ StringName ResourceLoaderBinary::_get_string() {
 Error ResourceLoaderBinary::parse_variant(Variant &r_v, bool p_initialize_owned) {
 // wgodot-changes::end
 	uint32_t prop_type = f->get_32();
+	// wgodot-changes::begin
+	if (prop_type == VARIANT_CLASS_REF) {
+		const StringName name = f->get_pascal_string();
+		r_v = WGodotClassReferences::resolve(name);
+		ERR_FAIL_COND_V_MSG(WGodotClassReferences::name(r_v) == StringName(), ERR_FILE_CORRUPT, "Unknown ClassRef class '" + String(name) + "'.");
+		return OK;
+	}
+	if (prop_type == VARIANT_WVALUE) {
+		RETURN_IF_ERROR(parse_variant(r_v, p_initialize_owned));
+		ERR_FAIL_COND_V(r_v.get_type() != Variant::ARRAY && r_v.get_type() != Variant::DICTIONARY && !Variant::is_packed_array_type(r_v.get_type()), ERR_FILE_CORRUPT);
+		r_v.wgodot_make_value_container();
+		return OK;
+	}
+	if (prop_type == VARIANT_WRECORD) {
+		const StringName name = f->get_pascal_string();
+		Variant fields;
+		RETURN_IF_ERROR(parse_variant(fields));
+		ERR_FAIL_COND_V(fields.get_type() != Variant::DICTIONARY, ERR_FILE_CORRUPT);
+		return WGodotRecordSerialization::restore(name, fields, r_v);
+	}
+	// wgodot-changes::end
 	// wgodot-changes::begin
 	if (prop_type == WGlobalResources::BINARY_REFERENCE) {
 		const String name = f->get_pascal_string();
@@ -303,6 +333,28 @@ Error ResourceLoaderBinary::parse_variant(Variant &r_v, bool p_initialize_owned)
 			r_v = v;
 
 		} break;
+		// wgodot-changes::begin
+		case VARIANT_WVECTOR3D: {
+			WVector3d value;
+			for (int i = 0; i < 3; i++) {
+				value[i] = f->get_double();
+			}
+			r_v = value;
+		} break;
+		case VARIANT_WTRANSFORM3D: {
+			WTransform3d value;
+			for (int i = 0; i < 4; i++) {
+				value.rotation[i] = f->get_real();
+			}
+			for (int i = 0; i < 3; i++) {
+				value.origin[i] = f->get_double();
+			}
+			for (int i = 0; i < 3; i++) {
+				value.scale[i] = f->get_real();
+			}
+			r_v = value;
+		} break;
+		// wgodot-changes::end
 		case VARIANT_TRANSFORM2D: {
 			Transform2D v;
 			v.columns[0].x = f->get_real();
@@ -501,14 +553,14 @@ Error ResourceLoaderBinary::parse_variant(Variant &r_v, bool p_initialize_owned)
 			// wgodot-changes::begin
 			ContainerType types[2];
 			if (prop_type == VARIANT_TYPED_DICTIONARY) {
-				for (ContainerType &type : types) {
-					type.builtin_type = Variant::Type(f->get_32());
-					ERR_FAIL_COND_V(type.builtin_type >= Variant::VARIANT_MAX, ERR_FILE_CORRUPT);
-					type.class_name = f->get_pascal_string();
+				for (ContainerType &element_type : types) {
+					element_type.builtin_type = Variant::Type(f->get_32());
+					ERR_FAIL_COND_V(element_type.builtin_type >= Variant::VARIANT_MAX, ERR_FILE_CORRUPT);
+					element_type.class_name = f->get_pascal_string();
 					Variant script;
 					Error result = parse_variant(script);
 					ERR_FAIL_COND_V(result != OK, result);
-					type.script = script;
+					element_type.script = script;
 				}
 			}
 			// wgodot-changes::end
@@ -534,21 +586,21 @@ Error ResourceLoaderBinary::parse_variant(Variant &r_v, bool p_initialize_owned)
 		// wgodot-changes::end
 		case VARIANT_ARRAY: {
 			// wgodot-changes::begin
-			ContainerType type;
+			ContainerType element_type;
 			if (prop_type == VARIANT_TYPED_ARRAY) {
-				type.builtin_type = Variant::Type(f->get_32());
-				ERR_FAIL_COND_V(type.builtin_type >= Variant::VARIANT_MAX, ERR_FILE_CORRUPT);
-				type.class_name = f->get_pascal_string();
+				element_type.builtin_type = Variant::Type(f->get_32());
+				ERR_FAIL_COND_V(element_type.builtin_type >= Variant::VARIANT_MAX, ERR_FILE_CORRUPT);
+				element_type.class_name = f->get_pascal_string();
 				Variant script;
 				Error result = parse_variant(script);
 				ERR_FAIL_COND_V(result != OK, result);
-				type.script = script;
+				element_type.script = script;
 			}
 			// wgodot-changes::end
 			uint32_t len = f->get_32();
 			Array a; //last bit means shared
 			// wgodot-changes::begin
-			a.set_typed(type);
+			a.set_typed(element_type);
 			// wgodot-changes::end
 			len &= 0x7FFFFFFF;
 			a.resize(len);
@@ -1744,7 +1796,27 @@ void ResourceFormatSaverBinaryInstance::_pad_buffer(Ref<FileAccess> r_file, int 
 	}
 }
 
-void ResourceFormatSaverBinaryInstance::write_variant(Ref<FileAccess> r_file, const Variant &p_property, HashMap<Ref<Resource>, int> &r_resource_map, HashMap<Ref<Resource>, int> &r_external_resources, HashMap<StringName, int> &r_string_map, const PropertyInfo &p_hint) {
+void ResourceFormatSaverBinaryInstance::write_variant(Ref<FileAccess> r_file, const Variant &p_property, HashMap<Ref<Resource>, int> &r_resource_map, HashMap<Ref<Resource>, int> &r_external_resources, HashMap<StringName, int> &r_string_map, const PropertyInfo &p_hint, bool p_value_payload) {
+	// wgodot-changes::begin
+	const StringName class_name = WGodotClassReferences::name(p_property);
+	if (class_name != StringName()) {
+		r_file->store_32(VARIANT_CLASS_REF);
+		r_file->store_pascal_string(class_name);
+		return;
+	}
+	if (!p_value_payload && p_property.wgodot_is_value_container()) {
+		r_file->store_32(VARIANT_WVALUE);
+		write_variant(r_file, p_property, r_resource_map, r_external_resources, r_string_map, p_hint, true);
+		return;
+	}
+	if (p_property.get_type() == Variant::WRECORD) {
+		const WRecord value = p_property;
+		r_file->store_32(VARIANT_WRECORD);
+		r_file->store_pascal_string(value.is_empty() ? String() : String(value.schema()->get_name()));
+		write_variant(r_file, WGodotRecordSerialization::fields(value), r_resource_map, r_external_resources, r_string_map);
+		return;
+	}
+	// wgodot-changes::end
 	// wgodot-changes::begin
 	WGlobalResources::Reference global;
 	if (WGlobalResources::SaveScope::reference(p_property, global)) {
@@ -1889,6 +1961,28 @@ void ResourceFormatSaverBinaryInstance::write_variant(Ref<FileAccess> r_file, co
 			r_file->store_real(val.size.z);
 
 		} break;
+		// wgodot-changes::begin
+		case Variant::WVECTOR3D: {
+			r_file->store_32(VARIANT_WVECTOR3D);
+			const WVector3d value = p_property;
+			for (int i = 0; i < 3; i++) {
+				r_file->store_double(value[i]);
+			}
+		} break;
+		case Variant::WTRANSFORM3D: {
+			r_file->store_32(VARIANT_WTRANSFORM3D);
+			const WTransform3d value = p_property;
+			for (int i = 0; i < 4; i++) {
+				r_file->store_real(value.rotation[i]);
+			}
+			for (int i = 0; i < 3; i++) {
+				r_file->store_double(value.origin[i]);
+			}
+			for (int i = 0; i < 3; i++) {
+				r_file->store_real(value.scale[i]);
+			}
+		} break;
+		// wgodot-changes::end
 		case Variant::TRANSFORM2D: {
 			r_file->store_32(VARIANT_TRANSFORM2D);
 			Transform2D val = p_property;
@@ -2262,6 +2356,20 @@ void ResourceFormatSaverBinaryInstance::write_variant(Ref<FileAccess> r_file, co
 }
 
 void ResourceFormatSaverBinaryInstance::_find_resources(const Variant &p_variant, bool p_main) {
+	// wgodot-changes::begin
+	if (!p_main && WGodotClassReferences::name(p_variant) != StringName()) {
+		return;
+	}
+	if (p_variant.get_type() == Variant::WRECORD) {
+		const WRecord record = p_variant;
+		if (!record.is_empty()) {
+			for (int index = 0; index < record.schema()->field_count(); ++index) {
+				_find_resources(record.get(index));
+			}
+		}
+		return;
+	}
+	// wgodot-changes::end
 	// wgodot-changes::begin
 	WGlobalResources::Reference global;
 	if (!p_main && WGlobalResources::SaveScope::reference(p_variant, global)) {

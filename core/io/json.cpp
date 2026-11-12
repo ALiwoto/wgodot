@@ -29,6 +29,9 @@
 /**************************************************************************/
 
 #include "json.h"
+// wgodot-changes::begin
+#include "core/variant/wgodot_record_serialization.h"
+// wgodot-changes::end
 
 #include "core/io/resource_loader.h"
 #include "core/object/class_db.h"
@@ -663,6 +666,12 @@ void JSON::_bind_methods() {
 #define PROPS "props"
 
 static bool _encode_container_type(Dictionary &r_dict, const String &p_key, const ContainerType &p_type, bool p_full_objects) {
+	// wgodot-changes::begin
+	if (p_type.builtin_type == Variant::WRECORD) {
+		r_dict[p_key] = "record:" + String(p_type.class_name);
+		return true;
+	}
+	// wgodot-changes::end
 	if (p_type.builtin_type != Variant::NIL) {
 		if (p_type.script.is_valid()) {
 			ERR_FAIL_COND_V(!p_full_objects, false);
@@ -680,7 +689,23 @@ static bool _encode_container_type(Dictionary &r_dict, const String &p_key, cons
 	return true;
 }
 
-Variant JSON::_from_native(const Variant &p_variant, bool p_full_objects, int p_depth) {
+Variant JSON::_from_native(const Variant &p_variant, bool p_full_objects, int p_depth, bool p_value_payload) {
+	// wgodot-changes::begin
+	if (!p_value_payload && p_variant.wgodot_is_value_container()) {
+		Dictionary result;
+		result[TYPE] = "WValue";
+		result[ARGS] = Array{ _from_native(p_variant, p_full_objects, p_depth, true) };
+		return result;
+	}
+	if (p_variant.get_type() == Variant::WRECORD) {
+		ERR_FAIL_COND_V(p_depth > Variant::MAX_RECURSION_DEPTH, Variant());
+		const WRecord record = p_variant;
+		Dictionary result;
+		result[TYPE] = "WRecord";
+		result[ARGS] = Array{ record.is_empty() ? String() : String(record.schema()->get_name()), _from_native(WGodotRecordSerialization::fields(record), p_full_objects, p_depth + 1) };
+		return result;
+	}
+	// wgodot-changes::end
 #define RETURN_ARGS \
 	Dictionary ret; \
 	ret[TYPE] = Variant::get_type_name(p_variant.get_type()); \
@@ -697,7 +722,9 @@ Variant JSON::_from_native(const Variant &p_variant, bool p_full_objects, int p_
 			return "i:" + String(p_variant);
 		} break;
 		case Variant::FLOAT: {
-			return "f:" + String(p_variant);
+			// wgodot-changes::begin
+			return "f:" + String::num_scientific(double(p_variant));
+			// wgodot-changes::end
 		} break;
 		case Variant::STRING: {
 			return "s:" + String(p_variant);
@@ -1021,6 +1048,20 @@ Variant JSON::_from_native(const Variant &p_variant, bool p_full_objects, int p_
 			RETURN_ARGS;
 		} break;
 
+		// wgodot-changes::begin
+		case Variant::WVECTOR3D:
+		case Variant::WTRANSFORM3D: {
+			const Variant::Type kind = p_variant.get_type();
+			const int constructor = Variant::get_member_constructor(kind);
+			Array args;
+			for (int i = 0; i < Variant::get_constructor_argument_count(kind, constructor); i++) {
+				bool valid;
+				const Variant member = p_variant.get_named(Variant::get_constructor_argument_name(kind, constructor, i), valid);
+				args.push_back(_from_native(member, p_full_objects, p_depth + 1));
+			}
+			RETURN_ARGS;
+		} break;
+		// wgodot-changes::end
 		case Variant::VARIANT_MAX: {
 			// Nothing to do.
 		} break;
@@ -1037,6 +1078,13 @@ static bool _decode_container_type(const Dictionary &p_dict, const String &p_key
 	}
 
 	const String type_name = p_dict[p_key];
+	// wgodot-changes::begin
+	if (type_name.begins_with("record:")) {
+		r_type.builtin_type = Variant::WRECORD;
+		r_type.class_name = type_name.substr(7);
+		return r_type.class_name != StringName();
+	}
+	// wgodot-changes::end
 
 	const Variant::Type builtin_type = Variant::get_type_by_name(type_name);
 	if (builtin_type < Variant::VARIANT_MAX && builtin_type != Variant::OBJECT) {
@@ -1120,6 +1168,27 @@ Variant JSON::_to_native(const Variant &p_json, bool p_allow_objects, int p_dept
 	const Array args = dict[ARGS]; \
 	ERR_FAIL_COND_V(args.size() % (m_factor) != 0, Variant())
 
+			// wgodot-changes::begin
+			if (dict[TYPE] == "WValue") {
+				ERR_FAIL_COND_V(p_depth > Variant::MAX_RECURSION_DEPTH, Variant());
+				LOAD_ARGS_CHECK_SIZE(1);
+				Variant result = _to_native(args[0], p_allow_objects, p_depth + 1);
+				ERR_FAIL_COND_V(result.get_type() != Variant::ARRAY && result.get_type() != Variant::DICTIONARY && !Variant::is_packed_array_type(result.get_type()), Variant());
+				result.wgodot_make_value_container();
+				return result;
+			}
+			if (dict[TYPE] == "WRecord") {
+				ERR_FAIL_COND_V(p_depth > Variant::MAX_RECURSION_DEPTH, Variant());
+				LOAD_ARGS_CHECK_SIZE(2);
+				ERR_FAIL_COND_V(args[0].get_type() != Variant::STRING, Variant());
+				const StringName name = args[0];
+				const Variant fields = _to_native(args[1], p_allow_objects, p_depth + 1);
+				ERR_FAIL_COND_V(fields.get_type() != Variant::DICTIONARY || (!p_allow_objects && name != StringName() && WRecordSchemas::find(name).is_null()), Variant());
+				Variant result;
+				ERR_FAIL_COND_V(WGodotRecordSerialization::restore(name, fields, result) != OK, Variant());
+				return result;
+			}
+			// wgodot-changes::end
 			switch (Variant::get_type_by_name(dict[TYPE])) {
 				case Variant::NIL:
 				case Variant::BOOL: {
@@ -1472,6 +1541,28 @@ Variant JSON::_to_native(const Variant &p_json, bool p_allow_objects, int p_dept
 					return arr;
 				} break;
 
+				// wgodot-changes::begin
+				case Variant::WVECTOR3D:
+				case Variant::WTRANSFORM3D: {
+					ERR_FAIL_COND_V(p_depth > Variant::MAX_RECURSION_DEPTH, Variant());
+					const Variant::Type kind = Variant::get_type_by_name(dict[TYPE]);
+					const int constructor = Variant::get_member_constructor(kind);
+					LOAD_ARGS_CHECK_SIZE(Variant::get_constructor_argument_count(kind, constructor));
+					Vector<Variant> values;
+					for (int i = 0; i < args.size(); i++) {
+						values.push_back(_to_native(args[i], p_allow_objects, p_depth + 1));
+					}
+					Vector<const Variant *> pointers;
+					for (int i = 0; i < values.size(); i++) {
+						pointers.push_back(&values[i]);
+					}
+					Variant result;
+					Callable::CallError error;
+					Variant::construct(kind, result, pointers.ptrw(), pointers.size(), error);
+					ERR_FAIL_COND_V(error.error != Callable::CallError::CALL_OK, Variant());
+					return result;
+				} break;
+				// wgodot-changes::end
 				case Variant::VARIANT_MAX: {
 					// Nothing to do.
 				} break;

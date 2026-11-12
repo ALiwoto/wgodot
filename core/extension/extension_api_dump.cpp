@@ -199,6 +199,11 @@ Dictionary GDExtensionAPIDump::generate_extension_api(bool p_include_docs) {
 			{ Variant::PACKED_VECTOR3_ARRAY, ptrsize_32 * 2, ptrsize_64 * 2, ptrsize_32 * 2, ptrsize_64 * 2 },
 			{ Variant::PACKED_COLOR_ARRAY, ptrsize_32 * 2, ptrsize_64 * 2, ptrsize_32 * 2, ptrsize_64 * 2 },
 			{ Variant::PACKED_VECTOR4_ARRAY, ptrsize_32 * 2, ptrsize_64 * 2, ptrsize_32 * 2, ptrsize_64 * 2 },
+			// wgodot-changes::begin
+			{ Variant::WVECTOR3D, 24, 24, 24, 24 },
+			{ Variant::WTRANSFORM3D, 56, 56, 80, 80 },
+			{ Variant::WRECORD, 4, 8, 4, 8 },
+			// wgodot-changes::end
 			{ Variant::VARIANT_MAX, sizeof(uint64_t) + sizeof(float) * 4, sizeof(uint64_t) + sizeof(float) * 4, sizeof(uint64_t) + sizeof(double) * 4, sizeof(uint64_t) + sizeof(double) * 4 },
 		};
 
@@ -241,6 +246,11 @@ Dictionary GDExtensionAPIDump::generate_extension_api(bool p_include_docs) {
 		static_assert(type_size_array[Variant::PACKED_VECTOR3_ARRAY][sizeof(void *)] == sizeof(PackedVector3Array), "Size of PackedVector3Array mismatch");
 		static_assert(type_size_array[Variant::PACKED_COLOR_ARRAY][sizeof(void *)] == sizeof(PackedColorArray), "Size of PackedColorArray mismatch");
 		static_assert(type_size_array[Variant::PACKED_VECTOR4_ARRAY][sizeof(void *)] == sizeof(PackedVector4Array), "Size of PackedVector4Array mismatch");
+		// wgodot-changes::begin
+		static_assert(type_size_array[Variant::WVECTOR3D][sizeof(void *)] == sizeof(WVector3d), "Size of WVector3d mismatch");
+		static_assert(type_size_array[Variant::WTRANSFORM3D][sizeof(void *)] == sizeof(WTransform3d), "Size of WTransform3d mismatch");
+		static_assert(type_size_array[Variant::WRECORD][sizeof(void *)] == sizeof(WRecord), "Size of WRecord mismatch");
+		// wgodot-changes::end
 		static_assert(type_size_array[Variant::VARIANT_MAX][sizeof(void *)] == sizeof(Variant), "Size of Variant mismatch");
 
 		Array core_type_sizes;
@@ -411,6 +421,14 @@ Dictionary GDExtensionAPIDump::generate_extension_api(bool p_include_docs) {
 			{ Variant::COLOR, "g", "float", sizeof(float), "float", sizeof(float), "float", sizeof(float), "float", sizeof(float) },
 			{ Variant::COLOR, "b", "float", sizeof(float), "float", sizeof(float), "float", sizeof(float), "float", sizeof(float) },
 			{ Variant::COLOR, "a", "float", sizeof(float), "float", sizeof(float), "float", sizeof(float), "float", sizeof(float) },
+			// wgodot-changes::begin
+			{ Variant::WVECTOR3D, "x", "double", 8, "double", 8, "double", 8, "double", 8 },
+			{ Variant::WVECTOR3D, "y", "double", 8, "double", 8, "double", 8, "double", 8 },
+			{ Variant::WVECTOR3D, "z", "double", 8, "double", 8, "double", 8, "double", 8 },
+			REAL_BASED_BUILTIN_MEMBER_OFFSET(Variant::WTRANSFORM3D, "rotation", "Quaternion", 4),
+			{ Variant::WTRANSFORM3D, "origin", "WVector3d", 24, "WVector3d", 24, "WVector3d", 24, "WVector3d", 24 },
+			REAL_BASED_BUILTIN_MEMBER_OFFSET(Variant::WTRANSFORM3D, "scale", "Vector3", 3),
+			// wgodot-changes::end
 			// End marker, must stay last
 			{ Variant::NIL, nullptr, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0 },
 		};

@@ -1,5 +1,7 @@
 // wgodot-changes::file
 #include "wgodot_resource_validation.h"
+#include "core/object/wgodot_class_references.h"
+#include "core/variant/wgodot_class_reference_serialization.h"
 
 #include "core/io/resource_loader.h"
 #include "core/io/wgodot_file_stamp.h"
@@ -9,6 +11,42 @@
 #include "modules/wgodot/serialization/wire.h"
 
 using VP = VariantParser;
+
+namespace {
+int numeric_component_width(Variant::Type p_type) {
+	switch (p_type) {
+		case Variant::VECTOR2:
+		case Variant::VECTOR2I:
+		case Variant::PACKED_VECTOR2_ARRAY:
+			return 2;
+		case Variant::VECTOR3:
+		case Variant::VECTOR3I:
+		case Variant::PACKED_VECTOR3_ARRAY:
+			return 3;
+		case Variant::VECTOR4:
+		case Variant::VECTOR4I:
+		case Variant::RECT2:
+		case Variant::RECT2I:
+		case Variant::PLANE:
+		case Variant::QUATERNION:
+		case Variant::COLOR:
+		case Variant::PACKED_VECTOR4_ARRAY:
+		case Variant::PACKED_COLOR_ARRAY:
+			return 4;
+		case Variant::TRANSFORM2D:
+		case Variant::AABB:
+			return 6;
+		case Variant::BASIS:
+			return 9;
+		case Variant::TRANSFORM3D:
+			return 12;
+		case Variant::PROJECTION:
+			return 16;
+		default:
+			return Variant::is_packed_array_type(p_type) ? 1 : 0;
+	}
+}
+} // namespace
 
 WGodotResourceValidation::WGodotResourceValidation(const String &p_path, const WGodotResourceTypes *p_types, WGodotResourceSyntax::Result &r_result, HashSet<String> *p_scene_stack, bool p_collect_properties) :
 		path(p_path), types(p_types), result(r_result), scene_stack(p_scene_stack ? p_scene_stack : &owned_scene_stack), collect_properties(p_collect_properties) {
@@ -122,9 +160,19 @@ Error WGodotResourceValidation::annotation(Token p_token, Stream *p_stream, Type
 		return fail("Expected a concrete type name.", r_error);
 	}
 	const String name = p_token.value;
+	if (name == "ClassRef") {
+		RETURN_IF_ERROR(WGodotClassReferenceSerialization::parse_type(p_stream, r_type.name, r_line, r_error, true));
+		const StringName base = WGodotClassReferences::constraint_base(r_type.name);
+		if (!types->class_reference(base)) {
+			return fail("Unknown or invalid ClassRef base '" + String(base) + "'.", r_error);
+		}
+		r_type.builtin = Variant::OBJECT;
+		types->record(r_type, result.declarations);
+		return OK;
+	}
 	r_type.builtin = Variant::get_type_by_name(name);
 	if (r_type.builtin == Variant::VARIANT_MAX && types->exists(name)) {
-		r_type.builtin = Variant::OBJECT;
+		r_type.builtin = types->is_record(name) ? Variant::WRECORD : Variant::OBJECT;
 		r_type.name = name;
 		if (!result.declarations.has(name)) {
 			result.declarations.insert(name, types->signature(name));
@@ -149,7 +197,7 @@ Error WGodotResourceValidation::annotation(Token p_token, Stream *p_stream, Type
 
 Error WGodotResourceValidation::container(Stream *p_stream, const Type &p_type, const Qualification &p_qualification, int &r_line, String &r_error, int p_depth) {
 	const bool dictionary = p_type.builtin == Variant::DICTIONARY;
-	const Type element = p_type.builtin >= Variant::PACKED_BYTE_ARRAY ? Type::packed_element(p_type.builtin) : p_type.elements[0];
+	const Type element = Variant::is_packed_array_type(p_type.builtin) ? Type::packed_element(p_type.builtin) : p_type.elements[0];
 	const TokenType end = dictionary ? VP::TK_CURLY_BRACKET_CLOSE : VP::TK_BRACKET_CLOSE;
 	Token next;
 	RETURN_IF_ERROR(token(p_stream, next, r_line, r_error));
@@ -173,6 +221,42 @@ Error WGodotResourceValidation::container(Stream *p_stream, const Type &p_type, 
 		}
 		if (next.type != VP::TK_COMMA) {
 			return fail("Expected a comma between container entries.", r_error);
+		}
+		RETURN_IF_ERROR(token(p_stream, next, r_line, r_error));
+	}
+	return OK;
+}
+
+Error WGodotResourceValidation::record(Stream *p_stream, const Type &p_type, int &r_line, String &r_error, int p_depth) {
+	if (!types->is_record(p_type.name)) {
+		return fail("Unknown record declaration: " + String(p_type.name), r_error);
+	}
+	types->record(p_type, result.declarations);
+	HashSet<StringName> fields;
+	Token next;
+	RETURN_IF_ERROR(token(p_stream, next, r_line, r_error));
+	while (next.type != VP::TK_CURLY_BRACKET_CLOSE) {
+		if (next.type != VP::TK_STRING && next.type != VP::TK_STRING_NAME) {
+			return fail("Record fields require literal names.", r_error);
+		}
+		const StringName name = next.value;
+		if (fields.has(name)) {
+			return fail("Duplicate record field: " + String(name), r_error);
+		}
+		fields.insert(name);
+		Type expected;
+		Qualification qualification;
+		RETURN_IF_ERROR(field(p_type.name, name, expected, qualification, r_error));
+		RETURN_IF_ERROR(expect(p_stream, VP::TK_COLON, r_line, r_error));
+		RETURN_IF_ERROR(token(p_stream, next, r_line, r_error));
+		Type actual;
+		RETURN_IF_ERROR(value(next, p_stream, expected, qualification, actual, r_line, r_error, p_depth + 1));
+		RETURN_IF_ERROR(token(p_stream, next, r_line, r_error));
+		if (next.type == VP::TK_CURLY_BRACKET_CLOSE) {
+			break;
+		}
+		if (next.type != VP::TK_COMMA) {
+			return fail("Expected a comma between record fields.", r_error);
 		}
 		RETURN_IF_ERROR(token(p_stream, next, r_line, r_error));
 	}
@@ -223,9 +307,13 @@ Error WGodotResourceValidation::value(Token p_token, Stream *p_stream, const Typ
 	if (p_expected.resource_path && p_token.type != VP::TK_STRING) {
 		return fail("WResPath requires a literal resource path.", r_error);
 	}
+	if (p_token.type == VP::TK_CURLY_BRACKET_OPEN && p_expected.builtin == Variant::WRECORD) {
+		r_actual = p_expected;
+		return record(p_stream, p_expected, r_line, r_error, p_depth);
+	}
 	if (p_token.type == VP::TK_BRACKET_OPEN || p_token.type == VP::TK_CURLY_BRACKET_OPEN) {
 		const Variant::Type kind = p_token.type == VP::TK_BRACKET_OPEN ? Variant::ARRAY : Variant::DICTIONARY;
-		const bool packed = kind == Variant::ARRAY && p_expected.builtin >= Variant::PACKED_BYTE_ARRAY;
+		const bool packed = kind == Variant::ARRAY && Variant::is_packed_array_type(p_expected.builtin);
 		if ((!packed && p_expected.builtin != kind) || !p_expected.concrete()) {
 			return fail("Container literal requires a fully typed " + Variant::get_type_name(kind) + " destination.", r_error);
 		}
@@ -244,8 +332,37 @@ Error WGodotResourceValidation::value(Token p_token, Stream *p_stream, const Typ
 		}
 	} else if (p_token.type == VP::TK_IDENTIFIER) {
 		const String name = p_token.value;
-		if (name == "repeat") {
-			const bool packed = p_expected.builtin >= Variant::PACKED_BYTE_ARRAY && p_expected.builtin < Variant::VARIANT_MAX;
+		if (name == "WValue") {
+			if (!p_expected.value_container) {
+				return fail("WValue requires an @value container destination.", r_error);
+			}
+			RETURN_IF_ERROR(expect(p_stream, VP::TK_PARENTHESIS_OPEN, r_line, r_error));
+			RETURN_IF_ERROR(token(p_stream, p_token, r_line, r_error));
+			RETURN_IF_ERROR(value(p_token, p_stream, p_expected, p_qualification, r_actual, r_line, r_error, p_depth + 1));
+			RETURN_IF_ERROR(expect(p_stream, VP::TK_PARENTHESIS_CLOSE, r_line, r_error));
+		} else if (name == "ClassRef") {
+			RETURN_IF_ERROR(expect(p_stream, VP::TK_PARENTHESIS_OPEN, r_line, r_error));
+			RETURN_IF_ERROR(token(p_stream, p_token, r_line, r_error));
+			if (p_token.type != VP::TK_STRING || !types->class_reference(String(p_token.value))) {
+				return fail("ClassRef requires the name of an object class.", r_error);
+			}
+			r_actual.builtin = Variant::OBJECT;
+			r_actual.name = WGodotClassReferences::constraint(String(p_token.value));
+			types->record(r_actual, result.declarations);
+			RETURN_IF_ERROR(expect(p_stream, VP::TK_PARENTHESIS_CLOSE, r_line, r_error));
+		} else if (name == "WRecord") {
+			RETURN_IF_ERROR(expect(p_stream, VP::TK_PARENTHESIS_OPEN, r_line, r_error));
+			RETURN_IF_ERROR(token(p_stream, p_token, r_line, r_error));
+			if (p_token.type != VP::TK_STRING || p_expected.builtin != Variant::WRECORD || String(p_token.value) != String(p_expected.name)) {
+				return fail("WRecord must name its declared destination type.", r_error);
+			}
+			RETURN_IF_ERROR(expect(p_stream, VP::TK_COMMA, r_line, r_error));
+			RETURN_IF_ERROR(expect(p_stream, VP::TK_CURLY_BRACKET_OPEN, r_line, r_error));
+			RETURN_IF_ERROR(record(p_stream, p_expected, r_line, r_error, p_depth + 1));
+			RETURN_IF_ERROR(expect(p_stream, VP::TK_PARENTHESIS_CLOSE, r_line, r_error));
+			r_actual = p_expected;
+		} else if (name == "repeat") {
+			const bool packed = Variant::is_packed_array_type(p_expected.builtin);
 			if (!p_expected.concrete() || (!packed && p_expected.builtin != Variant::ARRAY)) {
 				return fail("repeat requires a fully typed array destination.", r_error);
 			}
@@ -287,6 +404,7 @@ Error WGodotResourceValidation::value(Token p_token, Stream *p_stream, const Typ
 			if (r_actual.builtin == Variant::VARIANT_MAX || r_actual.builtin == Variant::NIL || r_actual.builtin == Variant::OBJECT || r_actual.builtin == Variant::RID || r_actual.builtin == Variant::CALLABLE || r_actual.builtin == Variant::SIGNAL) {
 				return fail("Dynamic or unsupported constructor: " + name, r_error);
 			}
+			const int width = numeric_component_width(r_actual.builtin);
 			RETURN_IF_ERROR(expect(p_stream, VP::TK_PARENTHESIS_OPEN, r_line, r_error));
 			if (r_actual.builtin == Variant::NODE_PATH || r_actual.builtin == Variant::STRING_NAME || r_actual.builtin == Variant::STRING) {
 				RETURN_IF_ERROR(token(p_stream, p_token, r_line, r_error));
@@ -301,10 +419,26 @@ Error WGodotResourceValidation::value(Token p_token, Stream *p_stream, const Typ
 					r_actual = p_expected;
 				}
 				RETURN_IF_ERROR(expect(p_stream, VP::TK_PARENTHESIS_CLOSE, r_line, r_error));
+			} else if (width == 0) {
+				const int constructor = Variant::get_member_constructor(r_actual.builtin);
+				if (constructor < 0) {
+					return fail("Unsupported value constructor: " + name, r_error);
+				}
+				for (int i = 0; i < Variant::get_constructor_argument_count(r_actual.builtin, constructor); i++) {
+					if (i > 0) {
+						RETURN_IF_ERROR(expect(p_stream, VP::TK_COMMA, r_line, r_error));
+					}
+					RETURN_IF_ERROR(token(p_stream, p_token, r_line, r_error));
+					Type expected_argument;
+					expected_argument.builtin = Variant::get_constructor_argument_type(r_actual.builtin, constructor, i);
+					Type actual_argument;
+					RETURN_IF_ERROR(value(p_token, p_stream, expected_argument, Qualification(), actual_argument, r_line, r_error, p_depth + 1));
+				}
+				RETURN_IF_ERROR(expect(p_stream, VP::TK_PARENTHESIS_CLOSE, r_line, r_error));
 			} else {
 				// Packed numeric payloads are checked as a stream. No duplicate arrays
 				// or live resource instances are allocated during validation.
-				const bool packed = r_actual.builtin >= Variant::PACKED_BYTE_ARRAY;
+				const bool packed = Variant::is_packed_array_type(r_actual.builtin);
 				const bool strings = r_actual.builtin == Variant::PACKED_STRING_ARRAY;
 				const bool integers = r_actual.builtin == Variant::PACKED_BYTE_ARRAY || r_actual.builtin == Variant::PACKED_INT32_ARRAY || r_actual.builtin == Variant::PACKED_INT64_ARRAY || r_actual.builtin == Variant::VECTOR2I || r_actual.builtin == Variant::VECTOR3I || r_actual.builtin == Variant::VECTOR4I || r_actual.builtin == Variant::RECT2I;
 				int count = 0;
@@ -340,47 +474,7 @@ Error WGodotResourceValidation::value(Token p_token, Stream *p_stream, const Typ
 					}
 					RETURN_IF_ERROR(token(p_stream, p_token, r_line, r_error));
 				}
-				int width = 0;
-				switch (r_actual.builtin) {
-					case Variant::VECTOR2:
-					case Variant::VECTOR2I:
-					case Variant::PACKED_VECTOR2_ARRAY:
-						width = 2;
-						break;
-					case Variant::VECTOR3:
-					case Variant::VECTOR3I:
-					case Variant::PACKED_VECTOR3_ARRAY:
-						width = 3;
-						break;
-					case Variant::VECTOR4:
-					case Variant::VECTOR4I:
-					case Variant::RECT2:
-					case Variant::RECT2I:
-					case Variant::PLANE:
-					case Variant::QUATERNION:
-					case Variant::COLOR:
-					case Variant::PACKED_VECTOR4_ARRAY:
-					case Variant::PACKED_COLOR_ARRAY:
-						width = 4;
-						break;
-					case Variant::TRANSFORM2D:
-					case Variant::AABB:
-						width = 6;
-						break;
-					case Variant::BASIS:
-						width = 9;
-						break;
-					case Variant::TRANSFORM3D:
-						width = 12;
-						break;
-					case Variant::PROJECTION:
-						width = 16;
-						break;
-					default:
-						width = packed ? 1 : 0;
-						break;
-				}
-				if (!width || (packed ? count % width != 0 : count != width)) {
+				if (packed ? count % width != 0 : count != width) {
 					return fail("Invalid component count for " + name + ".", r_error);
 				}
 			}

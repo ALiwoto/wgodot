@@ -125,6 +125,8 @@ class GDScriptAnalyzer {
 	bool wgodot_validate_readonly_assignment(GDScriptParser::AssignmentNode *p_assignment);
 	const GDScriptParser::VariableNode *wgodot_get_readonly_assignment_source(GDScriptParser::ExpressionNode *p_assignee) const;
 	bool wgodot_can_assign_readonly_variable(const GDScriptParser::VariableNode *p_variable) const;
+	bool wgodot_validate_value_type(const GDScriptParser::DataType &p_type, const GDScriptParser::Node *p_source);
+	void wgodot_validate_record_layout(GDScriptParser::ClassNode *p_class);
 	void wgodot_validate_data_class(GDScriptParser::ClassNode *p_class);
 	bool wgodot_validate_immutable_type(const GDScriptParser::DataType &p_type, const GDScriptParser::Node *p_source);
 	static bool wgodot_has_immutable_type(const GDScriptParser::DataType &p_type);
@@ -212,6 +214,8 @@ class GDScriptAnalyzer {
 	// Reduction functions.
 	// wgodot-changes::begin
 	static GDScriptParser::DataType wgodot_resource_path_type();
+	GDScriptParser::DataType wgodot_resolve_class_ref(GDScriptParser::TypeNode *p_type);
+	static bool wgodot_class_ref_compatible(const GDScriptParser::DataType &p_target, const GDScriptParser::DataType &p_source, const GDScriptParser::Node *p_source_node);
 	static GDScriptParser::DataType wgodot_resource_path_runtime_type(const GDScriptParser::DataType &p_type);
 	void wgodot_resource_container_signature(const GDScriptParser::DataType &p_container, const StringName &p_method, GDScriptParser::DataType &r_result, List<GDScriptParser::DataType> &r_arguments);
 	bool wgodot_validate_resource_path_argument(GDScriptParser::ExpressionNode *p_expression, const GDScriptParser::DataType &p_target);

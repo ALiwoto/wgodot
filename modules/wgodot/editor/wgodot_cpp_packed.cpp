@@ -36,13 +36,16 @@ WGodotCppEmitter::Value WGodotCppEmitter::packed_call(const Parser::CallNode *p_
 			const Variant::Type argument_type = Variant::get_builtin_method_argument_type(base_type.builtin_type, p_call->function_name, i);
 			operands.push_back(i < int(p_call->arguments.size()) ? lower_engine_argument(p_call->arguments[i], argument_type) : lower_literal(defaults[i - (count - defaults.size())], p_call));
 		}
-		operands.push_back(lower_converted(base, base_type));
+		auto receiver_type = base_type;
+		receiver_type.wgodot_value = false;
+		operands.push_back(lower_converted(base, receiver_type));
 		Value result = sequence(operands);
 		Vector<String> arguments;
 		for (int i = 0; i < count; i++) {
 			arguments.push_back(operands[i].code);
 		}
-		const String receiver = "(" + operands[count].code + ").packed_native()";
+		const bool readonly = Variant::is_builtin_method_const(base_type.builtin_type, p_call->function_name);
+		const String receiver = (readonly ? "std::as_const(" : "(") + operands[count].code + ").packed_native()";
 		result.cpp_type = type(expression_type(p_call), p_call);
 		const String parameters = arguments.is_empty() ? "" : ", " + String(", ").join(arguments);
 		if (entry.member[0]) {

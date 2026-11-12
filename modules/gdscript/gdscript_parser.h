@@ -35,6 +35,7 @@
 // wgodot-changes::begin
 #include "wgodot_gd/enum_values.h"
 #include "wgodot_gd/partial_classes.h"
+#include "wgodot_scalar.h"
 // wgodot-changes::end
 
 #ifdef DEBUG_ENABLED
@@ -140,7 +141,10 @@ public:
 		bool is_coroutine = false; // For function calls.
 		// wgodot-changes::begin
 		bool wgodot_resource_path = false; // String in the VM, opaque integer in native games.
+		bool wgodot_class_ref = false; // Existing class objects in the VM; constrained constructors in native games.
+		bool wgodot_value = false;
 		bool wgodot_immutable = false; // Analysis only; never part of VM/native value storage.
+		WGodotScalar::Type wgodot_scalar = WGodotScalar::NONE;
 		FunctionNode *wgodot_callable_signature = nullptr;
 		// wgodot-changes::end
 
@@ -225,8 +229,11 @@ public:
 
 		bool operator==(const DataType &p_other) const {
 			// wgodot-changes::begin
-			if (wgodot_resource_path != p_other.wgodot_resource_path || wgodot_immutable != p_other.wgodot_immutable) {
+			if (wgodot_resource_path != p_other.wgodot_resource_path || wgodot_class_ref != p_other.wgodot_class_ref || wgodot_immutable != p_other.wgodot_immutable || wgodot_value != p_other.wgodot_value) {
 				return false;
+			}
+			if (wgodot_class_ref) {
+				return get_container_element_type(0) == p_other.get_container_element_type(0);
 			}
 			// wgodot-changes::end
 			if (type_source == UNDETECTED || p_other.type_source == UNDETECTED) {
@@ -245,7 +252,9 @@ public:
 				case VARIANT:
 					return true; // All variants are the same.
 				case BUILTIN:
-					return builtin_type == p_other.builtin_type;
+					// wgodot-changes::begin
+					return builtin_type == p_other.builtin_type && wgodot_scalar == p_other.wgodot_scalar;
+					// wgodot-changes::end
 				case NATIVE:
 				case ENUM: // Enums use native_type to identify the enum and its base class.
 					return native_type == p_other.native_type;
@@ -275,7 +284,10 @@ public:
 			is_coroutine = p_other.is_coroutine;
 			// wgodot-changes::begin
 			wgodot_resource_path = p_other.wgodot_resource_path;
+			wgodot_class_ref = p_other.wgodot_class_ref;
 			wgodot_immutable = p_other.wgodot_immutable;
+			wgodot_value = p_other.wgodot_value;
+			wgodot_scalar = p_other.wgodot_scalar;
 			wgodot_callable_signature = p_other.wgodot_callable_signature;
 			// wgodot-changes::end
 			builtin_type = p_other.builtin_type;
@@ -458,6 +470,7 @@ public:
 		bool use_conversion_assign = false;
 		int usages = 0;
 		// wgodot-changes::begin
+		bool wgodot_value = false;
 		bool wgodot_immutable = false;
 		// wgodot-changes::end
 
@@ -561,6 +574,7 @@ public:
 		FunctionNode *wgodot_resolved_function = nullptr;
 		bool wgodot_readonly_call = false;
 		bool wgodot_native_call = false;
+		bool wgodot_class_ref_constructor = false;
 		bool wgodot_mutable_alias = false;
 		struct FieldInitializer {
 			IdentifierNode *name = nullptr;
@@ -826,6 +840,7 @@ public:
 		bool wgodot_protected = false;
 		bool wgodot_static_class = false;
 		bool wgodot_data_class = false;
+		bool wgodot_record = false;
 		bool wgodot_no_string_mangle = false;
 		bool wgodot_is_interface = false;
 		bool wgodot_interface_global_name = false;
@@ -1344,6 +1359,7 @@ public:
 
 	struct TypeNode : public Node {
 		// wgodot-changes::begin
+		bool wgodot_value = false;
 		bool wgodot_immutable = false;
 		// wgodot-changes::end
 		LocalVector<IdentifierNode *> type_chain;
@@ -1760,6 +1776,8 @@ private:
 	bool wgodot_private_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	bool wgodot_protected_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	bool wgodot_readonly_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
+	bool wgodot_value_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
+	bool wgodot_record_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	bool wgodot_immutable_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	bool wgodot_data_class_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	bool wgodot_immutable_result_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);

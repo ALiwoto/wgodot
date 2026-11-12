@@ -113,6 +113,22 @@ GDScriptDataType GDScriptCompiler::_gdtype_from_datatype(const GDScriptParser::D
 	}
 
 	GDScriptDataType result;
+	// wgodot-changes::begin
+	result.wgodot_value = p_datatype.wgodot_value;
+	if (p_datatype.wgodot_class_ref) {
+		result.kind = GDScriptDataType::BUILTIN;
+		result.builtin_type = Variant::OBJECT;
+		result.wgodot_class_ref = true;
+		result.native_type = p_datatype.to_property_info_hint_string();
+		return result;
+	}
+	if (p_datatype.kind == GDScriptParser::DataType::CLASS && p_datatype.class_type->wgodot_record && !(p_handle_metatype && p_datatype.is_meta_type)) {
+		result.kind = GDScriptDataType::BUILTIN;
+		result.builtin_type = Variant::WRECORD;
+		result.native_type = p_datatype.class_type->fqcn;
+		return result;
+	}
+	// wgodot-changes::end
 
 	switch (p_datatype.kind) {
 		case GDScriptParser::DataType::VARIANT: {
@@ -121,6 +137,9 @@ GDScriptDataType GDScriptCompiler::_gdtype_from_datatype(const GDScriptParser::D
 		case GDScriptParser::DataType::BUILTIN: {
 			result.kind = GDScriptDataType::BUILTIN;
 			result.builtin_type = p_datatype.builtin_type;
+			// wgodot-changes::begin
+			result.wgodot_scalar = p_datatype.wgodot_scalar;
+			// wgodot-changes::end
 		} break;
 		case GDScriptParser::DataType::NATIVE: {
 			if (p_handle_metatype && p_datatype.is_meta_type) {
@@ -677,7 +696,21 @@ GDScriptCodeGenerator::Address GDScriptCompiler::_parse_expression(CodeGen &code
 			}
 
 			// wgodot-changes::begin
-			if (call->wgodot_has_field_initializers) {
+			if (call->wgodot_class_ref_constructor) {
+				const auto *callee = static_cast<const GDScriptParser::SubscriptNode *>(call->callee);
+				const auto receiver = _parse_expression(codegen, r_error, callee->base);
+				if (r_error != OK) {
+					return GDScriptCodeGenerator::Address();
+				}
+				gen->write_call(result, receiver, SNAME("new"), arguments);
+				if (receiver.mode == GDScriptCodeGenerator::Address::TEMPORARY) {
+					gen->pop_temporary();
+				}
+			} else if (_wgodot_mutating_value_call(codegen, r_error, call, result, arguments)) {
+				if (r_error != OK) {
+					return GDScriptCodeGenerator::Address();
+				}
+			} else if (call->wgodot_has_field_initializers) {
 				_wgodot_construct_fields(codegen, r_error, call, result, arguments);
 			} else
 			// wgodot-changes::end
@@ -1054,6 +1087,11 @@ GDScriptCodeGenerator::Address GDScriptCompiler::_parse_expression(CodeGen &code
 		} break;
 		case GDScriptParser::Node::ASSIGNMENT: {
 			const GDScriptParser::AssignmentNode *assignment = static_cast<const GDScriptParser::AssignmentNode *>(p_expression);
+			// wgodot-changes::begin
+			if (_wgodot_assign_value_path(codegen, r_error, assignment)) {
+				return GDScriptCodeGenerator::Address();
+			}
+			// wgodot-changes::end
 
 			if (assignment->assignee->type == GDScriptParser::Node::SUBSCRIPT) {
 				// SET (chained) MODE!
@@ -1141,7 +1179,7 @@ GDScriptCodeGenerator::Address GDScriptCompiler::_parse_expression(CodeGen &code
 				// Get at (potential) root stack pos, so it can be returned.
 				GDScriptCodeGenerator::Address base = _parse_expression(codegen, r_error, chain.back()->get()->base);
 				const bool base_known_type = base.type.has_type();
-				const bool base_is_shared = Variant::is_type_shared(base.type.builtin_type);
+				const bool base_is_shared = Variant::is_type_shared(base.type.builtin_type) && !base.type.wgodot_value;
 
 				if (r_error) {
 					return GDScriptCodeGenerator::Address();
@@ -1245,7 +1283,7 @@ GDScriptCodeGenerator::Address GDScriptCompiler::_parse_expression(CodeGen &code
 				// Set back the values into their bases.
 				for (const ChainInfo &info : set_chain) {
 					bool known_type = assigned.type.has_type();
-					bool is_shared = Variant::is_type_shared(assigned.type.builtin_type);
+					bool is_shared = Variant::is_type_shared(assigned.type.builtin_type) && !assigned.type.wgodot_value;
 
 					if (!known_type || !is_shared) {
 						if (!known_type) {
@@ -1271,7 +1309,7 @@ GDScriptCodeGenerator::Address GDScriptCompiler::_parse_expression(CodeGen &code
 				}
 
 				bool known_type = assigned.type.has_type();
-				bool is_shared = Variant::is_type_shared(assigned.type.builtin_type);
+				bool is_shared = Variant::is_type_shared(assigned.type.builtin_type) && !assigned.type.wgodot_value;
 
 				if (!known_type || !is_shared) {
 					// If this is a class member property, also assign to it.
@@ -2871,6 +2909,8 @@ Error GDScriptCompiler::_prepare_compilation(GDScript *p_script, const GDScriptP
 	p_script->member_indices.clear();
 	// wgodot-changes::begin
 	p_script->wgodot_field_annotations.clear();
+	p_script->wgodot_scalar_members.clear();
+	p_script->wgodot_record_schema.unref();
 	p_script->wgodot_class_annotations.clear();
 	// wgodot-changes::end
 	p_script->static_variables_indices.clear();
@@ -2889,6 +2929,7 @@ Error GDScriptCompiler::_prepare_compilation(GDScript *p_script, const GDScriptP
 	p_script->_is_abstract = p_class->is_abstract;
 	// wgodot-changes::begin
 	_wgodot_prepare_interface_metadata(p_script, p_class);
+	p_script->wgodot_class_reference = !p_class->wgodot_record && !p_class->wgodot_static_class && !p_class->wgodot_is_interface;
 	p_script->wgodot_default_methods.clear();
 	for (const auto &entry : p_class->wgodot_default_methods) {
 		if (entry.value.class_type != p_class) {
@@ -2960,6 +3001,9 @@ Error GDScriptCompiler::_prepare_compilation(GDScript *p_script, const GDScriptP
 
 			p_script->base = base;
 			p_script->member_indices = base->member_indices;
+			// wgodot-changes::begin
+			p_script->wgodot_scalar_members = base->wgodot_scalar_members;
+			// wgodot-changes::end
 		} break;
 		default: {
 			_set_error("Parser bug (please report): invalid inheritance.", nullptr);
@@ -3070,6 +3114,11 @@ Error GDScriptCompiler::_prepare_compilation(GDScript *p_script, const GDScriptP
 				} else {
 					minfo.index = p_script->member_indices.size();
 					p_script->member_indices[name] = minfo;
+					// wgodot-changes::begin
+					if (minfo.data_type.wgodot_scalar != WGodotScalar::NONE) {
+						p_script->wgodot_scalar_members.insert(minfo.index, minfo.data_type.wgodot_scalar);
+					}
+					// wgodot-changes::end
 					p_script->members.insert(name);
 				}
 
@@ -3175,6 +3224,11 @@ Error GDScriptCompiler::_prepare_compilation(GDScript *p_script, const GDScriptP
 }
 
 Error GDScriptCompiler::_compile_class(GDScript *p_script, const GDScriptParser::ClassNode *p_class, bool p_keep_state) {
+	// wgodot-changes::begin
+	if (p_class->wgodot_record) {
+		return _wgodot_compile_record(p_script, p_class);
+	}
+	// wgodot-changes::end
 	// Compile member functions, getters, and setters.
 	for (const GDScriptParser::ClassNode::Member &member : p_class->members) {
 		// wgodot-changes::begin

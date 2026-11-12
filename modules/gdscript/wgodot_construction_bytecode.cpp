@@ -1,21 +1,6 @@
 // wgodot-changes::file
 #include "gdscript_byte_codegen.h"
 
-bool GDScriptByteCodeGenerator::ConstantComparator::compare(const Variant &p_left, const Variant &p_right) {
-	if (p_left.get_type() != p_right.get_type()) {
-		return false;
-	}
-	// Value equality ignores container declarations, including for empty values.
-	// A pooled typed default must retain its own element/key/value types.
-	if (p_left.get_type() == Variant::ARRAY && !Array(p_left).is_same_typed(Array(p_right))) {
-		return false;
-	}
-	if (p_left.get_type() == Variant::DICTIONARY && !Dictionary(p_left).is_same_typed(Dictionary(p_right))) {
-		return false;
-	}
-	return p_left.hash_compare(p_right);
-}
-
 void GDScriptByteCodeGenerator::write_construct_script_fields(const Address &p_target, const Address &p_script, const Vector<Address> &p_arguments, const Vector<int> &p_fields, const Vector<Address> &p_values) {
 	append_opcode_and_argcount(GDScriptFunction::OPCODE_CONSTRUCT_SCRIPT_FIELDS, p_arguments.size() + p_values.size() + 2);
 	for (const Address &argument : p_arguments) {

@@ -4,6 +4,7 @@
 #include "wgodot_native_array_fwd.h"
 #include "wgodot_native_dictionary_fwd.h"
 #include "wgodot_native_object.h"
+#include "wgodot_native_record_fwd.h"
 
 #include "core/io/resource.h"
 #include "core/variant/dictionary.h"
@@ -35,12 +36,14 @@ struct CanContainResource<T, std::void_t<decltype(std::declval<const T &>().ptr(
 };
 
 template <class T>
-inline constexpr bool container_needs_deep_copy = IsWArray<T>::value || IsWDictionary<T>::value ||
+inline constexpr bool container_needs_deep_copy = IsWArray<T>::value || IsWDictionary<T>::value || is_record<T> ||
 		std::is_same_v<T, Array> || std::is_same_v<T, Dictionary> || CanContainResource<T>::value;
 
 template <class T>
 T duplicate_container_value(const T &p_value, ResourceDeepDuplicateMode p_mode, int p_depth) {
-	if constexpr (IsWArray<T>::value || IsWDictionary<T>::value || std::is_same_v<T, Array> || std::is_same_v<T, Dictionary>) {
+	if constexpr (is_record<T>) {
+		return p_value.duplicate_record(p_mode, p_depth);
+	} else if constexpr (IsWArray<T>::value || IsWDictionary<T>::value || std::is_same_v<T, Array> || std::is_same_v<T, Dictionary>) {
 		return p_value.recursive_duplicate(true, p_mode, p_depth);
 	} else if constexpr (CanContainResource<T>::value) {
 		if (p_mode != RESOURCE_DEEP_DUPLICATE_NONE) {

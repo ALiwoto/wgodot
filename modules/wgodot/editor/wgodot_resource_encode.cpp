@@ -1,5 +1,6 @@
 // wgodot-changes::file
 #include "wgodot_resource_encode.h"
+#include "core/variant/wgodot_record.h"
 
 namespace WGodotResourceEncode {
 using namespace WGodotResourceProtobuf;
@@ -20,6 +21,9 @@ Error typed_array(Writer &r_writer, const Array &p_array, Context &p_context) {
 }
 
 int wire(const Type &p_type) {
+	if (p_type.wgodot_scalar == WGodotScalar::FLOAT32) {
+		return 5;
+	}
 	if (p_type.wgodot_resource_path || p_type.kind == Type::ENUM || p_type.builtin_type == Variant::BOOL || p_type.builtin_type == Variant::INT) {
 		return 0;
 	}
@@ -27,6 +31,36 @@ int wire(const Type &p_type) {
 }
 
 Error value(Writer &r_writer, const Variant &p_value, const Type &p_type, Context &p_context, const Path &p_path) {
+	if (p_type.wgodot_class_ref) {
+		const String name = p_context.identify_class(p_value);
+		if (name.is_empty() && !p_value.is_null()) {
+			return ERR_INVALID_DATA;
+		}
+		Value<String>::write(r_writer, name, p_context);
+		return r_writer.valid ? OK : ERR_INVALID_DATA;
+	}
+	if (p_type.kind == Type::CLASS && p_type.class_type->wgodot_record) {
+		const WRecord record = p_value;
+		if (record.is_empty() || record.schema()->get_name() != StringName(p_type.class_type->fqcn)) {
+			return ERR_INVALID_DATA;
+		}
+		Writer contents;
+		uint32_t index = 0;
+		for (const auto &member : p_type.class_type->members) {
+			if (member.type != GDScriptParser::ClassNode::Member::VARIABLE) {
+				continue;
+			}
+			const int slot = record.schema()->find_field(member.variable->identifier->name);
+			ERR_FAIL_COND_V(slot < 0, ERR_INVALID_DATA);
+			RETURN_IF_ERROR(field(contents, ++index, record.get(slot), member.variable->type_constraint, p_context, p_path));
+		}
+		message(r_writer, contents);
+		return r_writer.valid ? OK : ERR_INVALID_DATA;
+	}
+	if (p_type.wgodot_scalar == WGodotScalar::FLOAT32) {
+		Value<float>::write(r_writer, float(p_value), p_context);
+		return r_writer.valid ? OK : ERR_INVALID_DATA;
+	}
 	if (p_type.wgodot_resource_path) {
 		Value<int64_t>::write(r_writer, p_path(p_value), p_context);
 		return OK;
@@ -67,6 +101,8 @@ Error value(Writer &r_writer, const Variant &p_value, const Type &p_type, Contex
 			WG_RESOURCE_TYPED_ARRAY(TRANSFORM3D, Transform3D)
 			WG_RESOURCE_TYPED_ARRAY(PROJECTION, Projection)
 			WG_RESOURCE_TYPED_ARRAY(COLOR, Color)
+			WG_RESOURCE_TYPED_ARRAY(WVECTOR3D, WVector3d)
+			WG_RESOURCE_TYPED_ARRAY(WTRANSFORM3D, WTransform3d)
 #undef WG_RESOURCE_TYPED_ARRAY
 			default:
 				break;
@@ -148,6 +184,8 @@ Error value(Writer &r_writer, const Variant &p_value, const Type &p_type, Contex
 		WG_RESOURCE_VALUE(TRANSFORM3D, Transform3D)
 		WG_RESOURCE_VALUE(PROJECTION, Projection)
 		WG_RESOURCE_VALUE(COLOR, Color)
+		WG_RESOURCE_VALUE(WVECTOR3D, WVector3d)
+		WG_RESOURCE_VALUE(WTRANSFORM3D, WTransform3d)
 		WG_RESOURCE_VALUE(OBJECT, Ref<Resource>)
 		WG_RESOURCE_VALUE(PACKED_BYTE_ARRAY, PackedByteArray)
 		WG_RESOURCE_VALUE(PACKED_INT32_ARRAY, PackedInt32Array)

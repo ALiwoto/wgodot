@@ -32,6 +32,9 @@
 
 #include "core/variant/type_info.h"
 #include "core/variant/variant.h"
+// wgodot-changes::begin
+#include "core/variant/wgodot_record.h"
+// wgodot-changes::end
 
 template <typename T>
 struct VariantDestruct {};
@@ -47,6 +50,9 @@ struct VariantDestruct {};
 		} \
 	}
 
+// wgodot-changes::begin
+MAKE_PTRDESTRUCT(WRecord);
+// wgodot-changes::end
 MAKE_PTRDESTRUCT(String);
 MAKE_PTRDESTRUCT(StringName);
 MAKE_PTRDESTRUCT(NodePath);

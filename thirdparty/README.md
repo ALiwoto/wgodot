@@ -17,6 +17,16 @@ Files extracted from upstream source:
 - `LICENSE-MIT`
 
 
+## acl
+
+- Upstream: https://github.com/nfrechette/acl
+- Version: 2.0.99, binary formats 7–10 (UE 5.4 ACLPlugin distribution)
+- License: MIT
+
+Only the transitive header dependencies of compressed-track decompression are
+included, together with `LICENSE`. RTM is listed separately below.
+
+
 ## amd-fsr
 
 - Upstream: https://github.com/GPUOpen-Effects/FidelityFX-FSR
@@ -985,6 +995,15 @@ Files extracted from upstream source:
 - `re-spirv.cpp`
 - `re-spirv.h`
 - `LICENSE`
+
+
+## rtm
+
+- Upstream: https://github.com/nfrechette/rtm
+- Version: 2.1.99 (UE 5.4 ACLPlugin distribution)
+- License: MIT
+
+Only the header dependencies required by the ACL decoder and `LICENSE` are included.
 
 
 ## rvo2

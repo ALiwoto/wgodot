@@ -17,6 +17,9 @@ struct PackedStorage {
 	static void release(Data *p_data) { Variant::PackedArrayRefBase::destroy(p_data); }
 	static Vector<T> &elements(Data *p_data) { return p_data->array; }
 	static bool exclusive(const Data *p_data) { return p_data->refcount.get() == 1; }
+	static bool is_value(const Data *p_data) { return p_data->value_semantics; }
+	static void make_value(Data *p_data) { p_data->value_semantics = true; }
+	static Data *copy(Data *p_data) { return static_cast<Data *>(p_data->value_copy()); }
 	static bool read_only(const Data *) { return false; }
 	static void make_read_only(Data *) {} // GDScript packed arrays have no read-only flag.
 
@@ -56,6 +59,7 @@ struct ArrayStorage<T, Variant::ARRAY> {
 		SafeRefCount references;
 		Vector<T> values;
 		bool read_only = false;
+		bool value_semantics = false;
 		Data() { references.init(); }
 		explicit Data(std::initializer_list<T> p_values) : values(p_values) { references.init(); }
 	};
@@ -69,6 +73,15 @@ struct ArrayStorage<T, Variant::ARRAY> {
 	}
 	static Vector<T> &elements(Data *p_data) { return p_data->values; }
 	static bool exclusive(const Data *p_data) { return p_data->references.get() == 1; }
+	static bool is_value(const Data *p_data) { return p_data->value_semantics; }
+	static void make_value(Data *p_data) { p_data->value_semantics = true; p_data->read_only = false; }
+	static Data *copy(Data *p_data) {
+		Data *result = create();
+		result->values = p_data->values;
+		result->read_only = p_data->read_only;
+		result->value_semantics = p_data->value_semantics;
+		return result;
+	}
 	static bool read_only(const Data *p_data) { return p_data->read_only; }
 	static void make_read_only(Data *p_data) { p_data->read_only = true; }
 };

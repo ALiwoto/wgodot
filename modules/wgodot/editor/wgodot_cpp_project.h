@@ -39,6 +39,7 @@ private:
 	Vector<Ref<GDScriptParserRef>> parsers;
 	Vector<Class> classes;
 	HashMap<const GDScriptParser::ClassNode *, int> class_indices;
+	HashMap<StringName, int> named_classes;
 	Vector<String> resource_dependencies;
 	Vector<Preload> preloads;
 	Vector<String> diagnostics;
@@ -62,6 +63,7 @@ public:
 	const Vector<Class> &get_classes() const { return classes; }
 	const Vector<Preload> &get_preloads() const { return preloads; }
 	const Class *find_class(const GDScriptParser::ClassNode *p_node) const;
+	const Class *find_named_class(const StringName &p_name) const;
 	GDScriptParser *find_parser(const String &p_script_path) const;
 	GDScriptAnalyzer *find_analyzer(const String &p_script_path) const;
 	const Vector<String> &get_diagnostics() const { return diagnostics; }

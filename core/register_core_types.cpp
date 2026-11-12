@@ -30,6 +30,10 @@
 
 #include "register_core_types.h"
 // wgodot-changes::begin
+#include "core/variant/wgodot_record.h"
+#include "core/object/wgodot_class_references.h"
+// wgodot-changes::end
+// wgodot-changes::begin
 #include "core/io/wgodot_global_resources.h"
 // wgodot-changes::end
 
@@ -191,6 +195,10 @@ void register_core_types() {
 		ResourceLoader::add_resource_format_loader(resource_format_image);
 	}
 
+	// wgodot-changes::begin
+	GDREGISTER_INTERNAL_CLASS(WRecordSchema);
+	GDREGISTER_INTERNAL_CLASS(WNativeClassReference);
+	// wgodot-changes::end
 	GDREGISTER_ABSTRACT_CLASS(Script);
 	GDREGISTER_ABSTRACT_CLASS(ScriptLanguage);
 	GDREGISTER_CLASS(ScriptBacktrace);
@@ -437,6 +445,10 @@ void unregister_core_extensions() {
 }
 
 void unregister_core_types() {
+	// wgodot-changes::begin
+	WRecordSchemas::clear();
+	WGodotClassReferences::clear();
+	// wgodot-changes::end
 	OS::get_singleton()->benchmark_begin_measure("Core", "Unregister Types");
 
 	// Destroy singletons in reverse order to ensure dependencies are not broken.

@@ -30,6 +30,11 @@
 
 #include "variant_parser.h"
 // wgodot-changes::begin
+#include "core/variant/wgodot_record_serialization.h"
+#include "core/variant/wgodot_class_reference_serialization.h"
+#include "core/object/wgodot_class_references.h"
+// wgodot-changes::end
+// wgodot-changes::begin
 #include "variant_internal.h"
 // wgodot-changes::end
 // wgodot-changes::begin
@@ -782,6 +787,9 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 	} else if (r_token.type == TK_IDENTIFIER) {
 		String id = r_token.value;
 		// wgodot-changes::begin
+		if (id == "WRecord" || id == "WValue") {
+			return WGodotRecordSerialization::parse(id, p_stream, r_line, r_err_str, r_value, p_res_parser);
+		}
 		if (id == "GlobalResource") {
 			return WGlobalResources::parse(p_stream, r_line, r_err_str, r_value, p_res_parser && p_res_parser->syntax_only);
 		}
@@ -800,6 +808,11 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 			RETURN_IF_ERROR(WGodotResourceValueParser::parse_repeat_count(p_stream, count, r_line, r_err_str));
 			r_value = Variant();
 			return OK;
+		}
+		// wgodot-changes::end
+		// wgodot-changes::begin
+		if (id == "ClassRef") {
+			return WGodotClassReferenceSerialization::parse(p_stream, r_value, r_line, r_err_str, p_res_parser && (p_res_parser->syntax_only || p_res_parser->skip_class_loading));
 		}
 		// wgodot-changes::end
 		if (id == "true") {
@@ -1275,6 +1288,12 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 			StringName key_class_name;
 			Variant key_script;
 			bool got_comma_token = false;
+			// wgodot-changes::begin
+			if (r_token.value == "ClassRef") {
+				RETURN_IF_ERROR(WGodotClassReferenceSerialization::parse_type(p_stream, key_class_name, r_line, r_err_str, p_res_parser && (p_res_parser->syntax_only || p_res_parser->skip_class_loading)));
+				key_type = Variant::OBJECT;
+			} else
+			// wgodot-changes::end
 			if (builtin_types.has(r_token.value)) {
 				key_type = builtin_types.get(r_token.value);
 			} else if (r_token.value == "Resource" || r_token.value == "SubResource" || r_token.value == "ExtResource") {
@@ -1308,9 +1327,10 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 					r_err_str = "Cannot resolve container class_name '" + String(r_token.value) + "'.";
 					return ERR_PARSE_ERROR;
 				}
-				key_type = Variant::OBJECT;
-				key_class_name = script->get_instance_base_type();
-				key_script = script;
+				const Ref<WRecordSchema> record = script->wgodot_get_record_schema();
+				key_type = record.is_valid() ? Variant::WRECORD : Variant::OBJECT;
+				key_class_name = record.is_valid() ? record->get_name() : script->get_instance_base_type();
+				key_script = record.is_valid() ? Variant() : Variant(script);
 				// wgodot-changes::end
 			} else if (ClassDB::class_exists(r_token.value)) {
 				key_type = Variant::OBJECT;
@@ -1340,6 +1360,12 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 			StringName value_class_name;
 			Variant value_script;
 			bool got_bracket_token = false;
+			// wgodot-changes::begin
+			if (r_token.value == "ClassRef") {
+				RETURN_IF_ERROR(WGodotClassReferenceSerialization::parse_type(p_stream, value_class_name, r_line, r_err_str, p_res_parser && (p_res_parser->syntax_only || p_res_parser->skip_class_loading)));
+				value_type = Variant::OBJECT;
+			} else
+			// wgodot-changes::end
 			if (builtin_types.has(r_token.value)) {
 				value_type = builtin_types.get(r_token.value);
 			} else if (r_token.value == "Resource" || r_token.value == "SubResource" || r_token.value == "ExtResource") {
@@ -1373,9 +1399,10 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 					r_err_str = "Cannot resolve container class_name '" + String(r_token.value) + "'.";
 					return ERR_PARSE_ERROR;
 				}
-				value_type = Variant::OBJECT;
-				value_class_name = script->get_instance_base_type();
-				value_script = script;
+				const Ref<WRecordSchema> record = script->wgodot_get_record_schema();
+				value_type = record.is_valid() ? Variant::WRECORD : Variant::OBJECT;
+				value_class_name = record.is_valid() ? record->get_name() : script->get_instance_base_type();
+				value_script = record.is_valid() ? Variant() : Variant(script);
 				// wgodot-changes::end
 			} else if (ClassDB::class_exists(r_token.value)) {
 				value_type = Variant::OBJECT;
@@ -1453,6 +1480,13 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 
 			Array array = Array();
 			bool got_bracket_token = false;
+			// wgodot-changes::begin
+			if (r_token.value == "ClassRef") {
+				StringName constraint;
+				RETURN_IF_ERROR(WGodotClassReferenceSerialization::parse_type(p_stream, constraint, r_line, r_err_str, p_res_parser && (p_res_parser->syntax_only || p_res_parser->skip_class_loading)));
+				array.set_typed(Variant::OBJECT, constraint, Variant());
+			} else
+			// wgodot-changes::end
 			if (builtin_types.has(r_token.value)) {
 				array.set_typed(builtin_types.get(r_token.value), StringName(), Variant());
 			} else if (r_token.value == "Resource" || r_token.value == "SubResource" || r_token.value == "ExtResource") {
@@ -1470,7 +1504,8 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 				} else {
 					Ref<Script> script = resource;
 					if (script.is_valid() && script->is_script_valid()) {
-						array.set_typed(Variant::OBJECT, script->get_instance_base_type(), script);
+						const Ref<WRecordSchema> record = script->wgodot_get_record_schema();
+				array.set_typed(record.is_valid() ? Variant::WRECORD : Variant::OBJECT, record.is_valid() ? record->get_name() : script->get_instance_base_type(), record.is_valid() ? Variant() : Variant(script));
 					}
 				}
 				// wgodot-changes::begin
@@ -1482,7 +1517,8 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 					r_err_str = "Cannot resolve container class_name '" + String(r_token.value) + "'.";
 					return ERR_PARSE_ERROR;
 				}
-				array.set_typed(Variant::OBJECT, script->get_instance_base_type(), script);
+				const Ref<WRecordSchema> record = script->wgodot_get_record_schema();
+				array.set_typed(record.is_valid() ? Variant::WRECORD : Variant::OBJECT, record.is_valid() ? record->get_name() : script->get_instance_base_type(), record.is_valid() ? Variant() : Variant(script));
 				// wgodot-changes::end
 			} else if (ClassDB::class_exists(r_token.value)) {
 				array.set_typed(Variant::OBJECT, r_token.value, Variant());
@@ -1736,6 +1772,46 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 			// wgodot-changes::end
 		} else {
 			r_err_str = vformat("Unexpected identifier '%s'", id);
+			// wgodot-changes::begin
+			const Variant::Type kind = Variant::get_type_by_name(id);
+			if (kind < Variant::VARIANT_MAX && Variant::get_member_constructor(kind) >= 0) {
+				r_err_str = String();
+				Token token;
+				get_token(p_stream, token, r_line, r_err_str);
+				if (token.type != TK_PARENTHESIS_OPEN) {
+					r_err_str = "Expected '(' in constructor";
+					return ERR_PARSE_ERROR;
+				}
+				Vector<Variant> arguments;
+				get_token(p_stream, token, r_line, r_err_str);
+				while (token.type != TK_PARENTHESIS_CLOSE) {
+					Variant argument;
+					RETURN_IF_ERROR(parse_value(token, argument, p_stream, r_line, r_err_str, p_res_parser));
+					arguments.push_back(argument);
+					get_token(p_stream, token, r_line, r_err_str);
+					if (token.type == TK_PARENTHESIS_CLOSE) {
+						break;
+					}
+					if (token.type != TK_COMMA) {
+						r_err_str = "Expected ',' or ')' in constructor";
+						return ERR_PARSE_ERROR;
+					}
+					get_token(p_stream, token, r_line, r_err_str);
+				}
+				Vector<const Variant *> pointers;
+				for (int i = 0; i < arguments.size(); i++) {
+					pointers.push_back(&arguments[i]);
+				}
+				Callable::CallError error;
+				Variant::construct(kind, r_value, pointers.ptrw(), pointers.size(), error);
+				if (error.error != Callable::CallError::CALL_OK) {
+					r_err_str = "Invalid arguments for " + id;
+					return ERR_PARSE_ERROR;
+				}
+				r_err_str = String();
+				return OK;
+			}
+			// wgodot-changes::end
 			return ERR_PARSE_ERROR;
 		}
 
@@ -2112,8 +2188,20 @@ static String encode_resource_reference(const String &p_path) {
 	}
 }
 
-Error VariantWriter::write(const Variant &p_variant, StoreStringFunc p_store_string_func, void *p_store_string_ud, EncodeResourceFunc p_encode_res_func, void *p_encode_res_ud, bool p_pretty_print, int p_recursion_count, bool p_compat) {
+Error VariantWriter::write(const Variant &p_variant, StoreStringFunc p_store_string_func, void *p_store_string_ud, EncodeResourceFunc p_encode_res_func, void *p_encode_res_ud, bool p_pretty_print, int p_recursion_count, bool p_compat, bool p_value_payload) {
 	// wgodot-changes::begin
+	const String class_name = WGodotClassReferences::name(p_variant);
+	if (!class_name.is_empty()) {
+		return p_store_string_func(p_store_string_ud, "ClassRef(\"" + class_name.c_escape() + "\")");
+	}
+	if (!p_value_payload && p_variant.wgodot_is_value_container()) {
+		RETURN_IF_ERROR(p_store_string_func(p_store_string_ud, "WValue("));
+		RETURN_IF_ERROR(write(p_variant, p_store_string_func, p_store_string_ud, p_encode_res_func, p_encode_res_ud, p_pretty_print, p_recursion_count, p_compat, true));
+		return p_store_string_func(p_store_string_ud, ")");
+	}
+	if (p_variant.get_type() == Variant::WRECORD) {
+		return WGodotRecordSerialization::write(p_variant, p_store_string_func, p_store_string_ud, p_encode_res_func, p_encode_res_ud, p_pretty_print, p_recursion_count, p_compat);
+	}
 	WGlobalResources::Reference global;
 	if (WGlobalResources::SaveScope::reference(p_variant, global)) {
 		return p_store_string_func(p_store_string_ud, global.text());
@@ -2372,7 +2460,9 @@ Error VariantWriter::write(const Variant &p_variant, StoreStringFunc p_store_str
 						p_store_string_func(p_store_string_ud, key_class_name);
 					}
 				} else if (key_class_name != StringName()) {
-					p_store_string_func(p_store_string_ud, key_class_name);
+					// wgodot-changes::begin
+					p_store_string_func(p_store_string_ud, WGodotClassReferenceSerialization::type_text(key_class_name));
+					// wgodot-changes::end
 				} else if (key_builtin_type == Variant::NIL) {
 					p_store_string_func(p_store_string_ud, "Variant");
 				} else {
@@ -2401,7 +2491,9 @@ Error VariantWriter::write(const Variant &p_variant, StoreStringFunc p_store_str
 						p_store_string_func(p_store_string_ud, value_class_name);
 					}
 				} else if (value_class_name != StringName()) {
-					p_store_string_func(p_store_string_ud, value_class_name);
+					// wgodot-changes::begin
+					p_store_string_func(p_store_string_ud, WGodotClassReferenceSerialization::type_text(value_class_name));
+					// wgodot-changes::end
 				} else if (value_builtin_type == Variant::NIL) {
 					p_store_string_func(p_store_string_ud, "Variant");
 				} else {
@@ -2471,7 +2563,9 @@ Error VariantWriter::write(const Variant &p_variant, StoreStringFunc p_store_str
 						p_store_string_func(p_store_string_ud, class_name);
 					}
 				} else if (class_name != StringName()) {
-					p_store_string_func(p_store_string_ud, class_name);
+					// wgodot-changes::begin
+					p_store_string_func(p_store_string_ud, WGodotClassReferenceSerialization::type_text(class_name));
+					// wgodot-changes::end
 				} else {
 					p_store_string_func(p_store_string_ud, Variant::get_type_name(builtin_type));
 				}
@@ -2661,6 +2755,23 @@ Error VariantWriter::write(const Variant &p_variant, StoreStringFunc p_store_str
 		} break;
 
 		default: {
+			// wgodot-changes::begin
+			const Variant::Type kind = p_variant.get_type();
+			const int constructor = Variant::get_member_constructor(kind);
+			if (constructor >= 0) {
+				p_store_string_func(p_store_string_ud, Variant::get_type_name(kind) + "(");
+				for (int i = 0; i < Variant::get_constructor_argument_count(kind, constructor); i++) {
+					if (i > 0) {
+						p_store_string_func(p_store_string_ud, ", ");
+					}
+					const StringName name = Variant::get_constructor_argument_name(kind, constructor, i);
+					bool valid;
+					RETURN_IF_ERROR(write(p_variant.get_named(name, valid), p_store_string_func, p_store_string_ud, p_encode_res_func, p_encode_res_ud, p_pretty_print, p_recursion_count + 1, false));
+				}
+				p_store_string_func(p_store_string_ud, ")");
+				return OK;
+			}
+			// wgodot-changes::end
 			ERR_PRINT("Unknown variant type");
 			return ERR_BUG;
 		}

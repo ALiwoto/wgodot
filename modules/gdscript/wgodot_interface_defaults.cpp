@@ -82,7 +82,7 @@ bool GDScriptAnalyzer::wgodot_resolve_super_as(Parser::CallNode *p_call, DataTyp
 		interface = true;
 		allowed = WGodotGDScriptInterfaceHelpers::class_implements_native_interface(current, r_type.native_type);
 	} else {
-		for (DataType base = current->base_type;;) {
+		for (DataType base = current->self_type;;) {
 			if ((r_type.kind == DataType::CLASS && base.kind == DataType::CLASS && base.class_type == r_type.class_type) ||
 					(r_type.kind == DataType::NATIVE && ClassDB::is_parent_class(base.native_type, r_type.native_type))) {
 				allowed = true;
@@ -95,7 +95,7 @@ bool GDScriptAnalyzer::wgodot_resolve_super_as(Parser::CallNode *p_call, DataTyp
 		}
 	}
 	if (!allowed) {
-		push_error("super_as requires an ancestor class or an implemented interface.", p_call);
+		push_error("super_as requires the current class, an ancestor class or an implemented interface.", p_call);
 		return false;
 	}
 	if (interface) {

@@ -20,6 +20,7 @@ Variant::Type WGodotCppEmitter::native_value_kind(const Parser::DataType &p_type
 		case Parser::DataType::ENUM:
 			return Variant::INT;
 		case Parser::DataType::CLASS:
+			return p_type.class_type->wgodot_record ? Variant::WRECORD : Variant::OBJECT;
 		case Parser::DataType::NATIVE:
 			return Variant::OBJECT;
 		default:

@@ -95,6 +95,12 @@ bool WGodotCppEmitter::literal_membership(const Parser::BinaryOpNode *p_binary, 
 String WGodotCppEmitter::operation(Variant::Operator p_operation, const Parser::DataType &p_result, const Parser::DataType &p_left_type, const Parser::DataType &p_right_type, const String &p_left, const String &p_right, const Parser::Node *p_origin) {
 	const Variant::Type left_type = native_value_kind(p_left_type);
 	const Variant::Type right_type = native_value_kind(p_right_type);
+	if (left_type == Variant::WRECORD && right_type == Variant::WRECORD && (p_operation == Variant::OP_EQUAL || p_operation == Variant::OP_NOT_EQUAL)) {
+		if (p_left_type.class_type == p_right_type.class_type) {
+			return "(" + p_left + (p_operation == Variant::OP_EQUAL ? " == " : " != ") + p_right + ")";
+		}
+		return "((void)(" + p_left + "), (void)(" + p_right + "), " + String(p_operation == Variant::OP_EQUAL ? "false" : "true") + ")";
+	}
 	if ((p_operation == Variant::OP_EQUAL || p_operation == Variant::OP_NOT_EQUAL) &&
 			((left_type == Variant::OBJECT && (right_type == Variant::OBJECT || right_type == Variant::NIL)) ||
 					(right_type == Variant::OBJECT && left_type == Variant::NIL))) {
@@ -157,7 +163,22 @@ String WGodotCppEmitter::operation(Variant::Operator p_operation, const Parser::
 			if (p_operation == Variant::OP_MODULE && (left_type == Variant::STRING || left_type == Variant::STRING_NAME)) {
 				class_call_headers.insert("modules/wgodot/native/wgodot_native_format.h");
 			}
-			return operator_expression(entry.expression, p_left, p_right);
+			// Keep matching narrow floats in native arithmetic. Widen integers to
+			// avoid signed overflow, and mixed widths to match language promotion.
+			const auto operand = [this, p_origin, &p_result](const Parser::DataType &p_type, const String &p_value) {
+				if (p_type.wgodot_scalar == WGodotScalar::NONE || (p_type.builtin_type == Variant::FLOAT && p_type.wgodot_scalar == p_result.wgodot_scalar)) {
+					return p_value;
+				}
+				Parser::DataType wide = p_type;
+				wide.wgodot_scalar = WGodotScalar::NONE;
+				return "static_cast<" + type(wide, p_origin) + ">(" + p_value + ")";
+			};
+			String result = operator_expression(entry.expression, operand(p_left_type, p_left), operand(p_right_type, p_right));
+			if (p_result.wgodot_scalar != WGodotScalar::NONE) {
+				class_call_headers.insert("modules/wgodot/native/wgodot_native_calls.h");
+				result = "WGodotNative::convert<" + type(p_result, p_origin) + ">(" + result + ")";
+			}
+			return result;
 		}
 	}
 	class_call_headers.insert("modules/wgodot/native/wgodot_native_values.h");
@@ -166,6 +187,12 @@ String WGodotCppEmitter::operation(Variant::Operator p_operation, const Parser::
 
 String WGodotCppEmitter::cast(const Parser::CastNode *p_cast) {
 	const auto &target = p_cast->type_constraint;
+	if (target.wgodot_class_ref) {
+		return type(target, p_cast) + "::try_from(" + class_reference_expression(p_cast->operand) + ")";
+	}
+	if (target.kind == Parser::DataType::CLASS && target.class_type->wgodot_record) {
+		return converted(p_cast->operand, target);
+	}
 	if (is_wdictionary(target) || is_wdictionary(expression_type(p_cast->operand))) {
 		return converted(p_cast->operand, target);
 	}
@@ -194,6 +221,9 @@ String WGodotCppEmitter::cast(const Parser::CastNode *p_cast) {
 		const String value = operand.expression();
 		const String native = operand.cpp_type == "Variant" ? String() : native_constructor(builtin, { expression_type(p_cast->operand) }, { value });
 		if (!native.is_empty()) {
+			if (target.wgodot_scalar != WGodotScalar::NONE) {
+				return "WGodotNative::convert<" + type(target, p_cast) + ">(" + native + ")";
+			}
 			return native;
 		}
 		return "WGodotNative::construct<" + type(target, p_cast) + ", " + variant_type(builtin) + ">(" + value + ")";
@@ -204,7 +234,21 @@ String WGodotCppEmitter::cast(const Parser::CastNode *p_cast) {
 
 String WGodotCppEmitter::type_test(const Parser::TypeTestNode *p_test) {
 	const auto &target = p_test->test_datatype;
+	if (target.wgodot_class_ref) {
+		return "bool(" + type(target, p_test) + "::try_from(" + class_reference_expression(p_test->operand) + "))";
+	}
 	const String value = receiver_expression(p_test->operand);
+	const auto source = expression_type(p_test->operand);
+	const bool target_record = target.kind == Parser::DataType::CLASS && target.class_type->wgodot_record;
+	const bool source_record = source.kind == Parser::DataType::CLASS && source.class_type->wgodot_record;
+	if (source_record || (target_record && !source.is_variant())) {
+		const bool same = target.is_variant() || (target_record && source_record && target.class_type == source.class_type);
+		return "((void)(" + value + "), " + String(same ? "true" : "false") + ")";
+	}
+	if (target_record) {
+		class_call_headers.insert("modules/wgodot/native/wgodot_native_record.h");
+		return "WGodotNative::record_matches<" + class_name(target, p_test) + ">(" + value + ")";
+	}
 	if (is_wdictionary(expression_type(p_test->operand))) {
 		const bool same = target.is_variant() || (target.kind == Parser::DataType::BUILTIN && target.builtin_type == Variant::DICTIONARY && (!target.has_container_element_types() || type(target, p_test) == type(expression_type(p_test->operand), p_test)));
 		return "([&]() { (void)(" + value + "); return " + (same ? "true" : "false") + "; }())";
@@ -234,14 +278,20 @@ String WGodotCppEmitter::type_test(const Parser::TypeTestNode *p_test) {
 	Vector<String> conditions;
 	for (int i = 0; i < (array ? 1 : 2); i++) {
 		const auto &element = target.get_container_element_type_or_variant(i);
-		const bool object = element.kind == Parser::DataType::CLASS || element.kind == Parser::DataType::NATIVE;
-		const Variant::Type element_type = element.is_variant() ? Variant::NIL : object ? Variant::OBJECT
+		const bool record = element.kind == Parser::DataType::CLASS && element.class_type->wgodot_record;
+		const bool object = !record && (element.kind == Parser::DataType::CLASS || element.kind == Parser::DataType::NATIVE);
+		const Variant::Type element_type = element.is_variant() ? Variant::NIL : record ? Variant::WRECORD : object ? Variant::OBJECT
 				: element.kind == Parser::DataType::ENUM								? Variant::INT
 																						: element.builtin_type;
 		const String prefix = String("collection.get_typed_") + (array ? "" : i == 0 ? "key_"
 																					 : "value_");
 		conditions.push_back(prefix + "builtin() == " + variant_type(element_type));
-		conditions.push_back(prefix + "class_name() == " + (object ? class_name(element, p_test) + "::get_class_static()" : "StringName()"));
+		String element_class = record ? class_name(element, p_test) + "::record_name()" : object ? class_name(element, p_test) + "::get_class_static()" : "StringName()";
+		if (element.wgodot_class_ref) {
+			class_call_headers.insert("core/object/wgodot_class_references.h");
+			element_class = "WGodotClassReferences::constraint(" + class_name(element.get_container_element_type(0), p_test) + "::get_class_static())";
+		}
+		conditions.push_back(prefix + "class_name() == " + element_class);
 		conditions.push_back(prefix + "script().is_null()");
 	}
 	return body + String(" && ").join(conditions) + "; }())";

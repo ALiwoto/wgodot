@@ -43,7 +43,13 @@ void GDScriptAnalyzer::wgodot_resolve_implemented_interfaces(ClassNode *p_class)
 	} else if (p_class->base_type.kind == DataType::CLASS) {
 		ClassNode *base = p_class->base_type.class_type;
 		resolve_class_interface(base, p_class);
-		direct.append_array(base->wgodot_resolved_interfaces);
+		for (ClassNode *contract : base->wgodot_resolved_interfaces) {
+			// A nested implementation's parent is not the script head's parent.
+			// Retain each inherited contract through the concrete base before
+			// resolving it, using the exact parser that owns its declarations.
+			ensure_cached_external_parser_for_class(contract, base, "Trying to inherit implementation interface", p_class);
+			direct.push_back(contract);
+		}
 		p_class->wgodot_native_interfaces.append_array(base->wgodot_native_interfaces);
 	}
 	for (const ClassNode::WGodotInterfaceReference &reference : p_class->wgodot_implements) {
@@ -134,6 +140,23 @@ void GDScriptAnalyzer::wgodot_resolve_implemented_interfaces(ClassNode *p_class)
 		for (ClassNode *contract : p_class->wgodot_resolved_interfaces) {
 			for (const ClassNode::Member &member : contract->members) {
 				if (member.type != ClassNode::Member::GROUP && !p_class->has_member(member.get_name())) {
+					// Imported declarations retain pointers into their declaring
+					// parser's dependencies, including nested collection types and
+					// function parameters. Preserve those exact parser instances.
+					Vector<DataType> types;
+					types.push_back(member.get_datatype());
+					if (member.type == ClassNode::Member::FUNCTION) {
+						for (const GDScriptParser::ParameterNode *parameter : member.function->parameters) {
+							types.push_back(parameter->type_constraint);
+						}
+					}
+					for (int i = 0; i < types.size(); i++) {
+						const DataType type = types[i];
+						ensure_cached_external_parser_for_class(type.class_type, contract, "Trying to inherit interface member type", p_class);
+						for (int element = 0; element < type.get_container_element_type_count(); element++) {
+							types.push_back(type.get_container_element_type(element));
+						}
+					}
 					p_class->members_indices[member.get_name()] = p_class->members.size();
 					p_class->members.push_back(member);
 				}

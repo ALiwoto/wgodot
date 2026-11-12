@@ -5,6 +5,7 @@
 #include "core/object/class_db.h"
 
 #include "modules/gdscript/wgodot_gd/interface_helpers.h"
+#include "modules/gdscript/wgodot_value_paths.h"
 
 using Parser = GDScriptParser;
 using namespace WGodotCppNames;
@@ -45,6 +46,12 @@ WGodotCppEmitter::Value WGodotCppEmitter::property_access(const Parser::DataType
 	result.cpp_type = write ? "void" : type(p_origin->type_constraint, p_origin);
 	result.effects = true;
 	auto finish = [&](const String &p_code) { result.code = p_code; return result; };
+	if (p_base_type.kind == Parser::DataType::CLASS && p_base_type.class_type->wgodot_record) {
+		const String field = "(" + p_receiver + ").v_" + symbol(p_name);
+		result.effects = write || p_receiver_value.effects;
+		result.borrowed = !write && p_receiver_value.borrowed;
+		return finish(write ? field + " = " + convert_value(p_assigned, type(p_origin->type_constraint, p_origin)) : field);
+	}
 	if (const auto *contract = WGodotGDScriptInterfaceHelpers::native_interface_for_member(p_base_type, p_name)) {
 		if (const auto *property = contract->properties.getptr(p_name)) {
 			const StringName accessor = write ? property->setter : property->getter;
@@ -153,7 +160,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::assignment(const Parser::AssignmentNod
 	if (!validate_dictionary_conversion(assigned, target_type, target)) {
 		return Value();
 	}
-	Value assigned_value = construct_container ? lower_converted(assigned, target_type) : lower(assigned);
+	Value assigned_value = construct_container || target_type.wgodot_value ? lower_converted(assigned, target_type) : lower(assigned);
 	Value result;
 	result.cpp_type = "void";
 	if (target->type == Parser::Node::IDENTIFIER) {
@@ -181,7 +188,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::assignment(const Parser::AssignmentNod
 	const auto *subscript = static_cast<const Parser::SubscriptNode *>(target);
 	const auto &base_type = subscript->base->type_constraint;
 	const bool runtime_base = !base_type.is_meta_type || value_facts(subscript->base, String()).object_pointer;
-	if (!compound && subscript->is_attribute && runtime_base && (base_type.kind == Parser::DataType::CLASS || base_type.kind == Parser::DataType::NATIVE)) {
+	if (!compound && subscript->is_attribute && runtime_base && (base_type.kind == Parser::DataType::CLASS || base_type.kind == Parser::DataType::NATIVE) && !(base_type.kind == Parser::DataType::CLASS && base_type.class_type->wgodot_record)) {
 		// An Object property has no value-type parents to write back. Evaluate
 		// its receiver before the RHS, then assign directly or call its setter.
 		Vector<Value> operands{ lower_receiver(subscript->base), assigned_value };
@@ -200,6 +207,13 @@ WGodotCppEmitter::Value WGodotCppEmitter::assignment(const Parser::AssignmentNod
 		chain.insert(0, node);
 		root = node->base;
 	}
+	bool borrow_fields = WGodotValuePaths::stable(assigned) && WGodotValuePaths::plain_data(target_type) &&
+			root->type == Parser::Node::IDENTIFIER && local_source(static_cast<const Parser::IdentifierNode *>(root));
+	for (int index = 0; borrow_fields && index < chain.size() - 1; ++index) {
+		const auto *field = chain[index];
+		borrow_fields = field->is_attribute && field->base->type_constraint.kind == Parser::DataType::CLASS && field->base->type_constraint.class_type->wgodot_record;
+	}
+	borrow_fields &= subscript->is_attribute || WGodotValuePaths::stable(subscript->index);
 	const String prefix = "assignment_" + itos(temporary_index++) + "_";
 	String body;
 	Vector<Value> receivers;
@@ -260,7 +274,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::assignment(const Parser::AssignmentNod
 			body += "auto &&" + key(i) + " = " + expression(chain[i]->index) + "; ";
 		}
 		if (i < chain.size() - 1) {
-			save_receiver(read(i), i + 1, expression_overrides.has(chain[i]));
+			save_receiver(read(i), i + 1, borrow_fields || expression_overrides.has(chain[i]));
 		}
 	}
 	const int leaf = chain.size() - 1;
@@ -268,16 +282,20 @@ WGodotCppEmitter::Value WGodotCppEmitter::assignment(const Parser::AssignmentNod
 		body += "auto " + prefix + "previous = " + read(leaf).expression() + ";\nauto " + prefix + "result = " + operation(p_assignment->variant_op, target_type, target_type, assigned_type, prefix + "previous", prefix + "value", p_assignment) + ";\n";
 	}
 	body += write(leaf, prefix + (compound ? "result" : "value")) + ";\n";
+	auto is_value = [](const Parser::DataType &p_type) {
+		return p_type.wgodot_value || (p_type.kind == Parser::DataType::CLASS && p_type.class_type->wgodot_record) ||
+				(p_type.kind == Parser::DataType::BUILTIN && !Variant::is_type_shared(p_type.builtin_type));
+	};
 	auto write_back = [&](const Parser::DataType &p_type, const String &p_value, const String &p_write) {
 		if (p_type.is_variant()) {
 			return "if (!" + p_value + ".is_shared()) { " + p_write + "; } ";
 		}
-		return p_type.kind == Parser::DataType::BUILTIN && !Variant::is_type_shared(p_type.builtin_type) ? p_write + "; " : String();
+		return is_value(p_type) ? p_write + "; " : String();
 	};
-	for (int i = leaf - 1; i >= 0; i--) {
+	for (int i = leaf - 1; !borrow_fields && i >= 0; i--) {
 		const auto &datatype = chain[i]->type_constraint;
 		// Do not even emit a setter for a known shared value: it may be read-only.
-		if (datatype.is_variant() || (datatype.kind == Parser::DataType::BUILTIN && !Variant::is_type_shared(datatype.builtin_type))) {
+		if (datatype.is_variant() || is_value(datatype)) {
 			body += write_back(datatype, base(i + 1), write(i, base(i + 1)));
 		}
 	}
@@ -285,7 +303,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::assignment(const Parser::AssignmentNod
 		const auto *identifier = static_cast<const Parser::IdentifierNode *>(root);
 		const bool field = identifier->source == Parser::IdentifierNode::MEMBER_VARIABLE || identifier->source == Parser::IdentifierNode::INHERITED_VARIABLE || identifier->source == Parser::IdentifierNode::STATIC_VARIABLE;
 		const auto &datatype = root->type_constraint;
-		if (field && (datatype.is_variant() || (datatype.kind == Parser::DataType::BUILTIN && !Variant::is_type_shared(datatype.builtin_type)))) {
+		if (field && (datatype.is_variant() || is_value(datatype))) {
 			body += write_back(datatype, base(0), store_identifier(identifier, Value(base(0), type(datatype, root))).expression());
 		}
 	}

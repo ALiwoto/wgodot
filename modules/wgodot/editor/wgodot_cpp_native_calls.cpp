@@ -4,6 +4,7 @@
 #include "wgodot_cpp_native_methods.gen.h"
 
 #include "core/object/class_db.h"
+#include "core/object/wgodot_class_references.h"
 
 using Parser = GDScriptParser;
 using namespace WGodotCppNames;
@@ -27,6 +28,14 @@ String WGodotCppEmitter::native_argument_type(const PropertyInfo &p_info, const 
 		return p_info.usage & PROPERTY_USAGE_CLASS_IS_BITFIELD ? "BitField<" + enum_type + ">" : enum_type;
 	}
 	if (p_info.type == Variant::OBJECT) {
+		const StringName class_ref_base = WGodotClassReferences::constraint_base(p_info.class_name);
+		if (class_ref_base != StringName()) {
+			Parser::DataType base;
+			base.kind = Parser::DataType::NATIVE;
+			base.native_type = class_ref_base;
+			class_call_headers.insert("modules/wgodot/native/wgodot_native_class_ref.h");
+			return "WGodotNative::ClassRef<" + class_name(base, p_origin) + ">";
+		}
 		Parser::DataType object;
 		object.kind = Parser::DataType::NATIVE;
 		object.native_type = p_info.class_name.is_empty() ? StringName("Object") : p_info.class_name;

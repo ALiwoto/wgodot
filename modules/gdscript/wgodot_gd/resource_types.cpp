@@ -10,6 +10,10 @@ WGodotResourceDataType declared_type(const GDScriptDataType &p_type) {
 		return result;
 	}
 	result.builtin = p_type.builtin_type;
+	result.value_container = p_type.wgodot_value;
+	if (result.builtin == Variant::WRECORD || p_type.wgodot_class_ref) {
+		result.name = p_type.native_type;
+	}
 	if (p_type.kind != GDScriptDataType::BUILTIN) {
 		result.builtin = Variant::OBJECT;
 		result.name = p_type.script_type ? p_type.script_type->get_global_name() : p_type.native_type;

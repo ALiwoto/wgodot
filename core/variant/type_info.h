@@ -113,6 +113,11 @@ MAKE_TYPE_INFO(Transform2D, Variant::TRANSFORM2D)
 MAKE_TYPE_INFO(Plane, Variant::PLANE)
 MAKE_TYPE_INFO(Quaternion, Variant::QUATERNION)
 MAKE_TYPE_INFO(AABB, Variant::AABB)
+// wgodot-changes::begin
+MAKE_TYPE_INFO(WVector3d, Variant::WVECTOR3D)
+MAKE_TYPE_INFO(WTransform3d, Variant::WTRANSFORM3D)
+MAKE_TYPE_INFO(WRecord, Variant::WRECORD)
+// wgodot-changes::end
 MAKE_TYPE_INFO(Basis, Variant::BASIS)
 MAKE_TYPE_INFO(Transform3D, Variant::TRANSFORM3D)
 MAKE_TYPE_INFO(Projection, Variant::PROJECTION)

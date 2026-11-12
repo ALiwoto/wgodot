@@ -57,6 +57,9 @@ bool GDScriptAnalyzer::wgodot_resolve_property_path_segment(WGodotGDScriptProper
 		}
 	}
 
+	if (base.kind == Parser::DataType::CLASS && base.class_type->wgodot_record) {
+		return false;
+	}
 	// Interfaces declare their own properties separately from ClassDB. Their
 	// required Object base supplies inherited properties such as Control.position.
 	if (const auto *contract = WGodotGDScriptInterfaceHelpers::native_interface_for_member(base, r_segment.name)) {

@@ -55,6 +55,7 @@ class WGodotResourceValidation : public VariantParser::AssignmentParser {
 	Error annotation(Token p_token, Stream *p_stream, Type &r_type, int &r_line, String &r_error);
 	Error value(Token p_token, Stream *p_stream, const Type &p_expected, const Qualification &p_qualification, Type &r_actual, int &r_line, String &r_error, int p_depth = 0);
 	Error container(Stream *p_stream, const Type &p_type, const Qualification &p_qualification, int &r_line, String &r_error, int p_depth);
+	Error record(Stream *p_stream, const Type &p_type, int &r_line, String &r_error, int p_depth);
 	Error reference(Stream *p_stream, const String &p_kind, Type &r_type, Qualification &r_qualification, int &r_line, String &r_error);
 	Error field(const StringName &p_class, const StringName &p_name, Type &r_type, Qualification &r_qualification, String &r_error);
 	Error resource_type(const String &p_path, StringName &r_type, String &r_error);

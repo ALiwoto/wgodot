@@ -32,6 +32,7 @@ class WDictionary {
 		SafeRefCount references;
 		Map entries;
 		bool read_only = false;
+		bool value_semantics = false;
 
 		Storage() { references.init(); }
 	};
@@ -42,8 +43,21 @@ class WDictionary {
 			memdelete(p_storage);
 		}
 	}
-	bool writable() const {
+	void detach() {
+		if (storage->references.get() != 1) {
+			Storage *previous = storage;
+			storage = memnew(Storage);
+			storage->entries = previous->entries;
+			storage->read_only = previous->read_only;
+			storage->value_semantics = previous->value_semantics;
+			release(previous);
+		}
+	}
+	bool writable() {
 		ERR_FAIL_COND_V_MSG(storage->read_only, false, "WDictionary is read-only.");
+		if (storage->value_semantics) {
+			detach();
+		}
 		return true;
 	}
 
@@ -75,7 +89,20 @@ public:
 	int64_t size() const { return storage->entries.size(); }
 	bool is_empty() const { return storage->entries.is_empty(); }
 	bool is_read_only() const { return storage->read_only; }
-	void make_read_only() { storage->read_only = true; }
+	void make_read_only() {
+		if (storage->value_semantics) {
+			detach();
+		}
+		storage->read_only = true;
+	}
+	void make_value() {
+		if (!storage->value_semantics || storage->read_only) {
+			detach();
+			storage->value_semantics = true;
+			storage->read_only = false;
+		}
+	}
+	bool is_value() const { return storage->value_semantics; }
 	const Map &native() const { return storage->entries; }
 	void initialize_native(Map &&p_values) {
 		if (!storage || storage->references.get() != 1) {
@@ -222,6 +249,9 @@ public:
 	}
 	WDictionary recursive_duplicate(bool p_deep, ResourceDeepDuplicateMode p_mode, int p_depth) const {
 		WDictionary result;
+		if (is_value()) {
+			result.make_value();
+		}
 		ERR_FAIL_COND_V_MSG(p_depth > Variant::MAX_RECURSION_DEPTH, result, "Maximum container copy recursion reached.");
 		ContainerDuplicateScope scope(p_deep ? p_depth : 1);
 		for (const auto &entry : native()) {

@@ -164,7 +164,7 @@ String WGodotCppEmitter::iteration(const Parser::ForNode *p_loop, int p_indent) 
 	}
 	if (array_range) {
 		const auto element = collection_type.get_container_element_type(0);
-		const bool object = element.kind == Parser::DataType::NATIVE || element.kind == Parser::DataType::CLASS;
+		const bool object = !element.wgodot_class_ref && native_value_kind(element) == Variant::OBJECT;
 		const bool same_type = type(element, p_loop->list) == variable_type;
 		IteratorAssignments assignments(p_loop->variable);
 		if (!assignments.walk(p_loop->loop)) {
@@ -203,7 +203,8 @@ String WGodotCppEmitter::iteration(const Parser::ForNode *p_loop, int p_indent) 
 		iterator_type = "WGodotNative::Iterator";
 	}
 	String code = "for (" + iterator_type + " iterator{" + collection.code + "}; iterator.has_value(); iterator.next()) {\n";
-	code += "\t" + variable_type + " " + variable + " = iterator." + (range ? "get()" : "get<" + variable_type + ">()") + ";\n";
+	const String current = range ? "WGodotNative::convert<" + variable_type + ">(iterator.get())" : "iterator.get<" + variable_type + ">()";
+	code += "\t" + variable_type + " " + variable + " = " + current + ";\n";
 	begin_loop();
 	code += suite(p_loop->loop, 1) + "}\n";
 	code += end_loop(0);

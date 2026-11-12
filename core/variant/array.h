@@ -54,8 +54,16 @@ class _WARN_UNUSED_ Array {
 	mutable ArrayPrivate *_p;
 	void _ref(const Array &p_from) const;
 	void _unref() const;
+	// wgodot-changes::begin
+	void _wgodot_detach();
+	void _wgodot_make_unique();
+	// wgodot-changes::end
 
 public:
+	// wgodot-changes::begin
+	void wgodot_make_value();
+	bool wgodot_is_value() const;
+	// wgodot-changes::end
 	struct ConstIterator {
 		_FORCE_INLINE_ const Variant &operator*() const { return *element_ptr; }
 		_FORCE_INLINE_ const Variant *operator->() const { return element_ptr; }

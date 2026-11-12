@@ -56,8 +56,16 @@ class _WARN_UNUSED_ Dictionary {
 
 	void _ref(const Dictionary &p_from) const;
 	void _unref() const;
+	// wgodot-changes::begin
+	void _wgodot_detach();
+	void _wgodot_make_unique();
+	// wgodot-changes::end
 
 public:
+	// wgodot-changes::begin
+	void wgodot_make_value();
+	bool wgodot_is_value() const;
+	// wgodot-changes::end
 	using ConstIterator = HashMap<Variant, Variant, HashMapHasherDefault, StringLikeVariantComparator>::ConstIterator;
 
 	ConstIterator begin() const;

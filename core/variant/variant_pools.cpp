@@ -37,31 +37,33 @@
 #include "core/templates/paged_allocator.h"
 
 namespace VariantPools {
-union BucketSmall {
+// wgodot-changes::begin
+union alignas(VariantPools::ALIGNMENT) BucketSmall {
 	BucketSmall() {}
 	~BucketSmall() {}
 	Transform2D _transform2d;
 	::AABB _aabb;
 };
 static_assert(sizeof(BucketSmall) == VariantPools::BUCKET_SMALL);
-static_assert(alignof(BucketSmall) == alignof(real_t));
+static_assert(alignof(BucketSmall) == VariantPools::ALIGNMENT);
 
-union BucketMedium {
+union alignas(VariantPools::ALIGNMENT) BucketMedium {
 	BucketMedium() {}
 	~BucketMedium() {}
 	Basis _basis;
 	Transform3D _transform3d;
 };
 static_assert(sizeof(BucketMedium) == VariantPools::BUCKET_MEDIUM);
-static_assert(alignof(BucketMedium) == alignof(real_t));
+static_assert(alignof(BucketMedium) == VariantPools::ALIGNMENT);
 
-union BucketLarge {
+union alignas(VariantPools::ALIGNMENT) BucketLarge {
 	BucketLarge() {}
 	~BucketLarge() {}
 	Projection _projection;
 };
 static_assert(sizeof(BucketLarge) == VariantPools::BUCKET_LARGE);
-static_assert(alignof(BucketLarge) == alignof(real_t));
+static_assert(alignof(BucketLarge) == VariantPools::ALIGNMENT);
+// wgodot-changes::end
 } //namespace VariantPools
 
 static PagedAllocator<VariantPools::BucketSmall, true> _bucket_small;

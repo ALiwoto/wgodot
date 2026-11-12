@@ -155,6 +155,7 @@ public:
 	virtual StringName get_global_name() const = 0;
 	virtual bool inherits_script(const Ref<Script> &p_script) const = 0;
 	// wgodot-changes::begin
+	virtual Ref<class WRecordSchema> wgodot_get_record_schema() const;
 	virtual bool wgodot_is_interface_type() const;
 	virtual String wgodot_get_interface_id() const;
 	virtual bool wgodot_implements_interface(const String &p_interface_id) const;

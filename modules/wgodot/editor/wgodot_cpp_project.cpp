@@ -225,6 +225,7 @@ void WGodotCppProject::collect_classes(const String &p_script_path, GDScriptPars
 	entry.cpp_name = "Game_" + (p_script_path + "::" + p_class->fqcn).sha256_text().substr(0, 16);
 	entry.node = p_class;
 	class_indices.insert(p_class, classes.size());
+	named_classes.insert(p_class->fqcn, classes.size());
 	classes.push_back(entry);
 	for (const GDScriptParser::ClassNode::Member &member : p_class->members) {
 		if (member.type == GDScriptParser::ClassNode::Member::CLASS) {
@@ -238,6 +239,7 @@ Error WGodotCppProject::analyze(const String &p_target, int p_jobs, bool p_refre
 	ERR_FAIL_COND_V(!ProjectSettings::get_singleton()->is_project_loaded(), ERR_UNCONFIGURED);
 	classes.clear();
 	class_indices.clear();
+	named_classes.clear();
 	resource_dependencies.clear();
 	preloads.clear();
 	diagnostics.clear();
@@ -317,6 +319,11 @@ Error WGodotCppProject::analyze(const String &p_target, int p_jobs, bool p_refre
 		preloads.push_back(dependencies.paths[path]);
 	}
 	return diagnostics.is_empty() ? OK : ERR_PARSE_ERROR;
+}
+
+const WGodotCppProject::Class *WGodotCppProject::find_named_class(const StringName &p_name) const {
+	const int *index = named_classes.getptr(p_name);
+	return index ? &classes[*index] : nullptr;
 }
 
 const WGodotCppProject::Class *WGodotCppProject::find_class(const GDScriptParser::ClassNode *p_node) const {

@@ -6,6 +6,7 @@
 #include "wgodot_native_warray.h"
 #include "wgodot_native_wdictionary.h"
 
+#include "core/math/wgodot_scalar.h"
 #include "core/object/class_db.h"
 #include "core/object/ref_counted.h"
 #include "core/variant/variant_caster.h"
@@ -94,6 +95,8 @@ decltype(auto) convert(From &&p_value) {
 		} else {
 			return Target(std::forward<From>(p_value));
 		}
+	} else if constexpr (WGodotScalar::is_narrow<Target> && (std::is_arithmetic_v<Source> || std::is_same_v<Source, Variant>)) {
+		return WGodotScalar::convert<Target>(p_value);
 	} else if constexpr (IsWCallable<Target>::value && IsWCallable<Source>::value) {
 		return Target::adapt(p_value);
 	} else if constexpr (IsWArray<Target>::value || IsWArray<Source>::value || IsWDictionary<Target>::value || IsWDictionary<Source>::value) {

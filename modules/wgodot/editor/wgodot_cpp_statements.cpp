@@ -50,7 +50,12 @@ String WGodotCppEmitter::suite(const Parser::SuiteNode *p_suite, int p_indent) {
 				const auto *node = static_cast<const Parser::VariableNode *>(statement);
 				const auto datatype = variable_type(node);
 				code += indent + type(datatype, node) + " v_" + symbol(node->identifier->name);
-				code += node->initializer ? " = " + converted(node->initializer, datatype, node) + ";\n" : "{};\n";
+				if (!node->initializer && datatype.wgodot_value) {
+					class_call_headers.insert("modules/wgodot/native/wgodot_native_value.h");
+					code += " = WGodotNative::value_container(" + type(datatype, node) + "());\n";
+				} else {
+					code += node->initializer ? " = " + converted(node->initializer, datatype, node) + ";\n" : "{};\n";
+				}
 				break;
 			}
 			case Parser::Node::CONSTANT:

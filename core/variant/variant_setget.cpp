@@ -30,6 +30,10 @@
 
 #include "variant_setget.h"
 
+// wgodot-changes::begin
+#include "core/object/wgodot_class_references.h"
+// wgodot-changes::end
+
 #include "core/debugger/engine_debugger.h"
 #include "core/io/resource.h"
 #include "core/variant/variant_callable.h"
@@ -99,6 +103,14 @@ void register_named_setters_getters() {
 	REGISTER_MEMBER(Vector3, x);
 	REGISTER_MEMBER(Vector3, y);
 	REGISTER_MEMBER(Vector3, z);
+	// wgodot-changes::begin
+	REGISTER_MEMBER(WVector3d, x);
+	REGISTER_MEMBER(WVector3d, y);
+	REGISTER_MEMBER(WVector3d, z);
+	REGISTER_MEMBER(WTransform3d, rotation);
+	REGISTER_MEMBER(WTransform3d, origin);
+	REGISTER_MEMBER(WTransform3d, scale);
+	// wgodot-changes::end
 
 	REGISTER_MEMBER(Vector3i, x);
 	REGISTER_MEMBER(Vector3i, y);
@@ -261,6 +273,12 @@ Variant::PTRGetter Variant::get_member_ptr_getter(Variant::Type p_type, const St
 }
 
 void Variant::set_named(const StringName &p_member, const Variant &p_value, bool &r_valid) {
+	// wgodot-changes::begin
+	if (type == WRECORD) {
+		VariantInternal::get_wrecord(this)->set_named(p_member, p_value, r_valid);
+		return;
+	}
+	// wgodot-changes::end
 	uint32_t s = variant_setters_getters[type].size();
 	if (s) {
 		for (uint32_t i = 0; i < s; i++) {
@@ -288,6 +306,11 @@ void Variant::set_named(const StringName &p_member, const Variant &p_value, bool
 }
 
 Variant Variant::get_named(const StringName &p_member, bool &r_valid) const {
+	// wgodot-changes::begin
+	if (type == WRECORD) {
+		return VariantInternal::get_wrecord(this)->get_named(p_member, r_valid);
+	}
+	// wgodot-changes::end
 	uint32_t s = variant_setters_getters[type].size();
 	if (s) {
 		for (uint32_t i = 0; i < s; i++) {
@@ -870,6 +893,9 @@ struct VariantIndexedSetGet_String {
 INDEXED_SETGET_STRUCT_BUILTIN_NUMERIC(Vector2, double, real_t, 2)
 INDEXED_SETGET_STRUCT_BUILTIN_NUMERIC(Vector2i, int64_t, int32_t, 2)
 INDEXED_SETGET_STRUCT_BUILTIN_NUMERIC(Vector3, double, real_t, 3)
+// wgodot-changes::begin
+INDEXED_SETGET_STRUCT_BUILTIN_NUMERIC(WVector3d, double, double, 3)
+// wgodot-changes::end
 INDEXED_SETGET_STRUCT_BUILTIN_NUMERIC(Vector3i, int64_t, int32_t, 3)
 INDEXED_SETGET_STRUCT_BUILTIN_NUMERIC(Vector4, double, real_t, 4)
 INDEXED_SETGET_STRUCT_BUILTIN_NUMERIC(Vector4i, int64_t, int32_t, 4)
@@ -937,6 +963,9 @@ void register_indexed_setters_getters() {
 	REGISTER_INDEXED_MEMBER(Vector2);
 	REGISTER_INDEXED_MEMBER(Vector2i);
 	REGISTER_INDEXED_MEMBER(Vector3);
+	// wgodot-changes::begin
+	REGISTER_INDEXED_MEMBER(WVector3d);
+	// wgodot-changes::end
 	REGISTER_INDEXED_MEMBER(Vector3i);
 	REGISTER_INDEXED_MEMBER(Vector4);
 	REGISTER_INDEXED_MEMBER(Vector4i);
@@ -1309,6 +1338,18 @@ Variant Variant::get(const Variant &p_index, bool *r_valid, VariantGetError *r_e
 }
 
 void Variant::get_property_list(List<PropertyInfo> *p_list) const {
+	// wgodot-changes::begin
+	if (type == WRECORD) {
+		const WRecord &record = *VariantInternal::get_wrecord(this);
+		if (!record.is_empty()) {
+			for (int index = 0; index < record.schema()->field_count(); ++index) {
+				const WRecordSchema::Field &field = record.schema()->field(index);
+				p_list->push_back(PropertyInfo(field.type.builtin, field.name, PROPERTY_HINT_NONE, "", PROPERTY_USAGE_DEFAULT, field.type.builtin == WRECORD ? field.type.record_name : field.type.class_name));
+			}
+		}
+		return;
+	}
+	// wgodot-changes::end
 	if (type == DICTIONARY) {
 		const Dictionary *dic = reinterpret_cast<const Dictionary *>(_data._mem);
 		for (const KeyValue<Variant, Variant> &kv : *dic) {
@@ -2003,6 +2044,22 @@ Variant Variant::duplicate_deep(ResourceDeepDuplicateMode p_deep_subresources_mo
 }
 
 Variant Variant::recursive_duplicate(bool p_deep, ResourceDeepDuplicateMode p_deep_subresources_mode, int p_recursion_count) const {
+	// wgodot-changes::begin
+	if (type == WRECORD && p_deep) {
+		ERR_FAIL_COND_V(p_recursion_count > MAX_RECURSION_DEPTH, Variant());
+		const WRecord original = *this;
+		WRecord result = original;
+		if (!original.is_empty()) {
+			for (int index = 0; index < original.schema()->field_count(); ++index) {
+				result.set_validated(index, original.get(index).recursive_duplicate(true, p_deep_subresources_mode, p_recursion_count + 1));
+			}
+		}
+		if (p_recursion_count == 0) {
+			Resource::_teardown_duplicate_from_variant();
+		}
+		return result;
+	}
+	// wgodot-changes::end
 	switch (type) {
 		case OBJECT: {
 			// If the root target of duplicate() is a Resource, we can't early-reject because that
@@ -2010,6 +2067,11 @@ Variant Variant::recursive_duplicate(bool p_deep, ResourceDeepDuplicateMode p_de
 			if (p_deep_subresources_mode == RESOURCE_DEEP_DUPLICATE_NONE && p_recursion_count > 0) {
 				return *this;
 			}
+			// wgodot-changes::begin
+			if (WGodotClassReferences::name(*this) != StringName()) {
+				return *this; // A class selection retains its identity across deep value copies.
+			}
+			// wgodot-changes::end
 			Resource *res = Object::cast_to<Resource>(_get_obj().obj);
 			if (res) {
 				return res->_duplicate_from_variant(p_deep, p_deep_subresources_mode, p_recursion_count);

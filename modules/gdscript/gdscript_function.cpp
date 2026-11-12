@@ -34,11 +34,18 @@
 
 // wgodot-changes::begin
 #include "core/object/wgodot_native_interfaces.h"
+#include "core/object/wgodot_class_references.h"
+#include "core/variant/wgodot_record.h"
 // wgodot-changes::end
 
 #include "core/object/class_db.h"
 
 bool GDScriptDataType::is_type(const Variant &p_variant, bool p_allow_implicit_conversion) const {
+	// wgodot-changes::begin
+	if (wgodot_class_ref) {
+		return WGodotClassReferences::accepts(p_variant, WGodotClassReferences::constraint_base(native_type));
+	}
+	// wgodot-changes::end
 	switch (kind) {
 		case VARIANT: {
 			return true;
@@ -46,6 +53,12 @@ bool GDScriptDataType::is_type(const Variant &p_variant, bool p_allow_implicit_c
 		case BUILTIN: {
 			Variant::Type var_type = p_variant.get_type();
 			bool valid = builtin_type == var_type;
+			// wgodot-changes::begin
+			if (valid && builtin_type == Variant::WRECORD) {
+				const WRecord record = p_variant;
+				return !record.is_empty() && record.schema()->get_name() == native_type;
+			}
+			// wgodot-changes::end
 			if (valid && builtin_type == Variant::ARRAY && has_container_element_type(0)) {
 				Array array = p_variant;
 				if (array.is_typed()) {
@@ -57,7 +70,7 @@ bool GDScriptDataType::is_type(const Variant &p_variant, bool p_allow_implicit_c
 					if (array_script_type_ref.is_valid()) {
 						valid = (elem_type.kind == SCRIPT || elem_type.kind == GDSCRIPT) && elem_type.script_type == array_script_type_ref.ptr();
 					} else if (array_native_type != StringName()) {
-						valid = elem_type.kind == NATIVE && elem_type.native_type == array_native_type;
+						valid = (elem_type.kind == NATIVE || elem_type.wgodot_class_ref || (elem_type.kind == BUILTIN && elem_type.builtin_type == Variant::WRECORD && array_builtin_type == Variant::WRECORD)) && elem_type.native_type == array_native_type;
 					} else {
 						valid = elem_type.kind == BUILTIN && elem_type.builtin_type == array_builtin_type;
 					}
@@ -76,7 +89,7 @@ bool GDScriptDataType::is_type(const Variant &p_variant, bool p_allow_implicit_c
 						if (key_script_type_ref.is_valid()) {
 							valid = (key.kind == SCRIPT || key.kind == GDSCRIPT) && key.script_type == key_script_type_ref.ptr();
 						} else if (key_native_type != StringName()) {
-							valid = key.kind == NATIVE && key.native_type == key_native_type;
+							valid = (key.kind == NATIVE || key.wgodot_class_ref || (key.kind == BUILTIN && key.builtin_type == Variant::WRECORD && key_builtin_type == Variant::WRECORD)) && key.native_type == key_native_type;
 						} else {
 							valid = key.kind == BUILTIN && key.builtin_type == key_builtin_type;
 						}
@@ -91,7 +104,7 @@ bool GDScriptDataType::is_type(const Variant &p_variant, bool p_allow_implicit_c
 						if (value_script_type_ref.is_valid()) {
 							valid = (value.kind == SCRIPT || value.kind == GDSCRIPT) && value.script_type == value_script_type_ref.ptr();
 						} else if (value_native_type != StringName()) {
-							valid = value.kind == NATIVE && value.native_type == value_native_type;
+							valid = (value.kind == NATIVE || value.wgodot_class_ref || (value.kind == BUILTIN && value.builtin_type == Variant::WRECORD && value_builtin_type == Variant::WRECORD)) && value.native_type == value_native_type;
 						} else {
 							valid = value.kind == BUILTIN && value.builtin_type == value_builtin_type;
 						}

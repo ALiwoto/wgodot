@@ -9,6 +9,7 @@
 #include "rendering/planar_reflection_3d.h"
 #endif
 #include "animation/affine_skeleton_2d.h"
+#include "animation/animation_tracks.h"
 #include "animation/gradient_noise_1d.h"
 #include "animation/skinned_mesh_2d.h"
 #include "codecs/animation_codec.h"
@@ -16,6 +17,7 @@
 #include "codecs/shader_material_codec.h"
 #include "codecs/resource_load_measurement.h"
 #include "object_metadata.h"
+#include "math/scalar_math.h"
 #include "core/object/class_db.h"
 
 #include "wgodot_game_bridge.h"
@@ -62,6 +64,8 @@ void initialize_wgodot_module(ModuleInitializationLevel p_level) {
 		GDREGISTER_CLASS(Skin2D);
 		GDREGISTER_CLASS(SkinnedMesh2D);
 		GDREGISTER_CLASS(WAnimation);
+		GDREGISTER_CLASS(WAnimationTracks);
+		GDREGISTER_CLASS(WAnimationPose);
 #ifndef _3D_DISABLED
 		GDREGISTER_CLASS(BoneLagSimulationState);
 		GDREGISTER_CLASS(BoneLagModifier3D);
@@ -74,6 +78,7 @@ void initialize_wgodot_module(ModuleInitializationLevel p_level) {
 		GDREGISTER_CLASS(WResourceLoadMeasurement);
 #endif
 		GDREGISTER_ABSTRACT_CLASS(ObjectMetadata);
+		GDREGISTER_ABSTRACT_CLASS(WScalarMath);
 #ifdef TOOLS_ENABLED
 		GDREGISTER_CLASS(WGPUParticleSnapshot);
 		GDREGISTER_CLASS(WSceneSnapshot);

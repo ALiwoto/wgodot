@@ -130,6 +130,10 @@ public:
 	virtual void write_call_utility(const Address &p_target, const StringName &p_function, const Vector<Address> &p_arguments) = 0;
 	virtual void write_call_gdscript_utility(const Address &p_target, const StringName &p_function, const Vector<Address> &p_arguments) = 0;
 	virtual void write_call_builtin_type(const Address &p_target, const Address &p_base, Variant::Type p_type, const StringName &p_method, const Vector<Address> &p_arguments) = 0;
+	// wgodot-changes::begin
+	virtual void write_call_value_builtin(const Address &p_target, const Address &p_root, const Vector<Address> &p_keys, const Vector<Address> &p_owners, const StringName &p_method, const Vector<Address> &p_arguments) = 0;
+	virtual void write_set_value_path(const Address &p_root, const Vector<Address> &p_keys, const Address &p_value, Variant::Operator p_operator) = 0;
+	// wgodot-changes::end
 	virtual void write_call_builtin_type_static(const Address &p_target, Variant::Type p_type, const StringName &p_method, const Vector<Address> &p_arguments) = 0;
 	virtual void write_call_native_static(const Address &p_target, const StringName &p_class, const StringName &p_method, const Vector<Address> &p_arguments) = 0;
 	virtual void write_call_native_static_validated(const Address &p_target, const MethodBind *p_method, const Vector<Address> &p_arguments) = 0;

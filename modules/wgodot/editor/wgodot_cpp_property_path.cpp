@@ -22,8 +22,9 @@ String WGodotCppEmitter::property_path_accessor(const WGodotGDScriptPropertyPath
 		origin.start_column = p_origin->start_column;
 		origin.type_constraint = segment.datatype;
 		const bool contract = is_interface_type(segment.base_type);
-		Value receiver(p_receiver, contract ? type(segment.base_type, &origin) : class_name(segment.base_type, &origin) + " *");
-		receiver.object_pointer = !contract;
+		const bool record = segment.base_type.kind == Parser::DataType::CLASS && segment.base_type.class_type->wgodot_record;
+		Value receiver(p_receiver, contract || record ? type(segment.base_type, &origin) : class_name(segment.base_type, &origin) + " *");
+		receiver.object_pointer = !contract && !record;
 		receiver.nonnull = true; // The generated accessor checks each object before access.
 		receiver.effects = false;
 		receiver.borrowed = true;
@@ -45,7 +46,7 @@ String WGodotCppEmitter::property_path_accessor(const WGodotGDScriptPropertyPath
 	Vector<String> receivers;
 	for (int i = 0; i < p_path.segments.size(); i++) {
 		String receiver = i == 0 ? "target" : "part_" + itos(i - 1);
-		if (i > 0 && p_path.segments[i].base_type.kind != Parser::DataType::BUILTIN) {
+		if (i > 0 && native_value_kind(p_path.segments[i].base_type) == Variant::OBJECT) {
 			const String pointer = "object_" + itos(i);
 			const bool contract = is_interface_type(p_path.segments[i].base_type);
 			body += "\tauto *" + pointer + " = " + (contract ? receiver + ".operator->()" : "WGodotNative::object_pointer(" + receiver + ")") + ";\n";

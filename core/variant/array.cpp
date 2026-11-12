@@ -48,6 +48,9 @@ STATIC_ASSERT_INCOMPLETE_TYPE(class, String);
 
 struct ArrayPrivate {
 	SafeRefCount refcount;
+	// wgodot-changes::begin
+	bool value_semantics = false;
+	// wgodot-changes::end
 	Vector<Variant> array;
 	Variant *read_only = nullptr; // If enabled, a pointer is used to a temporary value that is used to return read-only values.
 	ContainerTypeValidate typed;
@@ -58,6 +61,42 @@ struct ArrayPrivate {
 };
 
 // wgodot-changes::begin
+void Array::_wgodot_detach() {
+	ArrayPrivate *previous = _p;
+	ArrayPrivate *copy = memnew(ArrayPrivate);
+	copy->refcount.init();
+	copy->array = previous->array;
+	copy->typed = previous->typed;
+	copy->value_semantics = previous->value_semantics;
+	if (previous->read_only) {
+		copy->read_only = memnew(Variant);
+	}
+	_unref();
+	_p = copy;
+}
+
+void Array::_wgodot_make_unique() {
+	if (_p->value_semantics && _p->refcount.get() > 1) {
+		_wgodot_detach();
+	}
+}
+
+void Array::wgodot_make_value() {
+	if (_p->value_semantics && !_p->read_only) {
+		return;
+	}
+	if (_p->refcount.get() > 1) {
+		_wgodot_detach();
+	}
+	memdelete(_p->read_only);
+	_p->read_only = nullptr;
+	_p->value_semantics = true;
+}
+
+bool Array::wgodot_is_value() const {
+	return _p->value_semantics;
+}
+
 bool WGodotNative::array_is_shared(const Array &p_array) {
 	return static_cast<const ArrayPrivate *>(p_array.id())->refcount.get() > 1;
 }
@@ -94,10 +133,16 @@ void Array::_unref() const {
 }
 
 Array::Iterator Array::begin() {
+	// wgodot-changes::begin
+	_wgodot_make_unique();
+	// wgodot-changes::end
 	return Iterator(_p->array.ptrw(), _p->read_only);
 }
 
 Array::Iterator Array::end() {
+	// wgodot-changes::begin
+	_wgodot_make_unique();
+	// wgodot-changes::end
 	return Iterator(_p->array.ptrw() + _p->array.size(), _p->read_only);
 }
 
@@ -110,6 +155,9 @@ Array::ConstIterator Array::end() const {
 }
 
 Variant &Array::operator[](int p_idx) {
+	// wgodot-changes::begin
+	_wgodot_make_unique();
+	// wgodot-changes::end
 	if (unlikely(_p->read_only)) {
 		*_p->read_only = _p->array[p_idx];
 		return *_p->read_only;
@@ -130,6 +178,9 @@ bool Array::is_empty() const {
 }
 
 void Array::clear() {
+	// wgodot-changes::begin
+	_wgodot_make_unique();
+	// wgodot-changes::end
 	ERR_FAIL_COND_MSG(_p->read_only, "Array is in read-only state.");
 	_p->array.clear();
 }
@@ -223,8 +274,21 @@ void Array::operator=(const Array &p_array) {
 }
 
 void Array::assign(const Array &p_array) {
+	// wgodot-changes::begin
+	_wgodot_make_unique();
+	// wgodot-changes::end
 	const ContainerTypeValidate &typed = _p->typed;
 	const ContainerTypeValidate &source_typed = p_array._p->typed;
+	// wgodot-changes::begin
+	if (typed.type == Variant::WRECORD && typed != source_typed) {
+		Vector<Variant> values = p_array._p->array;
+		for (int i = 0; i < values.size(); ++i) {
+			ERR_FAIL_COND(!typed.validate(values.write[i], "assign"));
+		}
+		_p->array = values;
+		return;
+	}
+	// wgodot-changes::end
 
 	if (typed == source_typed || typed.type == Variant::NIL || (source_typed.type == Variant::OBJECT && typed.can_reference(source_typed))) {
 		// from same to same or
@@ -288,6 +352,9 @@ void Array::assign(const Array &p_array) {
 }
 
 void Array::push_back(const Variant &p_value) {
+	// wgodot-changes::begin
+	_wgodot_make_unique();
+	// wgodot-changes::end
 	ERR_FAIL_COND_MSG(_p->read_only, "Array is in read-only state.");
 	Variant value = p_value;
 	ERR_FAIL_COND(!_p->typed.validate(value, "push_back"));
@@ -295,6 +362,9 @@ void Array::push_back(const Variant &p_value) {
 }
 
 void Array::append_array(const Array &p_array) {
+	// wgodot-changes::begin
+	_wgodot_make_unique();
+	// wgodot-changes::end
 	ERR_FAIL_COND_MSG(_p->read_only, "Array is in read-only state.");
 
 	if (!is_typed() || _p->typed.can_reference(p_array._p->typed)) {
@@ -312,25 +382,48 @@ void Array::append_array(const Array &p_array) {
 }
 
 Error Array::resize(int p_new_size) {
+	// wgodot-changes::begin
+	_wgodot_make_unique();
+	// wgodot-changes::end
 	ERR_FAIL_COND_V_MSG(_p->read_only, ERR_LOCKED, "Array is in read-only state.");
 	Variant::Type &variant_type = _p->typed.type;
 	int old_size = _p->array.size();
+	// wgodot-changes::begin
+	Variant record_default;
+	if (variant_type == Variant::WRECORD && p_new_size > old_size) {
+		bool valid = false;
+		record_default = WRecordSchemas::default_value(_p->typed.class_name, valid);
+		ERR_FAIL_COND_V_MSG(!valid, ERR_INVALID_DATA, "Cannot initialize record array elements.");
+	}
+	// wgodot-changes::end
 	Error err = _p->array.resize_initialized(p_new_size);
 	if (!err && variant_type != Variant::NIL && variant_type != Variant::OBJECT) {
 		Variant *write = _p->array.ptrw();
 		for (int i = old_size; i < p_new_size; i++) {
-			VariantInternal::initialize(&write[i], variant_type);
+			// wgodot-changes::begin
+			if (variant_type == Variant::WRECORD) {
+				write[i] = record_default;
+			} else {
+				VariantInternal::initialize(&write[i], variant_type);
+			}
+			// wgodot-changes::end
 		}
 	}
 	return err;
 }
 
 Error Array::reserve(int p_new_size) {
+	// wgodot-changes::begin
+	_wgodot_make_unique();
+	// wgodot-changes::end
 	ERR_FAIL_COND_V_MSG(_p->read_only, ERR_LOCKED, "Array is in read-only state.");
 	return _p->array.reserve(p_new_size);
 }
 
 Error Array::insert(int p_pos, const Variant &p_value) {
+	// wgodot-changes::begin
+	_wgodot_make_unique();
+	// wgodot-changes::end
 	ERR_FAIL_COND_V_MSG(_p->read_only, ERR_LOCKED, "Array is in read-only state.");
 	Variant value = p_value;
 	ERR_FAIL_COND_V(!_p->typed.validate(value, "insert"), ERR_INVALID_PARAMETER);
@@ -346,6 +439,9 @@ Error Array::insert(int p_pos, const Variant &p_value) {
 }
 
 void Array::fill(const Variant &p_value) {
+	// wgodot-changes::begin
+	_wgodot_make_unique();
+	// wgodot-changes::end
 	ERR_FAIL_COND_MSG(_p->read_only, "Array is in read-only state.");
 	Variant value = p_value;
 	ERR_FAIL_COND(!_p->typed.validate(value, "fill"));
@@ -353,6 +449,9 @@ void Array::fill(const Variant &p_value) {
 }
 
 void Array::erase(const Variant &p_value) {
+	// wgodot-changes::begin
+	_wgodot_make_unique();
+	// wgodot-changes::end
 	ERR_FAIL_COND_MSG(_p->read_only, "Array is in read-only state.");
 	Variant value = p_value;
 	ERR_FAIL_COND(!_p->typed.validate(value, "erase"));
@@ -510,6 +609,9 @@ bool Array::has(const Variant &p_value) const {
 }
 
 void Array::remove_at(int p_pos) {
+	// wgodot-changes::begin
+	_wgodot_make_unique();
+	// wgodot-changes::end
 	ERR_FAIL_COND_MSG(_p->read_only, "Array is in read-only state.");
 
 	if (p_pos < 0) {
@@ -523,6 +625,9 @@ void Array::remove_at(int p_pos) {
 }
 
 void Array::set(int p_idx, const Variant &p_value) {
+	// wgodot-changes::begin
+	_wgodot_make_unique();
+	// wgodot-changes::end
 	ERR_FAIL_COND_MSG(_p->read_only, "Array is in read-only state.");
 	Variant value = p_value;
 	ERR_FAIL_COND(!_p->typed.validate(value, "set"));
@@ -545,6 +650,9 @@ Array Array::duplicate_deep(ResourceDeepDuplicateMode p_deep_subresources_mode) 
 Array Array::recursive_duplicate(bool p_deep, ResourceDeepDuplicateMode p_deep_subresources_mode, int p_recursion_count) const {
 	Array new_arr;
 	new_arr._p->typed = _p->typed;
+	// wgodot-changes::begin
+	new_arr._p->value_semantics = _p->value_semantics;
+	// wgodot-changes::end
 
 	if (p_recursion_count > MAX_RECURSION) {
 		ERR_PRINT("Max recursion reached");
@@ -739,16 +847,25 @@ struct _ArrayVariantSort {
 };
 
 void Array::sort() {
+	// wgodot-changes::begin
+	_wgodot_make_unique();
+	// wgodot-changes::end
 	ERR_FAIL_COND_MSG(_p->read_only, "Array is in read-only state.");
 	_p->array.sort_custom<_ArrayVariantSort>();
 }
 
 void Array::sort_custom(const Callable &p_callable) {
+	// wgodot-changes::begin
+	_wgodot_make_unique();
+	// wgodot-changes::end
 	ERR_FAIL_COND_MSG(_p->read_only, "Array is in read-only state.");
 	_p->array.sort_custom<CallableComparator, true>(p_callable);
 }
 
 void Array::shuffle() {
+	// wgodot-changes::begin
+	_wgodot_make_unique();
+	// wgodot-changes::end
 	ERR_FAIL_COND_MSG(_p->read_only, "Array is in read-only state.");
 	const int n = _p->array.size();
 	if (n < 2) {
@@ -775,11 +892,17 @@ int Array::bsearch_custom(const Variant &p_value, const Callable &p_callable, bo
 }
 
 void Array::reverse() {
+	// wgodot-changes::begin
+	_wgodot_make_unique();
+	// wgodot-changes::end
 	ERR_FAIL_COND_MSG(_p->read_only, "Array is in read-only state.");
 	_p->array.reverse();
 }
 
 void Array::push_front(const Variant &p_value) {
+	// wgodot-changes::begin
+	_wgodot_make_unique();
+	// wgodot-changes::end
 	ERR_FAIL_COND_MSG(_p->read_only, "Array is in read-only state.");
 	Variant value = p_value;
 	ERR_FAIL_COND(!_p->typed.validate(value, "push_front"));
@@ -787,6 +910,9 @@ void Array::push_front(const Variant &p_value) {
 }
 
 Variant Array::pop_back() {
+	// wgodot-changes::begin
+	_wgodot_make_unique();
+	// wgodot-changes::end
 	ERR_FAIL_COND_V_MSG(_p->read_only, Variant(), "Array is in read-only state.");
 	if (!_p->array.is_empty()) {
 		const int n = _p->array.size() - 1;
@@ -798,6 +924,9 @@ Variant Array::pop_back() {
 }
 
 Variant Array::pop_front() {
+	// wgodot-changes::begin
+	_wgodot_make_unique();
+	// wgodot-changes::end
 	ERR_FAIL_COND_V_MSG(_p->read_only, Variant(), "Array is in read-only state.");
 	if (!_p->array.is_empty()) {
 		const Variant ret = _p->array.get(0);
@@ -808,6 +937,9 @@ Variant Array::pop_front() {
 }
 
 Variant Array::pop_at(int p_pos) {
+	// wgodot-changes::begin
+	_wgodot_make_unique();
+	// wgodot-changes::end
 	ERR_FAIL_COND_V_MSG(_p->read_only, Variant(), "Array is in read-only state.");
 	if (_p->array.is_empty()) {
 		// Return `null` without printing an error to mimic `pop_back()` and `pop_front()` behavior.
@@ -891,16 +1023,25 @@ void Array::set_typed(const ContainerType &p_element_type) {
 }
 
 void Array::set_typed(uint32_t p_type, const StringName &p_class_name, const Variant &p_script) {
+	// wgodot-changes::begin
+	_wgodot_make_unique();
+	// wgodot-changes::end
 	ERR_FAIL_COND_MSG(_p->read_only, "Array is in read-only state.");
 	ERR_FAIL_COND_MSG(_p->array.size() > 0, "Type can only be set when array is empty.");
 	ERR_FAIL_COND_MSG(_p->refcount.get() > 1, "Type can only be set when array has no more than one user.");
 	ERR_FAIL_COND_MSG(_p->typed.type != Variant::NIL, "Type can only be set once.");
-	ERR_FAIL_COND_MSG(p_class_name != StringName() && p_type != Variant::OBJECT, "Class names can only be set for type OBJECT");
-	Ref<Script> script = p_script;
+	ERR_FAIL_COND_MSG(p_class_name != StringName() && p_type != Variant::OBJECT && p_type != Variant::WRECORD, "Class names require an object or record type");
+	// wgodot-changes::begin
+	ERR_FAIL_COND_MSG(p_type == Variant::WRECORD && p_class_name == StringName(), "A record array requires its declared record name.");
+	// wgodot-changes::end
+	Ref<Script> script = p_type == Variant::WRECORD ? Variant() : p_script;
 	ERR_FAIL_COND_MSG(script.is_valid() && p_class_name == StringName(), "Script class can only be set together with base class name");
 
 	_p->typed.type = Variant::Type(p_type);
 	_p->typed.class_name = p_class_name;
+	// wgodot-changes::begin
+	_p->typed.class_ref_base = p_type == Variant::OBJECT ? WGodotClassReferences::constraint_base(p_class_name) : StringName();
+	// wgodot-changes::end
 	_p->typed.script = script;
 	_p->typed.where = "TypedArray";
 }
@@ -944,6 +1085,9 @@ Array Array::create_read_only() {
 }
 
 void Array::make_read_only() {
+	// wgodot-changes::begin
+	_wgodot_make_unique();
+	// wgodot-changes::end
 	if (_p->read_only == nullptr) {
 		_p->read_only = memnew(Variant);
 	}

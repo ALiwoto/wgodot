@@ -124,7 +124,7 @@ void WGodotNamedTypes::dependencies(const Ref<FileAccess> &p_file, List<String> 
 				}
 				ch = stream.get_char();
 			}
-			const String name = String::utf8(text.get_data());
+			const String name = String::utf8(text.get_data()).get_slice("::", 0);
 			if (type_pending && ScriptServer::is_global_class(name)) {
 				classes.insert(name);
 			}
@@ -150,8 +150,8 @@ void WGodotNamedTypes::dependencies(const Ref<FileAccess> &p_file, List<String> 
 			if (container && ScriptServer::is_global_class(word)) {
 				classes.insert(word);
 			}
-			type_pending = type_tag && word == "type";
-			container_pending = word == "Array" || word == "Dictionary";
+			type_pending = (type_tag && word == "type") || word == "WRecord" || word == "ClassRef";
+			container_pending = word == "Array" || word == "Dictionary" || word == "ClassRef";
 			continue;
 		}
 		if (ch == '[') {

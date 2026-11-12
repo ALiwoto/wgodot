@@ -215,6 +215,43 @@ void Variant::_register_variant_operators() {
 	memset(validated_operator_evaluator_table, 0, sizeof(validated_operator_evaluator_table));
 	memset(ptr_operator_evaluator_table, 0, sizeof(ptr_operator_evaluator_table));
 
+	// wgodot-changes::begin
+	register_op<OperatorEvaluatorAdd<WVector3d, WVector3d, WVector3d>>(Variant::OP_ADD, Variant::WVECTOR3D, Variant::WVECTOR3D);
+	register_op<OperatorEvaluatorSub<WVector3d, WVector3d, WVector3d>>(Variant::OP_SUBTRACT, Variant::WVECTOR3D, Variant::WVECTOR3D);
+	register_op<OperatorEvaluatorMul<WVector3d, WVector3d, WVector3d>>(Variant::OP_MULTIPLY, Variant::WVECTOR3D, Variant::WVECTOR3D);
+	register_op<OperatorEvaluatorMul<WVector3d, WVector3d, double>>(Variant::OP_MULTIPLY, Variant::WVECTOR3D, Variant::FLOAT);
+	register_op<OperatorEvaluatorMul<WVector3d, double, WVector3d>>(Variant::OP_MULTIPLY, Variant::FLOAT, Variant::WVECTOR3D);
+	register_op<OperatorEvaluatorMul<WVector3d, WVector3d, int64_t>>(Variant::OP_MULTIPLY, Variant::WVECTOR3D, Variant::INT);
+	register_op<OperatorEvaluatorMul<WVector3d, int64_t, WVector3d>>(Variant::OP_MULTIPLY, Variant::INT, Variant::WVECTOR3D);
+	register_op<OperatorEvaluatorDiv<WVector3d, WVector3d, WVector3d>>(Variant::OP_DIVIDE, Variant::WVECTOR3D, Variant::WVECTOR3D);
+	register_op<OperatorEvaluatorDiv<WVector3d, WVector3d, double>>(Variant::OP_DIVIDE, Variant::WVECTOR3D, Variant::FLOAT);
+	register_op<OperatorEvaluatorDiv<WVector3d, WVector3d, int64_t>>(Variant::OP_DIVIDE, Variant::WVECTOR3D, Variant::INT);
+	register_op<OperatorEvaluatorNeg<WVector3d, WVector3d>>(Variant::OP_NEGATE, Variant::WVECTOR3D, Variant::NIL);
+	register_op<OperatorEvaluatorEqual<WVector3d, WVector3d>>(Variant::OP_EQUAL, Variant::WVECTOR3D, Variant::WVECTOR3D);
+	register_op<OperatorEvaluatorNotEqual<WVector3d, WVector3d>>(Variant::OP_NOT_EQUAL, Variant::WVECTOR3D, Variant::WVECTOR3D);
+	register_op<OperatorEvaluatorInDictionaryHas<WVector3d>>(Variant::OP_IN, Variant::WVECTOR3D, Variant::DICTIONARY);
+	register_op<OperatorEvaluatorInArrayFind<WVector3d, Array>>(Variant::OP_IN, Variant::WVECTOR3D, Variant::ARRAY);
+	register_op<OperatorEvaluatorAlwaysFalse>(Variant::OP_EQUAL, Variant::WVECTOR3D, Variant::NIL);
+	register_op<OperatorEvaluatorAlwaysFalse>(Variant::OP_EQUAL, Variant::NIL, Variant::WVECTOR3D);
+	register_op<OperatorEvaluatorAlwaysTrue>(Variant::OP_NOT_EQUAL, Variant::WVECTOR3D, Variant::NIL);
+	register_op<OperatorEvaluatorAlwaysTrue>(Variant::OP_NOT_EQUAL, Variant::NIL, Variant::WVECTOR3D);
+	register_string_modulo_op(WVector3d, Variant::WVECTOR3D);
+	register_op<OperatorEvaluatorInDictionaryHas<WTransform3d>>(Variant::OP_IN, Variant::WTRANSFORM3D, Variant::DICTIONARY);
+	register_op<OperatorEvaluatorInArrayFind<WTransform3d, Array>>(Variant::OP_IN, Variant::WTRANSFORM3D, Variant::ARRAY);
+	register_op<OperatorEvaluatorAlwaysFalse>(Variant::OP_EQUAL, Variant::WTRANSFORM3D, Variant::NIL);
+	register_op<OperatorEvaluatorAlwaysFalse>(Variant::OP_EQUAL, Variant::NIL, Variant::WTRANSFORM3D);
+	register_op<OperatorEvaluatorAlwaysTrue>(Variant::OP_NOT_EQUAL, Variant::WTRANSFORM3D, Variant::NIL);
+	register_op<OperatorEvaluatorAlwaysTrue>(Variant::OP_NOT_EQUAL, Variant::NIL, Variant::WTRANSFORM3D);
+	register_string_modulo_op(WTransform3d, Variant::WTRANSFORM3D);
+	register_string_modulo_op(WRecord, Variant::WRECORD);
+	register_op<OperatorEvaluatorEqual<WRecord, WRecord>>(Variant::OP_EQUAL, Variant::WRECORD, Variant::WRECORD);
+	register_op<OperatorEvaluatorNotEqual<WRecord, WRecord>>(Variant::OP_NOT_EQUAL, Variant::WRECORD, Variant::WRECORD);
+	register_op<OperatorEvaluatorInDictionaryHas<WRecord>>(Variant::OP_IN, Variant::WRECORD, Variant::DICTIONARY);
+	register_op<OperatorEvaluatorInArrayFind<WRecord, Array>>(Variant::OP_IN, Variant::WRECORD, Variant::ARRAY);
+	register_op<OperatorEvaluatorEqual<WTransform3d, WTransform3d>>(Variant::OP_EQUAL, Variant::WTRANSFORM3D, Variant::WTRANSFORM3D);
+	register_op<OperatorEvaluatorNotEqual<WTransform3d, WTransform3d>>(Variant::OP_NOT_EQUAL, Variant::WTRANSFORM3D, Variant::WTRANSFORM3D);
+	// wgodot-changes::end
+
 	register_op<OperatorEvaluatorAdd<int64_t, int64_t, int64_t>>(Variant::OP_ADD, Variant::INT, Variant::INT);
 	register_op<OperatorEvaluatorAdd<double, int64_t, double>>(Variant::OP_ADD, Variant::INT, Variant::FLOAT);
 	register_op<OperatorEvaluatorAdd<double, double, int64_t>>(Variant::OP_ADD, Variant::FLOAT, Variant::INT);

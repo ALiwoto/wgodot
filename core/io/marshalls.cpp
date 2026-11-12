@@ -29,6 +29,9 @@
 /**************************************************************************/
 
 #include "marshalls.h"
+// wgodot-changes::begin
+#include "core/variant/wgodot_record_serialization.h"
+// wgodot-changes::end
 
 #include "core/io/resource_loader.h"
 #include "core/object/class_db.h"
@@ -59,6 +62,9 @@ ObjectID EncodedObjectAsID::get_object_id() const {
 
 // Byte 0: `Variant::Type`, byte 1: unused, bytes 2 and 3: additional data.
 #define HEADER_TYPE_MASK 0xFF
+// wgodot-changes::begin
+#define HEADER_DATA_FLAG_VALUE (1 << 20)
+// wgodot-changes::end
 
 // For `Variant::INT`, `Variant::FLOAT` and other math types.
 #define HEADER_DATA_FLAG_64 (1 << 16)
@@ -141,6 +147,14 @@ static Error _decode_container_type(const uint8_t *&p_buffer, int &r_left, int *
 
 			ERR_FAIL_INDEX_V(bt, Variant::VARIANT_MAX, ERR_INVALID_DATA);
 			r_type.builtin_type = (Variant::Type)bt;
+			// wgodot-changes::begin
+			if (bt == Variant::WRECORD) {
+				String name;
+				RETURN_IF_ERROR(_decode_string(p_buffer, r_left, r_len, name));
+				ERR_FAIL_COND_V(name.is_empty(), ERR_INVALID_DATA);
+				r_type.class_name = name;
+			}
+			// wgodot-changes::end
 			if (!p_allow_objects && r_type.builtin_type == Variant::OBJECT) {
 				r_type.class_name = EncodedObjectAsID::get_class_static();
 			}
@@ -198,6 +212,22 @@ Error decode_variant(Variant &r_variant, const uint8_t *p_buffer, int p_len, int
 	// Decoding math types always checks for the encoded size, while encoding always uses compilation setting.
 	// This does lead to some code duplication for decoding, but compatibility is the priority.
 	switch (header & HEADER_TYPE_MASK) {
+		// wgodot-changes::begin
+		case Variant::WRECORD: {
+			String name;
+			RETURN_IF_ERROR(_decode_string(buf, len, r_len, name));
+			Variant fields;
+			int consumed = 0;
+			RETURN_IF_ERROR(decode_variant(fields, buf, len, &consumed, p_allow_objects, p_depth + 1));
+			ERR_FAIL_COND_V(fields.get_type() != Variant::DICTIONARY, ERR_INVALID_DATA);
+			if (r_len) {
+				*r_len += consumed;
+			}
+			// Decoding untrusted data cannot load executable script declarations.
+			ERR_FAIL_COND_V(!p_allow_objects && !name.is_empty() && WRecordSchemas::find(name).is_null(), ERR_INVALID_DATA);
+			RETURN_IF_ERROR(WGodotRecordSerialization::restore(name, fields, r_variant));
+		} break;
+		// wgodot-changes::end
 		case Variant::NIL: {
 			r_variant = Variant();
 		} break;
@@ -485,6 +515,32 @@ Error decode_variant(Variant &r_variant, const uint8_t *p_buffer, int p_len, int
 			r_variant = val;
 
 		} break;
+		// wgodot-changes::begin
+		case Variant::WVECTOR3D: {
+			ERR_FAIL_COND_V(len < 24, ERR_INVALID_DATA);
+			r_variant = WVector3d(decode_double(buf), decode_double(buf + 8), decode_double(buf + 16));
+			if (r_len) {
+				*r_len += 24;
+			}
+		} break;
+		case Variant::WTRANSFORM3D: {
+			const int width = (header & HEADER_DATA_FLAG_64) ? 8 : 4;
+			const int size = 24 + 7 * width;
+			ERR_FAIL_COND_V(len < size, ERR_INVALID_DATA);
+			WTransform3d value;
+			for (int i = 0; i < 4; i++) {
+				value.rotation[i] = width == 8 ? decode_double(buf + i * width) : decode_float(buf + i * width);
+			}
+			for (int i = 0; i < 3; i++) {
+				value.origin[i] = decode_double(buf + 4 * width + i * 8);
+				value.scale[i] = width == 8 ? decode_double(buf + 4 * width + 24 + i * width) : decode_float(buf + 4 * width + 24 + i * width);
+			}
+			r_variant = value;
+			if (r_len) {
+				*r_len += size;
+			}
+		} break;
+		// wgodot-changes::end
 		case Variant::AABB: {
 			AABB val;
 			if (header & HEADER_DATA_FLAG_64) {
@@ -1261,6 +1317,12 @@ Error decode_variant(Variant &r_variant, const uint8_t *p_buffer, int p_len, int
 		}
 	}
 
+	// wgodot-changes::begin
+	if (header & HEADER_DATA_FLAG_VALUE) {
+		ERR_FAIL_COND_V(r_variant.get_type() != Variant::ARRAY && r_variant.get_type() != Variant::DICTIONARY && !Variant::is_packed_array_type(r_variant.get_type()), ERR_INVALID_DATA);
+		r_variant.wgodot_make_value_container();
+	}
+	// wgodot-changes::end
 	return OK;
 }
 
@@ -1284,6 +1346,12 @@ static void _encode_string(const String &p_string, uint8_t *&p_buffer, int &r_le
 }
 
 static void _encode_container_type_header(const ContainerType &p_type, uint32_t &r_header, uint32_t p_shift, bool p_full_objects) {
+	// wgodot-changes::begin
+	if (p_type.builtin_type == Variant::WRECORD) {
+		r_header |= CONTAINER_TYPE_KIND_BUILTIN << p_shift;
+		return;
+	}
+	// wgodot-changes::end
 	if (p_type.builtin_type != Variant::NIL) {
 		if (p_type.script.is_valid()) {
 			r_header |= (p_full_objects ? CONTAINER_TYPE_KIND_SCRIPT : CONTAINER_TYPE_KIND_CLASS_NAME) << p_shift;
@@ -1297,6 +1365,17 @@ static void _encode_container_type_header(const ContainerType &p_type, uint32_t 
 }
 
 static Error _encode_container_type(const ContainerType &p_type, uint8_t *&p_buffer, int &r_len, bool p_full_objects) {
+	// wgodot-changes::begin
+	if (p_type.builtin_type == Variant::WRECORD) {
+		if (p_buffer) {
+			encode_uint32(Variant::WRECORD, p_buffer);
+			p_buffer += 4;
+		}
+		r_len += 4;
+		_encode_string(p_type.class_name, p_buffer, r_len);
+		return OK;
+	}
+	// wgodot-changes::end
 	if (p_type.builtin_type != Variant::NIL) {
 		if (p_type.script.is_valid()) {
 			if (p_full_objects) {
@@ -1327,6 +1406,11 @@ Error encode_variant(const Variant &p_variant, uint8_t *p_buffer, int &r_len, bo
 	r_len = 0;
 
 	uint32_t header = p_variant.get_type();
+	// wgodot-changes::begin
+	if (p_variant.wgodot_is_value_container()) {
+		header |= HEADER_DATA_FLAG_VALUE;
+	}
+	// wgodot-changes::end
 
 	switch (p_variant.get_type()) {
 		case Variant::INT: {
@@ -1368,6 +1452,9 @@ Error encode_variant(const Variant &p_variant, uint8_t *p_buffer, int &r_len, bo
 			_encode_container_type_header(array.get_element_type(), header, HEADER_DATA_FIELD_TYPED_ARRAY_SHIFT, p_full_objects);
 		} break;
 #ifdef REAL_T_IS_DOUBLE
+		// wgodot-changes::begin
+		case Variant::WTRANSFORM3D:
+		// wgodot-changes::end
 		case Variant::VECTOR2:
 		case Variant::VECTOR3:
 		case Variant::VECTOR4:
@@ -1397,6 +1484,15 @@ Error encode_variant(const Variant &p_variant, uint8_t *p_buffer, int &r_len, bo
 	r_len += 4;
 
 	switch (p_variant.get_type()) {
+		// wgodot-changes::begin
+		case Variant::WRECORD: {
+			const WRecord value = p_variant;
+			_encode_string(value.is_empty() ? String() : String(value.schema()->get_name()), buf, r_len);
+			int size = 0;
+			RETURN_IF_ERROR(encode_variant(WGodotRecordSerialization::fields(value), buf, size, p_full_objects, p_depth + 1));
+			r_len += size;
+		} break;
+		// wgodot-changes::end
 		case Variant::NIL: {
 			// Nothing to do.
 		} break;
@@ -1622,6 +1718,30 @@ Error encode_variant(const Variant &p_variant, uint8_t *p_buffer, int &r_len, bo
 			r_len += 4 * sizeof(real_t);
 
 		} break;
+		// wgodot-changes::begin
+		case Variant::WVECTOR3D: {
+			if (buf) {
+				const WVector3d value = p_variant;
+				for (int i = 0; i < 3; i++) {
+					encode_double(value[i], buf + i * 8);
+				}
+			}
+			r_len += 24;
+		} break;
+		case Variant::WTRANSFORM3D: {
+			if (buf) {
+				const WTransform3d value = p_variant;
+				for (int i = 0; i < 4; i++) {
+					encode_real(value.rotation[i], buf + i * sizeof(real_t));
+				}
+				for (int i = 0; i < 3; i++) {
+					encode_double(value.origin[i], buf + 4 * sizeof(real_t) + i * 8);
+					encode_real(value.scale[i], buf + 4 * sizeof(real_t) + 24 + i * sizeof(real_t));
+				}
+			}
+			r_len += 24 + 7 * sizeof(real_t);
+		} break;
+		// wgodot-changes::end
 		case Variant::AABB: {
 			if (buf) {
 				AABB aabb = p_variant;

@@ -36,6 +36,8 @@
 
 // wgodot-changes::begin
 #include "core/object/wgodot_native_interfaces.h"
+#include "core/object/wgodot_class_references.h"
+#include "core/variant/wgodot_record.h"
 // wgodot-changes::end
 
 struct ContainerType {
@@ -47,6 +49,9 @@ struct ContainerType {
 struct ContainerTypeValidate {
 	Variant::Type type = Variant::NIL;
 	StringName class_name;
+	// wgodot-changes::begin
+	StringName class_ref_base;
+	// wgodot-changes::end
 	Ref<Script> script;
 	const char *where = "container";
 
@@ -80,6 +85,16 @@ private:
 			}
 		}
 
+		// wgodot-changes::begin
+		if (type == Variant::WRECORD) {
+			const WRecord record = r_inout_variant;
+			const bool valid = !record.is_empty() && record.schema()->get_name() == class_name;
+			if (!valid && p_output_errors) {
+				ERR_PRINT(vformat("Attempted to %s a record incompatible with %s into %s.", p_operation, class_name, where));
+			}
+			return valid;
+		}
+		// wgodot-changes::end
 		if (type != Variant::OBJECT) {
 			return true;
 		}
@@ -114,6 +129,13 @@ private:
 		}
 
 		// wgodot-changes::begin
+		if (class_ref_base != StringName()) {
+			const bool valid = WGodotClassReferences::accepts(p_variant, class_ref_base);
+			if (!valid && p_output_errors) {
+				ERR_PRINT(vformat("Attempted to %s a class reference incompatible with %s into %s.", p_operation, class_ref_base, where));
+			}
+			return valid;
+		}
 		if (!WGodotNativeInterfaces::is_instance(object, class_name)) {
 		// wgodot-changes::end
 			if (p_output_errors) {
@@ -161,8 +183,18 @@ public:
 	}
 
 	_FORCE_INLINE_ bool can_reference(const ContainerTypeValidate &p_type) const {
+		// wgodot-changes::begin
+		if (class_ref_base != StringName() || p_type.class_ref_base != StringName()) {
+			return class_ref_base != StringName() && p_type.class_ref_base != StringName() &&
+					WGodotClassReferences::accepts(WGodotClassReferences::resolve(p_type.class_ref_base), class_ref_base);
+		}
+		// wgodot-changes::end
 		if (type != p_type.type) {
 			return false;
+		// wgodot-changes::begin
+		} else if (type == Variant::WRECORD) {
+			return class_name == p_type.class_name;
+		// wgodot-changes::end
 		} else if (type != Variant::OBJECT) {
 			return true;
 		}

@@ -196,6 +196,14 @@ template <>
 struct PtrToArg<Quaternion> : Internal::PtrToArgDirect<Quaternion> {};
 template <>
 struct PtrToArg<AABB> : Internal::PtrToArgByReference<AABB> {};
+// wgodot-changes::begin
+template <>
+struct PtrToArg<WVector3d> : Internal::PtrToArgByReference<WVector3d> {};
+template <>
+struct PtrToArg<WTransform3d> : Internal::PtrToArgByReference<WTransform3d> {};
+template <>
+struct PtrToArg<WRecord> : Internal::PtrToArgByReference<WRecord> {};
+// wgodot-changes::end
 template <>
 struct PtrToArg<Basis> : Internal::PtrToArgByReference<Basis> {};
 template <>

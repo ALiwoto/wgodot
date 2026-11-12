@@ -148,6 +148,18 @@ void Variant::_register_variant_constructors() {
 	add_constructor<VariantConstructor<::AABB, ::AABB>>(sarray("from"));
 	add_constructor<VariantConstructor<::AABB, Vector3, Vector3>>(sarray("position", "size"));
 
+	// wgodot-changes::begin
+	add_constructor<VariantConstructNoArgs<WVector3d>>(sarray());
+	add_constructor<VariantConstructor<WVector3d, WVector3d>>(sarray("from"));
+	add_constructor<VariantConstructor<WVector3d, Vector3>>(sarray("from"));
+	add_constructor<VariantConstructor<WVector3d, double, double, double>>(sarray("x", "y", "z"));
+	add_constructor<VariantConstructNoArgs<WRecord>>(sarray());
+	add_constructor<VariantConstructor<WRecord, WRecord>>(sarray("from"));
+	add_constructor<VariantConstructNoArgs<WTransform3d>>(sarray());
+	add_constructor<VariantConstructor<WTransform3d, WTransform3d>>(sarray("from"));
+	add_constructor<VariantConstructor<WTransform3d, Quaternion, WVector3d, Vector3>>(sarray("rotation", "origin", "scale"));
+	// wgodot-changes::end
+
 	add_constructor<VariantConstructNoArgs<Basis>>(sarray());
 	add_constructor<VariantConstructor<Basis, Basis>>(sarray("from"));
 	add_constructor<VariantConstructor<Basis, Quaternion>>(sarray("from"));

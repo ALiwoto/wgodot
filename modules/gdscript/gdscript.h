@@ -31,6 +31,9 @@
 #pragma once
 
 #include "gdscript_function.h"
+// wgodot-changes::begin
+#include "core/variant/wgodot_record.h"
+// wgodot-changes::end
 
 #include "core/debugger/engine_debugger.h"
 #include "core/debugger/script_debugger.h"
@@ -85,6 +88,10 @@ class GDScript : public Script {
 
 	// Members are just indices to the instantiated script.
 	HashMap<StringName, MemberInfo> member_indices; // Includes member info of all base GDScript classes.
+	// wgodot-changes::begin
+	HashMap<int, WGodotScalar::Type> wgodot_scalar_members;
+	Ref<WRecordSchema> wgodot_record_schema;
+	// wgodot-changes::end
 	HashSet<StringName> members; // Only members of the current class.
 #ifdef DEBUG_ENABLED
 	HashMap<StringName, MemberInfo> old_member_indices; // Used for hot reloading. Empty while not compiling.
@@ -256,6 +263,7 @@ public:
 	bool inherits_script(const Ref<Script> &p_script) const override;
 	// wgodot-changes::begin
 	bool wgodot_is_interface_type() const override;
+	bool wgodot_class_reference = true;
 	MethodInfo wgodot_default_method_info(const StringName &p_method) const;
 	Variant wgodot_call_default(GDScriptInstance *p_instance, const StringName &p_method, const Variant **p_args, int p_argcount, Callable::CallError &r_error, GDScript *p_class = nullptr) const;
 	String wgodot_get_interface_id() const override;
@@ -270,6 +278,7 @@ public:
 	bool has_class(const GDScript *p_script);
 	GDScript *get_root_script();
 	bool is_root_script() const { return _owner == nullptr; }
+	Ref<WRecordSchema> wgodot_get_record_schema() const override { return wgodot_record_schema; }
 	String get_fully_qualified_name() const { return fully_qualified_name; }
 	const HashMap<StringName, Ref<GDScript>> &get_subclasses() const { return subclasses; }
 	const HashMap<StringName, Variant> &get_constants() const { return constants; }

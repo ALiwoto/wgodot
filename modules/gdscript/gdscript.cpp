@@ -37,6 +37,9 @@
 
 #include "gdscript.h"
 // wgodot-changes::begin
+#include "wgodot_class_references.h"
+// wgodot-changes::end
+// wgodot-changes::begin
 #include "wgodot_export_inheritance_scope.h"
 // wgodot-changes::end
 
@@ -215,6 +218,11 @@ GDScriptInstance *GDScript::_create_instance(const Variant **p_args, int p_argco
 			instance->members[p_fields[i]] = *p_values[i];
 			initialized[p_fields[i]] = true;
 		}
+		for (const auto &scalar : wgodot_scalar_members) {
+			if (initialized[scalar.key]) {
+				instance->members[scalar.key] = WGodotScalar::narrow(instance->members[scalar.key], scalar.value);
+			}
+		}
 	}
 	_super_implicit_constructor(this, instance, r_error, initialized);
 	// wgodot-changes::end
@@ -269,6 +277,29 @@ Variant GDScript::wgodot_new_with_fields(const Variant **p_args, int p_argcount,
 	if (_is_abstract) {
 		return "Can't instantiate an abstract class.";
 	}
+	// wgodot-changes::begin
+	if (wgodot_record_schema.is_valid()) {
+		if (p_argcount != 0) {
+			r_error.error = Callable::CallError::CALL_ERROR_TOO_MANY_ARGUMENTS;
+			r_error.expected = 0;
+			return Variant();
+		}
+		bool valid_default = false;
+		WRecord value = WRecordSchemas::default_value(wgodot_record_schema->get_name(), valid_default);
+		if (!valid_default) {
+			return Variant();
+		}
+		for (int index = 0; index < p_field_count; ++index) {
+			if (!value.set(p_fields[index], *p_values[index])) {
+				r_error.error = Callable::CallError::CALL_ERROR_INVALID_ARGUMENT;
+				r_error.argument = index;
+				return Variant();
+			}
+		}
+		r_error.error = Callable::CallError::CALL_OK;
+		return value;
+	}
+	// wgodot-changes::end
 
 	Ref<RefCounted> ref;
 	Object *owner = nullptr;
@@ -809,6 +840,12 @@ void GDScript::_restore_old_static_data() {
 	for (KeyValue<StringName, MemberInfo> &E : old_static_variables_indices) {
 		if (static_variables_indices.has(E.key)) {
 			static_variables.write[static_variables_indices[E.key].index] = old_static_variables[E.value.index];
+			// wgodot-changes::begin
+			const MemberInfo &member = static_variables_indices[E.key];
+			if (member.data_type.wgodot_scalar != WGodotScalar::NONE) {
+				static_variables.write[member.index] = WGodotScalar::narrow(static_variables[member.index], member.data_type.wgodot_scalar);
+			}
+			// wgodot-changes::end
 		}
 	}
 	old_static_variables_indices.clear();
@@ -1156,6 +1193,14 @@ bool GDScript::_set(const StringName &p_name, const Variant &p_value) {
 					return false;
 				}
 			}
+			// wgodot-changes::begin
+			if (member->data_type.wgodot_value) {
+				value.wgodot_make_value_container();
+			}
+			if (member->data_type.wgodot_scalar != WGodotScalar::NONE) {
+				value = WGodotScalar::narrow(value, member->data_type.wgodot_scalar);
+			}
+			// wgodot-changes::end
 			if (likely(top->valid) && member->setter) {
 				const Variant *args = &value;
 				Callable::CallError err;
@@ -1687,6 +1732,14 @@ bool GDScriptInstance::set(const StringName &p_name, const Variant &p_value) {
 					return false;
 				}
 			}
+			// wgodot-changes::begin
+			if (member->data_type.wgodot_value) {
+				value.wgodot_make_value_container();
+			}
+			if (member->data_type.wgodot_scalar != WGodotScalar::NONE) {
+				value = WGodotScalar::narrow(value, member->data_type.wgodot_scalar);
+			}
+			// wgodot-changes::end
 			if (likely(script->valid) && member->setter) {
 				const Variant *args = &value;
 				Callable::CallError err;
@@ -1714,6 +1767,14 @@ bool GDScriptInstance::set(const StringName &p_name, const Variant &p_value) {
 						return false;
 					}
 				}
+				// wgodot-changes::begin
+				if (member->data_type.wgodot_value) {
+					value.wgodot_make_value_container();
+				}
+				if (member->data_type.wgodot_scalar != WGodotScalar::NONE) {
+					value = WGodotScalar::narrow(value, member->data_type.wgodot_scalar);
+				}
+				// wgodot-changes::end
 				if (likely(sptr->valid) && member->setter) {
 					const Variant *args = &value;
 					Callable::CallError err;
@@ -2211,6 +2272,11 @@ void GDScriptInstance::reload_members() {
 		const GDScript::MemberInfo *old = script->old_member_indices.getptr(E.key);
 		if (old != nullptr) {
 			Variant value = members[old->index];
+			// wgodot-changes::begin
+			if (E.value.data_type.wgodot_scalar != WGodotScalar::NONE) {
+				value = WGodotScalar::narrow(value, E.value.data_type.wgodot_scalar);
+			}
+			// wgodot-changes::end
 			new_members[E.value.index] = value;
 		}
 	}
@@ -2298,6 +2364,9 @@ void GDScriptLanguage::remove_named_global_constant(const StringName &p_name) {
 
 void GDScriptLanguage::init() {
 	// wgodot-changes::begin
+	WGodotGDScriptClassReferences::initialize();
+	// wgodot-changes::end
+	// wgodot-changes::begin
 	WGodotGDScriptStdLib::register_global_types();
 	// wgodot-changes::end
 
@@ -2382,6 +2451,9 @@ String GDScriptLanguage::get_extension() const {
 }
 
 void GDScriptLanguage::finish() {
+	// wgodot-changes::begin
+	WGodotGDScriptClassReferences::finish();
+	// wgodot-changes::end
 	// wgodot-changes::begin
 	WGodotPartialClasses::clear();
 	// wgodot-changes::end

@@ -79,7 +79,7 @@ class JSON : public Resource {
 	static Error _parse_string(const String &p_json, Variant &r_ret, String &r_err_str, int &r_err_line, bool p_preserve_integers = false);
 	// wgodot-changes::end
 
-	static Variant _from_native(const Variant &p_variant, bool p_full_objects, int p_depth);
+	static Variant _from_native(const Variant &p_variant, bool p_full_objects, int p_depth, bool p_value_payload = false);
 	static Variant _to_native(const Variant &p_json, bool p_allow_objects, int p_depth);
 
 protected:

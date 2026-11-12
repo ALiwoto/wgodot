@@ -11,6 +11,7 @@ struct WGodotResourceDataType {
 	StringName name;
 	Vector<WGodotResourceDataType> elements;
 	bool resource_path = false;
+	bool value_container = false;
 	bool concrete() const;
 	String text() const;
 	static WGodotResourceDataType from_property(const PropertyInfo &p_info);
@@ -26,6 +27,7 @@ class WGodotResourceValueParser : public VariantParser::AssignmentParser {
 	VariantParser::AssignmentParser *custom;
 	Object *initializing = nullptr;
 	Error value(VariantParser::Token &p_token, Variant &r_value, const Type &p_type, VariantParser::Stream *p_stream, int &r_line, String &r_error, VariantParser::ResourceParser *p_resources, int p_depth = 0);
+	Error value_data(VariantParser::Token &p_token, Variant &r_value, const Type &p_type, VariantParser::Stream *p_stream, int &r_line, String &r_error, VariantParser::ResourceParser *p_resources, int p_depth);
 	Ref<Script> element_script(const Type &p_type);
 
 public:

@@ -59,7 +59,9 @@ static _FORCE_INLINE_ void vc_method_call(R (T::*p_method)(P...), Variant *p_bas
 
 template <typename R, typename T, typename... P>
 static _FORCE_INLINE_ void vc_method_call(R (T::*p_method)(P...) const, Variant *p_base, const Variant **p_args, int p_argcount, Variant &r_ret, const Vector<Variant> &p_defvals, Callable::CallError &r_error) {
-	call_with_variant_args_retc_dv(&VariantInternalAccessor<T>::get(p_base), p_method, p_args, p_argcount, r_ret, r_error, p_defvals);
+	// wgodot-changes::begin
+	call_with_variant_args_retc_dv(&VariantInternalAccessor<T>::get(static_cast<const Variant *>(p_base)), p_method, p_args, p_argcount, r_ret, r_error, p_defvals);
+	// wgodot-changes::end
 }
 
 template <typename T, typename... P>
@@ -71,7 +73,9 @@ static _FORCE_INLINE_ void vc_method_call(void (T::*p_method)(P...), Variant *p_
 template <typename T, typename... P>
 static _FORCE_INLINE_ void vc_method_call(void (T::*p_method)(P...) const, Variant *p_base, const Variant **p_args, int p_argcount, Variant &r_ret, const Vector<Variant> &p_defvals, Callable::CallError &r_error) {
 	VariantInternal::clear(&r_ret);
-	call_with_variant_argsc_dv(&VariantInternalAccessor<T>::get(p_base), p_method, p_args, p_argcount, r_error, p_defvals);
+	// wgodot-changes::begin
+	call_with_variant_argsc_dv(&VariantInternalAccessor<T>::get(static_cast<const Variant *>(p_base)), p_method, p_args, p_argcount, r_error, p_defvals);
+	// wgodot-changes::end
 }
 
 template <typename From, typename R, typename T, typename... P>
@@ -2518,6 +2522,22 @@ static void _register_variant_builtin_methods_misc() {
 	bind_static_method(Basis, from_scale, sarray("scale"), varray());
 	bind_static_method(Basis, from_euler, sarray("euler", "order"), varray((int64_t)EulerOrder::YXZ));
 
+	// wgodot-changes::begin
+	bind_method(WVector3d, dot, sarray("with"), varray());
+	bind_method(WVector3d, cross, sarray("with"), varray());
+	bind_method(WVector3d, length, sarray(), varray());
+	bind_method(WVector3d, length_squared, sarray(), varray());
+	bind_method(WVector3d, distance_to, sarray("to"), varray());
+	bind_method(WVector3d, distance_squared_to, sarray("to"), varray());
+	bind_method(WVector3d, normalized, sarray("tolerance"), varray(0.0));
+	bind_method(WVector3d, lerp, sarray("to", "weight"), varray());
+	bind_method(WVector3d, is_finite, sarray(), varray());
+	bind_method(WVector3d, to_vector3, sarray(), varray());
+	bind_method(WTransform3d, xform, sarray("value"), varray());
+	bind_method(WTransform3d, xform_inv, sarray("value", "tolerance"), varray(0.0));
+	bind_method(WTransform3d, is_finite, sarray(), varray());
+	bind_method(WTransform3d, to_transform3d, sarray(), varray());
+	// wgodot-changes::end
 	/* AABB */
 
 	bind_method(AABB, abs, sarray(), varray());

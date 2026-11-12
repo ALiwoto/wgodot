@@ -10,6 +10,8 @@
 #include "gdscript_parser.h"
 
 void GDScriptParser::register_wgodot_annotations() {
+	register_annotation(MethodInfo("@value"), AnnotationInfo::VARIABLE | AnnotationInfo::STATEMENT | AnnotationInfo::PARAMETER | AnnotationInfo::TYPE_USAGE, &GDScriptParser::wgodot_value_annotation);
+	register_annotation(MethodInfo("@record"), AnnotationInfo::CLASS, &GDScriptParser::wgodot_record_annotation);
 	register_annotation(MethodInfo("@editor_only"), AnnotationInfo::SCRIPT | AnnotationInfo::CLASS_LEVEL | AnnotationInfo::ENUM, &GDScriptParser::wgodot_noop_annotation);
 	register_annotation(MethodInfo("@export_reflection"), AnnotationInfo::CLASS_LEVEL | AnnotationInfo::ENUM, &GDScriptParser::wgodot_export_reflection_annotation);
 	register_annotation(MethodInfo("@override"), AnnotationInfo::FUNCTION, &GDScriptParser::wgodot_override_annotation);
@@ -388,4 +390,30 @@ bool GDScriptParser::wgodot_no_string_mangle_annotation(AnnotationNode *p_annota
 			push_error(R"("@no_string_mangle" annotation can only be applied to a script, class, or function.)", p_annotation);
 			return false;
 	}
+}
+
+bool GDScriptParser::wgodot_value_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class) {
+	bool *qualified = nullptr;
+	if (p_target && (p_target->type == Node::VARIABLE || p_target->type == Node::PARAMETER)) {
+		qualified = &static_cast<AssignableNode *>(p_target)->wgodot_value;
+	} else if (p_target && p_target->type == Node::TYPE) {
+		qualified = &static_cast<TypeNode *>(p_target)->wgodot_value;
+	}
+	if (!qualified || *qualified) {
+		push_error("@value must be applied once to a container variable, parameter or type usage.", p_annotation);
+		return false;
+	}
+	*qualified = true;
+	return true;
+}
+
+bool GDScriptParser::wgodot_record_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class) {
+	if (!p_target || p_target->type != Node::CLASS || static_cast<ClassNode *>(p_target)->wgodot_record) {
+		push_error("@record must be applied once to a class declaration.", p_annotation);
+		return false;
+	}
+	ClassNode *target = static_cast<ClassNode *>(p_target);
+	target->wgodot_record = true;
+	target->wgodot_data_class = true;
+	return true;
 }

@@ -31,6 +31,10 @@
 #include "resource.h"
 
 // wgodot-changes::begin
+#include "core/variant/wgodot_record.h"
+// wgodot-changes::end
+
+// wgodot-changes::begin
 #include "core/io/wgodot_resource_trace.h"
 // wgodot-changes::end
 
@@ -306,6 +310,18 @@ Variant Resource::_duplicate_recursive(const Variant &p_variant, const Duplicate
 	}
 
 	switch (p_variant.get_type()) {
+		// wgodot-changes::begin
+		case Variant::WRECORD: {
+			const WRecord source = p_variant;
+			WRecord result = source;
+			if (!source.is_empty()) {
+				for (int index = 0; index < source.schema()->field_count(); ++index) {
+					result.set_validated(index, _duplicate_recursive(source.get(index), p_params));
+				}
+			}
+			return result;
+		} break;
+		// wgodot-changes::end
 		case Variant::OBJECT: {
 			// wgodot-changes::begin
 			const Ref<Resource> resource = p_variant;
@@ -315,6 +331,11 @@ Variant Resource::_duplicate_recursive(const Variant &p_variant, const Duplicate
 		case Variant::ARRAY: {
 			const Array &src = p_variant;
 			Array dst;
+			// wgodot-changes::begin
+			if (src.wgodot_is_value()) {
+				dst.wgodot_make_value();
+			}
+			// wgodot-changes::end
 			if (src.is_typed()) {
 				dst.set_typed(src.get_element_type());
 			}
@@ -327,6 +348,11 @@ Variant Resource::_duplicate_recursive(const Variant &p_variant, const Duplicate
 		case Variant::DICTIONARY: {
 			const Dictionary &src = p_variant;
 			Dictionary dst;
+			// wgodot-changes::begin
+			if (src.wgodot_is_value()) {
+				dst.wgodot_make_value();
+			}
+			// wgodot-changes::end
 			if (src.is_typed()) {
 				dst.set_typed(src.get_typed_key_builtin(), src.get_typed_key_class_name(), src.get_typed_key_script(), src.get_typed_value_builtin(), src.get_typed_value_class_name(), src.get_typed_value_script());
 			}
@@ -458,6 +484,16 @@ Ref<Resource> Resource::duplicate_for_local_scene(Node *p_for_scene, DuplicateRe
 
 void Resource::_find_sub_resources(const Variant &p_variant, HashSet<Ref<Resource>> &p_resources_found) {
 	switch (p_variant.get_type()) {
+		// wgodot-changes::begin
+		case Variant::WRECORD: {
+			const WRecord record = p_variant;
+			if (!record.is_empty()) {
+				for (int index = 0; index < record.schema()->field_count(); ++index) {
+					_find_sub_resources(record.get(index), p_resources_found);
+				}
+			}
+		} break;
+		// wgodot-changes::end
 		case Variant::ARRAY: {
 			Array a = p_variant;
 			for (int i = 0; i < a.size(); i++) {

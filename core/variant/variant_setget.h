@@ -317,6 +317,14 @@ SETGET_NUMBER_STRUCT(Vector2i, int64_t, y)
 SETGET_NUMBER_STRUCT(Vector3, double, x)
 SETGET_NUMBER_STRUCT(Vector3, double, y)
 SETGET_NUMBER_STRUCT(Vector3, double, z)
+// wgodot-changes::begin
+SETGET_NUMBER_STRUCT(WVector3d, double, x)
+SETGET_NUMBER_STRUCT(WVector3d, double, y)
+SETGET_NUMBER_STRUCT(WVector3d, double, z)
+SETGET_STRUCT(WTransform3d, Quaternion, rotation)
+SETGET_STRUCT(WTransform3d, WVector3d, origin)
+SETGET_STRUCT(WTransform3d, Vector3, scale)
+// wgodot-changes::end
 
 SETGET_NUMBER_STRUCT(Vector3i, int64_t, x)
 SETGET_NUMBER_STRUCT(Vector3i, int64_t, y)

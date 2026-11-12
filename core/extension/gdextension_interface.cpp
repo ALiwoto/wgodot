@@ -597,6 +597,14 @@ static GDExtensionVariantFromTypeConstructorFunc gdextension_get_variant_from_ty
 			return VariantTypeConstructor<Quaternion>::variant_from_type;
 		case GDEXTENSION_VARIANT_TYPE_AABB:
 			return VariantTypeConstructor<AABB>::variant_from_type;
+		// wgodot-changes::begin
+		case GDEXTENSION_VARIANT_TYPE_WVECTOR3D:
+			return VariantTypeConstructor<WVector3d>::variant_from_type;
+		case GDEXTENSION_VARIANT_TYPE_WTRANSFORM3D:
+			return VariantTypeConstructor<WTransform3d>::variant_from_type;
+		case GDEXTENSION_VARIANT_TYPE_WRECORD:
+			return VariantTypeConstructor<WRecord>::variant_from_type;
+		// wgodot-changes::end
 		case GDEXTENSION_VARIANT_TYPE_BASIS:
 			return VariantTypeConstructor<Basis>::variant_from_type;
 		case GDEXTENSION_VARIANT_TYPE_TRANSFORM3D:
@@ -682,6 +690,14 @@ static GDExtensionTypeFromVariantConstructorFunc gdextension_get_variant_to_type
 			return VariantTypeConstructor<Quaternion>::type_from_variant;
 		case GDEXTENSION_VARIANT_TYPE_AABB:
 			return VariantTypeConstructor<AABB>::type_from_variant;
+		// wgodot-changes::begin
+		case GDEXTENSION_VARIANT_TYPE_WVECTOR3D:
+			return VariantTypeConstructor<WVector3d>::type_from_variant;
+		case GDEXTENSION_VARIANT_TYPE_WTRANSFORM3D:
+			return VariantTypeConstructor<WTransform3d>::type_from_variant;
+		case GDEXTENSION_VARIANT_TYPE_WRECORD:
+			return VariantTypeConstructor<WRecord>::type_from_variant;
+		// wgodot-changes::end
 		case GDEXTENSION_VARIANT_TYPE_BASIS:
 			return VariantTypeConstructor<Basis>::type_from_variant;
 		case GDEXTENSION_VARIANT_TYPE_TRANSFORM3D:
@@ -767,6 +783,14 @@ static GDExtensionVariantGetInternalPtrFunc gdextension_variant_get_ptr_internal
 			return reinterpret_cast<GDExtensionVariantGetInternalPtrFunc>(static_cast<Quaternion *(*)(Variant *)>(VariantInternal::get_quaternion));
 		case GDEXTENSION_VARIANT_TYPE_AABB:
 			return reinterpret_cast<GDExtensionVariantGetInternalPtrFunc>(static_cast<AABB *(*)(Variant *)>(VariantInternal::get_aabb));
+		// wgodot-changes::begin
+		case GDEXTENSION_VARIANT_TYPE_WVECTOR3D:
+			return reinterpret_cast<GDExtensionVariantGetInternalPtrFunc>(static_cast<WVector3d *(*)(Variant *)>(VariantInternal::get_wvector3d));
+		case GDEXTENSION_VARIANT_TYPE_WTRANSFORM3D:
+			return reinterpret_cast<GDExtensionVariantGetInternalPtrFunc>(static_cast<WTransform3d *(*)(Variant *)>(VariantInternal::get_wtransform3d));
+		case GDEXTENSION_VARIANT_TYPE_WRECORD:
+			return reinterpret_cast<GDExtensionVariantGetInternalPtrFunc>(static_cast<WRecord *(*)(Variant *)>(VariantInternal::get_wrecord));
+		// wgodot-changes::end
 		case GDEXTENSION_VARIANT_TYPE_BASIS:
 			return reinterpret_cast<GDExtensionVariantGetInternalPtrFunc>(static_cast<Basis *(*)(Variant *)>(VariantInternal::get_basis));
 		case GDEXTENSION_VARIANT_TYPE_TRANSFORM3D:

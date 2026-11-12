@@ -30,6 +30,14 @@ WGodotCppEmitter::Value WGodotCppEmitter::builtin_call(const Parser::CallNode *p
 		unsupported(p_call, "builtin call " + String(p_call->function_name));
 		return String();
 	}
+	if (base_type.wgodot_value && !base_type.is_meta_type && !expression_overrides.has(base) &&
+			!Variant::is_builtin_method_static(base_type.builtin_type, p_call->function_name) &&
+			!Variant::is_builtin_method_const(base_type.builtin_type, p_call->function_name)) {
+		const bool local = base->type == Parser::Node::IDENTIFIER && local_source(static_cast<const Parser::IdentifierNode *>(base));
+		if (!local) {
+			return value_container_call(p_call);
+		}
+	}
 	if (!base_type.is_meta_type && (base_type.builtin_type == Variant::CALLABLE || base_type.builtin_type == Variant::SIGNAL)) {
 		return callback_call(p_call);
 	}
@@ -197,6 +205,9 @@ WGodotCppEmitter::Value WGodotCppEmitter::global_call(const Parser::CallNode *p_
 		result.code = dynamic ? String() : native_constructor(builtin, argument_types, arguments);
 		if (result.code.is_empty()) {
 			result.code = "WGodotNative::construct<" + type(p_call->type_constraint, p_call) + ", " + variant_type(builtin) + ">(" + joined + ")";
+		}
+		if (p_call->type_constraint.wgodot_scalar != WGodotScalar::NONE) {
+			result.code = "WGodotNative::convert<" + type(p_call->type_constraint, p_call) + ">(" + result.code + ")";
 		}
 	} else if (Variant::has_utility_function(name)) {
 		result.code = native_utility(p_call, operands);

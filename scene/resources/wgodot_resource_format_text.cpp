@@ -10,6 +10,7 @@
 #include "resource_format_text.h"
 
 #include "core/config/project_settings.h"
+#include "core/object/wgodot_class_references.h"
 
 bool ResourceFormatSaverTextInstance::wgodot_embedded_gdscript_save_guard_enabled() const {
 	const char *setting = "wgodot/gdscript/disable_embedded_gdscript";
@@ -25,6 +26,9 @@ bool ResourceFormatSaverTextInstance::wgodot_is_embedded_gdscript_resource(const
 }
 
 bool ResourceFormatSaverTextInstance::wgodot_variant_contains_embedded_gdscript(const Variant &p_variant, HashSet<Ref<Resource>> &r_seen, bool p_main) const {
+	if (!p_main && WGodotClassReferences::name(p_variant) != StringName()) {
+		return false;
+	}
 	switch (p_variant.get_type()) {
 		case Variant::OBJECT: {
 			Ref<Resource> resource = p_variant;

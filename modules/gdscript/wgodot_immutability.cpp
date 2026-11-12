@@ -51,6 +51,23 @@ const Parser::ExpressionNode *behavioral_origin(const Parser::ExpressionNode *p_
 } // namespace
 
 void GDScriptAnalyzer::wgodot_validate_data_class(Parser::ClassNode *p_class) {
+	if (p_class->base_type.class_type && p_class->base_type.class_type->wgodot_record) {
+		push_error("Records cannot be inherited.", p_class);
+	}
+	if (p_class->wgodot_record) {
+		if (p_class->outer || !p_class->identifier || p_class->base_type.kind != Type::NATIVE || p_class->base_type.native_type != SNAME("RefCounted") || p_class->is_abstract || p_class->wgodot_is_interface || !p_class->wgodot_implements.is_empty()) {
+			push_error("A record requires a top-level class_name and no inheritance or interfaces.", p_class);
+		}
+		for (const auto &member : p_class->members) {
+			if (member.type == Parser::ClassNode::Member::VARIABLE) {
+				if (member.variable->is_static || member.variable->onready || member.variable->property != Parser::VariableNode::PROP_NONE) {
+					push_error("Records contain direct instance fields without accessors or @onready.", member.variable);
+				}
+			} else if (member.type != Parser::ClassNode::Member::CONSTANT && member.type != Parser::ClassNode::Member::ENUM_VALUE && member.type != Parser::ClassNode::Member::ENUM) {
+				push_error("Records contain fields and constants; behavior belongs in functions that accept the record.", member.get_source_node());
+			}
+		}
+	}
 	if (p_class->base_type.class_type && p_class->base_type.class_type->wgodot_data_class) {
 		p_class->wgodot_data_class = true;
 	}
@@ -95,6 +112,9 @@ bool GDScriptAnalyzer::wgodot_validate_immutable_type(const Type &p_type, const 
 }
 
 bool GDScriptAnalyzer::wgodot_qualify_native_resources(Type &r_type) {
+	if (r_type.wgodot_class_ref) {
+		return false;
+	}
 	bool qualified = false;
 	if (r_type.kind == Type::NATIVE && !r_type.is_meta_type && ClassDB::is_parent_class(r_type.native_type, SNAME("Resource"))) {
 		r_type.wgodot_immutable = true;
@@ -237,13 +257,21 @@ bool GDScriptAnalyzer::wgodot_immutable_types_match(const Type &p_target, const 
 }
 
 bool GDScriptAnalyzer::wgodot_validate_immutable_value(const Type &p_target, const Parser::ExpressionNode *p_value) {
+	if (p_value && p_value->type_constraint.wgodot_value && !p_target.wgodot_value) {
+		push_error("A value container requires a matching @value destination.", p_value);
+		return false;
+	}
 	if (p_value && p_target.wgodot_immutable && p_value->wgodot_fresh_value) {
 		if (const auto *origin = behavioral_origin(p_value)) {
 			push_error("Fresh script objects must be data classes before they can acquire an immutable reference, including through a native base type.", origin);
 			return false;
 		}
 	}
-	if (!p_value || wgodot_immutable_types_match(p_target, p_value->type_constraint, p_value->wgodot_fresh_value)) {
+	Type source = p_value ? p_value->type_constraint : Type();
+	if (p_target.wgodot_value && !p_target.wgodot_immutable) {
+		source.wgodot_immutable = false;
+	}
+	if (!p_value || wgodot_immutable_types_match(p_target, source, p_value->wgodot_fresh_value)) {
 		return true;
 	}
 	push_error("Cannot discard or manufacture @immutable qualification. Use a matching declaration or a verified independent copy.", p_value);
@@ -269,6 +297,7 @@ void GDScriptAnalyzer::wgodot_validate_immutable_argument(const Type &p_target, 
 				// source container. Element qualifications still have to agree.
 				Type input = p_target;
 				input.wgodot_immutable = p_value->type_constraint.wgodot_immutable;
+				input.wgodot_value = p_value->type_constraint.wgodot_value;
 				wgodot_validate_immutable_value(input, p_value);
 				return;
 			}
@@ -288,6 +317,8 @@ void GDScriptAnalyzer::wgodot_validate_immutable_argument(const Type &p_target, 
 void GDScriptAnalyzer::wgodot_resolve_immutable_variable(Parser::AssignableNode *p_variable, Type &r_type) {
 	// Inference must not silently turn an ordinary binding into an immutable one.
 	r_type.wgodot_immutable = p_variable->wgodot_immutable || (p_variable->datatype_specifier && p_variable->datatype_specifier->wgodot_immutable);
+	r_type.wgodot_value = p_variable->wgodot_value || (p_variable->datatype_specifier ? p_variable->datatype_specifier->wgodot_value : (p_variable->initializer && p_variable->initializer->type_constraint.wgodot_value));
+	wgodot_validate_value_type(r_type, p_variable);
 	if (r_type.builtin_type == Variant::CALLABLE && p_variable->initializer) {
 		r_type.wgodot_callable_signature = p_variable->initializer->type_constraint.wgodot_callable_signature;
 	}
@@ -378,6 +409,9 @@ void GDScriptAnalyzer::wgodot_validate_immutable_assignment(Parser::AssignmentNo
 }
 
 void GDScriptAnalyzer::wgodot_validate_immutable_call(Parser::CallNode *p_call, const Type &p_base, BitField<MethodFlags> p_flags, bool p_self, bool p_constructor) {
+	if (!p_constructor && !p_base.is_meta_type && p_base.kind == Type::CLASS && p_base.class_type->wgodot_record) {
+		push_error("Records contain data fields and do not expose Object methods.", p_call);
+	}
 	const bool readonly_self = p_self && parser->current_function && parser->current_function->wgodot_readonly;
 	p_call->wgodot_readonly_call = p_flags.has_flag(METHOD_FLAG_CONST) || p_flags.has_flag(METHOD_FLAG_STATIC) || p_constructor;
 	const bool constructor_self = p_self && parser->current_class->wgodot_data_class && parser->current_function &&

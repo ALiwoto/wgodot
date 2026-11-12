@@ -29,6 +29,9 @@
 /**************************************************************************/
 
 #include "variant.h"
+// wgodot-changes::begin
+#include "core/variant/wgodot_record.h"
+// wgodot-changes::end
 
 #include "core/debugger/engine_debugger.h"
 #include "core/io/json.h"
@@ -104,6 +107,14 @@ String Variant::get_type_name(Variant::Type p_type) {
 		case VECTOR3: {
 			return "Vector3";
 		}
+		// wgodot-changes::begin
+		case WVECTOR3D:
+			return "WVector3d";
+		case WTRANSFORM3D:
+			return "WTransform3d";
+		case WRECORD:
+			return "WRecord";
+		// wgodot-changes::end
 		case VECTOR3I: {
 			return "Vector3i";
 		}
@@ -957,6 +968,14 @@ bool Variant::is_zero() const {
 		case AABB: {
 			return *_data._aabb == ::AABB();
 		}
+		// wgodot-changes::begin
+		case WVECTOR3D:
+			return *_data._wvector3d == WVector3d();
+		case WTRANSFORM3D:
+			return *_data._wtransform3d == WTransform3d();
+		case WRECORD:
+			return reinterpret_cast<const WRecord *>(_data._mem)->is_empty();
+		// wgodot-changes::end
 		case QUATERNION: {
 			return *reinterpret_cast<const Quaternion *>(_data._mem) == Quaternion();
 		}
@@ -1068,6 +1087,10 @@ bool Variant::is_one() const {
 		case VECTOR3: {
 			return *reinterpret_cast<const Vector3 *>(_data._mem) == Vector3(1, 1, 1);
 		}
+		// wgodot-changes::begin
+		case WVECTOR3D:
+			return *_data._wvector3d == WVector3d(1, 1, 1);
+		// wgodot-changes::end
 		case VECTOR3I: {
 			return *reinterpret_cast<const Vector3i *>(_data._mem) == Vector3i(1, 1, 1);
 		}
@@ -1219,6 +1242,19 @@ void Variant::reference(const Variant &p_variant) {
 			_data._aabb = VariantPools::alloc<::AABB>();
 			memnew_placement(_data._aabb, ::AABB(*p_variant._data._aabb));
 		} break;
+		// wgodot-changes::begin
+		case WVECTOR3D: {
+			_data._wvector3d = VariantPools::alloc<WVector3d>();
+			memnew_placement(_data._wvector3d, WVector3d(*p_variant._data._wvector3d));
+		} break;
+		case WRECORD: {
+			memnew_placement(_data._mem, WRecord(*reinterpret_cast<const WRecord *>(p_variant._data._mem)));
+		} break;
+		case WTRANSFORM3D: {
+			_data._wtransform3d = VariantPools::alloc<WTransform3d>();
+			memnew_placement(_data._wtransform3d, WTransform3d(*p_variant._data._wtransform3d));
+		} break;
+		// wgodot-changes::end
 		case QUATERNION: {
 			memnew_placement(_data._mem, Quaternion(*reinterpret_cast<const Quaternion *>(p_variant._data._mem)));
 		} break;
@@ -1394,6 +1430,19 @@ void Variant::zero() {
 
 void Variant::_clear_internal() {
 	switch (type) {
+		// wgodot-changes::begin
+		case WVECTOR3D: {
+			VariantPools::free(_data._wvector3d);
+			_data._wvector3d = nullptr;
+		} break;
+		case WRECORD: {
+			reinterpret_cast<WRecord *>(_data._mem)->~WRecord();
+		} break;
+		case WTRANSFORM3D: {
+			VariantPools::free(_data._wtransform3d);
+			_data._wtransform3d = nullptr;
+		} break;
+		// wgodot-changes::end
 		case STRING: {
 			reinterpret_cast<String *>(_data._mem)->~String();
 		} break;
@@ -1660,6 +1709,14 @@ String Variant::stringify(int p_recursion_count) const {
 			return String(operator Plane());
 		case AABB:
 			return String(operator ::AABB());
+		// wgodot-changes::begin
+		case WVECTOR3D:
+			return String(*_data._wvector3d);
+		case WTRANSFORM3D:
+			return String(*_data._wtransform3d);
+		case WRECORD:
+			return String(*reinterpret_cast<const WRecord *>(_data._mem));
+		// wgodot-changes::end
 		case QUATERNION:
 			return String(operator Quaternion());
 		case BASIS:
@@ -2750,6 +2807,17 @@ void Variant::operator=(const Variant &p_variant) {
 		case AABB: {
 			*_data._aabb = *(p_variant._data._aabb);
 		} break;
+		// wgodot-changes::begin
+		case WVECTOR3D: {
+			*_data._wvector3d = *p_variant._data._wvector3d;
+		} break;
+		case WRECORD: {
+			*reinterpret_cast<WRecord *>(_data._mem) = *reinterpret_cast<const WRecord *>(p_variant._data._mem);
+		} break;
+		case WTRANSFORM3D: {
+			*_data._wtransform3d = *p_variant._data._wtransform3d;
+		} break;
+		// wgodot-changes::end
 		case QUATERNION: {
 			*reinterpret_cast<Quaternion *>(_data._mem) = *reinterpret_cast<const Quaternion *>(p_variant._data._mem);
 		} break;
@@ -2909,6 +2977,14 @@ uint32_t Variant::recursive_hash(int p_recursion_count) const {
 		case AABB: {
 			return HashMapHasherDefault::hash(*_data._aabb);
 		} break;
+		// wgodot-changes::begin
+		case WVECTOR3D:
+			return _data._wvector3d->hash();
+		case WTRANSFORM3D:
+			return _data._wtransform3d->hash();
+		case WRECORD:
+			return reinterpret_cast<const WRecord *>(_data._mem)->recursive_hash(p_recursion_count);
+		// wgodot-changes::end
 		case QUATERNION: {
 			uint32_t h = HASH_MURMUR3_SEED;
 			const Quaternion &q = *reinterpret_cast<const Quaternion *>(_data._mem);
@@ -3302,6 +3378,14 @@ bool Variant::hash_compare(const Variant &p_variant, int p_recursion_count, bool
 
 			return l->is_same(*r);
 		} break;
+		// wgodot-changes::begin
+		case WVECTOR3D:
+			return _data._wvector3d->is_same(*p_variant._data._wvector3d);
+		case WTRANSFORM3D:
+			return _data._wtransform3d->is_same(*p_variant._data._wtransform3d);
+		case WRECORD:
+			return reinterpret_cast<const WRecord *>(_data._mem)->recursive_equal(*reinterpret_cast<const WRecord *>(p_variant._data._mem), p_recursion_count);
+		// wgodot-changes::end
 
 		case QUATERNION: {
 			const Quaternion *l = reinterpret_cast<const Quaternion *>(_data._mem);
@@ -3494,6 +3578,11 @@ bool Variant::is_type_shared(Variant::Type p_type) {
 }
 
 bool Variant::is_shared() const {
+	// wgodot-changes::begin
+	if (wgodot_is_value_container()) {
+		return false;
+	}
+	// wgodot-changes::end
 	return is_type_shared(type);
 }
 

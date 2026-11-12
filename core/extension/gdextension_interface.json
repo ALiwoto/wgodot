@@ -192,8 +192,20 @@
                     "value": 38
                 },
                 {
-                    "name": "GDEXTENSION_VARIANT_TYPE_VARIANT_MAX",
+                    "name": "GDEXTENSION_VARIANT_TYPE_WVECTOR3D",
                     "value": 39
+                },
+                {
+                    "name": "GDEXTENSION_VARIANT_TYPE_WTRANSFORM3D",
+                    "value": 40
+                },
+                {
+                    "name": "GDEXTENSION_VARIANT_TYPE_WRECORD",
+                    "value": 41
+                },
+                {
+                    "name": "GDEXTENSION_VARIANT_TYPE_VARIANT_MAX",
+                    "value": 42
                 }
             ]
         },

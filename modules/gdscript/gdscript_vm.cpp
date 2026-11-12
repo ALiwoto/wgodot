@@ -30,9 +30,13 @@
 
 // wgodot-changes::begin
 #include "core/object/wgodot_native_interfaces.h"
+#include "core/object/wgodot_class_references.h"
 // wgodot-changes::end
 
 #include "gdscript.h"
+// wgodot-changes::begin
+#include "core/variant/wgodot_value_access.h"
+// wgodot-changes::end
 // wgodot-changes::begin
 #include "wgodot_construction.h"
 // wgodot-changes::end
@@ -275,6 +279,10 @@ void (*type_init_function_table[])(Variant *) = {
 	&VariantInitializer<PackedVector3Array>::init, // PACKED_VECTOR3_ARRAY.
 	&VariantInitializer<PackedColorArray>::init, // PACKED_COLOR_ARRAY.
 	&VariantInitializer<PackedVector4Array>::init, // PACKED_VECTOR4_ARRAY.
+	// wgodot-changes::begin
+	&VariantInitializer<WVector3d>::init,
+	&VariantInitializer<WTransform3d>::init,
+	// wgodot-changes::end
 };
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -301,7 +309,14 @@ void (*type_init_function_table[])(Variant *) = {
 		&&OPCODE_GET_MEMBER, \
 		&&OPCODE_SET_STATIC_VARIABLE, \
 		&&OPCODE_GET_STATIC_VARIABLE, \
-		&&OPCODE_ASSIGN, \
+		&&OPCODE_ASSIGN, /* wgodot-changes::begin */ \
+		&&OPCODE_ASSIGN_SCALAR, \
+		&&OPCODE_MAKE_VALUE, \
+		&&OPCODE_ASSIGN_RECORD, \
+		&&OPCODE_TYPE_TEST_RECORD, \
+		&&OPCODE_ASSIGN_CLASS_REF, \
+		&&OPCODE_CAST_CLASS_REF, \
+		&&OPCODE_TYPE_TEST_CLASS_REF, /* wgodot-changes::end */ \
 		&&OPCODE_ASSIGN_NULL, \
 		&&OPCODE_ASSIGN_TRUE, \
 		&&OPCODE_ASSIGN_FALSE, \
@@ -329,6 +344,8 @@ void (*type_init_function_table[])(Variant *) = {
 		&&OPCODE_CALL_UTILITY_VALIDATED, \
 		&&OPCODE_CALL_GDSCRIPT_UTILITY, \
 		&&OPCODE_CALL_BUILTIN_TYPE_VALIDATED, \
+		&&OPCODE_CALL_VALUE_BUILTIN, \
+		&&OPCODE_SET_VALUE_PATH, \
 		&&OPCODE_CALL_SELF_BASE, \
 		&&OPCODE_CALL_SUPER_AS, \
 		&&OPCODE_CALL_METHOD_BIND, \
@@ -438,6 +455,9 @@ void (*type_init_function_table[])(Variant *) = {
 		&&OPCODE_TYPE_ADJUST_PACKED_VECTOR3_ARRAY, \
 		&&OPCODE_TYPE_ADJUST_PACKED_COLOR_ARRAY, \
 		&&OPCODE_TYPE_ADJUST_PACKED_VECTOR4_ARRAY, \
+		/* wgodot-changes::begin */ \
+		&&OPCODE_TYPE_ADJUST_BUILTIN, \
+		/* wgodot-changes::end */ \
 		&&OPCODE_ASSERT, \
 		&&OPCODE_BREAKPOINT, \
 		&&OPCODE_LINE, \
@@ -652,6 +672,19 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 				memnew_placement(&stack[i + FIXED_ADDRESSES_MAX], Variant(*p_args[i]));
 			}
 		}
+		// wgodot-changes::begin
+		if (wgodot_storage_arguments) {
+			for (int i = 0; i < non_vararg_arg_count; i++) {
+				if (argument_types[i].wgodot_value) {
+					stack[i + FIXED_ADDRESSES_MAX].wgodot_make_value_container();
+				}
+				if (argument_types[i].wgodot_scalar != WGodotScalar::NONE) {
+					Variant &value = stack[i + FIXED_ADDRESSES_MAX];
+					value = WGodotScalar::narrow(value, argument_types[i].wgodot_scalar);
+				}
+			}
+		}
+		// wgodot-changes::end
 		for (int i = non_vararg_arg_count + FIXED_ADDRESSES_MAX; i < _stack_size; i++) {
 			memnew_placement(&stack[i], Variant);
 		}
@@ -1444,6 +1477,102 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 				ip += 3;
 			}
 			DISPATCH_OPCODE;
+
+			// wgodot-changes::begin
+			OPCODE(OPCODE_ASSIGN_CLASS_REF) {
+				CHECK_SPACE(4);
+				GET_VARIANT_PTR(dst, 0);
+				GET_VARIANT_PTR(src, 1);
+				const StringName &constraint = _global_names_ptr[_code_ptr[ip + 3]];
+				if (!WGodotClassReferences::accepts(*src, WGodotClassReferences::constraint_base(constraint))) {
+					err_text = "Cannot assign an incompatible class to " + String(constraint);
+					OPCODE_BREAK;
+				}
+				*dst = *src;
+				ip += 4;
+			}
+			DISPATCH_OPCODE;
+
+			OPCODE(OPCODE_CAST_CLASS_REF) {
+				CHECK_SPACE(4);
+				GET_VARIANT_PTR(dst, 0);
+				GET_VARIANT_PTR(src, 1);
+				const StringName &constraint = _global_names_ptr[_code_ptr[ip + 3]];
+				*dst = WGodotClassReferences::accepts(*src, WGodotClassReferences::constraint_base(constraint)) ? *src : Variant();
+				ip += 4;
+			}
+			DISPATCH_OPCODE;
+
+			OPCODE(OPCODE_TYPE_TEST_CLASS_REF) {
+				CHECK_SPACE(4);
+				GET_VARIANT_PTR(dst, 0);
+				GET_VARIANT_PTR(src, 1);
+				const StringName &constraint = _global_names_ptr[_code_ptr[ip + 3]];
+				*dst = src->get_type() == Variant::OBJECT && src->get_validated_object() && WGodotClassReferences::accepts(*src, WGodotClassReferences::constraint_base(constraint));
+				ip += 4;
+			}
+			DISPATCH_OPCODE;
+
+			OPCODE(OPCODE_TYPE_TEST_RECORD) {
+				CHECK_SPACE(4);
+				GET_VARIANT_PTR(dst, 0);
+				GET_VARIANT_PTR(src, 1);
+				const WRecord value = *src;
+				const StringName &record_name = _global_names_ptr[_code_ptr[ip + 3]];
+				*dst = src->get_type() == Variant::WRECORD && !value.is_empty() && value.schema()->get_name() == record_name;
+				ip += 4;
+			}
+			DISPATCH_OPCODE;
+
+			OPCODE(OPCODE_ASSIGN_RECORD) {
+				CHECK_SPACE(5);
+				GET_VARIANT_PTR(dst, 0);
+				GET_VARIANT_PTR(src, 1);
+				const StringName &record_name = _global_names_ptr[_code_ptr[ip + 3]];
+				if (_code_ptr[ip + 4]) {
+					bool valid = false;
+					*dst = WRecordSchemas::default_value(record_name, valid);
+					if (!valid) {
+						err_text = "Cannot initialize record " + String(record_name);
+						OPCODE_BREAK;
+					}
+				} else {
+					const WRecord value = *src;
+					if (src->get_type() != Variant::WRECORD || value.is_empty() || value.schema()->get_name() != record_name) {
+						err_text = "Cannot assign an incompatible value to record " + String(record_name);
+						OPCODE_BREAK;
+					}
+					*dst = value;
+				}
+				ip += 5;
+			}
+			DISPATCH_OPCODE;
+
+			OPCODE(OPCODE_MAKE_VALUE) {
+				CHECK_SPACE(2);
+				GET_VARIANT_PTR(dst, 0);
+				dst->wgodot_make_value_container();
+				ip += 2;
+			}
+			DISPATCH_OPCODE;
+
+			OPCODE(OPCODE_ASSIGN_SCALAR) {
+				CHECK_SPACE(4);
+				GET_VARIANT_PTR(dst, 0);
+				GET_VARIANT_PTR(src, 1);
+				const WGodotScalar::Type scalar = static_cast<WGodotScalar::Type>(_code_ptr[ip + 3]);
+				GD_ERR_BREAK(scalar <= WGodotScalar::NONE || scalar > WGodotScalar::UINT8);
+#ifdef DEBUG_ENABLED
+				if (!Variant::can_convert_strict(src->get_type(), WGodotScalar::base_type(scalar))) {
+					err_text = vformat("Cannot assign %s to %s.", Variant::get_type_name(src->get_type()), WGodotScalar::name(scalar));
+					OPCODE_BREAK;
+				}
+#endif
+				*dst = WGodotScalar::narrow(*src, scalar);
+				ip += 4;
+			}
+			DISPATCH_OPCODE;
+			// wgodot-changes::end
 
 			OPCODE(OPCODE_ASSIGN_NULL) {
 				CHECK_SPACE(2);
@@ -2560,6 +2689,87 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 				ip += 3;
 			}
 			DISPATCH_OPCODE;
+
+			// wgodot-changes::begin
+			OPCODE(OPCODE_SET_VALUE_PATH) {
+				LOAD_INSTRUCTION_ARGS
+				CHECK_SPACE(2 + instr_arg_count);
+				ip += instr_arg_count;
+				GD_ERR_BREAK(instr_arg_count < 3);
+				const Variant::Operator operation = Variant::Operator(_code_ptr[ip + 1]);
+				GD_ERR_BREAK(operation < 0 || operation > Variant::OP_MAX);
+				Variant *receiver = instruction_args[0];
+				for (int index = 2; receiver && index < instr_arg_count - 1; ++index) {
+					receiver = WGodotValueAccess::borrow(*receiver, *instruction_args[index]);
+				}
+				if (!receiver) {
+					err_text = "Invalid value assignment path.";
+					OPCODE_BREAK;
+				}
+				const Variant &key = *instruction_args[instr_arg_count - 1];
+				const Variant *assigned = instruction_args[1];
+				Variant computed;
+				bool valid = true;
+				if (operation != Variant::OP_MAX) {
+					const Variant previous = receiver->get(key, &valid);
+					if (valid) {
+						Variant::evaluate(operation, previous, *assigned, computed, valid);
+					}
+					assigned = &computed;
+				}
+				if (valid) {
+					receiver->set(key, *assigned, &valid);
+				}
+				if (!valid) {
+					err_text = "Invalid value assignment at index '" + key.stringify() + "'.";
+					OPCODE_BREAK;
+				}
+				ip += 2;
+			}
+			DISPATCH_OPCODE;
+			// wgodot-changes::end
+
+			// wgodot-changes::begin
+			OPCODE(OPCODE_CALL_VALUE_BUILTIN) {
+				LOAD_INSTRUCTION_ARGS
+				CHECK_SPACE(4 + instr_arg_count);
+				ip += instr_arg_count;
+				const int argc = _code_ptr[ip + 1];
+				const int depth = _code_ptr[ip + 2];
+				GD_ERR_BREAK(argc < 0 || depth <= 0 || instr_arg_count != argc + 2 + 2 * depth);
+				GD_ERR_BREAK(_code_ptr[ip + 3] < 0 || _code_ptr[ip + 3] >= _global_names_count);
+				const StringName &method = _global_names_ptr[_code_ptr[ip + 3]];
+				GET_INSTRUCTION_ARG(root, argc);
+				GET_INSTRUCTION_ARG(ret, argc + 1);
+				Variant *receiver = root;
+				bool valid = true;
+				for (int index = 0; index < depth; ++index) {
+					Variant *child = WGodotValueAccess::borrow(*receiver, *instruction_args[argc + 2 + index]);
+					if (!child) {
+						valid = false;
+						break;
+					}
+					*instruction_args[argc + 2 + depth + index] = *receiver;
+					receiver = child;
+				}
+				if (!valid) {
+					err_text = "Invalid value-container receiver path.";
+					OPCODE_BREAK;
+				}
+				Callable::CallError error;
+				receiver->callp(method, (const Variant **)instruction_args, argc, *ret, error);
+				*root = *instruction_args[argc + 2 + depth];
+				for (int index = depth - 1; index >= 0; --index) {
+					*instruction_args[argc + 2 + depth + index] = Variant();
+				}
+				if (error.error != Callable::CallError::CALL_OK) {
+					err_text = Variant::get_call_error_text(method, (const Variant **)instruction_args, argc, error);
+					OPCODE_BREAK;
+				}
+				ip += 4;
+			}
+			DISPATCH_OPCODE;
+			// wgodot-changes::end
 
 			OPCODE(OPCODE_CALL_UTILITY) {
 				LOAD_INSTRUCTION_ARGS
@@ -4126,6 +4336,19 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 			OPCODE_TYPE_ADJUST(PACKED_VECTOR3_ARRAY, PackedVector3Array);
 			OPCODE_TYPE_ADJUST(PACKED_COLOR_ARRAY, PackedColorArray);
 			OPCODE_TYPE_ADJUST(PACKED_VECTOR4_ARRAY, PackedVector4Array);
+			// wgodot-changes::begin
+			OPCODE(OPCODE_TYPE_ADJUST_BUILTIN) {
+				CHECK_SPACE(3);
+				GET_VARIANT_PTR(target, 0);
+				const int kind = _code_ptr[ip + 2];
+				GD_ERR_BREAK(kind <= Variant::NIL || kind >= Variant::VARIANT_MAX);
+				if (target->get_type() != kind) {
+					VariantInternal::initialize(target, Variant::Type(kind));
+				}
+				ip += 3;
+			}
+			DISPATCH_OPCODE;
+			// wgodot-changes::end
 
 			OPCODE(OPCODE_ASSERT) {
 				CHECK_SPACE(3);

@@ -166,6 +166,9 @@ void GDScriptParser::initialize() {
 			builtin_types[Variant::get_type_name(type)] = type;
 		}
 	}
+	for (WGodotScalar::Type scalar : { WGodotScalar::FLOAT32, WGodotScalar::INT32, WGodotScalar::UINT8 }) {
+		builtin_types[WGodotScalar::name(scalar)] = WGodotScalar::base_type(scalar);
+	}
 	// wgodot-changes::end
 	// Register valid annotations.
 	if (unlikely(valid_annotations.is_empty())) {
@@ -4060,7 +4063,9 @@ GDScriptParser::TypeNode *GDScriptParser::parse_type(bool p_allow_void) {
 				complete_extents(type);
 				type = nullptr;
 				break;
-			} else if (container_type->container_types.size() > 0) {
+			// wgodot-changes::begin
+			} else if (container_type->container_types.size() > 0 && container_type->type_chain[0]->name != SNAME("ClassRef")) {
+			// wgodot-changes::end
 				push_error("Nested typed collections are not supported.");
 			} else {
 				type->container_types.push_back(container_type);
@@ -4930,6 +4935,20 @@ bool GDScriptParser::export_annotations(AnnotationNode *p_annotation, Node *p_ta
 
 	// This is called after the analyzer is done finding the type, so this should be set here.
 	DataType export_type = variable->type_constraint;
+	// wgodot-changes::begin
+	const bool class_ref_export = export_type.wgodot_class_ref ||
+			(export_type.has_container_element_type(0) && export_type.get_container_element_type(0).wgodot_class_ref) ||
+			(export_type.has_container_element_type(1) && export_type.get_container_element_type(1).wgodot_class_ref);
+	if (class_ref_export) {
+		if (p_annotation->name != SNAME("@export")) {
+			push_error("ClassRef fields support the plain @export annotation.", p_annotation);
+			return false;
+		}
+		variable->export_info = export_type.to_property_info(variable->identifier->name);
+		variable->export_info.usage = PROPERTY_USAGE_DEFAULT;
+		return true;
+	}
+	// wgodot-changes::end
 
 	// Use initializer type if specified type is `Variant`.
 	if (export_type.is_variant() && variable->initializer != nullptr && variable->initializer->type_constraint.is_set()) {
@@ -4999,6 +5018,15 @@ bool GDScriptParser::export_annotations(AnnotationNode *p_annotation, Node *p_ta
 			case GDScriptParser::DataType::SCRIPT:
 			case GDScriptParser::DataType::CLASS: {
 				const StringName class_name = _find_narrowest_native_or_global_class(export_type);
+				// wgodot-changes::begin
+				if (export_type.kind == DataType::CLASS && export_type.class_type->wgodot_record) {
+					variable->export_info.type = Variant::WRECORD;
+					variable->export_info.class_name = class_name;
+					variable->export_info.hint = PROPERTY_HINT_NONE;
+					variable->export_info.hint_string = class_name;
+					break;
+				}
+				// wgodot-changes::end
 				if (ClassDB::is_parent_class(export_type.native_type, SNAME("Resource"))) {
 					variable->export_info.type = Variant::OBJECT;
 					variable->export_info.hint = PROPERTY_HINT_RESOURCE_TYPE;
@@ -5076,6 +5104,15 @@ bool GDScriptParser::export_annotations(AnnotationNode *p_annotation, Node *p_ta
 				case GDScriptParser::DataType::SCRIPT:
 				case GDScriptParser::DataType::CLASS: {
 					const StringName class_name = _find_narrowest_native_or_global_class(export_type);
+					// wgodot-changes::begin
+					if (export_type.kind == DataType::CLASS && export_type.class_type->wgodot_record) {
+						variable->export_info.type = Variant::WRECORD;
+						variable->export_info.class_name = class_name;
+						variable->export_info.hint = PROPERTY_HINT_NONE;
+						variable->export_info.hint_string = class_name;
+						break;
+					}
+					// wgodot-changes::end
 					if (ClassDB::is_parent_class(export_type.native_type, SNAME("Resource"))) {
 						variable->export_info.type = Variant::OBJECT;
 						variable->export_info.hint = PROPERTY_HINT_RESOURCE_TYPE;
@@ -5524,8 +5561,21 @@ String GDScriptParser::SuiteNode::Local::get_name() const {
 
 String GDScriptParser::DataType::to_string() const {
 	// wgodot-changes::begin
+	if (wgodot_value) {
+		DataType plain = *this;
+		plain.wgodot_value = false;
+		return "@value " + plain.to_string();
+	}
+	// wgodot-changes::end
+	// wgodot-changes::begin
+	if (wgodot_scalar != WGodotScalar::NONE) {
+		return WGodotScalar::name(wgodot_scalar);
+	}
 	if (wgodot_resource_path) {
 		return "WResPath";
+	}
+	if (wgodot_class_ref) {
+		return "ClassRef[" + get_container_element_type(0).to_string() + "]";
 	}
 	// wgodot-changes::end
 	switch (kind) {
@@ -5586,6 +5636,10 @@ String GDScriptParser::DataType::to_string() const {
 
 String GDScriptParser::DataType::to_property_info_hint_string() const {
 	// wgodot-changes::begin
+	if (wgodot_class_ref) {
+		const DataType &base = get_container_element_type(0);
+		return "ClassRef[" + (base.kind == CLASS ? base.class_type->fqcn : String(base.native_type)) + "]";
+	}
 	if (wgodot_resource_path) {
 		return "WResPath";
 	}
@@ -5623,6 +5677,16 @@ PropertyInfo GDScriptParser::DataType::to_property_info(const String &p_name) co
 	result.name = p_name;
 	result.usage = PROPERTY_USAGE_NONE;
 	// wgodot-changes::begin
+	if (wgodot_class_ref) {
+		result.type = Variant::OBJECT;
+		result.class_name = to_property_info_hint_string();
+		return result;
+	}
+	if (kind == CLASS && class_type && class_type->wgodot_record && !is_meta_type) {
+		result.type = Variant::WRECORD;
+		result.class_name = class_type->fqcn;
+		return result;
+	}
 	if (wgodot_resource_path) {
 		result.type = Variant::STRING;
 		result.class_name = SNAME("WResPath");

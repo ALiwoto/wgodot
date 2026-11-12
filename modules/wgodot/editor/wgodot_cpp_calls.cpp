@@ -33,6 +33,14 @@ WGodotCppEmitter::Value WGodotCppEmitter::call(const Parser::CallNode *p_call) {
 			return native_interface_call(p_call, base, *contract);
 		}
 	}
+	if (p_call->wgodot_class_ref_constructor) {
+		Value result = lower(base);
+		result.code = trace_call(p_call, "(" + result.code + ").instantiate()");
+		result.cpp_type = type(p_call->type_constraint, p_call);
+		result.borrowed = false;
+		result.effects = true;
+		return result;
+	}
 	if (base_type.kind != Parser::DataType::CLASS) {
 		return native_call(p_call, base, base_type);
 	}
@@ -85,6 +93,31 @@ WGodotCppEmitter::Value WGodotCppEmitter::call(const Parser::CallNode *p_call) {
 		return result;
 	}
 	const bool construct = !p_call->is_super && base && base_type.is_meta_type && p_call->function_name == "new";
+	if (construct && base_type.class_type->wgodot_record) {
+		Value result;
+		HashMap<StringName, String> fields;
+		for (const auto &field : p_call->wgodot_field_initializers) {
+			const Value value = lower_converted(field.value, field.field->type_constraint, field.field);
+			result.setup.append_array(value.setup);
+			const String temporary = "record_field_" + itos(temporary_index++);
+			result.setup.push_back(type(field.field->type_constraint, field.field) + " " + temporary + " = " + value.code + ";");
+			fields.insert(field.name->name, temporary);
+		}
+		const String target = type(p_call->type_constraint, p_call);
+		Vector<String> arguments;
+		if (!fields.is_empty()) {
+			for (const auto &member : base_type.class_type->members) {
+				if (member.type == Parser::ClassNode::Member::VARIABLE) {
+					const String *value = fields.getptr(member.variable->identifier->name);
+					arguments.push_back(value ? "&" + *value : "nullptr");
+				}
+			}
+		}
+		result.code = target + "(" + String(", ").join(arguments) + ")";
+		result.cpp_type = target;
+		result.effects = true;
+		return result;
+	}
 	const StringName name = construct ? SNAME("_init") : p_call->function_name;
 	const auto *owner = member_owner(base_type.class_type, name);
 	const Parser::FunctionNode *method = nullptr;

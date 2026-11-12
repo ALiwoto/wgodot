@@ -33,6 +33,9 @@
 #include "core/variant/type_info.h"
 #include "core/variant/variant.h"
 #include "core/variant/variant_pools.h"
+// wgodot-changes::begin
+#include "core/variant/wgodot_record.h"
+// wgodot-changes::end
 
 // For use when you want to access the internal pointer of a Variant directly.
 // Use with caution. You need to be sure that the type is correct.
@@ -47,6 +50,12 @@ class VariantInternal {
 
 public:
 	// wgodot-changes::begin
+	template <typename T>
+	_FORCE_INLINE_ static Vector<T> *writable_packed(Variant *p_variant) {
+		p_variant->_data.packed_array = Variant::PackedArrayRefBase::writable(p_variant->_data.packed_array);
+		return &static_cast<Variant::PackedArrayRef<T> *>(p_variant->_data.packed_array)->array;
+	}
+
 	// Initialization only: the caller owns the destination slot and has not
 	// published it. Never overwrite an element buffer that may be COW-shared.
 	template <typename T>
@@ -81,6 +90,17 @@ public:
 			case Variant::AABB:
 				init_aabb(r_variant);
 				break;
+			// wgodot-changes::begin
+			case Variant::WVECTOR3D:
+				init_wvector3d(r_variant);
+				break;
+			case Variant::WRECORD:
+				init_wrecord(r_variant);
+				break;
+			case Variant::WTRANSFORM3D:
+				init_wtransform3d(r_variant);
+				break;
+			// wgodot-changes::end
 			case Variant::BASIS:
 				init_basis(r_variant);
 				break;
@@ -184,6 +204,26 @@ public:
 	_FORCE_INLINE_ static const Quaternion *get_quaternion(const Variant *p_variant) { return reinterpret_cast<const Quaternion *>(p_variant->_data._mem); }
 	_FORCE_INLINE_ static ::AABB *get_aabb(Variant *p_variant) { return p_variant->_data._aabb; }
 	_FORCE_INLINE_ static const ::AABB *get_aabb(const Variant *p_variant) { return p_variant->_data._aabb; }
+	// wgodot-changes::begin
+	_FORCE_INLINE_ static WVector3d *get_wvector3d(Variant *p_variant) {
+		return p_variant->_data._wvector3d;
+	}
+	_FORCE_INLINE_ static const WVector3d *get_wvector3d(const Variant *p_variant) {
+		return p_variant->_data._wvector3d;
+	}
+	_FORCE_INLINE_ static WRecord *get_wrecord(Variant *p_variant) { return reinterpret_cast<WRecord *>(p_variant->_data._mem); }
+	_FORCE_INLINE_ static const WRecord *get_wrecord(const Variant *p_variant) { return reinterpret_cast<const WRecord *>(p_variant->_data._mem); }
+	_FORCE_INLINE_ static void init_wrecord(Variant *r_variant) {
+		memnew_placement(r_variant->_data._mem, WRecord);
+		r_variant->type = Variant::WRECORD;
+	}
+	_FORCE_INLINE_ static WTransform3d *get_wtransform3d(Variant *p_variant) {
+		return p_variant->_data._wtransform3d;
+	}
+	_FORCE_INLINE_ static const WTransform3d *get_wtransform3d(const Variant *p_variant) {
+		return p_variant->_data._wtransform3d;
+	}
+	// wgodot-changes::end
 	_FORCE_INLINE_ static Basis *get_basis(Variant *p_variant) { return p_variant->_data._basis; }
 	_FORCE_INLINE_ static const Basis *get_basis(const Variant *p_variant) { return p_variant->_data._basis; }
 	_FORCE_INLINE_ static Transform3D *get_transform(Variant *p_variant) { return p_variant->_data._transform3d; }
@@ -210,25 +250,45 @@ public:
 	_FORCE_INLINE_ static const Array *get_array(const Variant *p_variant) { return reinterpret_cast<const Array *>(p_variant->_data._mem); }
 
 	// Typed arrays.
-	_FORCE_INLINE_ static PackedByteArray *get_byte_array(Variant *p_variant) { return &static_cast<Variant::PackedArrayRef<uint8_t> *>(p_variant->_data.packed_array)->array; }
+	// wgodot-changes::begin
+	_FORCE_INLINE_ static PackedByteArray *get_byte_array(Variant *p_variant) { return writable_packed<uint8_t>(p_variant); }
+	// wgodot-changes::end
 	_FORCE_INLINE_ static const PackedByteArray *get_byte_array(const Variant *p_variant) { return &static_cast<const Variant::PackedArrayRef<uint8_t> *>(p_variant->_data.packed_array)->array; }
-	_FORCE_INLINE_ static PackedInt32Array *get_int32_array(Variant *p_variant) { return &static_cast<Variant::PackedArrayRef<int32_t> *>(p_variant->_data.packed_array)->array; }
+	// wgodot-changes::begin
+	_FORCE_INLINE_ static PackedInt32Array *get_int32_array(Variant *p_variant) { return writable_packed<int32_t>(p_variant); }
+	// wgodot-changes::end
 	_FORCE_INLINE_ static const PackedInt32Array *get_int32_array(const Variant *p_variant) { return &static_cast<const Variant::PackedArrayRef<int32_t> *>(p_variant->_data.packed_array)->array; }
-	_FORCE_INLINE_ static PackedInt64Array *get_int64_array(Variant *p_variant) { return &static_cast<Variant::PackedArrayRef<int64_t> *>(p_variant->_data.packed_array)->array; }
+	// wgodot-changes::begin
+	_FORCE_INLINE_ static PackedInt64Array *get_int64_array(Variant *p_variant) { return writable_packed<int64_t>(p_variant); }
+	// wgodot-changes::end
 	_FORCE_INLINE_ static const PackedInt64Array *get_int64_array(const Variant *p_variant) { return &static_cast<const Variant::PackedArrayRef<int64_t> *>(p_variant->_data.packed_array)->array; }
-	_FORCE_INLINE_ static PackedFloat32Array *get_float32_array(Variant *p_variant) { return &static_cast<Variant::PackedArrayRef<float> *>(p_variant->_data.packed_array)->array; }
+	// wgodot-changes::begin
+	_FORCE_INLINE_ static PackedFloat32Array *get_float32_array(Variant *p_variant) { return writable_packed<float>(p_variant); }
+	// wgodot-changes::end
 	_FORCE_INLINE_ static const PackedFloat32Array *get_float32_array(const Variant *p_variant) { return &static_cast<const Variant::PackedArrayRef<float> *>(p_variant->_data.packed_array)->array; }
-	_FORCE_INLINE_ static PackedFloat64Array *get_float64_array(Variant *p_variant) { return &static_cast<Variant::PackedArrayRef<double> *>(p_variant->_data.packed_array)->array; }
+	// wgodot-changes::begin
+	_FORCE_INLINE_ static PackedFloat64Array *get_float64_array(Variant *p_variant) { return writable_packed<double>(p_variant); }
+	// wgodot-changes::end
 	_FORCE_INLINE_ static const PackedFloat64Array *get_float64_array(const Variant *p_variant) { return &static_cast<const Variant::PackedArrayRef<double> *>(p_variant->_data.packed_array)->array; }
-	_FORCE_INLINE_ static PackedStringArray *get_string_array(Variant *p_variant) { return &static_cast<Variant::PackedArrayRef<String> *>(p_variant->_data.packed_array)->array; }
+	// wgodot-changes::begin
+	_FORCE_INLINE_ static PackedStringArray *get_string_array(Variant *p_variant) { return writable_packed<String>(p_variant); }
+	// wgodot-changes::end
 	_FORCE_INLINE_ static const PackedStringArray *get_string_array(const Variant *p_variant) { return &static_cast<const Variant::PackedArrayRef<String> *>(p_variant->_data.packed_array)->array; }
-	_FORCE_INLINE_ static PackedVector2Array *get_vector2_array(Variant *p_variant) { return &static_cast<Variant::PackedArrayRef<Vector2> *>(p_variant->_data.packed_array)->array; }
+	// wgodot-changes::begin
+	_FORCE_INLINE_ static PackedVector2Array *get_vector2_array(Variant *p_variant) { return writable_packed<Vector2>(p_variant); }
+	// wgodot-changes::end
 	_FORCE_INLINE_ static const PackedVector2Array *get_vector2_array(const Variant *p_variant) { return &static_cast<const Variant::PackedArrayRef<Vector2> *>(p_variant->_data.packed_array)->array; }
-	_FORCE_INLINE_ static PackedVector3Array *get_vector3_array(Variant *p_variant) { return &static_cast<Variant::PackedArrayRef<Vector3> *>(p_variant->_data.packed_array)->array; }
+	// wgodot-changes::begin
+	_FORCE_INLINE_ static PackedVector3Array *get_vector3_array(Variant *p_variant) { return writable_packed<Vector3>(p_variant); }
+	// wgodot-changes::end
 	_FORCE_INLINE_ static const PackedVector3Array *get_vector3_array(const Variant *p_variant) { return &static_cast<const Variant::PackedArrayRef<Vector3> *>(p_variant->_data.packed_array)->array; }
-	_FORCE_INLINE_ static PackedColorArray *get_color_array(Variant *p_variant) { return &static_cast<Variant::PackedArrayRef<Color> *>(p_variant->_data.packed_array)->array; }
+	// wgodot-changes::begin
+	_FORCE_INLINE_ static PackedColorArray *get_color_array(Variant *p_variant) { return writable_packed<Color>(p_variant); }
+	// wgodot-changes::end
 	_FORCE_INLINE_ static const PackedColorArray *get_color_array(const Variant *p_variant) { return &static_cast<const Variant::PackedArrayRef<Color> *>(p_variant->_data.packed_array)->array; }
-	_FORCE_INLINE_ static PackedVector4Array *get_vector4_array(Variant *p_variant) { return &static_cast<Variant::PackedArrayRef<Vector4> *>(p_variant->_data.packed_array)->array; }
+	// wgodot-changes::begin
+	_FORCE_INLINE_ static PackedVector4Array *get_vector4_array(Variant *p_variant) { return writable_packed<Vector4>(p_variant); }
+	// wgodot-changes::end
 	_FORCE_INLINE_ static const PackedVector4Array *get_vector4_array(const Variant *p_variant) { return &static_cast<const Variant::PackedArrayRef<Vector4> *>(p_variant->_data.packed_array)->array; }
 
 	_FORCE_INLINE_ static Object **get_object(Variant *p_variant) { return (Object **)&p_variant->_get_obj().obj; }
@@ -258,6 +318,18 @@ public:
 		memnew_placement(r_variant->_data._mem, Quaternion);
 		r_variant->type = Variant::QUATERNION;
 	}
+	// wgodot-changes::begin
+	_FORCE_INLINE_ static void init_wvector3d(Variant *r_variant) {
+		r_variant->_data._wvector3d = VariantPools::alloc<WVector3d>();
+		memnew_placement(r_variant->_data._wvector3d, WVector3d);
+		r_variant->type = Variant::WVECTOR3D;
+	}
+	_FORCE_INLINE_ static void init_wtransform3d(Variant *r_variant) {
+		r_variant->_data._wtransform3d = VariantPools::alloc<WTransform3d>();
+		memnew_placement(r_variant->_data._wtransform3d, WTransform3d);
+		r_variant->type = Variant::WTRANSFORM3D;
+	}
+	// wgodot-changes::end
 	_FORCE_INLINE_ static void init_aabb(Variant *r_variant) {
 		r_variant->_data._aabb = VariantPools::alloc<AABB>();
 		memnew_placement(r_variant->_data._aabb, AABB);
@@ -435,6 +507,14 @@ public:
 				return get_basis(p_variant);
 			case Variant::AABB:
 				return get_aabb(p_variant);
+			// wgodot-changes::begin
+			case Variant::WVECTOR3D:
+				return get_wvector3d(p_variant);
+			case Variant::WTRANSFORM3D:
+				return get_wtransform3d(p_variant);
+			case Variant::WRECORD:
+				return get_wrecord(p_variant);
+			// wgodot-changes::end
 			case Variant::COLOR:
 				return get_color(p_variant);
 			case Variant::STRING_NAME:
@@ -521,6 +601,14 @@ public:
 				return get_basis(p_variant);
 			case Variant::AABB:
 				return get_aabb(p_variant);
+			// wgodot-changes::begin
+			case Variant::WVECTOR3D:
+				return get_wvector3d(p_variant);
+			case Variant::WTRANSFORM3D:
+				return get_wtransform3d(p_variant);
+			case Variant::WRECORD:
+				return get_wrecord(p_variant);
+			// wgodot-changes::end
 			case Variant::COLOR:
 				return get_color(p_variant);
 			case Variant::STRING_NAME:
@@ -611,9 +699,13 @@ struct _VariantInternalAccessorElsewhere {
 template <typename T>
 struct _VariantInternalAccessorPackedArrayRef {
 	using declared_when_native_type = void;
-	static _FORCE_INLINE_ Vector<T> &get(Variant *p_variant) { return static_cast<Variant::PackedArrayRef<T> *>(p_variant->_data.packed_array)->array; }
+	// wgodot-changes::begin
+	static _FORCE_INLINE_ Vector<T> &get(Variant *p_variant) { return *VariantInternal::writable_packed<T>(p_variant); }
+	// wgodot-changes::end
 	static _FORCE_INLINE_ const Vector<T> &get(const Variant *p_variant) { return static_cast<const Variant::PackedArrayRef<T> *>(p_variant->_data.packed_array)->array; }
-	static _FORCE_INLINE_ void set(Variant *r_variant, Vector<T> p_value) { static_cast<Variant::PackedArrayRef<T> *>(r_variant->_data.packed_array)->array = std::move(p_value); }
+	// wgodot-changes::begin
+	static _FORCE_INLINE_ void set(Variant *r_variant, Vector<T> p_value) { *VariantInternal::writable_packed<T>(r_variant) = std::move(p_value); }
+	// wgodot-changes::end
 };
 
 template <typename T>
@@ -764,6 +856,15 @@ struct VariantInternalAccessor<Quaternion> : _VariantInternalAccessorLocal<Quate
 template <>
 struct VariantInternalAccessor<::AABB> : _VariantInternalAccessorElsewhere<::AABB> {};
 
+// wgodot-changes::begin
+template <>
+struct VariantInternalAccessor<WVector3d> : _VariantInternalAccessorElsewhere<WVector3d> {};
+template <>
+struct VariantInternalAccessor<WTransform3d> : _VariantInternalAccessorElsewhere<WTransform3d> {};
+template <>
+struct VariantInternalAccessor<WRecord> : _VariantInternalAccessorLocal<WRecord> {};
+// wgodot-changes::end
+
 template <>
 struct VariantInternalAccessor<Basis> : _VariantInternalAccessorElsewhere<Basis> {};
 
@@ -881,6 +982,25 @@ struct VariantInitializer<AABB> {
 	static _FORCE_INLINE_ void init(Variant *r_variant) { VariantInternal::init_aabb(r_variant); }
 };
 
+// wgodot-changes::begin
+template <>
+struct VariantInitializer<WVector3d> {
+	static _FORCE_INLINE_ void init(Variant *r_variant) {
+		VariantInternal::init_wvector3d(r_variant);
+	}
+};
+template <>
+struct VariantInitializer<WRecord> {
+	static _FORCE_INLINE_ void init(Variant *v) { VariantInternal::init_wrecord(v); }
+};
+template <>
+struct VariantInitializer<WTransform3d> {
+	static _FORCE_INLINE_ void init(Variant *r_variant) {
+		VariantInternal::init_wtransform3d(r_variant);
+	}
+};
+// wgodot-changes::end
+
 template <>
 struct VariantInitializer<Basis> {
 	static _FORCE_INLINE_ void init(Variant *r_variant) { VariantInternal::init_basis(r_variant); }
@@ -965,13 +1085,17 @@ struct VariantDefaultInitializer<T, std::enable_if_t<IsVariantTypeT<T>>> {
 template <typename T>
 struct VariantTypeChanger {
 	static _FORCE_INLINE_ void change(Variant *r_variant) {
-		if (r_variant->get_type() != GetTypeInfo<T>::VARIANT_TYPE || GetTypeInfo<T>::VARIANT_TYPE >= Variant::PACKED_BYTE_ARRAY) { //second condition removed by optimizer
+		// wgodot-changes::begin
+		if (r_variant->get_type() != GetTypeInfo<T>::VARIANT_TYPE || Variant::is_packed_array_type(GetTypeInfo<T>::VARIANT_TYPE)) { //second condition removed by optimizer
+			// wgodot-changes::end
 			VariantInternal::clear(r_variant);
 			VariantInitializer<T>::init(r_variant);
 		}
 	}
 	static _FORCE_INLINE_ void change_and_reset(Variant *r_variant) {
-		if (r_variant->get_type() != GetTypeInfo<T>::VARIANT_TYPE || GetTypeInfo<T>::VARIANT_TYPE >= Variant::PACKED_BYTE_ARRAY) { //second condition removed by optimizer
+		// wgodot-changes::begin
+		if (r_variant->get_type() != GetTypeInfo<T>::VARIANT_TYPE || Variant::is_packed_array_type(GetTypeInfo<T>::VARIANT_TYPE)) { //second condition removed by optimizer
+			// wgodot-changes::end
 			VariantInternal::clear(r_variant);
 			VariantInitializer<T>::init(r_variant);
 		} else {

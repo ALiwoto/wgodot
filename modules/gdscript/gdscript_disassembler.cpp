@@ -412,6 +412,30 @@ void GDScriptFunction::disassemble(const Vector<String> &p_code_lines) const {
 
 				incr += 3;
 			} break;
+			// wgodot-changes::begin
+			case OPCODE_ASSIGN_CLASS_REF:
+			case OPCODE_CAST_CLASS_REF:
+			case OPCODE_TYPE_TEST_CLASS_REF: {
+				text += "class_ref " + itos(_code_ptr[ip]) + " " + DADDR(1) + " = " + DADDR(2);
+				incr += 4;
+			} break;
+			case OPCODE_TYPE_TEST_RECORD: {
+				text += "record type test " + DADDR(1) + " = " + DADDR(2);
+				incr += 4;
+			} break;
+			case OPCODE_ASSIGN_RECORD: {
+				text += "assign_record " + DADDR(1) + " = " + DADDR(2);
+				incr += 5;
+			} break;
+			case OPCODE_MAKE_VALUE: {
+				text += "make_value " + DADDR(1);
+				incr += 2;
+			} break;
+			case OPCODE_ASSIGN_SCALAR: {
+				text += "assign " + DADDR(1) + " = " + WGodotScalar::name(static_cast<WGodotScalar::Type>(_code_ptr[ip + 3])) + "(" + DADDR(2) + ")";
+				incr += 4;
+			} break;
+			// wgodot-changes::end
 			case OPCODE_ASSIGN_NULL: {
 				text += "assign ";
 				text += DADDR(1);
@@ -919,6 +943,17 @@ void GDScriptFunction::disassemble(const Vector<String> &p_code_lines) const {
 
 				incr = 5 + argc;
 			} break;
+			// wgodot-changes::begin
+			case OPCODE_SET_VALUE_PATH: {
+				text += "set-value-path";
+				incr = _code_ptr[ip + 1] + 3;
+			} break;
+			case OPCODE_CALL_VALUE_BUILTIN: {
+				const int count = _code_ptr[ip + 1];
+				text += "call-value-builtin " + String(_global_names_ptr[_code_ptr[ip + count + 4]]);
+				incr = count + 5;
+			} break;
+			// wgodot-changes::end
 			case OPCODE_CALL_UTILITY: {
 				int instr_var_args = _code_ptr[++ip];
 
@@ -1320,6 +1355,12 @@ void GDScriptFunction::disassemble(const Vector<String> &p_code_lines) const {
 				DISASSEMBLE_TYPE_ADJUST(PACKED_VECTOR3_ARRAY);
 				DISASSEMBLE_TYPE_ADJUST(PACKED_COLOR_ARRAY);
 				DISASSEMBLE_TYPE_ADJUST(PACKED_VECTOR4_ARRAY);
+			// wgodot-changes::begin
+			case OPCODE_TYPE_ADJUST_BUILTIN: {
+				text += "type adjust (" + Variant::get_type_name(Variant::Type(_code_ptr[ip + 2])) + ") " + DADDR(1);
+				incr += 3;
+			} break;
+			// wgodot-changes::end
 
 			case OPCODE_ASSERT: {
 				text += "assert (";

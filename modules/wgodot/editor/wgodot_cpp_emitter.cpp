@@ -79,6 +79,10 @@ String WGodotCppEmitter::type(const Parser::DataType &p_type, const Parser::Node
 	if (p_type.is_variant()) {
 		return "Variant";
 	}
+	if (p_type.wgodot_class_ref) {
+		class_native_headers.insert("modules/wgodot/native/wgodot_native_class_ref.h");
+		return "WGodotNative::ClassRef<" + class_name(p_type.get_container_element_type(0), p_origin) + ">";
+	}
 	if (p_type.wgodot_resource_path || p_type.kind == Parser::DataType::ENUM) {
 		return "int64_t";
 	}
@@ -112,6 +116,9 @@ String WGodotCppEmitter::type(const Parser::DataType &p_type, const Parser::Node
 			class_native_headers.insert("modules/wgodot/native/wgodot_native_wdictionary.h");
 			return "WGodotNative::WDictionary<" + String(", ").join(elements) + ">";
 		}
+		if (p_type.wgodot_scalar != WGodotScalar::NONE) {
+			return WGodotScalar::cpp_type(p_type.wgodot_scalar);
+		}
 		switch (p_type.builtin_type) {
 			case Variant::NIL:
 				return "void";
@@ -126,7 +133,7 @@ String WGodotCppEmitter::type(const Parser::DataType &p_type, const Parser::Node
 		}
 	}
 	const String name = class_name(p_type, p_origin);
-	if (is_interface_type(p_type)) {
+	if (is_interface_type(p_type) || (p_type.kind == Parser::DataType::CLASS && p_type.class_type->wgodot_record)) {
 		return name;
 	}
 	if (ClassDB::is_parent_class(native_base(p_type), "RefCounted")) {
@@ -193,6 +200,12 @@ String WGodotCppEmitter::truth(const Parser::ExpressionNode *p_expression) {
 	const Value lowered = lower(p_expression);
 	const String value = lowered.expression();
 	const auto datatype = expression_type(p_expression);
+	if (datatype.wgodot_class_ref) {
+		return "bool(" + value + ")";
+	}
+	if (datatype.kind == Parser::DataType::CLASS && datatype.class_type->wgodot_record) {
+		return "((void)(" + value + "), true)";
+	}
 	if (is_warray(datatype) || is_wdictionary(datatype)) {
 		return "!(" + value + ").is_empty()";
 	}
@@ -489,9 +502,21 @@ String WGodotCppEmitter::literal(const Variant &p_value, const Parser::Node *p_o
 			}
 			return Variant::get_type_name(p_value.get_type()) + "{" + String(", ").join(elements) + "}";
 		}
-		default:
-			unsupported(p_origin, "constant of type " + Variant::get_type_name(p_value.get_type()));
+		default: {
+			const Variant::Type kind = p_value.get_type();
+			const int constructor = Variant::get_member_constructor(kind);
+			if (constructor >= 0) {
+				Vector<String> arguments;
+				for (int i = 0; i < Variant::get_constructor_argument_count(kind, constructor); i++) {
+					const StringName name = Variant::get_constructor_argument_name(kind, constructor, i);
+					bool valid;
+					arguments.push_back(literal(p_value.get_named(name, valid), p_origin));
+				}
+				return Variant::get_type_name(kind) + "(" + String(", ").join(arguments) + ")";
+			}
+			unsupported(p_origin, "constant of type " + Variant::get_type_name(kind));
 			return String();
+		}
 	}
 }
 
@@ -611,6 +636,7 @@ Error WGodotCppEmitter::generate(const String &p_directory, int p_jobs, WGodotCp
 	files.clear();
 	animation_property_paths.clear();
 	reflection_default_classes.clear();
+	class_reference_classes.clear();
 	resource_ids.clear();
 	resource_id_owners.clear();
 	preload_indices.clear();
@@ -724,6 +750,7 @@ Error WGodotCppEmitter::generate(const String &p_directory, int p_jobs, WGodotCp
 	store_file("register_types.h", "// wgodot-changes::file\n#pragma once\n#include \"modules/register_module_types.h\"\nvoid initialize_main_game_module(ModuleInitializationLevel p_level);\nvoid uninitialize_main_game_module(ModuleInitializationLevel p_level);\n");
 	String registration = "// wgodot-changes::file\n#include \"register_types.h\"\n#include \"modules/wgodot/native/wgodot_native_static.h\"\n#include \"modules/wgodot/native/wgodot_native_task.h\"\n#include \"modules/wgodot/native/wgodot_native_runtime.h\"\n#include \"core/object/wgodot_native_interfaces.h\"\n";
 	emit_preloads();
+	registration += "#include \"core/object/wgodot_class_references.h\"\n";
 	registration += "#include \"modules/wgodot/wgodot_preloads.h\"\n#include \"core/io/wgodot_native_resources.h\"\n#include \"scene/animation/wgodot_animation_property.h\"\nvoid register_main_game_preloads();\nvoid register_main_game_resources();\nvoid register_main_game_animation_bindings();\n";
 	String body;
 	if (trace_enabled) {
@@ -735,6 +762,12 @@ Error WGodotCppEmitter::generate(const String &p_directory, int p_jobs, WGodotCp
 		if (!entry.node->wgodot_static_class && files.has(entry.cpp_name + ".h")) {
 			registration += "#include \"" + entry.cpp_name + ".h\"\n";
 			register_class(entry, registered, body);
+		}
+	}
+	// Record defaults may contain class references; register constructors first.
+	for (const auto &entry : project.get_classes()) {
+		if (entry.node->wgodot_record && registered.has(entry.cpp_name)) {
+			body += "\t(void)" + entry.cpp_name + "::record_schema();\n";
 		}
 	}
 	body += "\tregister_main_game_animation_bindings();\n\tregister_main_game_resources();\n";

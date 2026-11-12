@@ -30,6 +30,10 @@
 
 #include "resource_format_text.h"
 // wgodot-changes::begin
+#include "core/variant/wgodot_record.h"
+#include "core/object/wgodot_class_references.h"
+// wgodot-changes::end
+// wgodot-changes::begin
 #include "core/io/wgodot_global_resources.h"
 // wgodot-changes::end
 
@@ -1943,6 +1947,20 @@ String ResourceFormatSaverTextInstance::_write_resource(const Ref<Resource> &res
 }
 
 void ResourceFormatSaverTextInstance::_find_resources(const Variant &p_variant, bool p_main) {
+	// wgodot-changes::begin
+	if (!p_main && WGodotClassReferences::name(p_variant) != StringName()) {
+		return;
+	}
+	if (p_variant.get_type() == Variant::WRECORD) {
+		const WRecord record = p_variant;
+		if (!record.is_empty()) {
+			for (int index = 0; index < record.schema()->field_count(); ++index) {
+				_find_resources(record.get(index));
+			}
+		}
+		return;
+	}
+	// wgodot-changes::end
 	// wgodot-changes::begin
 	WGlobalResources::Reference global;
 	if (!p_main && WGlobalResources::SaveScope::reference(p_variant, global)) {

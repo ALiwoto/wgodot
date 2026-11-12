@@ -2,6 +2,8 @@
 #pragma once
 
 #include "core/io/file_access.h"
+#include "core/math/wgodot_transform3d.h"
+#include "core/math/wgodot_vector3d.h"
 #include "core/templates/local_vector.h"
 #include "core/variant/type_info.h"
 #include "core/variant/variant.h"
@@ -92,6 +94,7 @@ WG_PAYLOAD_NUMERIC(Basis, real_t, 9)
 WG_PAYLOAD_NUMERIC(Transform3D, real_t, 12)
 WG_PAYLOAD_NUMERIC(Projection, real_t, 16)
 WG_PAYLOAD_NUMERIC(Color, float, 4)
+WG_PAYLOAD_NUMERIC(WVector3d, double, 3)
 #undef WG_PAYLOAD_NUMERIC
 
 template <>

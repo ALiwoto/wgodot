@@ -320,7 +320,12 @@ void WGodotCppAsync::suite(const Parser::SuiteNode *p_suite, int p_indent, bool 
 				if (node->initializer) {
 					(void)expression(node->initializer, p_indent);
 				}
-				line(p_indent, name + " = " + (node->initializer ? emitter.converted(node->initializer, emitter.variable_type(node), node) : field_types[name] + "()") + ";");
+				String value = node->initializer ? emitter.converted(node->initializer, emitter.variable_type(node), node) : field_types[name] + "()";
+				if (!node->initializer && node->type_constraint.wgodot_value) {
+					emitter.class_call_headers.insert("modules/wgodot/native/wgodot_native_value.h");
+					value = "WGodotNative::value_container(" + value + ")";
+				}
+				line(p_indent, name + " = " + value + ";");
 				break;
 			}
 			case Parser::Node::RETURN: {
@@ -416,7 +421,8 @@ void WGodotCppAsync::suite(const Parser::SuiteNode *p_suite, int p_indent, bool 
 					const auto value = emitter.enum_iteration_value(enum_values, iterator + "->get()", node->list);
 					line(p_indent + 1, variable + " = " + emitter.convert_value(value, field_types[variable]) + ";");
 				} else {
-					line(p_indent + 1, variable + " = " + iterator + (range ? "->get();" : "->get<" + field_types[variable] + ">();"));
+					const String current = range ? "WGodotNative::convert<" + field_types[variable] + ">(" + iterator + "->get())" : iterator + "->get<" + field_types[variable] + ">()";
+					line(p_indent + 1, variable + " = " + current + ";");
 				}
 				emitter.begin_loop();
 				suite(node->loop, p_indent + 1, false);
@@ -533,6 +539,9 @@ String WGodotCppAsync::generate(const Parser::FunctionNode *p_function, const St
 	for (const auto *parameter : p_function->parameters) {
 		const String field = local(parameter, parameter->identifier->name, parameter->type_constraint);
 		initialize += "\t" + field.replace("frame.", "frame->") + " = std::move(v_" + symbol(parameter->identifier->name) + ");\n";
+		if (parameter->type_constraint.wgodot_value) {
+			initialize += "\t" + field.replace("frame.", "frame->") + ".make_value();\n";
+		}
 	}
 	if (p_function->source_lambda) {
 		// Capture references retain their original declaration in the AST. Inside

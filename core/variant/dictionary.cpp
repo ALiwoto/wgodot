@@ -42,12 +42,54 @@ STATIC_ASSERT_INCOMPLETE_TYPE(class, String);
 
 struct DictionaryPrivate {
 	SafeRefCount refcount;
+	// wgodot-changes::begin
+	bool value_semantics = false;
+	// wgodot-changes::end
 	Variant *read_only = nullptr; // If enabled, a pointer is used to a temporary value that is used to return read-only values.
 	HashMap<Variant, Variant, HashMapHasherDefault, StringLikeVariantComparator> variant_map;
 	ContainerTypeValidate typed_key;
 	ContainerTypeValidate typed_value;
 	Variant *typed_fallback = nullptr; // Allows a typed dictionary to return dummy values when attempting an invalid access.
 };
+
+// wgodot-changes::begin
+void Dictionary::_wgodot_detach() {
+	DictionaryPrivate *previous = _p;
+	DictionaryPrivate *copy = memnew(DictionaryPrivate);
+	copy->refcount.init();
+	copy->variant_map = previous->variant_map;
+	copy->typed_key = previous->typed_key;
+	copy->typed_value = previous->typed_value;
+	copy->value_semantics = previous->value_semantics;
+	if (previous->read_only) {
+		copy->read_only = memnew(Variant);
+	}
+	_unref();
+	_p = copy;
+}
+
+void Dictionary::_wgodot_make_unique() {
+	if (_p->value_semantics && _p->refcount.get() > 1) {
+		_wgodot_detach();
+	}
+}
+
+void Dictionary::wgodot_make_value() {
+	if (_p->value_semantics && !_p->read_only) {
+		return;
+	}
+	if (_p->refcount.get() > 1) {
+		_wgodot_detach();
+	}
+	memdelete(_p->read_only);
+	_p->read_only = nullptr;
+	_p->value_semantics = true;
+}
+
+bool Dictionary::wgodot_is_value() const {
+	return _p->value_semantics;
+}
+// wgodot-changes::end
 
 Dictionary::ConstIterator Dictionary::begin() const {
 	return _p->variant_map.begin();
@@ -94,6 +136,9 @@ Variant Dictionary::get_value_at_index(int p_index) const {
 // WARNING: This operator does not validate the value type. For scripting/extensions this is
 // done in `variant_setget.cpp`. Consider using `set()` if the data might be invalid.
 Variant &Dictionary::operator[](const Variant &p_key) {
+	// wgodot-changes::begin
+	_wgodot_make_unique();
+	// wgodot-changes::end
 	Variant key = p_key;
 	if (unlikely(!_p->typed_key.validate(key, "use `operator[]`"))) {
 		if (unlikely(!_p->typed_fallback)) {
@@ -148,6 +193,9 @@ const Variant *Dictionary::getptr(const Variant &p_key) const {
 
 // WARNING: This method does not validate the value type.
 Variant *Dictionary::getptr(const Variant &p_key) {
+	// wgodot-changes::begin
+	_wgodot_make_unique();
+	// wgodot-changes::end
 	Variant key = p_key;
 	if (unlikely(!_p->typed_key.validate(key, "getptr"))) {
 		return nullptr;
@@ -200,6 +248,9 @@ Variant Dictionary::get_or_add(const Variant &p_key, const Variant &p_default) {
 }
 
 bool Dictionary::set(const Variant &p_key, const Variant &p_value) {
+	// wgodot-changes::begin
+	_wgodot_make_unique();
+	// wgodot-changes::end
 	ERR_FAIL_COND_V_MSG(_p->read_only, false, "Dictionary is in read-only state.");
 	Variant key = p_key;
 	ERR_FAIL_COND_V(!_p->typed_key.validate(key, "set"), false);
@@ -246,6 +297,9 @@ Variant Dictionary::find_key(const Variant &p_value) const {
 }
 
 bool Dictionary::erase(const Variant &p_key) {
+	// wgodot-changes::begin
+	_wgodot_make_unique();
+	// wgodot-changes::end
 	Variant key = p_key;
 	ERR_FAIL_COND_V(!_p->typed_key.validate(key, "erase"), false);
 	ERR_FAIL_COND_V_MSG(_p->read_only, false, "Dictionary is in read-only state.");
@@ -302,12 +356,18 @@ void Dictionary::_ref(const Dictionary &p_from) const {
 }
 
 void Dictionary::reserve(int p_new_capacity) {
+	// wgodot-changes::begin
+	_wgodot_make_unique();
+	// wgodot-changes::end
 	ERR_FAIL_COND_MSG(_p->read_only, "Dictionary is in read-only state.");
 	ERR_FAIL_COND_MSG(p_new_capacity < 0, "New capacity must be non-negative.");
 	_p->variant_map.reserve(p_new_capacity);
 }
 
 void Dictionary::clear() {
+	// wgodot-changes::begin
+	_wgodot_make_unique();
+	// wgodot-changes::end
 	ERR_FAIL_COND_MSG(_p->read_only, "Dictionary is in read-only state.");
 	_p->variant_map.clear();
 }
@@ -325,11 +385,17 @@ struct _DictionaryVariantSort {
 };
 
 void Dictionary::sort() {
+	// wgodot-changes::begin
+	_wgodot_make_unique();
+	// wgodot-changes::end
 	ERR_FAIL_COND_MSG(_p->read_only, "Dictionary is in read-only state.");
 	_p->variant_map.sort_custom<_DictionaryVariantSort>();
 }
 
 void Dictionary::merge(const Dictionary &p_dictionary, bool p_overwrite) {
+	// wgodot-changes::begin
+	_wgodot_make_unique();
+	// wgodot-changes::end
 	ERR_FAIL_COND_MSG(_p->read_only, "Dictionary is in read-only state.");
 	for (const KeyValue<Variant, Variant> &E : p_dictionary._p->variant_map) {
 		Variant key = E.key;
@@ -420,6 +486,24 @@ Array Dictionary::values() const {
 }
 
 void Dictionary::assign(const Dictionary &p_dictionary) {
+	// wgodot-changes::begin
+	if (_p->typed_key.type == Variant::WRECORD || _p->typed_value.type == Variant::WRECORD) {
+		ERR_FAIL_COND_MSG(_p->read_only, "Dictionary is in read-only state.");
+		decltype(_p->variant_map) values;
+		for (const KeyValue<Variant, Variant> &entry : p_dictionary) {
+			Variant key = entry.key;
+			Variant value = entry.value;
+			ERR_FAIL_COND(!_p->typed_key.validate(key, "assign") || !_p->typed_value.validate(value, "assign"));
+			values.insert(key, value);
+		}
+		_wgodot_make_unique();
+		_p->variant_map = std::move(values);
+		return;
+	}
+	// wgodot-changes::end
+	// wgodot-changes::begin
+	_wgodot_make_unique();
+	// wgodot-changes::end
 	const ContainerTypeValidate &typed_key = _p->typed_key;
 	const ContainerTypeValidate &typed_key_source = p_dictionary._p->typed_key;
 
@@ -593,6 +677,9 @@ Dictionary Dictionary::duplicate_deep(ResourceDeepDuplicateMode p_deep_subresour
 }
 
 void Dictionary::make_read_only() {
+	// wgodot-changes::begin
+	_wgodot_make_unique();
+	// wgodot-changes::end
 	if (_p->read_only == nullptr) {
 		_p->read_only = memnew(Variant);
 	}
@@ -605,6 +692,9 @@ Dictionary Dictionary::recursive_duplicate(bool p_deep, ResourceDeepDuplicateMod
 	Dictionary n;
 	n._p->typed_key = _p->typed_key;
 	n._p->typed_value = _p->typed_value;
+	// wgodot-changes::begin
+	n._p->value_semantics = _p->value_semantics;
+	// wgodot-changes::end
 
 	if (p_recursion_count > MAX_RECURSION) {
 		ERR_PRINT("Max recursion reached");
@@ -638,23 +728,35 @@ void Dictionary::set_typed(const ContainerType &p_key_type, const ContainerType 
 }
 
 void Dictionary::set_typed(uint32_t p_key_type, const StringName &p_key_class_name, const Variant &p_key_script, uint32_t p_value_type, const StringName &p_value_class_name, const Variant &p_value_script) {
+	// wgodot-changes::begin
+	_wgodot_make_unique();
+	// wgodot-changes::end
 	ERR_FAIL_COND_MSG(_p->read_only, "Dictionary is in read-only state.");
 	ERR_FAIL_COND_MSG(_p->variant_map.size() > 0, "Type can only be set when dictionary is empty.");
 	ERR_FAIL_COND_MSG(_p->refcount.get() > 1, "Type can only be set when dictionary has no more than one user.");
 	ERR_FAIL_COND_MSG(_p->typed_key.type != Variant::NIL || _p->typed_value.type != Variant::NIL, "Type can only be set once.");
-	ERR_FAIL_COND_MSG((p_key_class_name != StringName() && p_key_type != Variant::OBJECT) || (p_value_class_name != StringName() && p_value_type != Variant::OBJECT), "Class names can only be set for type OBJECT.");
-	Ref<Script> key_script = p_key_script;
+	ERR_FAIL_COND_MSG((p_key_class_name != StringName() && p_key_type != Variant::OBJECT && p_key_type != Variant::WRECORD) || (p_value_class_name != StringName() && p_value_type != Variant::OBJECT && p_value_type != Variant::WRECORD), "Class names can only be set for type OBJECT.");
+	// wgodot-changes::begin
+	ERR_FAIL_COND_MSG((p_key_type == Variant::WRECORD && p_key_class_name == StringName()) || (p_value_type == Variant::WRECORD && p_value_class_name == StringName()), "A record dictionary requires its declared record names.");
+	// wgodot-changes::end
+	Ref<Script> key_script = p_key_type == Variant::WRECORD ? Variant() : p_key_script;
 	ERR_FAIL_COND_MSG(key_script.is_valid() && p_key_class_name == StringName(), "Script class can only be set together with base class name.");
-	Ref<Script> value_script = p_value_script;
+	Ref<Script> value_script = p_value_type == Variant::WRECORD ? Variant() : p_value_script;
 	ERR_FAIL_COND_MSG(value_script.is_valid() && p_value_class_name == StringName(), "Script class can only be set together with base class name.");
 
 	_p->typed_key.type = Variant::Type(p_key_type);
 	_p->typed_key.class_name = p_key_class_name;
+	// wgodot-changes::begin
+	_p->typed_key.class_ref_base = p_key_type == Variant::OBJECT ? WGodotClassReferences::constraint_base(p_key_class_name) : StringName();
+	// wgodot-changes::end
 	_p->typed_key.script = key_script;
 	_p->typed_key.where = "TypedDictionary.Key";
 
 	_p->typed_value.type = Variant::Type(p_value_type);
 	_p->typed_value.class_name = p_value_class_name;
+	// wgodot-changes::begin
+	_p->typed_value.class_ref_base = p_value_type == Variant::OBJECT ? WGodotClassReferences::constraint_base(p_value_class_name) : StringName();
+	// wgodot-changes::end
 	_p->typed_value.script = value_script;
 	_p->typed_value.where = "TypedDictionary.Value";
 }

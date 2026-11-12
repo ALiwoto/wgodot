@@ -7,7 +7,6 @@
 #include "core/io/wgodot_file_stamp.h"
 #include "core/io/wgodot_global_resources.h"
 #include "core/object/class_db.h"
-#include "core/object/script_language.h"
 #include "core/os/os.h"
 #include "core/os/thread.h"
 #include "editor/file_system/editor_file_system.h"
@@ -38,11 +37,8 @@ String get_class_identity() {
 	for (const StringName &name : classes) {
 		declarations.push_back(name);
 	}
-	classes.clear();
-	ScriptServer::get_global_class_list(classes);
-	for (const StringName &name : classes) {
-		declarations.push_back(String(name) + ":" + ScriptServer::get_global_class_native_base(name));
-	}
+	// Script declarations, including their base classes, are checked per resource.
+	// Adding an unrelated global script class must not discard every cached result.
 	for (const auto &entry : WGlobalResources::paths()) {
 		declarations.push_back(String(entry.key) + "=" + entry.value);
 	}

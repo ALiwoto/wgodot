@@ -12,7 +12,7 @@ bool WGodotResourceDataType::concrete() const {
 	if (builtin <= Variant::NIL || builtin >= Variant::VARIANT_MAX || builtin == Variant::CALLABLE || builtin == Variant::SIGNAL || builtin == Variant::RID) {
 		return false;
 	}
-	if (builtin == Variant::OBJECT && name.is_empty()) {
+	if ((builtin == Variant::OBJECT || builtin == Variant::WRECORD) && name.is_empty()) {
 		return false;
 	}
 	const int count = builtin == Variant::ARRAY ? 1 : builtin == Variant::DICTIONARY ? 2
@@ -29,7 +29,7 @@ bool WGodotResourceDataType::concrete() const {
 }
 
 String WGodotResourceDataType::text() const {
-	String result = resource_path ? String("WResPath") : builtin == Variant::OBJECT ? String(name)
+	String result = resource_path ? String("WResPath") : (builtin == Variant::OBJECT || builtin == Variant::WRECORD) ? String(name)
 																					: Variant::get_type_name(builtin);
 	if (!elements.is_empty()) {
 		Vector<String> parameters;
@@ -38,13 +38,13 @@ String WGodotResourceDataType::text() const {
 		}
 		result += "[" + String(", ").join(parameters) + "]";
 	}
-	return result;
+	return value_container ? "@value " + result : result;
 }
 
 WGodotResourceDataType WGodotResourceDataType::from_property(const PropertyInfo &p_info) {
 	WGodotResourceDataType result;
 	result.builtin = p_info.type;
-	if (result.builtin == Variant::OBJECT) {
+	if (result.builtin == Variant::OBJECT || result.builtin == Variant::WRECORD) {
 		result.name = p_info.class_name;
 		if (result.name.is_empty() && (p_info.hint == PROPERTY_HINT_RESOURCE_TYPE || p_info.hint == PROPERTY_HINT_NODE_TYPE)) {
 			result.name = p_info.hint_string;
@@ -56,7 +56,7 @@ WGodotResourceDataType WGodotResourceDataType::from_property(const PropertyInfo 
 		if ((p_info.hint == PROPERTY_HINT_ARRAY_TYPE || p_info.hint == PROPERTY_HINT_DICTIONARY_TYPE || p_info.hint == PROPERTY_HINT_TYPE_STRING) && parameters.size() == count) {
 			for (const String &parameter : parameters) {
 				PropertyInfo element;
-				if (parameter.contains(":")) {
+				if (parameter.contains(":") && !parameter.begins_with("ClassRef[")) {
 					const String code = parameter.get_slice(":", 0);
 					element.type = Variant::Type(code.get_slice("/", 0).to_int());
 					element.hint = PropertyHint(code.get_slice("/", 1).to_int());
@@ -257,12 +257,39 @@ Ref<Script> WGodotResourceValueParser::element_script(const Type &p_type) {
 }
 
 Error WGodotResourceValueParser::value(VP::Token &p_token, Variant &r_value, const Type &p_type, VP::Stream *p_stream, int &r_line, String &r_error, VP::ResourceParser *p_resources, int p_depth) {
+	RETURN_IF_ERROR(value_data(p_token, r_value, p_type, p_stream, r_line, r_error, p_resources, p_depth));
+	if (p_type.value_container) {
+		r_value.wgodot_make_value_container();
+	}
+	return OK;
+}
+
+Error WGodotResourceValueParser::value_data(VP::Token &p_token, Variant &r_value, const Type &p_type, VP::Stream *p_stream, int &r_line, String &r_error, VP::ResourceParser *p_resources, int p_depth) {
 	if (p_depth > 64) {
 		r_error = "Resource value nesting is too deep.";
 		return ERR_PARSE_ERROR;
 	}
+	if (p_type.builtin == Variant::WRECORD) {
+		Variant record_fields;
+		RETURN_IF_ERROR(VP::parse_value(p_token, record_fields, p_stream, r_line, r_error, p_resources));
+		if (record_fields.get_type() == Variant::WRECORD) {
+			const WRecord record = record_fields;
+			if (!record.is_empty() && record.schema()->get_name() == p_type.name) {
+				r_value = record_fields;
+				return OK;
+			}
+		} else if (record_fields.get_type() == Variant::DICTIONARY) {
+			bool valid = false;
+			r_value = WRecord::create(WRecordSchemas::resolve(p_type.name), record_fields, valid);
+			if (valid) {
+				return OK;
+			}
+		}
+		r_error = "Record fields do not match " + String(p_type.name) + ".";
+		return ERR_PARSE_ERROR;
+	}
 	if (p_token.type == VP::TK_IDENTIFIER && String(p_token.value) == "repeat") {
-		const bool packed = p_type.builtin >= Variant::PACKED_BYTE_ARRAY && p_type.builtin < Variant::VARIANT_MAX;
+		const bool packed = Variant::is_packed_array_type(p_type.builtin);
 		if (!p_type.concrete() || (!packed && p_type.builtin != Variant::ARRAY)) {
 			r_error = "repeat requires a fully declared array destination.";
 			return ERR_PARSE_ERROR;
@@ -312,7 +339,7 @@ Error WGodotResourceValueParser::value(VP::Token &p_token, Variant &r_value, con
 	if (p_token.type != VP::TK_BRACKET_OPEN && p_token.type != VP::TK_CURLY_BRACKET_OPEN) {
 		return VP::parse_value(p_token, r_value, p_stream, r_line, r_error, p_resources, true);
 	}
-	if (p_token.type == VP::TK_BRACKET_OPEN && p_type.builtin >= Variant::PACKED_BYTE_ARRAY && p_type.builtin < Variant::VARIANT_MAX) {
+	if (p_token.type == VP::TK_BRACKET_OPEN && Variant::is_packed_array_type(p_type.builtin)) {
 		const Variant::Type element = Type::packed_element(p_type.builtin).builtin;
 		switch (p_type.builtin) {
 #define WG_PACKED_LITERAL(m_kind, m_type) \

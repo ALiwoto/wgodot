@@ -37,6 +37,7 @@ Dictionary WGodotCppEmitter::capture_contribution(const WGodotCppProject::Class 
 	payload["interfaces"] = names(used_native_interfaces);
 	payload["headers"] = names(used_native_headers);
 	payload["defaults"] = names(reflection_default_classes);
+	payload["class_references"] = names(class_reference_classes);
 	payload["resource_paths"] = names(unit_resource_paths);
 	Dictionary animations;
 	for (const auto &entry : animation_property_paths) {
@@ -105,6 +106,9 @@ bool WGodotCppEmitter::restore_contribution(const Dictionary &p_payload) {
 	for (const String &name : PackedStringArray(p_payload["defaults"])) {
 		reflection_default_classes.insert(name);
 	}
+	for (const String &name : PackedStringArray(p_payload.get("class_references", PackedStringArray()))) {
+		class_reference_classes.insert(name);
+	}
 	const Dictionary animations = p_payload["animations"];
 	for (const KeyValue<Variant, Variant> &entry : animations) {
 		animation_property_paths[NodePath(entry.key)] |= uint64_t(int64_t(entry.value));
@@ -147,6 +151,7 @@ void WGodotCppEmitter::clear_contribution() {
 	used_native_interfaces.clear();
 	used_native_headers.clear();
 	reflection_default_classes.clear();
+	class_reference_classes.clear();
 	animation_property_paths.clear();
 	required_classes.clear();
 	unit_resource_paths.clear();
