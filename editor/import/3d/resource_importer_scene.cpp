@@ -31,6 +31,7 @@
 #include "resource_importer_scene.h"
 // wgodot-changes::begin
 #include "wgodot_mesh_collision.h"
+#include "wgodot_scene_declarations.h"
 // wgodot-changes::end
 
 // wgodot-changes::begin
@@ -134,12 +135,19 @@ void EditorScenePostImport::_bind_methods() {
 }
 
 Node *EditorScenePostImport::post_import(Node *p_scene) {
+	// wgodot-changes::begin
+	if (!GDVIRTUAL_IS_OVERRIDDEN(_post_import)) {
+		return p_scene;
+	}
+	// wgodot-changes::end
 	Object *ret;
 	if (GDVIRTUAL_CALL(_post_import, p_scene, ret)) {
 		return Object::cast_to<Node>(ret);
 	}
 
-	return p_scene;
+	// wgodot-changes::begin
+	return nullptr;
+	// wgodot-changes::end
 }
 
 String EditorScenePostImport::get_source_file() const {
@@ -293,8 +301,8 @@ String ResourceImporterScene::get_resource_type() const {
 
 int ResourceImporterScene::get_format_version() const {
 	// wgodot-changes::begin
-	// Reimport cached scenes that lost authored LOD profiles during rescaling.
-	return _scene_import_type == "AnimationLibrary" ? 1 : 3;
+	// Packed scenes include lightweight node declarations for static checks.
+	return _scene_import_type == "AnimationLibrary" ? 1 : _scene_import_type == "PackedScene" ? 4 : 3;
 	// wgodot-changes::end
 }
 
@@ -3281,7 +3289,8 @@ Error ResourceImporterScene::_check_resource_save_paths(ResourceUID::ID p_source
 
 // wgodot-changes::begin
 bool ResourceImporterScene::are_import_settings_valid(const String &p_path, const Dictionary &p_meta) const {
-	return _scene_import_type != "PackedScene" || String(p_meta.get("mesh_collision", String())) == WGodotMeshCollision::import_signature(p_path);
+	return _scene_import_type != "PackedScene" || (String(p_meta.get("mesh_collision", String())) == WGodotMeshCollision::import_signature(p_path) &&
+			FileAccess::exists(WGodotSceneDeclarations::path_for_source(p_path)));
 }
 // wgodot-changes::end
 
@@ -3469,14 +3478,29 @@ Error ResourceImporterScene::import(ResourceUID::ID p_source_id, const String &p
 		Ref<Script> scr = ResourceLoader::load(post_import_script_path);
 		if (scr.is_null()) {
 			EditorNode::add_io_error(TTR("Couldn't load post-import script:") + " " + post_import_script_path);
+			// wgodot-changes::begin
+			memdelete(scene);
+			return ERR_CANT_OPEN;
+		} else if (!scr->is_script_valid()) {
+			EditorNode::add_io_error(TTR("Invalid/broken script for post-import (check console):") + " " + post_import_script_path);
+			memdelete(scene);
+			return ERR_SCRIPT_FAILED;
+			// wgodot-changes::end
 		} else if (scr->get_instance_base_type() != "EditorScenePostImport") {
 			EditorNode::add_io_error(TTR("Script is not a subtype of EditorScenePostImport:") + " " + post_import_script_path);
+			// wgodot-changes::begin
+			memdelete(scene);
+			return ERR_INVALID_DATA;
+			// wgodot-changes::end
 		} else {
 			post_import_script.instantiate();
 			post_import_script->set_script(scr);
 			if (!post_import_script->get_script_instance()) {
 				EditorNode::add_io_error(TTR("Invalid/broken script for post-import (check console):") + " " + post_import_script_path);
 				post_import_script.unref();
+				// wgodot-changes::begin
+				memdelete(scene);
+				// wgodot-changes::end
 				return ERR_CANT_CREATE;
 			}
 		}
@@ -3502,7 +3526,9 @@ Error ResourceImporterScene::import(ResourceUID::ID p_source_id, const String &p
 			EditorNode::add_io_error(
 					TTR("Error running post-import script:") + " " + post_import_script_path + "\n" +
 					TTR("Did you return a Node-derived object in the `_post_import()` method?"));
-			return err;
+			// wgodot-changes::begin
+			return ERR_SCRIPT_FAILED;
+			// wgodot-changes::end
 		}
 	}
 
@@ -3558,6 +3584,14 @@ Error ResourceImporterScene::import(ResourceUID::ID p_source_id, const String &p
 		print_verbose("Saving scene to: " + p_save_path + ".scn");
 		err = ResourceSaver::save(packer, p_save_path + ".scn", flags); //do not take over, let the changed files reload themselves
 		ERR_FAIL_COND_V_MSG(err != OK, err, "Cannot save scene to file '" + p_save_path + ".scn'.");
+		// wgodot-changes::begin
+		const String declarations = p_save_path + ".nodes";
+		err = WGodotSceneDeclarations::save(packer->get_state(), declarations);
+		ERR_FAIL_COND_V_MSG(err != OK, err, "Cannot save scene declarations: " + declarations);
+		if (r_gen_files) {
+			r_gen_files->push_back(declarations);
+		}
+		// wgodot-changes::end
 		EditorInterface::get_singleton()->make_scene_preview(p_source_file, scene, 1024);
 	} else if (_scene_import_type == "ArrayMesh") {
 		_save_scene_as_single_mesh(p_source_file, p_save_path, scene, p_options, flags);

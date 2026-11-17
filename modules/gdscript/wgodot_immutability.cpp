@@ -82,8 +82,8 @@ void GDScriptAnalyzer::wgodot_validate_data_class(Parser::ClassNode *p_class) {
 			push_error("A data class cannot inherit a behavioral script class.", p_class);
 		}
 	} else if (p_class->base_type.kind != Type::NATIVE ||
-			(p_class->base_type.native_type != SNAME("Object") && p_class->base_type.native_type != SNAME("RefCounted") && p_class->base_type.native_type != SNAME("Resource"))) {
-		push_error("A data class must inherit another data class, Object, RefCounted or Resource.", p_class);
+			(p_class->base_type.native_type != SNAME("Object") && p_class->base_type.native_type != SNAME("RefCounted") && !ClassDB::is_parent_class(p_class->base_type.native_type, SNAME("Resource")))) {
+		push_error("A data class must inherit another data class, Object, RefCounted or a native Resource class.", p_class);
 	}
 }
 
@@ -147,6 +147,9 @@ bool GDScriptAnalyzer::wgodot_is_native_packed_property(const Parser::Expression
 void GDScriptAnalyzer::wgodot_native_resource_signature(const StringName &p_class, const StringName &p_method, Parser::Node *p_source, Type &r_result, List<Type> &r_parameters) {
 	wgodot_qualify_native_resources(r_result);
 	const MethodBind *method = ClassDB::get_method(p_class, p_method);
+	if (method && p_source->type == Parser::Node::CALL) {
+		static_cast<Parser::CallNode *>(p_source)->wgodot_init_safe_call = method->wgodot_is_init_safe();
+	}
 	if (method && method->get_instance_class() == SNAME("Resource") &&
 			(p_method == SNAME("duplicate") || p_method == SNAME("duplicate_deep")) && p_source->type == Parser::Node::CALL) {
 		auto *call = static_cast<Parser::CallNode *>(p_source);
@@ -213,6 +216,30 @@ bool GDScriptAnalyzer::wgodot_immutable_types_match(const Type &p_target, const 
 	}
 	if (p_target.wgodot_immutable != p_source.wgodot_immutable && !(p_target.wgodot_immutable && p_fresh)) {
 		return false;
+	}
+	const auto *target_signal = p_target.wgodot_signal_signature;
+	const auto *source_signal = p_source.wgodot_signal_signature;
+	if (target_signal != source_signal && (target_signal || source_signal)) {
+		const auto qualified = [](const Parser::SignalNode *p_signal) {
+			if (p_signal) {
+				for (const auto *parameter : p_signal->parameters) {
+					if (wgodot_has_immutable_type(parameter->type_constraint)) {
+						return true;
+					}
+				}
+			}
+			return false;
+		};
+		if (qualified(target_signal) || qualified(source_signal)) {
+			if (!target_signal || !source_signal || target_signal->parameters.size() != source_signal->parameters.size()) {
+				return false;
+			}
+			for (uint32_t i = 0; i < target_signal->parameters.size(); i++) {
+				if (!wgodot_immutable_types_match(target_signal->parameters[i]->type_constraint, source_signal->parameters[i]->type_constraint)) {
+					return false;
+				}
+			}
+		}
 	}
 	const auto *target_function = p_target.wgodot_callable_signature;
 	const auto *source_function = p_source.wgodot_callable_signature;
@@ -289,6 +316,12 @@ void GDScriptAnalyzer::wgodot_validate_immutable_argument(const Type &p_target, 
 		if (p_call->get_callee_type() == Parser::Node::SUBSCRIPT && !p_call->arguments.is_empty() && p_call->arguments[0] == p_value) {
 			const Type &receiver = static_cast<const Parser::SubscriptNode *>(p_call->callee)->base->type_constraint;
 			const StringName &method = p_call->function_name;
+			if (receiver.builtin_type == Variant::SIGNAL && receiver.wgodot_signal_signature && wgodot_strict_signal_callable_checking_enabled() &&
+					(method == SNAME("connect") || method == SNAME("disconnect") || method == SNAME("is_connected"))) {
+				// connect checks the retained AST signatures below. Identity-only
+				// operations do not invoke or erase the callable's argument contract.
+				return;
+			}
 			const bool reads_container =
 					(receiver.builtin_type == Variant::ARRAY && (method == SNAME("assign") || method == SNAME("append_array"))) ||
 					(receiver.builtin_type == Variant::DICTIONARY && (method == SNAME("assign") || method == SNAME("merge") || method == SNAME("merged") || method == SNAME("has_all")));
@@ -321,6 +354,9 @@ void GDScriptAnalyzer::wgodot_resolve_immutable_variable(Parser::AssignableNode 
 	wgodot_validate_value_type(r_type, p_variable);
 	if (r_type.builtin_type == Variant::CALLABLE && p_variable->initializer) {
 		r_type.wgodot_callable_signature = p_variable->initializer->type_constraint.wgodot_callable_signature;
+	}
+	if (r_type.builtin_type == Variant::SIGNAL && p_variable->initializer) {
+		r_type.wgodot_signal_signature = p_variable->initializer->type_constraint.wgodot_signal_signature;
 	}
 	wgodot_validate_immutable_type(r_type, p_variable);
 	wgodot_validate_immutable_value(r_type, p_variable->initializer);
@@ -417,6 +453,7 @@ void GDScriptAnalyzer::wgodot_validate_immutable_call(Parser::CallNode *p_call, 
 	const bool constructor_self = p_self && parser->current_class->wgodot_data_class && parser->current_function &&
 			parser->current_function->identifier && parser->current_function->identifier->name == GDScriptLanguage::get_singleton()->strings._init;
 	if (constructor_self && !p_constructor && !p_flags.has_flag(METHOD_FLAG_STATIC) && !p_flags.has_flag(METHOD_FLAG_CONST) &&
+			!p_call->wgodot_init_safe_call &&
 			!(p_call->is_super && p_call->function_name == GDScriptLanguage::get_singleton()->strings._init)) {
 		push_error("A data-class constructor may only call readonly self helpers or its parent constructor.", p_call);
 	}

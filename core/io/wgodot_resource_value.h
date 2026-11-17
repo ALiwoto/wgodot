@@ -4,6 +4,7 @@
 #include "wgodot_named_types.h"
 
 #include "core/variant/variant_parser.h"
+#include "core/templates/hash_set.h"
 
 // Owned declaration data; safe to share through a const snapshot.
 struct WGodotResourceDataType {
@@ -23,6 +24,7 @@ struct WGodotResourceDataType {
 class WGodotResourceValueParser : public VariantParser::AssignmentParser {
 	using Type = WGodotResourceDataType;
 	HashMap<StringName, Type> fields;
+	StringName native_type;
 	WGodotNamedTypes::Resolver &resolver;
 	VariantParser::AssignmentParser *custom;
 	Object *initializing = nullptr;
@@ -34,6 +36,7 @@ public:
 	static Error parse_repeat_count(VariantParser::Stream *p_stream, int &r_count, int &r_line, String &r_error);
 	WGodotResourceValueParser(const StringName &p_native, const Ref<Script> &p_script, WGodotNamedTypes::Resolver &p_resolver, VariantParser::AssignmentParser *p_custom = nullptr);
 	void initialize_owned(Object *p_resource) { initializing = p_resource; }
+	void set_node_paths(const HashSet<StringName> &p_properties);
 	Error parse(const String &p_name, VariantParser::Token &p_token, VariantParser::Stream *p_stream, int &r_line, String &r_error, VariantParser::ResourceParser *p_resources) override;
 	Error parse_value(const String &p_name, VariantParser::Token &p_token, Variant &r_value, VariantParser::Stream *p_stream, int &r_line, String &r_error, VariantParser::ResourceParser *p_resources) override;
 };

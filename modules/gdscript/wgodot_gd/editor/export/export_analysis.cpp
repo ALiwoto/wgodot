@@ -46,7 +46,7 @@ ExportAnalysis::ExportAnalysis(const ExportProject &p_project, const ExportConte
 	}
 }
 
-void ExportAnalysis::parse_scripts_parallel(int p_jobs) {
+Vector<Ref<GDScriptParserRef>> ExportAnalysis::prepare_parsers() {
 	// Parsing owns only its source tree. Resolve cross-script interfaces/bodies
 	// afterwards on the analysis owner; they can mutate dependency trees.
 	Vector<Ref<GDScriptParserRef>> pending;
@@ -57,6 +57,11 @@ void ExportAnalysis::parse_scripts_parallel(int p_jobs) {
 		parsers[path] = parser;
 		pending.push_back(parser);
 	}
+	return pending;
+}
+
+void ExportAnalysis::parse_scripts_parallel(int p_jobs) {
+	Vector<Ref<GDScriptParserRef>> pending = prepare_parsers();
 	if (pending.is_empty()) {
 		return;
 	}

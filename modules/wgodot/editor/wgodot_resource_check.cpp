@@ -1,5 +1,6 @@
 // wgodot-changes::file
 #include "wgodot_resource_check.h"
+#include "wgodot_check_diagnostics.h"
 
 #include "core/config/project_settings.h"
 #include "core/io/dir_access.h"
@@ -65,18 +66,20 @@ void WGodotResourceCheck::invalidate(const HashSet<String> &p_paths, bool p_all)
 	}
 }
 
-void WGodotResourceCheck::start(const WGodotGDScriptExportTransform::ExportProject &p_project) {
+void WGodotResourceCheck::start(const WGodotGDScriptExportTransform::ExportProject &p_project, std::shared_ptr<WGodotCheckBudget> p_budget) {
 	Vector<String> paths;
 	collect_resources(EditorFileSystem::get_singleton()->get_filesystem(), paths);
-	start(paths, p_project);
+	start(paths, p_project, p_budget);
 }
 
-void WGodotResourceCheck::start(const Vector<String> &p_paths, const WGodotGDScriptExportTransform::ExportProject &p_project) {
+void WGodotResourceCheck::start(const Vector<String> &p_paths, const WGodotGDScriptExportTransform::ExportProject &p_project, std::shared_ptr<WGodotCheckBudget> p_budget) {
 	project = p_project;
+	budget = p_budget ? p_budget : std::make_shared<WGodotCheckBudget>();
 	start_paths(p_paths);
 }
 
 void WGodotResourceCheck::start(const Vector<String> &p_paths, const WGodotResourceTypes &p_types) {
+	budget = std::make_shared<WGodotCheckBudget>();
 	types = std::make_unique<const WGodotResourceTypes>(p_types);
 	start_paths(p_paths);
 }
@@ -136,10 +139,13 @@ void WGodotResourceCheck::start_paths(const Vector<String> &p_paths) {
 }
 
 void WGodotResourceCheck::check_item(uint32_t p_index, Item **p_pending) {
-	if (cancelled.is_set()) {
+	if (cancelled.is_set() || budget->exhausted()) {
 		return;
 	}
 	Item &item = *p_pending[p_index];
+	item.native.budget = budget.get();
+	WGodotErrorCapture capture(&WGodotCheckDiagnostics::capture, &item.native);
+	item.checked = true;
 	Entry &entry = item.entry;
 	const String digest = WGodotFileStamp::get(item.path);
 	bool reusable = !digest.is_empty() && digest == entry.digest && entry.syntax.error == OK;
@@ -161,6 +167,7 @@ void WGodotResourceCheck::check_item(uint32_t p_index, Item **p_pending) {
 		entry.digest = String();
 		entry.syntax.error = error;
 		entry.syntax.message = "Cannot read resource: " + String(error_names[error]);
+		item.report_error = budget->claim_error();
 		return;
 	}
 	item.parsed = true;
@@ -174,10 +181,15 @@ void WGodotResourceCheck::check_item(uint32_t p_index, Item **p_pending) {
 		entry.syntax.error = ERR_BUSY;
 		entry.syntax.message = "Resource changed during validation; run check again.";
 	}
+	if (entry.syntax.error != OK) {
+		item.report_error = budget->claim_error();
+	}
 }
 
 void WGodotResourceCheck::run(void *p_userdata) {
 	auto *check = static_cast<WGodotResourceCheck *>(p_userdata);
+	WGodotCheckDiagnostics native{ check->budget.get() };
+	WGodotErrorCapture capture(&WGodotCheckDiagnostics::capture, &native);
 	const uint64_t started = OS::get_singleton()->get_ticks_msec();
 	String declaration_error;
 	Error declaration_result = OK;
@@ -203,12 +215,13 @@ void WGodotResourceCheck::run(void *p_userdata) {
 	}
 	int parsed = 0;
 	int cached = 0;
-	int errors = 0;
-	int warnings = 0;
+	int checked = 0;
+	int errors = native.errors;
+	int warnings = native.warnings;
 	bool changed = check->inventory_changed;
-	PackedStringArray output;
-	Array diagnostics;
-	if (declaration_result != OK) {
+	PackedStringArray output = native.output;
+	Array diagnostics = native.diagnostics;
+	if (declaration_result != OK && check->budget->claim_error()) {
 		errors++;
 		output.push_back("wgodot-check: error: " + declaration_error);
 		Dictionary diagnostic;
@@ -222,6 +235,14 @@ void WGodotResourceCheck::run(void *p_userdata) {
 		if (declaration_result != OK) {
 			break;
 		}
+		if (!item.checked) {
+			continue;
+		}
+		errors += item.native.errors;
+		warnings += item.native.warnings;
+		output.append_array(item.native.output);
+		diagnostics.append_array(item.native.diagnostics);
+		checked++;
 		parsed += item.parsed;
 		cached += !item.changed;
 		changed |= item.changed;
@@ -235,7 +256,7 @@ void WGodotResourceCheck::run(void *p_userdata) {
 			entry_diagnostic["warning"] = p_warning;
 			diagnostics.push_back(entry_diagnostic);
 		};
-		if (entry.syntax.error != OK) {
+		if (item.report_error) {
 			errors++;
 			diagnostic(entry.syntax.line, entry.syntax.message.is_empty() ? String(error_names[entry.syntax.error]) : entry.syntax.message, false);
 		}
@@ -248,11 +269,12 @@ void WGodotResourceCheck::run(void *p_userdata) {
 		check->save_cache();
 	}
 	const int64_t elapsed = OS::get_singleton()->get_ticks_msec() - started;
-	output.push_back(vformat("wgodot-check: checked %d scene/resource file(s), found %d error(s), %d warning(s) in %d ms.", check->items.size(), errors, warnings, elapsed));
+	output.push_back(vformat("wgodot-check: checked %d scene/resource file(s), skipped %d, found %d error(s), %d warning(s) in %d ms.", checked, check->items.size() - checked, errors, warnings, elapsed));
 	output.push_back(vformat("wgodot-check: resources parsed %d, cached %d.", parsed, cached));
 	check->result["output"] = output;
 	check->result["diagnostics"] = diagnostics;
-	check->result["resource_count"] = check->items.size();
+	check->result["resource_count"] = checked;
+	check->result["resource_skipped_count"] = check->items.size() - checked;
 	check->result["resource_parsed_count"] = parsed;
 	check->result["resource_cached_count"] = cached;
 	check->result["resource_error_count"] = errors;

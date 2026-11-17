@@ -33,6 +33,7 @@
 #include "scene/3d/node_3d.h"
 #include "servers/rendering/rendering_server_enums.h"
 // wgodot-changes::begin
+#include "servers/rendering/geometry_sort_group.h"
 #include "servers/rendering/storage/wgodot_instance_shader_parameters.h"
 // wgodot-changes::end
 
@@ -95,6 +96,7 @@ class GeometryInstance3D : public VisualInstance3D {
 	// wgodot-changes::begin
 	int32_t sorting_priority = 0;
 	int32_t sorting_subpriority = 0;
+	GeometrySortGroup sorting_group;
 	// wgodot-changes::end
 
 public:
@@ -201,6 +203,8 @@ public:
 	// wgodot-changes::begin
 	void set_sorting_priority(int32_t p_priority);
 	void set_sorting_subpriority(int32_t p_priority);
+	void set_transparency_sort_group(uint64_t p_group_id, const Vector3 &p_world_origin, int32_t p_order, int32_t p_layer = 0);
+	const GeometrySortGroup &get_transparency_sort_group() const { return sorting_group; }
 	int32_t get_sorting_priority() const { return sorting_priority; }
 	int32_t get_sorting_subpriority() const { return sorting_subpriority; }
 	void set_cull_transform(CullTransform p_mode);

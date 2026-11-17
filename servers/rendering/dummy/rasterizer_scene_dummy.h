@@ -58,6 +58,7 @@ public:
 		// wgodot-changes::begin
 		virtual void set_sorting_priority(int32_t p_priority) override {}
 		virtual void set_sorting_subpriority(int32_t p_priority) override {}
+		virtual void set_transparency_sort_group(const GeometrySortGroup &p_group) override {}
 		virtual void set_cull_transform(RSE::InstanceCullTransform p_mode) override {}
 		// wgodot-changes::end
 		virtual void set_lod_bias(float p_lod_bias) override {}

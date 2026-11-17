@@ -5,6 +5,7 @@
 #include "wgodot_cpp_project.h"
 
 #include "core/io/dir_access.h"
+#include "core/object/message_queue.h"
 #include "core/os/os.h"
 #include "core/variant/variant.h"
 
@@ -56,8 +57,9 @@ Dictionary failure(const String &p_message) {
 
 } // namespace
 
-Dictionary WGodotProjectCheck::run_standalone(uint64_t p_timeout_msec) {
+Dictionary WGodotProjectCheck::run_standalone(uint64_t p_timeout_msec, int p_errors_limit) {
 	WGodotProjectCheck operation;
+	operation.budget = std::make_shared<WGodotCheckBudget>(p_errors_limit);
 	operation.started_msec = OS::get_singleton()->get_ticks_msec();
 	Vector<String> scripts;
 	Vector<String> resource_paths;
@@ -71,9 +73,12 @@ Dictionary WGodotProjectCheck::run_standalone(uint64_t p_timeout_msec) {
 	}
 	operation.check.instantiate();
 	operation.resources.instantiate();
-	operation.check->start(scripts);
-	operation.resources->start(resource_paths, operation.check->get_project());
+	operation.check->start(scripts, operation.budget);
+	operation.resources->start(resource_paths, operation.check->get_project(), operation.budget);
 	while (OS::get_singleton()->get_ticks_msec() - operation.started_msec < p_timeout_msec) {
+		// Preload analysis can wait for resource signal connections on the main
+		// thread. Standalone checks have no editor loop to process that handoff.
+		MessageQueue::get_main_singleton()->flush();
 		Dictionary result = operation.poll();
 		if (!result.is_empty()) {
 			result["refreshed"] = false;
@@ -84,7 +89,8 @@ Dictionary WGodotProjectCheck::run_standalone(uint64_t p_timeout_msec) {
 	return failure("Standalone project check timed out.");
 }
 
-Dictionary WGodotProjectCheck::start(uint64_t p_timeout_msec) {
+Dictionary WGodotProjectCheck::start(uint64_t p_timeout_msec, int p_errors_limit) {
+	budget = std::make_shared<WGodotCheckBudget>(p_errors_limit);
 	return refresh.start(p_timeout_msec, false);
 }
 
@@ -108,6 +114,13 @@ Dictionary WGodotProjectCheck::poll() {
 			result["exit_code"] = 1;
 		}
 		result["elapsed_msec"] = int64_t(OS::get_singleton()->get_ticks_msec() - started_msec);
+		result["errors_limit"] = budget->get_limit();
+		result["error_limit_reached"] = budget->exhausted();
+		if (budget->exhausted()) {
+			output.push_back(vformat("wgodot-check: error limit %d reached; results may be incomplete. Fix these errors and run check again.", budget->get_limit()));
+			result["output"] = output;
+			result["exit_code"] = 1;
+		}
 		return result;
 	}
 	const Dictionary refreshed = refresh.poll();
@@ -117,7 +130,7 @@ Dictionary WGodotProjectCheck::poll() {
 	check.instantiate();
 	resources.instantiate();
 	started_msec = OS::get_singleton()->get_ticks_msec();
-	check->start();
-	resources->start(check->get_project());
+	check->start(budget);
+	resources->start(check->get_project(), budget);
 	return Dictionary();
 }

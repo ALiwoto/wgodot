@@ -3,6 +3,7 @@
 
 #include "wgodot_resource_syntax.h"
 #include "wgodot_resource_types.h"
+#include "wgodot_check_diagnostics.h"
 
 #include "core/object/ref_counted.h"
 #include "core/object/worker_thread_pool.h"
@@ -19,8 +20,11 @@ class WGodotResourceCheck : public RefCounted {
 	struct Item {
 		String path;
 		Entry entry;
+		WGodotCheckDiagnostics native;
 		bool changed = false;
 		bool parsed = false;
+		bool checked = false;
+		bool report_error = false;
 	};
 
 	// Accessed on the editor thread only. Workers own snapshots, never this cache.
@@ -34,6 +38,7 @@ class WGodotResourceCheck : public RefCounted {
 	bool inventory_changed = false;
 	WorkerThreadPool::TaskID task = WorkerThreadPool::INVALID_TASK_ID;
 	SafeFlag cancelled;
+	std::shared_ptr<WGodotCheckBudget> budget;
 	Dictionary result;
 	WGodotGDScriptExportTransform::ExportProject project;
 	std::unique_ptr<const WGodotResourceTypes> types;
@@ -44,8 +49,8 @@ class WGodotResourceCheck : public RefCounted {
 
 public:
 	static void invalidate(const HashSet<String> &p_paths, bool p_all);
-	void start(const WGodotGDScriptExportTransform::ExportProject &p_project);
-	void start(const Vector<String> &p_paths, const WGodotGDScriptExportTransform::ExportProject &p_project);
+	void start(const WGodotGDScriptExportTransform::ExportProject &p_project, std::shared_ptr<WGodotCheckBudget> p_budget = {});
+	void start(const Vector<String> &p_paths, const WGodotGDScriptExportTransform::ExportProject &p_project, std::shared_ptr<WGodotCheckBudget> p_budget = {});
 	void start(const Vector<String> &p_paths, const WGodotResourceTypes &p_types);
 	Dictionary poll();
 	~WGodotResourceCheck();

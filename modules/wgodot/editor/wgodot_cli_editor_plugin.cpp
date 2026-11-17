@@ -409,7 +409,12 @@ void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
 		return;
 	}
 	if (command == "check") {
-		const Dictionary response = p_connection.project_check.start(p_connection.deadline_msec - OS::get_singleton()->get_ticks_msec());
+		const int64_t errors_limit = options.get("errors_limit", 100);
+		if (errors_limit < 1 || errors_limit > INT32_MAX) {
+			finish_connection(p_connection, make_error_response("invalid_arguments", "errors_limit must be between 1 and 2147483647."));
+			return;
+		}
+		const Dictionary response = p_connection.project_check.start(p_connection.deadline_msec - OS::get_singleton()->get_ticks_msec(), int(errors_limit));
 		if (!response.is_empty()) {
 			finish_connection(p_connection, response);
 			return;

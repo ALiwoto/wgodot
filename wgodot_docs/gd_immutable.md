@@ -19,7 +19,7 @@ guarantee that an entire object graph is safe for concurrent mutation.
 Use `@immutable` on Array, Dictionary, PackedXArray, data-class instances, and native
 Resources. Value types such as int, String and Vector3 reject it. Nodes also reject
 it. A behavioral class may contain immutable data fields without being a data class.
-Data classes inherit another data class or exactly Object, RefCounted or Resource;
+Data classes inherit another data class, exactly Object/RefCounted, or a native Resource class;
 an ordinary behavioral script base is ineligible.
 
 ```gdscript
@@ -145,6 +145,11 @@ cannot publish self, alias it, capture it in a callback, or pass it elsewhere.
 Self helpers must be readonly and non-publishing; unaudited native self calls are
 rejected. Ordinary callers can publish the completed result.
 
+Audited native bindings may call `wgodot_set_init_safe()` when they neither publish
+the unfinished receiver nor invoke callbacks. This permits construction-time calls
+and property assignments, without granting readonly access. Metadata is omitted in
+`WGODOT_NATIVE_GAME`; generated calls are unchanged. Uses ordinary C++ on all compilers.
+
 ## Loading and sharing
 
 Resource results from `load`, `preload`, `async_preload` and native ResourceLoader
@@ -193,7 +198,7 @@ native resource payloads preserve that link using resource/field IDs. Omitted fi
 retain shared defaults. Exporters may omit a value only when the complete value
 equals a proven stable default: `[0]`, `[0, 0]` and `[]` are distinct.
 
-## Explicit unsafe access and current boundary
+## Explicit unsafe access
 
 ```gdscript
 var editable := dangerous_return_as_mutable(ItemData, definition)
@@ -204,6 +209,10 @@ This removes the outer qualifier without copying, unlocking storage or changing 
 object's type. Nested qualifiers remain. The caller owns the consequences for other
 readers and threads; use a verified clone when an independent object is wanted.
 
-Known unresolved boundary: `instance_from_id(value.get_instance_id()) as ItemData`
-can recover an unqualified alias. It is currently accepted, including by gd2cpp;
-do not use it to bypass these contracts. Its restriction is pending a policy decision.
+`instance_from_id` is forbidden, including as a callable: an object ID cannot
+retain type or immutable qualifications. Store the object directly, or use
+`WeakRef[Target]` when the reference must not keep it alive. `weakref(value)`
+preserves the target's static type; `WeakRef[@immutable ItemData].get_ref()` returns
+an immutable `ItemData` or null after expiry. Weak references cannot erase their
+target contract through casts, untyped storage or Object methods. Resolve the
+target before testing or casting its type.

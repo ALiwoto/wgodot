@@ -4064,7 +4064,7 @@ GDScriptParser::TypeNode *GDScriptParser::parse_type(bool p_allow_void) {
 				type = nullptr;
 				break;
 			// wgodot-changes::begin
-			} else if (container_type->container_types.size() > 0 && container_type->type_chain[0]->name != SNAME("ClassRef")) {
+			} else if (container_type->container_types.size() > 0 && container_type->type_chain[0]->name != SNAME("ClassRef") && container_type->type_chain[0]->name != SNAME("WeakRef")) {
 			// wgodot-changes::end
 				push_error("Nested typed collections are not supported.");
 			} else {
@@ -5576,6 +5576,9 @@ String GDScriptParser::DataType::to_string() const {
 	}
 	if (wgodot_class_ref) {
 		return "ClassRef[" + get_container_element_type(0).to_string() + "]";
+	}
+	if (wgodot_weak_ref) {
+		return "WeakRef[" + get_container_element_type(0).to_string() + "]";
 	}
 	// wgodot-changes::end
 	switch (kind) {

@@ -10,6 +10,16 @@
 		<link title="Visibility ranges (HLOD)">$DOCS_URL/tutorials/3d/visibility_ranges.html</link>
 	</tutorials>
 	<methods>
+		<method name="set_transparency_sort_group">
+			<return type="void" />
+			<param index="0" name="group_id" type="int" />
+			<param index="1" name="world_origin" type="Vector3" />
+			<param index="2" name="order" type="int" />
+			<param index="3" name="layer" type="int" default="0" />
+			<description>
+				Sorts transparent members at a shared [param world_origin], with lower [param order] drawn first within each group and layer. Groups at equal distance interleave by [param layer] (lower first); the default keeps each group contiguous. Use a unique nonzero identity (for example the controller's [method Object.get_instance_id]) and the same origin for all members; update the origin when it moves. Zero disables grouping. Instance/material priorities take precedence. This affects transparent ordering only and is evaluated separately for each rendered view.
+			</description>
+		</method>
 		<method name="get_instance_shader_parameter_names" qualifiers="const">
 			<return type="PackedStringArray" />
 			<description>

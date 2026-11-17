@@ -137,7 +137,7 @@ void ParticleSpawnShape3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_velocity_scale_curve", "value"), &ParticleSpawnShape3D::set_velocity_scale_curve);
 	ClassDB::bind_method(D_METHOD("get_velocity_scale_curve"), &ParticleSpawnShape3D::get_velocity_scale_curve);
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "velocity_scale_curve", PROPERTY_HINT_RESOURCE_TYPE, "ParticleFloatCurve"), "set_velocity_scale_curve", "get_velocity_scale_curve");
-	ClassDB::bind_method(D_METHOD("set_direction_order", "value"), &ParticleSpawnShape3D::set_direction_order);
+	ClassDB::bind_method(D_METHOD("set_direction_order", "value"), &ParticleSpawnShape3D::set_direction_order)->wgodot_set_init_safe();
 	ClassDB::bind_method(D_METHOD("get_direction_order"), &ParticleSpawnShape3D::get_direction_order);
 	ADD_PROPERTY(PropertyInfo(Variant::VECTOR3I, "direction_order"), "set_direction_order", "get_direction_order");
 	ClassDB::bind_method(D_METHOD("sample_center", "random", "emitter_seconds", "task_ratio"), &ParticleSpawnShape3D::sample_center, DEFVAL(0.0));
@@ -239,7 +239,7 @@ void ParticleBirthRule3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_acceleration", "value"), &ParticleBirthRule3D::set_acceleration);
 	ClassDB::bind_method(D_METHOD("get_acceleration"), &ParticleBirthRule3D::get_acceleration);
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "acceleration", PROPERTY_HINT_RESOURCE_TYPE, "ParticleVelocityRule3D"), "set_acceleration", "get_acceleration");
-	ClassDB::bind_method(D_METHOD("set_color_order", "value"), &ParticleBirthRule3D::set_color_order);
+	ClassDB::bind_method(D_METHOD("set_color_order", "value"), &ParticleBirthRule3D::set_color_order)->wgodot_set_init_safe();
 	ClassDB::bind_method(D_METHOD("get_color_order"), &ParticleBirthRule3D::get_color_order);
 	ADD_PROPERTY(PropertyInfo(Variant::VECTOR3I, "color_order"), "set_color_order", "get_color_order");
 	ClassDB::bind_method(D_METHOD("set_rotation_axis", "value"), &ParticleBirthRule3D::set_rotation_axis);

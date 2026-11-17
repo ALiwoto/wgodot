@@ -142,10 +142,12 @@ public:
 		// wgodot-changes::begin
 		bool wgodot_resource_path = false; // String in the VM, opaque integer in native games.
 		bool wgodot_class_ref = false; // Existing class objects in the VM; constrained constructors in native games.
+		bool wgodot_weak_ref = false; // WeakRef object in the VM, with a statically qualified target type.
 		bool wgodot_value = false;
 		bool wgodot_immutable = false; // Analysis only; never part of VM/native value storage.
 		WGodotScalar::Type wgodot_scalar = WGodotScalar::NONE;
 		FunctionNode *wgodot_callable_signature = nullptr;
+		SignalNode *wgodot_signal_signature = nullptr;
 		// wgodot-changes::end
 
 		Variant::Type builtin_type = Variant::NIL;
@@ -229,10 +231,10 @@ public:
 
 		bool operator==(const DataType &p_other) const {
 			// wgodot-changes::begin
-			if (wgodot_resource_path != p_other.wgodot_resource_path || wgodot_class_ref != p_other.wgodot_class_ref || wgodot_immutable != p_other.wgodot_immutable || wgodot_value != p_other.wgodot_value) {
+			if (wgodot_resource_path != p_other.wgodot_resource_path || wgodot_class_ref != p_other.wgodot_class_ref || wgodot_weak_ref != p_other.wgodot_weak_ref || wgodot_immutable != p_other.wgodot_immutable || wgodot_value != p_other.wgodot_value) {
 				return false;
 			}
-			if (wgodot_class_ref) {
+			if (wgodot_class_ref || wgodot_weak_ref) {
 				return get_container_element_type(0) == p_other.get_container_element_type(0);
 			}
 			// wgodot-changes::end
@@ -285,10 +287,12 @@ public:
 			// wgodot-changes::begin
 			wgodot_resource_path = p_other.wgodot_resource_path;
 			wgodot_class_ref = p_other.wgodot_class_ref;
+			wgodot_weak_ref = p_other.wgodot_weak_ref;
 			wgodot_immutable = p_other.wgodot_immutable;
 			wgodot_value = p_other.wgodot_value;
 			wgodot_scalar = p_other.wgodot_scalar;
 			wgodot_callable_signature = p_other.wgodot_callable_signature;
+			wgodot_signal_signature = p_other.wgodot_signal_signature;
 			// wgodot-changes::end
 			builtin_type = p_other.builtin_type;
 			native_type = p_other.native_type;
@@ -574,6 +578,7 @@ public:
 		FunctionNode *wgodot_resolved_function = nullptr;
 		bool wgodot_readonly_call = false;
 		bool wgodot_native_call = false;
+		bool wgodot_init_safe_call = false;
 		bool wgodot_class_ref_constructor = false;
 		bool wgodot_mutable_alias = false;
 		struct FieldInitializer {

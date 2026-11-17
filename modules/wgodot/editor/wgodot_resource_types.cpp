@@ -1,8 +1,10 @@
 // wgodot-changes::file
 #include "wgodot_resource_types.h"
+#include "core/io/wgodot_native_resource_fields.h"
 #include "core/object/wgodot_class_references.h"
 
 #include "core/object/class_db.h"
+#include "core/object/method_bind.h"
 
 #include "modules/gdscript/wgodot_gd/editor/export/export_analysis.h"
 #include "modules/gdscript/wgodot_gd/editor/export/export_context.h"
@@ -207,13 +209,26 @@ bool WGodotResourceTypes::has_resource_exports(const StringName &p_class) const 
 	if (!type) {
 		return true; // Native storage properties are declared by ClassDB.
 	}
+	StringName native;
 	while (type) {
 		for (const auto &field : type->fields) {
 			if (field.value.exposed) {
 				return true;
 			}
 		}
-		type = classes.getptr(type->base);
+		native = type->base;
+		type = classes.getptr(native);
+	}
+	// Script wrappers also serialize their native base's storage fields.
+	while (!native.is_empty() && native != SNAME("Resource")) {
+		List<PropertyInfo> properties;
+		ClassDB::get_property_list(native, &properties, true);
+		for (const PropertyInfo &property : properties) {
+			if (property.usage & PROPERTY_USAGE_STORAGE) {
+				return true;
+			}
+		}
+		native = ClassDB::get_parent_class(native);
 	}
 	return false;
 }
@@ -236,7 +251,7 @@ String WGodotResourceTypes::signature(const StringName &p_class) const {
 																												 : String();
 }
 
-bool WGodotResourceTypes::field(const StringName &p_class, const StringName &p_name, Field &r_field, HashMap<String, String> &r_declarations) const {
+bool WGodotResourceTypes::field(const StringName &p_class, const StringName &p_name, Field &r_field, HashMap<String, String> &r_declarations, Variant::Type p_literal_type) const {
 	StringName name = p_class;
 	while (!name.is_empty()) {
 		if (!r_declarations.has(name)) {
@@ -245,12 +260,33 @@ bool WGodotResourceTypes::field(const StringName &p_class, const StringName &p_n
 		const Class *script = classes.getptr(name);
 		if (!script) {
 			PropertyInfo info;
-			if (!ClassDB::get_property_info(name, p_name, &info)) {
-				return false;
+			if (!ClassDB::get_property_info(name, p_name, &info) && !WGodotNativeResourceFields::field(name, p_name, info)) {
+				const ClassDB::NativeProperty property = ClassDB::get_native_property(name, p_name, p_literal_type);
+				if (!property.collection_prefix.is_empty()) {
+					const auto entry = ClassDB::get_native_property(name, property.collection_prefix, Variant::NIL);
+					if (!entry.setter || !entry.indexed || entry.setter->get_argument_count() != 2) {
+						return false;
+					}
+					r_field.type.builtin = Variant::DICTIONARY;
+					r_field.type.elements.push_back(native_type(entry.setter->get_argument_info(0)));
+					r_field.type.elements.push_back(native_type(entry.setter->get_argument_info(1)));
+				} else {
+					if (!property.setter || property.setter->is_vararg() || property.setter->get_argument_count() != (property.indexed ? 2 : 1)) {
+						return false;
+					}
+					r_field.type = native_type(property.setter->get_argument_info(property.indexed ? 1 : 0));
+				}
+				r_field.qualification = native_qualification(r_field.type);
+				r_field.exposed = true;
+				return true;
 			}
 			r_field.type = native_type(info);
 			r_field.qualification = native_qualification(r_field.type);
-			r_field.exposed = (info.usage & PROPERTY_USAGE_STORAGE) != 0 && p_name != SNAME("script");
+			// Native authoring aliases (e.g. Node3D.position) have public setters
+			// but save through another property (transform).
+			r_field.exposed = p_name != SNAME("script") &&
+					((info.usage & PROPERTY_USAGE_STORAGE) ||
+							(!(info.usage & PROPERTY_USAGE_READ_ONLY) && ClassDB::get_property_setter(name, p_name) != StringName()));
 			return true;
 		}
 		if (const Field *field = script->fields.getptr(p_name)) {
@@ -328,6 +364,9 @@ bool WGodotResourceTypes::accepts(const Type &p_expected, const Type &p_actual) 
 		return p_expected.builtin == Variant::OBJECT;
 	}
 	if (p_expected.builtin == Variant::FLOAT && p_actual.builtin == Variant::INT) {
+		return true;
+	}
+	if (p_expected.builtin == Variant::STRING_NAME && p_actual.builtin == Variant::STRING) {
 		return true;
 	}
 	if (p_expected.builtin != p_actual.builtin) {

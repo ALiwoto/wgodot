@@ -9,7 +9,7 @@ void ParticleLightProfile3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_color_distribution", "value"), &ParticleLightProfile3D::set_color_distribution);
 	ClassDB::bind_method(D_METHOD("get_color_distribution"), &ParticleLightProfile3D::get_color_distribution);
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "color_distribution", PROPERTY_HINT_RESOURCE_TYPE, "ParticleColorCurve"), "set_color_distribution", "get_color_distribution");
-	ClassDB::bind_method(D_METHOD("set_sample_position_before_motion", "value"), &ParticleLightProfile3D::set_sample_position_before_motion);
+	ClassDB::bind_method(D_METHOD("set_sample_position_before_motion", "value"), &ParticleLightProfile3D::set_sample_position_before_motion)->wgodot_set_init_safe();
 	ClassDB::bind_method(D_METHOD("get_sample_position_before_motion"), &ParticleLightProfile3D::get_sample_position_before_motion);
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "sample_position_before_motion"), "set_sample_position_before_motion", "get_sample_position_before_motion");
 	ClassDB::bind_method(D_METHOD("set_color", "value"), &ParticleLightProfile3D::set_color);
@@ -30,10 +30,10 @@ void ParticleLightProfile3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_inverse_squared", "value"), &ParticleLightProfile3D::set_inverse_squared);
 	ClassDB::bind_method(D_METHOD("get_inverse_squared"), &ParticleLightProfile3D::get_inverse_squared);
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "inverse_squared"), "set_inverse_squared", "get_inverse_squared");
-	ClassDB::bind_method(D_METHOD("set_inverse_squared_scale", "value"), &ParticleLightProfile3D::set_inverse_squared_scale);
+	ClassDB::bind_method(D_METHOD("set_inverse_squared_scale", "value"), &ParticleLightProfile3D::set_inverse_squared_scale)->wgodot_set_init_safe();
 	ClassDB::bind_method(D_METHOD("get_inverse_squared_scale"), &ParticleLightProfile3D::get_inverse_squared_scale);
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "inverse_squared_scale"), "set_inverse_squared_scale", "get_inverse_squared_scale");
-	ClassDB::bind_method(D_METHOD("set_normalization_units", "value"), &ParticleLightProfile3D::set_normalization_units);
+	ClassDB::bind_method(D_METHOD("set_normalization_units", "value"), &ParticleLightProfile3D::set_normalization_units)->wgodot_set_init_safe();
 	ClassDB::bind_method(D_METHOD("get_normalization_units"), &ParticleLightProfile3D::get_normalization_units);
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "normalization_units"), "set_normalization_units", "get_normalization_units");
 	ClassDB::bind_method(D_METHOD("apply", "light", "relative_age", "tint", "size", "emitter_scale", "task_ratio", "random", "radius_multiplier"), &ParticleLightProfile3D::apply, DEFVAL(0.0), DEFVAL(Ref<RandomStream32>()), DEFVAL(1.0));

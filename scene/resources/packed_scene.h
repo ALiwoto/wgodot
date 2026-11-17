@@ -211,6 +211,9 @@ public:
 	int get_node_property_count(int p_idx) const;
 	StringName get_node_property_name(int p_idx, int p_prop) const;
 	Variant get_node_property_value(int p_idx, int p_prop) const;
+	// wgodot-changes::begin
+	Ref<Resource> get_node_property_resource(int p_idx, int p_prop) const;
+	// wgodot-changes::end
 	Vector<String> get_node_deferred_nodepath_properties(int p_idx) const;
 
 	int get_connection_count() const;

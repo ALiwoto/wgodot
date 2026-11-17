@@ -1,6 +1,8 @@
 // wgodot-changes::file
 #pragma once
 
+#include "wgodot_shader_declarations.h"
+
 #include "core/io/wgodot_resource_value.h"
 #include "core/object/object.h"
 #include "core/templates/hash_map.h"
@@ -47,12 +49,14 @@ public:
 
 private:
 	HashMap<StringName, Class> classes;
+	std::shared_ptr<WGodotShaderDeclarations> shaders = std::make_shared<WGodotShaderDeclarations>();
 	static Type script_type(const GDScriptParser::DataType &p_type);
 	static Type native_type(const PropertyInfo &p_info);
 	static Qualification script_qualification(const GDScriptParser::DataType &p_type);
 	static Qualification native_qualification(const Type &p_type);
 
 public:
+	const WGodotShaderDeclarations &get_shaders() const { return *shaders; }
 	Error build(const WGodotGDScriptExportTransform::ExportProject &p_project, String &r_error);
 	void add_class(const GDScriptParser::ClassNode *p_class);
 	bool exists(const StringName &p_class) const;
@@ -63,7 +67,7 @@ public:
 	bool immutable_resource(const StringName &p_class) const;
 	bool has_resource_exports(const StringName &p_class) const;
 	Error check_exports(const StringName &p_class, String &r_error) const;
-	bool field(const StringName &p_class, const StringName &p_name, Field &r_field, HashMap<String, String> &r_declarations) const;
+	bool field(const StringName &p_class, const StringName &p_name, Field &r_field, HashMap<String, String> &r_declarations, Variant::Type p_literal_type = Variant::NIL) const;
 	bool function(const StringName &p_class, const StringName &p_name, bool p_signal, Function &r_function, HashMap<String, String> &r_declarations) const;
 	void record(const Type &p_type, HashMap<String, String> &r_declarations) const;
 	String signature(const StringName &p_class) const;

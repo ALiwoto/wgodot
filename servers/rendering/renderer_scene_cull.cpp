@@ -798,6 +798,7 @@ void RendererSceneCull::instance_set_base(RID p_instance, RID p_base) {
 				geom->geometry_instance->sorting_id = instance->self.get_id();
 				geom->geometry_instance->set_sorting_priority(instance->sorting_priority);
 				geom->geometry_instance->set_sorting_subpriority(instance->sorting_subpriority);
+				geom->geometry_instance->set_transparency_sort_group(instance->sorting_group);
 				geom->geometry_instance->set_cull_transform(instance->cull_transform);
 				// wgodot-changes::end
 				geom->geometry_instance->set_lod_bias(instance->lod_bias);
@@ -1081,6 +1082,16 @@ void RendererSceneCull::instance_geometry_set_sorting_subpriority(RID p_instance
 	if (((1 << instance->base_type) & RSE::INSTANCE_GEOMETRY_MASK) && instance->base_data) {
 		InstanceGeometryData *geometry = static_cast<InstanceGeometryData *>(instance->base_data);
 		geometry->geometry_instance->set_sorting_subpriority(p_priority);
+	}
+}
+
+void RendererSceneCull::instance_geometry_set_transparency_sort_group(RID p_instance, uint64_t p_group_id, const Vector3 &p_world_origin, int32_t p_order, int32_t p_layer) {
+	Instance *instance = instance_owner.get_or_null(p_instance);
+	ERR_FAIL_NULL(instance);
+	instance->sorting_group = { p_group_id, p_world_origin, p_order, p_layer };
+	if (((1 << instance->base_type) & RSE::INSTANCE_GEOMETRY_MASK) && instance->base_data) {
+		InstanceGeometryData *geometry = static_cast<InstanceGeometryData *>(instance->base_data);
+		geometry->geometry_instance->set_transparency_sort_group(instance->sorting_group);
 	}
 }
 // wgodot-changes::end

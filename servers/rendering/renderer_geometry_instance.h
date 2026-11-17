@@ -35,6 +35,10 @@
 #include "core/math/transform_3d.h"
 #include "core/templates/rid.h"
 #include "servers/rendering/storage/utilities.h"
+// wgodot-changes::begin
+#include "core/math/plane.h"
+#include "servers/rendering/geometry_sort_group.h"
+// wgodot-changes::end
 
 // API definition for our RenderGeometryInstance class so we can expose this through GDExtension in the near future
 class RenderGeometryInstance {
@@ -60,6 +64,7 @@ public:
 	// wgodot-changes::begin
 	virtual void set_sorting_priority(int32_t p_priority) = 0;
 	virtual void set_sorting_subpriority(int32_t p_priority) = 0;
+	virtual void set_transparency_sort_group(const GeometrySortGroup &p_group) = 0;
 	virtual void set_cull_transform(RSE::InstanceCullTransform p_mode) = 0;
 	// wgodot-changes::end
 	virtual void set_lod_bias(float p_lod_bias) = 0;
@@ -99,10 +104,29 @@ public:
 	float depth = 0;
 	// wgodot-changes::begin
 	_FORCE_INLINE_ bool sorts_before_at_equal_priority(const RenderGeometryInstanceBase *p_other) const {
-		if (depth != p_other->depth) {
-			return depth > p_other->depth;
+		const float first_depth = sorting_group.id ? sorting_group_depth : depth;
+		const float other_depth = p_other->sorting_group.id ? p_other->sorting_group_depth : p_other->depth;
+		if (first_depth != other_depth) {
+			return first_depth > other_depth;
+		}
+		const int32_t first_layer = sorting_group.id ? sorting_group.layer : 0;
+		const int32_t other_layer = p_other->sorting_group.id ? p_other->sorting_group.layer : 0;
+		if (first_layer != other_layer) {
+			return first_layer < other_layer;
+		}
+		if (sorting_group.id != p_other->sorting_group.id) {
+			return sorting_group.id < p_other->sorting_group.id;
+		}
+		if (sorting_group.id && sorting_group.order != p_other->sorting_group.order) {
+			return sorting_group.order < p_other->sorting_group.order;
 		}
 		return sorting_id < p_other->sorting_id;
+	}
+
+	_FORCE_INLINE_ void update_sort_group_depth(const Vector3 &p_camera_origin, const Plane &p_near_plane, bool p_orthogonal) {
+		if (sorting_group.id) {
+			sorting_group_depth = p_orthogonal ? p_near_plane.distance_to(sorting_group.origin) : p_camera_origin.distance_to(sorting_group.origin);
+		}
 	}
 	// wgodot-changes::end
 
@@ -118,6 +142,8 @@ public:
 	// wgodot-changes::begin
 	int32_t sorting_priority = 0;
 	int32_t sorting_subpriority = 0;
+	GeometrySortGroup sorting_group;
+	float sorting_group_depth = 0.0f;
 	RSE::InstanceCullTransform cull_transform = RSE::INSTANCE_CULL_TRANSFORM_AUTOMATIC;
 	// wgodot-changes::end
 	bool use_aabb_center = true;
@@ -167,6 +193,7 @@ public:
 	// wgodot-changes::begin
 	virtual void set_sorting_priority(int32_t p_priority) override { sorting_priority = p_priority; }
 	virtual void set_sorting_subpriority(int32_t p_priority) override { sorting_subpriority = p_priority; }
+	virtual void set_transparency_sort_group(const GeometrySortGroup &p_group) override { sorting_group = p_group; }
 	virtual void set_cull_transform(RSE::InstanceCullTransform p_mode) override;
 	// wgodot-changes::end
 	virtual void set_lod_bias(float p_lod_bias) override;

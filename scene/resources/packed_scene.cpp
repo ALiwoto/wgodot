@@ -2348,6 +2348,13 @@ Variant SceneState::get_node_property_value(int p_idx, int p_prop) const {
 	return variants[nodes[p_idx].properties[p_prop].value];
 }
 
+// wgodot-changes::begin
+Ref<Resource> SceneState::get_node_property_resource(int p_idx, int p_prop) const {
+	const Variant value = get_node_property_value(p_idx, p_prop);
+	return value.get_type() == Variant::OBJECT ? Ref<Resource>(Object::cast_to<Resource>(value.operator Object *())) : Ref<Resource>();
+}
+// wgodot-changes::end
+
 NodePath SceneState::get_node_owner_path(int p_idx) const {
 	ERR_FAIL_INDEX_V(p_idx, nodes.size(), NodePath());
 	if (nodes[p_idx].owner < 0 || nodes[p_idx].owner == NO_PARENT_SAVED) {
@@ -2645,6 +2652,9 @@ void SceneState::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_node_property_count", "idx"), &SceneState::get_node_property_count);
 	ClassDB::bind_method(D_METHOD("get_node_property_name", "idx", "prop_idx"), &SceneState::get_node_property_name);
 	ClassDB::bind_method(D_METHOD("get_node_property_value", "idx", "prop_idx"), &SceneState::get_node_property_value);
+	// wgodot-changes::begin
+	ClassDB::bind_method(D_METHOD("get_node_property_resource", "idx", "prop_idx"), &SceneState::get_node_property_resource);
+	// wgodot-changes::end
 	ClassDB::bind_method(D_METHOD("get_connection_count"), &SceneState::get_connection_count);
 	ClassDB::bind_method(D_METHOD("get_connection_source", "idx"), &SceneState::get_connection_source);
 	ClassDB::bind_method(D_METHOD("get_connection_signal", "idx"), &SceneState::get_connection_signal);

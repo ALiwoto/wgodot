@@ -6,6 +6,7 @@
 #include "core/io/resource_loader.h"
 #include "core/io/wgodot_file_stamp.h"
 #include "core/io/wgodot_global_resources.h"
+#include "editor/import/3d/wgodot_scene_declarations.h"
 
 #include "modules/wgodot/codecs/resource_codec.h"
 #include "modules/wgodot/serialization/wire.h"
@@ -13,6 +14,18 @@
 using VP = VariantParser;
 
 namespace {
+Variant::Type literal_type(const VP::Token &p_token) {
+	if (p_token.type == VP::TK_NUMBER || p_token.type == VP::TK_STRING || p_token.type == VP::TK_STRING_NAME) {
+		return p_token.value.get_type();
+	}
+	if (p_token.type == VP::TK_IDENTIFIER) {
+		const String name = p_token.value;
+		const Variant::Type type = name == "true" || name == "false" ? Variant::BOOL : Variant::get_type_by_name(name);
+		return type == Variant::VARIANT_MAX ? Variant::NIL : type;
+	}
+	return Variant::NIL;
+}
+
 int numeric_component_width(Variant::Type p_type) {
 	switch (p_type) {
 		case Variant::VECTOR2:
@@ -102,9 +115,9 @@ Error WGodotResourceValidation::class_type(const StringName &p_type, const Strin
 	return types->check_exports(p_type, r_error);
 }
 
-Error WGodotResourceValidation::field(const StringName &p_class, const StringName &p_name, Type &r_type, Qualification &r_qualification, String &r_error) {
+Error WGodotResourceValidation::field(const StringName &p_class, const StringName &p_name, Type &r_type, Qualification &r_qualification, String &r_error, Variant::Type p_literal_type) {
 	WGodotResourceTypes::Field declaration;
-	if (!types->field(p_class, p_name, declaration, result.declarations)) {
+	if (!types->field(p_class, p_name, declaration, result.declarations, p_literal_type)) {
 		return fail("Unknown field '" + String(p_name) + "' on " + String(p_class) + ". Dynamic properties are forbidden.", r_error);
 	}
 	if (!declaration.exposed) {
@@ -280,7 +293,9 @@ Error WGodotResourceValidation::reference(Stream *p_stream, const String &p_kind
 			return fail("Unknown global resource: " + name, r_error);
 		}
 		RETURN_IF_ERROR(resource_type(*source, r_type.name, r_error));
+		reference_path = *source;
 		if (peek(p_stream, r_line) == '.') {
+			reference_path = String();
 			RETURN_IF_ERROR(expect(p_stream, VP::TK_PERIOD, r_line, r_error));
 			RETURN_IF_ERROR(token(p_stream, id, r_line, r_error));
 			if (id.type != VP::TK_IDENTIFIER) {
@@ -295,6 +310,7 @@ Error WGodotResourceValidation::reference(Stream *p_stream, const String &p_kind
 			return fail("Unknown " + p_kind + " ID: " + name, r_error);
 		}
 		r_type.name = source->type;
+		reference_path = source->path;
 	}
 	return OK;
 }
@@ -392,6 +408,14 @@ Error WGodotResourceValidation::value(Token p_token, Stream *p_stream, const Typ
 			}
 		} else if (name == "Array" || name == "Dictionary") {
 			RETURN_IF_ERROR(annotation(p_token, p_stream, r_actual, r_line, r_error));
+			if (deferred_node_property && p_depth == 0 && r_actual.builtin == p_expected.builtin && r_actual.elements.size() == p_expected.elements.size()) {
+				for (int i = 0; i < r_actual.elements.size(); i++) {
+					const Type &expected = p_expected.elements[i];
+					if (r_actual.elements[i].builtin == Variant::NODE_PATH && expected.builtin == Variant::OBJECT && types->derives(expected.name, SNAME("Node"))) {
+						r_actual.elements.write[i] = expected;
+					}
+				}
+			}
 			if (!types->accepts(p_expected, r_actual)) {
 				return fail("Expected " + p_expected.text() + ", got " + r_actual.text() + ".", r_error);
 			}
@@ -412,8 +436,8 @@ Error WGodotResourceValidation::value(Token p_token, Stream *p_stream, const Typ
 					return fail(name + " requires a literal string.", r_error);
 				}
 				if (r_actual.builtin == Variant::NODE_PATH && p_expected.builtin == Variant::OBJECT && types->derives(p_expected.name, SNAME("Node"))) {
-					if (!node_section) {
-						return fail("Node references require a scene node context.", r_error);
+					if (!deferred_node_property || p_depth > 1) {
+						return fail("Node references require a node_paths declaration and cannot use nested containers.", r_error);
 					}
 					node_bindings.push_back({ nested_scene ? nested_scene_id : String(), owner_node, String(p_token.value), p_expected.name, r_line });
 					r_actual = p_expected;
@@ -513,9 +537,44 @@ Error WGodotResourceValidation::parse(const String &p_name, Token &p_token, Stre
 	handled = true;
 	Type expected;
 	Qualification qualification;
-	RETURN_IF_ERROR(field(owner_type, p_name, expected, qualification, r_error));
+	if (node_section && p_name == "metadata/wgodot_target") {
+		expected.builtin = Variant::STRING;
+		if (p_token.type != VP::TK_STRING || (p_token.value != "shared" && p_token.value != "client" && p_token.value != "server" && p_token.value != "editor")) {
+			return fail("wgodot_target must be shared, client, server or editor.", r_error);
+		}
+	} else if (node_section && p_name.begins_with("metadata/_edit_")) {
+		// Native scene export strips these editor annotations before building
+		// gameplay. Their explicit literal type still gets syntax validation.
+		expected.builtin = literal_type(p_token);
+		if (!expected.concrete() || expected.builtin == Variant::OBJECT) {
+			return fail("Editor metadata requires an explicitly typed value.", r_error);
+		}
+	} else if (p_name.begins_with("shader_parameter/") && types->derives(owner_type, SNAME("ShaderMaterial"))) {
+		if (shader_path.is_empty()) {
+			return fail("Declare the material shader before its parameters.", r_error);
+		}
+		PropertyInfo info;
+		RETURN_IF_ERROR(types->get_shaders().uniform(shader_path, p_name.trim_prefix("shader_parameter/"), info, result.dependencies, r_error));
+		expected = Type::from_property(info);
+		qualification.immutable = expected.builtin == Variant::OBJECT;
+		if (expected.builtin == Variant::ARRAY) {
+			Qualification element;
+			element.immutable = expected.elements.size() == 1 && expected.elements[0].builtin == Variant::OBJECT;
+			qualification.elements.push_back(element);
+		}
+	} else {
+		// Select only explicitly registered native overloads. This does not
+		// infer a schema for undeclared fields or application Variant values.
+		RETURN_IF_ERROR(field(owner_type, p_name, expected, qualification, r_error, literal_type(p_token)));
+	}
+	deferred_node_property = node_section && deferred_node_properties.has(p_name);
+	reference_path = String();
 	Type actual;
-	return value(p_token, p_stream, expected, qualification, actual, r_line, r_error);
+	RETURN_IF_ERROR(value(p_token, p_stream, expected, qualification, actual, r_line, r_error));
+	if (p_name == "shader" && types->derives(owner_type, SNAME("ShaderMaterial"))) {
+		shader_path = reference_path;
+	}
+	return OK;
 }
 
 Error WGodotResourceValidation::marker(Stream *p_stream, Ref<Resource> &r_resource, int &r_line, String &r_error, bool p_external) {
@@ -568,6 +627,13 @@ Error WGodotResourceValidation::instance(const Reference &p_reference, const Str
 			return fail("Embedded scene has no declared nodes.", r_error);
 		}
 		nodes = *source;
+	} else if (p_reference.path.get_extension() != "tscn") {
+		const String declarations = WGodotSceneDeclarations::path_for_source(p_reference.path);
+		result.dependencies.insert(declarations, WGodotFileStamp::get(declarations));
+		result.dependencies.insert(p_reference.path + ".import", WGodotFileStamp::get(p_reference.path + ".import"));
+		if (WGodotSceneDeclarations::read(declarations, nodes) != OK) {
+			return fail("Imported scene declarations are missing or invalid; reimport " + p_reference.path, r_error);
+		}
 	} else {
 		if (!scenes.has(p_reference.path)) {
 			if (scene_stack->has(p_reference.path) || p_reference.path == path) {
@@ -594,6 +660,7 @@ Error WGodotResourceValidation::instance(const Reference &p_reference, const Str
 		nodes = scenes[p_reference.path].nodes;
 	}
 	for (const auto &node : nodes) {
+		result.declarations.insert(node.value, types->signature(node.value));
 		const String name = node.key == "." ? p_prefix : p_prefix == "." ? node.key
 																		 : p_prefix.path_join(node.key);
 		result.nodes.insert(name, node.value);
@@ -605,6 +672,8 @@ Error WGodotResourceValidation::tag(const VP::Tag &p_tag, const StringName &p_re
 	current_property = String();
 	assignments.clear();
 	node_section = false;
+	deferred_node_properties.clear();
+	shader_path = String();
 	if (!types) {
 		owner_type = p_tag.fields.has("type") ? StringName(String(p_tag.fields["type"])) : p_tag.name == "resource" ? p_resource_type
 																													: StringName();
@@ -656,6 +725,12 @@ Error WGodotResourceValidation::tag(const VP::Tag &p_tag, const StringName &p_re
 		resource_section = String();
 	} else if (p_tag.name == "node") {
 		node_section = true;
+		if (p_tag.fields.has("node_paths")) {
+			const PackedStringArray paths = p_tag.fields["node_paths"];
+			for (const String &property : paths) {
+				deferred_node_properties.insert(property);
+			}
+		}
 		const String parent = p_tag.fields.has("parent") ? String(p_tag.fields["parent"]) : String();
 		owner_node = parent.is_empty() ? String(".") : parent == "." ? String(p_tag.fields["name"])
 																	 : parent.path_join(p_tag.fields["name"]);
@@ -714,6 +789,13 @@ Error WGodotResourceValidation::tag_fields(const VP::Tag &p_tag, String &r_error
 				expected = Variant::STRING;
 			}
 		} else if (p_tag.name == "node") {
+			// Godot's text scene saver quotes sibling indexes.
+			if (name == "index" && field.value.get_type() == Variant::STRING) {
+				const String index = field.value;
+				if (index.is_valid_int() && index.to_int() >= 0 && index.to_int() <= INT32_MAX) {
+					continue;
+				}
+			}
 			if (name == "name" || name == "type" || name == "parent" || name == "owner" || name == "instance_placeholder") {
 				expected = Variant::STRING;
 			} else if (name == "index" || name == "unique_id") {
@@ -721,7 +803,7 @@ Error WGodotResourceValidation::tag_fields(const VP::Tag &p_tag, String &r_error
 			} else if (name == "instance") {
 				expected = Variant::OBJECT;
 			} else if (name == "groups" || name == "node_paths") {
-				expected = Variant::ARRAY;
+				expected = field.value.get_type() == Variant::PACKED_STRING_ARRAY ? Variant::PACKED_STRING_ARRAY : Variant::ARRAY;
 				if (field.value.get_type() == Variant::ARRAY) {
 					for (const Variant &item : Array(field.value)) {
 						if (item.get_type() != Variant::STRING && item.get_type() != Variant::STRING_NAME) {

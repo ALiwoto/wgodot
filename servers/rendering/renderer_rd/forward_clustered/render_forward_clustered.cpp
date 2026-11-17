@@ -1039,6 +1039,9 @@ void RenderForwardClustered::_fill_render_list(RenderListType p_render_list, con
 			}
 			inst->depth = p_render_data->scene_data->cam_transform.origin.distance_to(center) - inst->sorting_offset;
 		}
+		// wgodot-changes::begin
+		inst->update_sort_group_depth(p_render_data->scene_data->cam_transform.origin, near_plane, p_render_data->scene_data->cam_orthogonal);
+		// wgodot-changes::end
 		uint32_t depth_layer = CLAMP(int(inst->depth * 16 / z_max), 0, 15);
 
 		uint32_t flags = inst->base_flags; //fill flags if appropriate

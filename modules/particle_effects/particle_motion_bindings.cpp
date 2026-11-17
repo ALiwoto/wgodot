@@ -127,7 +127,7 @@ void ParticleMotionProfile3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_orbit_rate_emitter_clock", "value"), &ParticleMotionProfile3D::set_orbit_rate_emitter_clock);
 	ClassDB::bind_method(D_METHOD("get_orbit_rate_emitter_clock"), &ParticleMotionProfile3D::get_orbit_rate_emitter_clock);
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "orbit_rate_emitter_clock"), "set_orbit_rate_emitter_clock", "get_orbit_rate_emitter_clock");
-	ClassDB::bind_method(D_METHOD("set_orbit_rotation_threshold", "value"), &ParticleMotionProfile3D::set_orbit_rotation_threshold);
+	ClassDB::bind_method(D_METHOD("set_orbit_rotation_threshold", "value"), &ParticleMotionProfile3D::set_orbit_rotation_threshold)->wgodot_set_init_safe();
 	ClassDB::bind_method(D_METHOD("get_orbit_rotation_threshold"), &ParticleMotionProfile3D::get_orbit_rotation_threshold);
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "orbit_rotation_threshold"), "set_orbit_rotation_threshold", "get_orbit_rotation_threshold");
 	ClassDB::bind_method(D_METHOD("direct_velocity_at", "relative_age", "task_ratio"), &ParticleMotionProfile3D::direct_velocity_at, DEFVAL(0.0));
@@ -177,7 +177,7 @@ void ParticleMeshProfile3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_faces_camera", "value"), &ParticleMeshProfile3D::set_faces_camera);
 	ClassDB::bind_method(D_METHOD("get_faces_camera"), &ParticleMeshProfile3D::get_faces_camera);
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "faces_camera"), "set_faces_camera", "get_faces_camera");
-	ClassDB::bind_method(D_METHOD("set_emitter_culling", "value"), &ParticleMeshProfile3D::set_emitter_culling);
+	ClassDB::bind_method(D_METHOD("set_emitter_culling", "value"), &ParticleMeshProfile3D::set_emitter_culling)->wgodot_set_init_safe();
 	ClassDB::bind_method(D_METHOD("get_emitter_culling"), &ParticleMeshProfile3D::get_emitter_culling);
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "emitter_culling"), "set_emitter_culling", "get_emitter_culling");
 	ClassDB::bind_method(D_METHOD("set_spin_angle", "value"), &ParticleMeshProfile3D::set_spin_angle);

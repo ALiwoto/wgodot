@@ -41,15 +41,21 @@ void CompositorEffect::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_enabled"), &CompositorEffect::get_enabled);
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "enabled"), "set_enabled", "get_enabled");
 
-	ClassDB::bind_method(D_METHOD("set_effect_callback_type", "effect_callback_type"), &CompositorEffect::set_effect_callback_type);
+	// wgodot-changes::begin
+	ClassDB::bind_method(D_METHOD("set_effect_callback_type", "effect_callback_type"), &CompositorEffect::set_effect_callback_type)->wgodot_set_init_safe();
+	// wgodot-changes::end
 	ClassDB::bind_method(D_METHOD("get_effect_callback_type"), &CompositorEffect::get_effect_callback_type);
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "effect_callback_type", PROPERTY_HINT_ENUM, "Pre Opaque,Post Opaque,Post Sky,Pre Transparent,Post Transparent"), "set_effect_callback_type", "get_effect_callback_type");
 
-	ClassDB::bind_method(D_METHOD("set_access_resolved_color", "enable"), &CompositorEffect::set_access_resolved_color);
+	// wgodot-changes::begin
+	ClassDB::bind_method(D_METHOD("set_access_resolved_color", "enable"), &CompositorEffect::set_access_resolved_color)->wgodot_set_init_safe();
+	// wgodot-changes::end
 	ClassDB::bind_method(D_METHOD("get_access_resolved_color"), &CompositorEffect::get_access_resolved_color);
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "access_resolved_color"), "set_access_resolved_color", "get_access_resolved_color");
 
-	ClassDB::bind_method(D_METHOD("set_access_resolved_depth", "enable"), &CompositorEffect::set_access_resolved_depth);
+	// wgodot-changes::begin
+	ClassDB::bind_method(D_METHOD("set_access_resolved_depth", "enable"), &CompositorEffect::set_access_resolved_depth)->wgodot_set_init_safe();
+	// wgodot-changes::end
 	ClassDB::bind_method(D_METHOD("get_access_resolved_depth"), &CompositorEffect::get_access_resolved_depth);
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "access_resolved_depth"), "set_access_resolved_depth", "get_access_resolved_depth");
 
@@ -64,6 +70,12 @@ void CompositorEffect::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_needs_separate_specular", "enable"), &CompositorEffect::set_needs_separate_specular);
 	ClassDB::bind_method(D_METHOD("get_needs_separate_specular"), &CompositorEffect::get_needs_separate_specular);
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "needs_separate_specular"), "set_needs_separate_specular", "get_needs_separate_specular");
+
+	// wgodot-changes::begin
+	// A fresh effect's RID is private until attached to a Compositor. These setters
+	// only configure that RID; no render callback can run during construction, and
+	// the unfinished object cannot yet have property-list signal subscribers.
+	// wgodot-changes::end
 
 	BIND_ENUM_CONSTANT(EFFECT_CALLBACK_TYPE_PRE_OPAQUE)
 	BIND_ENUM_CONSTANT(EFFECT_CALLBACK_TYPE_POST_OPAQUE)

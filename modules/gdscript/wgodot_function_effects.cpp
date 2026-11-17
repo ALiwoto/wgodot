@@ -2,6 +2,7 @@
 #include "gdscript_analyzer.h"
 
 #include "gdscript.h"
+#include "core/object/class_db.h"
 #include "gdscript_utility_functions.h"
 #include "wgodot_gd/ast.h"
 
@@ -160,10 +161,11 @@ void GDScriptAnalyzer::wgodot_validate_function_effects(Parser::FunctionNode *p_
 					self_call |= call->wgodot_native_call && !GDScriptUtilityFunctions::function_exists(call->function_name) && !Variant::has_utility_function(call->function_name);
 				}
 				const bool parent_constructor = call->is_super && call->function_name == GDScriptLanguage::get_singleton()->strings._init;
-				if (protect_self && parser->current_class->wgodot_data_class && self_call && call->wgodot_native_call && !call->is_static && !parent_constructor) {
+				const bool safe_native_init = initializing && call->wgodot_native_call && call->wgodot_init_safe_call;
+				if (protect_self && parser->current_class->wgodot_data_class && self_call && call->wgodot_native_call && !call->is_static && !parent_constructor && !safe_native_init) {
 					push_error("Native self calls are not verified as non-publishing in data-class initialization, setters or readonly helpers.", call);
 				}
-				if (initializing && self_call && !call->wgodot_readonly_call && !parent_constructor) {
+				if (initializing && self_call && !call->wgodot_readonly_call && !parent_constructor && !safe_native_init) {
 					push_error("Data-class initialization may only call readonly, non-publishing self helpers.", call);
 				}
 				for (const auto *argument : call->arguments) {
@@ -202,7 +204,12 @@ void GDScriptAnalyzer::wgodot_validate_function_effects(Parser::FunctionNode *p_
 						target = access->is_attribute && is_self(access->base) ? access->attribute : access->base;
 					}
 					if (target->type == Parser::Node::IDENTIFIER && static_cast<const Parser::IdentifierNode *>(target)->source == Parser::IdentifierNode::INHERITED_VARIABLE) {
-						push_error("Data-class initialization cannot invoke an unaudited native property setter; initialize direct script fields instead.", assignment);
+						const StringName native = parser->current_class->base_type.native_type;
+						const StringName property = static_cast<const Parser::IdentifierNode *>(target)->name;
+						const MethodBind *setter = ClassDB::get_method(native, ClassDB::get_property_setter(native, property));
+						if (!setter || !setter->wgodot_is_init_safe()) {
+							push_error("Data-class initialization cannot invoke an unaudited native property setter; initialize direct script fields instead.", assignment);
+						}
 					}
 				}
 				const auto *local = local_variable(assignment->assignee);

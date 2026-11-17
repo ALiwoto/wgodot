@@ -819,6 +819,8 @@ GDScriptParser::DataType GDScriptAnalyzer::resolve_datatype(GDScriptParser::Type
 			result = wgodot_resource_path_type();
 		} else if (first == SNAME("ClassRef")) {
 			result = wgodot_resolve_class_ref(p_type);
+		} else if (first == SNAME("WeakRef")) {
+			result = wgodot_resolve_weak_ref(p_type);
 		// wgodot-changes::end
 		} else if (GDScriptParser::get_builtin_type(first) < Variant::VARIANT_MAX) {
 			// Built-in types.
@@ -1059,8 +1061,8 @@ GDScriptParser::DataType GDScriptAnalyzer::resolve_datatype(GDScriptParser::Type
 	if (!p_type->container_types.is_empty()) {
 		// wgodot-changes::begin
 		bool wgodot_value_container_type_hint_valid = true;
-		if (result.wgodot_class_ref) {
-			// Its constrained base was resolved with the ClassRef type itself.
+		if (result.wgodot_class_ref || result.wgodot_weak_ref) {
+			// The reference's target was resolved with the generic type itself.
 		} else if (wgodot_try_resolve_value_container_type_hint(p_type, result, wgodot_value_container_type_hint_valid)) {
 			if (!wgodot_value_container_type_hint_valid) {
 				return bad_type;
@@ -1306,6 +1308,9 @@ void GDScriptAnalyzer::resolve_class_member(GDScriptParser::ClassNode *p_class, 
 					// Signals do not support parameter default values.
 				}
 				member.signal->signal_type = make_signal_type(mi);
+				// wgodot-changes::begin
+				member.signal->signal_type.wgodot_signal_signature = member.signal;
+				// wgodot-changes::end
 				member.signal->method_info = mi;
 
 				// Apply annotations.
@@ -3166,8 +3171,8 @@ void GDScriptAnalyzer::update_const_expression_builtin_type(GDScriptParser::Expr
 void GDScriptAnalyzer::update_array_literal_element_type(GDScriptParser::ArrayNode *p_array, const GDScriptParser::DataType &p_element_type) {
 	GDScriptParser::DataType expected_type = p_element_type;
 	// wgodot-changes::begin
-	if (!expected_type.wgodot_class_ref) {
-		expected_type.container_element_types.clear(); // Nested containers are not supported; ClassRef's parameter is its base class.
+	if (expected_type.builtin_type == Variant::ARRAY || expected_type.builtin_type == Variant::DICTIONARY) {
+		expected_type.container_element_types.clear(); // Nested collections are unsupported; object type parameters must survive.
 	}
 	// wgodot-changes::end
 
@@ -3207,10 +3212,10 @@ void GDScriptAnalyzer::update_dictionary_literal_element_type(GDScriptParser::Di
 	GDScriptParser::DataType expected_key_type = p_key_element_type;
 	GDScriptParser::DataType expected_value_type = p_value_element_type;
 	// wgodot-changes::begin
-	if (!expected_key_type.wgodot_class_ref) {
+	if (expected_key_type.builtin_type == Variant::ARRAY || expected_key_type.builtin_type == Variant::DICTIONARY) {
 		expected_key_type.container_element_types.clear();
 	}
-	if (!expected_value_type.wgodot_class_ref) {
+	if (expected_value_type.builtin_type == Variant::ARRAY || expected_value_type.builtin_type == Variant::DICTIONARY) {
 		expected_value_type.container_element_types.clear();
 	}
 	// wgodot-changes::end
@@ -4002,6 +4007,14 @@ void GDScriptAnalyzer::reduce_call(GDScriptParser::CallNode *p_call, bool p_is_a
 			return;
 		} else if (Variant::has_utility_function(function_name)) {
 			// wgodot-changes::begin
+			if (function_name == SNAME("instance_from_id")) {
+				push_error("instance_from_id() is forbidden: object IDs do not preserve static types or immutable qualification. Store a typed object reference or WeakRef[Target] instead.", p_call);
+				return;
+			}
+			if (function_name == SNAME("weakref")) {
+				wgodot_reduce_weak_ref(p_call);
+				return;
+			}
 			p_call->wgodot_native_call = true;
 			// wgodot-changes::end
 			MethodInfo function_info = info_from_utility_func(function_name);
@@ -4382,6 +4395,12 @@ void GDScriptAnalyzer::reduce_cast(GDScriptParser::CastNode *p_cast) {
 	// wgodot-changes::end
 	p_cast->type_constraint = cast_type;
 	// wgodot-changes::begin
+	if (cast_type.wgodot_weak_ref || p_cast->operand->type_constraint.wgodot_weak_ref) {
+		if (!wgodot_weak_ref_compatible(cast_type, p_cast->operand->type_constraint, p_cast)) {
+			push_error("A WeakRef cast must preserve its target contract. Resolve it with get_ref() before casting the target.", p_cast);
+		}
+		return;
+	}
 	if (cast_type.wgodot_class_ref || p_cast->operand->type_constraint.wgodot_class_ref) {
 		if (!cast_type.wgodot_class_ref && !cast_type.is_variant()) {
 			push_error("ClassRef can only be cast to another ClassRef or Variant.", p_cast);
@@ -5349,7 +5368,11 @@ void GDScriptAnalyzer::reduce_identifier(GDScriptParser::IdentifierNode *p_ident
 
 	if (Variant::has_utility_function(name) || GDScriptUtilityFunctions::function_exists(name)) {
 		// wgodot-changes::begin
-		if (name == SNAME("load") || name == SNAME("dangerous_return_as_mutable")) {
+		if (name == SNAME("instance_from_id")) {
+			push_error("instance_from_id is forbidden: object IDs cannot preserve static type and immutable contracts.", p_identifier);
+			return;
+		}
+		if (name == SNAME("load") || name == SNAME("dangerous_return_as_mutable") || name == SNAME("weakref")) {
 			push_error("This utility requires a statically checked direct call; use a typed wrapper function.", p_identifier);
 			return;
 		}
@@ -5543,6 +5566,10 @@ void GDScriptAnalyzer::reduce_subscript(GDScriptParser::SubscriptNode *p_subscri
 	}
 	if (p_subscript->base->type_constraint.wgodot_class_ref) {
 		push_error("ClassRef exposes construction with new(); it has no properties or indexing.", p_subscript);
+		return;
+	}
+	if (p_subscript->base->type_constraint.wgodot_weak_ref) {
+		push_error("WeakRef exposes a direct get_ref() call; it has no properties, indexing or untyped method references.", p_subscript);
 		return;
 	}
 	// wgodot-changes::end
@@ -5790,7 +5817,11 @@ void GDScriptAnalyzer::reduce_subscript(GDScriptParser::SubscriptNode *p_subscri
 											case Variant::OBJECT:
 												if (key_type.builtin_type == Variant::OBJECT) {
 													// wgodot-changes::begin
+												if (key_type.wgodot_weak_ref || index_type.wgodot_weak_ref) {
+													error = !wgodot_weak_ref_compatible(key_type, index_type, p_subscript);
+												} else {
 													error = key_type.wgodot_class_ref ? !wgodot_class_ref_compatible(key_type, index_type, p_subscript) : !key_type.can_reference(index_type);
+												}
 													// wgodot-changes::end
 												} else {
 													error = key_type.builtin_type != Variant::NIL;
@@ -6047,6 +6078,10 @@ void GDScriptAnalyzer::reduce_type_test(GDScriptParser::TypeTestNode *p_type_tes
 	GDScriptParser::DataType test_type = type_from_metatype(resolve_datatype(p_type_test->test_type));
 	p_type_test->test_datatype = test_type;
 	// wgodot-changes::begin
+	if (test_type.wgodot_weak_ref || operand_type.wgodot_weak_ref) {
+		push_error("WeakRef target contracts are static. Resolve with get_ref() before testing the target's type.", p_type_test);
+		return;
+	}
 	if (test_type.wgodot_class_ref) {
 		return; // A class object is tested against the referenced inheritance tree.
 	}
@@ -6846,6 +6881,23 @@ bool GDScriptAnalyzer::get_function_signature(GDScriptParser::Node *p_source, bo
 		*r_native_class = StringName();
 	}
 	// wgodot-changes::begin
+	if (p_base_type.wgodot_weak_ref) {
+		if (p_function != SNAME("get_ref")) {
+			push_error("WeakRef exposes get_ref(); its target type cannot be erased through Object methods.", p_source);
+			return false;
+		}
+		r_return_type = p_base_type.get_container_element_type(0);
+		r_return_type.wgodot_immutable |= p_base_type.wgodot_immutable;
+		r_method_flags.set_flag(METHOD_FLAG_CONST);
+		if (r_native_class) {
+			*r_native_class = SNAME("WeakRef");
+		}
+		return true;
+	}
+	if (p_base_type.native_type == SNAME("WeakRef")) {
+		push_error("Untyped WeakRef access is forbidden. Construct a typed WeakRef with weakref(value).", p_source);
+		return false;
+	}
 	if (p_base_type.wgodot_class_ref) {
 		if (p_function != SNAME("new")) {
 			push_error("ClassRef exposes construction with new(); it does not expose Script object methods.", p_source);
@@ -6863,6 +6915,17 @@ bool GDScriptAnalyzer::get_function_signature(GDScriptParser::Node *p_source, bo
 	// wgodot-changes::end
 	StringName function_name = p_function;
 	// wgodot-changes::begin
+	if (p_base_type.kind == GDScriptParser::DataType::BUILTIN && p_base_type.builtin_type == Variant::SIGNAL && p_base_type.wgodot_signal_signature && p_function == SNAME("emit")) {
+		r_return_type.kind = GDScriptParser::DataType::BUILTIN;
+		r_return_type.type_source = GDScriptParser::DataType::ANNOTATED_EXPLICIT;
+		r_return_type.builtin_type = Variant::NIL;
+		r_method_flags = METHOD_FLAG_CONST;
+		r_default_arg_count = 0;
+		for (const auto *parameter : p_base_type.wgodot_signal_signature->parameters) {
+			r_par_types.push_back(parameter->type_constraint);
+		}
+		return true;
+	}
 	if (p_base_type.kind == GDScriptParser::DataType::BUILTIN && p_base_type.builtin_type == Variant::CALLABLE && p_base_type.wgodot_callable_signature) {
 		auto *function = p_base_type.wgodot_callable_signature;
 		if (p_function == SNAME("call")) {
@@ -7491,6 +7554,9 @@ bool GDScriptAnalyzer::is_type_compatible_strict_collections(const GDScriptParse
 // TODO: Add safe/unsafe return variable (for variant cases)
 bool GDScriptAnalyzer::check_type_compatibility(const GDScriptParser::DataType &p_target, const GDScriptParser::DataType &p_source, bool p_allow_implicit_conversion, const GDScriptParser::Node *p_source_node) {
 	// wgodot-changes::begin
+	if (p_target.wgodot_weak_ref || p_source.wgodot_weak_ref) {
+		return wgodot_weak_ref_compatible(p_target, p_source, p_source_node);
+	}
 	if (p_target.wgodot_class_ref || p_source.wgodot_class_ref) {
 		return wgodot_class_ref_compatible(p_target, p_source, p_source_node);
 	}

@@ -639,7 +639,9 @@ void Curve::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "max_domain", PROPERTY_HINT_RANGE, "-1024,1024,0.01,or_greater,or_less", PROPERTY_USAGE_EDITOR), "set_max_domain", "get_max_domain");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "min_value", PROPERTY_HINT_RANGE, "-1024,1024,0.01,or_greater,or_less", PROPERTY_USAGE_EDITOR), "set_min_value", "get_min_value");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "max_value", PROPERTY_HINT_RANGE, "-1024,1024,0.01,or_greater,or_less", PROPERTY_USAGE_EDITOR), "set_max_value", "get_max_value");
-	ADD_PROPERTY(PropertyInfo(Variant::NIL, "_limits", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NO_EDITOR | PROPERTY_USAGE_INTERNAL), "_set_limits", "_get_limits");
+	// wgodot-changes::begin
+	ADD_PROPERTY(PropertyInfo(Variant::ARRAY, "_limits", PROPERTY_HINT_ARRAY_TYPE, "float", PROPERTY_USAGE_NO_EDITOR | PROPERTY_USAGE_INTERNAL), "_set_limits", "_get_limits");
+	// wgodot-changes::end
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "bake_resolution", PROPERTY_HINT_RANGE, "1,1000,1"), "set_bake_resolution", "get_bake_resolution");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "_data", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NO_EDITOR | PROPERTY_USAGE_INTERNAL), "_set_data", "_get_data");
 	ADD_ARRAY_COUNT("Points", "point_count", "set_point_count", "get_point_count", "point_");

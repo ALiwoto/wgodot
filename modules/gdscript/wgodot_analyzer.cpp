@@ -472,7 +472,10 @@ bool GDScriptAnalyzer::wgodot_try_extract_type_narrowing(GDScriptParser::Express
 		}
 
 		WGodotNarrowedType narrowed_type;
-		narrowed_type.alternatives.push_back(type_test->test_datatype);
+		GDScriptParser::DataType narrowed = type_test->test_datatype;
+		narrowed.wgodot_immutable = type_test->operand->type_constraint.wgodot_immutable;
+		narrowed.wgodot_value = type_test->operand->type_constraint.wgodot_value;
+		narrowed_type.alternatives.push_back(narrowed);
 		r_narrowing.insert(key, narrowed_type);
 		return true;
 	}
@@ -714,12 +717,31 @@ void GDScriptAnalyzer::wgodot_validate_signal_callable_connection(GDScriptParser
 		return;
 	}
 
+	const auto *callee = static_cast<const GDScriptParser::SubscriptNode *>(p_call->callee);
+	const auto *signal = callee->base->type_constraint.wgodot_signal_signature;
+	const auto *callable_expression = p_call->arguments[0];
+	while (callable_expression->type == GDScriptParser::Node::CALL) {
+		const auto *bound_call = static_cast<const GDScriptParser::CallNode *>(callable_expression);
+		if (bound_call->function_name != SNAME("bind") || bound_call->get_callee_type() != GDScriptParser::Node::SUBSCRIPT) {
+			break;
+		}
+		callable_expression = static_cast<const GDScriptParser::SubscriptNode *>(bound_call->callee)->base;
+	}
+	const auto *function = callable_expression->type_constraint.wgodot_callable_signature;
+	const uint32_t captures = function && function->source_lambda ? function->source_lambda->captures.size() : 0;
+
 	// bind appends to the supplied arguments, before the function applies defaults.
 	// Validate that complete call rather than removing the last declared parameters.
 	for (int i = 0; i < supplied_arg_count && i < callable_info.arguments.size(); i++) {
 		const auto *bound_argument = i < signal_arg_count ? nullptr : bound_arguments[i - signal_arg_count];
-		const GDScriptParser::DataType argument_type = bound_argument ? bound_argument->type_constraint : type_from_property(signal_info.arguments[i], true, p_call);
-		const GDScriptParser::DataType callable_arg_type = type_from_property(callable_info.arguments[i], true, p_call);
+		const GDScriptParser::DataType argument_type = bound_argument ? bound_argument->type_constraint :
+				(signal ? signal->parameters[i]->type_constraint : type_from_property(signal_info.arguments[i], true, p_call));
+		const GDScriptParser::DataType callable_arg_type = function ? function->parameters[i + captures]->type_constraint : type_from_property(callable_info.arguments[i], true, p_call);
+
+		if (!wgodot_immutable_types_match(callable_arg_type, argument_type, bound_argument && bound_argument->wgodot_fresh_value)) {
+			push_error(vformat("Signal argument %d and its callable parameter must retain the same immutable qualifications.", i + 1), p_call->arguments[0]);
+			return;
+		}
 
 		if (!argument_type.is_hard_type() || !callable_arg_type.is_hard_type() ||
 				argument_type.is_variant() || callable_arg_type.is_variant()) {

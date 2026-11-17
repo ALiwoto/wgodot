@@ -4,6 +4,7 @@
 /**************************************************************************/
 
 #include "gdscript_check_cli.h"
+#include "modules/wgodot/editor/wgodot_check_diagnostics.h"
 
 #include "core/error/error_list.h"
 #include "editor/file_system/editor_file_system.h"
@@ -72,16 +73,46 @@ void append_script_warning(const EditorLanguage::Warning &p_warning, const Strin
 struct ScriptCheck {
 	Ref<GDScriptParserRef> reference;
 	Error error = OK;
+	int accepted_errors = 0;
+	bool checked = false;
+	WGodotCheckDiagnostics native;
 
-	void lint() {
-		if (error == OK) {
+	void claim_errors(WGodotCheckBudget &p_budget) {
+		const int count = reference->get_parser()->get_errors().size();
+		while (accepted_errors < count && p_budget.claim_error()) {
+			accepted_errors++;
+		}
+	}
+
+	void parse(WGodotCheckBudget &p_budget, const SafeFlag &p_cancelled) {
+		if (p_cancelled.is_set() || p_budget.exhausted()) {
+			return;
+		}
+		checked = true;
+		native.budget = &p_budget;
+		WGodotErrorCapture capture(&WGodotCheckDiagnostics::capture, &native);
+		error = reference->raise_status(GDScriptParserRef::PARSED);
+		claim_errors(p_budget);
+	}
+
+	void lint(WGodotCheckBudget &p_budget) {
+		if (checked && reference.is_valid() && error == OK && !p_budget.exhausted()) {
+			WGodotErrorCapture capture(&WGodotCheckDiagnostics::capture, &native);
 			GDScriptLinter linter(*reference->get_parser());
 			error = linter.lint();
+			claim_errors(p_budget);
 		}
 	}
 };
 
 void append_script_diagnostics(const ScriptCheck &p_check, CheckStats &r_stats, PackedStringArray &r_output) {
+	if (!p_check.checked || p_check.reference.is_null()) {
+		return;
+	}
+	r_stats.error_count += p_check.native.errors;
+	r_stats.warning_count += p_check.native.warnings;
+	r_output.append_array(p_check.native.output);
+	r_stats.diagnostics.append_array(p_check.native.diagnostics);
 	r_stats.script_count++;
 	const GDScriptParser &parser = *p_check.reference->get_parser();
 	for (const GDScriptWarning &warning : parser.get_warnings()) {
@@ -93,7 +124,11 @@ void append_script_diagnostics(const ScriptCheck &p_check, CheckStats &r_stats, 
 		r_stats.warning_count++;
 		append_script_warning(diagnostic, location.path, r_stats, r_output);
 	}
+	int remaining = p_check.accepted_errors;
 	for (const GDScriptParser::ParserError &parse_error : parser.get_errors()) {
+		if (remaining-- == 0) {
+			break;
+		}
 		EditorLanguage::ScriptError diagnostic;
 		const auto location = parser.wgodot_source_location(parse_error.start_line);
 		diagnostic.path = location.path;
@@ -107,7 +142,9 @@ void append_script_diagnostics(const ScriptCheck &p_check, CheckStats &r_stats, 
 
 } // namespace
 
-Dictionary run_project_check_result(const ExportProject &p_project, const SafeFlag &p_cancelled) {
+Dictionary run_project_check_result(const ExportProject &p_project, const SafeFlag &p_cancelled, WGodotCheckBudget &p_budget) {
+	WGodotCheckDiagnostics native{ &p_budget };
+	WGodotErrorCapture capture(&WGodotCheckDiagnostics::capture, &native);
 	Dictionary result;
 	result["ok"] = true;
 	result["command"] = "check";
@@ -129,31 +166,55 @@ Dictionary run_project_check_result(const ExportProject &p_project, const SafeFl
 	{
 		ExportContext context;
 		ExportAnalysis analysis(p_project, context, false);
-		analysis.parse_scripts_parallel();
-		parsed_usec = OS::get_singleton()->get_ticks_usec();
-		ExportAnalysis::Scope scope(analysis);
 		const Vector<String> &paths = p_project.get_script_paths();
+		const Vector<Ref<GDScriptParserRef>> parsers = analysis.prepare_parsers();
 		Vector<ScriptCheck> scripts;
 		scripts.resize(paths.size());
 		ScriptCheck *checks = scripts.ptrw();
 		for (int index = 0; index < paths.size(); index++) {
+			checks[index].reference = parsers[index];
+		}
+		if (!scripts.is_empty()) {
+			struct ParseWork {
+				WGodotCheckBudget &budget;
+				const SafeFlag &cancelled;
+				void parse(uint32_t p_index, ScriptCheck *p_checks) {
+					p_checks[p_index].parse(budget, cancelled);
+				}
+			} work{ p_budget, p_cancelled };
+			WorkerThreadPool *pool = WorkerThreadPool::get_singleton();
+			const WorkerThreadPool::GroupID group = pool->add_template_group_task(
+					&work, &ParseWork::parse, checks, scripts.size(), -1, true, "Parse project scripts");
+			pool->wait_for_group_task_completion(group);
+		}
+		parsed_usec = OS::get_singleton()->get_ticks_usec();
+		ExportAnalysis::Scope scope(analysis);
+		for (int index = 0; index < paths.size(); index++) {
 			if (p_cancelled.is_set()) {
 				return Dictionary();
 			}
+			if (p_budget.exhausted()) {
+				break;
+			}
 			ScriptCheck &check = checks[index];
+			if (check.error != OK) {
+				continue;
+			}
 			check.reference = analysis.get_parser(paths[index], GDScriptParserRef::FULLY_SOLVED, check.error);
 			if (check.error == OK) {
 				check.error = check.reference->get_analyzer()->resolve_dependencies();
 			}
+			check.claim_errors(p_budget);
 		}
 		analyzed_usec = OS::get_singleton()->get_ticks_usec();
 		if (!scripts.is_empty()) {
 			// The linter reads immutable trees and writes only its parser's diagnostics.
 			struct LintWork {
+				WGodotCheckBudget &budget;
 				void lint(uint32_t p_index, ScriptCheck *p_checks) {
-					p_checks[p_index].lint();
+					p_checks[p_index].lint(budget);
 				}
-			} work;
+			} work{ p_budget };
 			WorkerThreadPool *pool = WorkerThreadPool::get_singleton();
 			const WorkerThreadPool::GroupID group = pool->add_template_group_task(
 					&work, &LintWork::lint, checks, scripts.size(), -1, false, "Lint project scripts");
@@ -161,9 +222,16 @@ Dictionary run_project_check_result(const ExportProject &p_project, const SafeFl
 		}
 		linted_usec = OS::get_singleton()->get_ticks_usec();
 		for (int index = 0; index < paths.size(); index++) {
+			if (checks[index].checked && checks[index].reference.is_valid()) {
+				checks[index].claim_errors(p_budget);
+			}
 			append_script_diagnostics(checks[index], stats, output);
 		}
 	}
+	output.append_array(native.output);
+	stats.diagnostics.append_array(native.diagnostics);
+	stats.error_count += native.errors;
+	stats.warning_count += native.warnings;
 	const uint64_t elapsed_msec = (OS::get_singleton()->get_ticks_usec() - start_usec) / 1000;
 
 	output.push_back(vformat("wgodot-check: scanned %d GDScript file(s), found %d error(s), %d warning(s), %d directory error(s), %d read error(s) in %d ms.",
@@ -185,6 +253,7 @@ Dictionary run_project_check_result(const ExportProject &p_project, const SafeFl
 	result["diagnostics"] = stats.diagnostics;
 	result["exit_code"] = stats.error_count == 0 ? 0 : 1;
 	result["script_count"] = stats.script_count;
+	result["script_skipped_count"] = p_project.get_script_paths().size() - stats.script_count;
 	result["error_count"] = stats.error_count;
 	result["warning_count"] = stats.warning_count;
 	result["directory_error_count"] = stats.directory_error_count;
@@ -195,16 +264,17 @@ Dictionary run_project_check_result(const ExportProject &p_project, const SafeFl
 
 void ProjectCheck::run(void *p_userdata) {
 	auto *check = static_cast<ProjectCheck *>(p_userdata);
-	check->result = run_project_check_result(check->project, check->cancelled);
+	check->result = run_project_check_result(check->project, check->cancelled, *check->budget);
 }
 
-void ProjectCheck::start() {
+void ProjectCheck::start(std::shared_ptr<WGodotCheckBudget> p_budget) {
 	Vector<String> paths;
 	collect_script_paths(EditorFileSystem::get_singleton()->get_filesystem(), paths);
-	start(paths);
+	start(paths, p_budget);
 }
 
-void ProjectCheck::start(const Vector<String> &p_paths) {
+void ProjectCheck::start(const Vector<String> &p_paths, std::shared_ptr<WGodotCheckBudget> p_budget) {
+	budget = p_budget ? p_budget : std::make_shared<WGodotCheckBudget>();
 	HashSet<String> inputs;
 	for (const String &path : p_paths) {
 		inputs.insert(path);

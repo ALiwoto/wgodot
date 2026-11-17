@@ -981,6 +981,7 @@ public:
 	// wgodot-changes::begin
 	FUNC2(instance_geometry_set_sorting_priority, RID, int32_t)
 	FUNC2(instance_geometry_set_sorting_subpriority, RID, int32_t)
+	FUNC5(instance_geometry_set_transparency_sort_group, RID, uint64_t, const Vector3 &, int32_t, int32_t)
 	FUNC2(instance_geometry_set_cull_transform, RID, RSE::InstanceCullTransform)
 	// wgodot-changes::end
 	FUNC2(instance_set_transform, RID, const Transform3D &)

@@ -510,9 +510,11 @@ static Ref<Resource> _dds_create_texture_from_images(const Vector<Ref<Image>> &p
 	return _dds_create_texture(p_images, p_dds_type, p_width, p_height, p_layer_count, p_mipmaps, r_error);
 }
 
-static Vector<Ref<Image>> _dds_load_images_from_buffer(Ref<FileAccess> p_f, DDSFormat &r_dds_format, uint32_t &r_width, uint32_t &r_height, uint32_t &r_mipmaps, uint32_t &r_pitch, uint32_t &r_flags, uint32_t &r_layer_count, uint32_t &r_dds_type, const String &p_path = "") {
-	ERR_FAIL_COND_V_MSG(p_f.is_null(), Vector<Ref<Image>>(), vformat("Empty DDS texture file."));
-	ERR_FAIL_COND_V_MSG(!p_f->get_length(), Vector<Ref<Image>>(), vformat("Empty DDS texture file."));
+// wgodot-changes::begin
+static bool _dds_read_header(Ref<FileAccess> p_f, DDSFormat &r_dds_format, uint32_t &r_width, uint32_t &r_height, uint32_t &r_mipmaps, uint32_t &r_pitch, uint32_t &r_flags, uint32_t &r_layer_count, uint32_t &r_dds_type, const String &p_path = "") {
+	ERR_FAIL_COND_V_MSG(p_f.is_null(), false, "Empty DDS texture file.");
+	ERR_FAIL_COND_V_MSG(p_f->get_length() < 128, false, "Truncated DDS texture header.");
+// wgodot-changes::end
 
 	uint32_t magic = p_f->get_32();
 	uint32_t hsize = p_f->get_32();
@@ -532,7 +534,9 @@ static Vector<Ref<Image>> _dds_load_images_from_buffer(Ref<FileAccess> p_f, DDSF
 	// We don't check DDSD_CAPS or DDSD_PIXELFORMAT, as they're mandatory when writing,
 	// but non-mandatory when reading (as some writers don't set them).
 	if (magic != DDS_MAGIC || hsize != 124) {
-		ERR_FAIL_V_MSG(Vector<Ref<Image>>(), vformat("Invalid or unsupported DDS texture file '%s'.", p_path));
+		// wgodot-changes::begin
+		ERR_FAIL_V_MSG(false, vformat("Invalid or unsupported DDS texture file '%s'.", p_path));
+		// wgodot-changes::end
 	}
 
 	/* uint32_t format_size = */ p_f->get_32();
@@ -615,6 +619,9 @@ static Vector<Ref<Image>> _dds_load_images_from_buffer(Ref<FileAccess> p_f, DDSF
 				r_dds_format = DDS_RGBA32F;
 			} break;
 			case DDFCC_DX10: {
+				// wgodot-changes::begin
+				ERR_FAIL_COND_V_MSG(p_f->get_length() < 148, false, "Truncated DDS DX10 header.");
+				// wgodot-changes::end
 				uint32_t dxgi_format = p_f->get_32();
 				uint32_t dimension = p_f->get_32();
 				/* uint32_t misc_flags_1 = */ p_f->get_32();
@@ -635,7 +642,9 @@ static Vector<Ref<Image>> _dds_load_images_from_buffer(Ref<FileAccess> p_f, DDSF
 			} break;
 
 			default: {
-				ERR_FAIL_V_MSG(Vector<Ref<Image>>(), vformat("Unrecognized or unsupported FourCC in DDS '%s'.", p_path));
+				// wgodot-changes::begin
+				ERR_FAIL_V_MSG(false, vformat("Unrecognized or unsupported FourCC in DDS '%s'.", p_path));
+				// wgodot-changes::end
 			}
 		}
 
@@ -715,14 +724,25 @@ static Vector<Ref<Image>> _dds_load_images_from_buffer(Ref<FileAccess> p_f, DDSF
 
 	// No format detected, error.
 	if (r_dds_format == DDS_MAX) {
-		ERR_FAIL_V_MSG(Vector<Ref<Image>>(), vformat("Unrecognized or unsupported color layout in DDS '%s'.", p_path));
+		// wgodot-changes::begin
+		ERR_FAIL_V_MSG(false, vformat("Unrecognized or unsupported color layout in DDS '%s'.", p_path));
+		// wgodot-changes::end
 	}
 
 	if (!(r_flags & DDSD_MIPMAPCOUNT)) {
 		r_mipmaps = 1;
 	}
 
+	// wgodot-changes::begin
+	return true;
+}
+
+static Vector<Ref<Image>> _dds_load_images_from_buffer(Ref<FileAccess> p_f, DDSFormat &r_dds_format, uint32_t &r_width, uint32_t &r_height, uint32_t &r_mipmaps, uint32_t &r_pitch, uint32_t &r_flags, uint32_t &r_layer_count, uint32_t &r_dds_type, const String &p_path = "") {
+	if (!_dds_read_header(p_f, r_dds_format, r_width, r_height, r_mipmaps, r_pitch, r_flags, r_layer_count, r_dds_type, p_path)) {
+		return {};
+	}
 	return _dds_load_images(p_f, r_dds_format, r_width, r_height, r_mipmaps, r_pitch, r_flags, r_layer_count, (r_dds_type & DDST_TYPE_MASK) == DDST_3D);
+	// wgodot-changes::end
 }
 
 static Ref<Resource> _dds_load_from_buffer(Ref<FileAccess> p_f, Error *r_error, const String &p_path = "") {
@@ -764,10 +784,29 @@ bool ResourceFormatDDS::handles_type(const String &p_type) const {
 }
 
 String ResourceFormatDDS::get_resource_type(const String &p_path) const {
-	if (p_path.has_extension("dds")) {
-		return "Texture";
+	// wgodot-changes::begin
+	if (!p_path.has_extension("dds")) {
+		return "";
+	}
+	Ref<FileAccess> file = FileAccess::open(p_path, FileAccess::READ);
+	if (file.is_null()) {
+		return "";
+	}
+	DDSFormat format;
+	uint32_t width, height, mipmaps, pitch, flags, layers, type;
+	if (!_dds_read_header(file, format, width, height, mipmaps, pitch, flags, layers, type, p_path)) {
+		return "";
+	}
+	switch (type & DDST_TYPE_MASK) {
+		case DDST_2D:
+			return type & DDST_ARRAY ? "Texture2DArray" : "ImageTexture";
+		case DDST_CUBEMAP:
+			return type & DDST_ARRAY ? "CubemapArray" : "Cubemap";
+		case DDST_3D:
+			return "ImageTexture3D";
 	}
 	return "";
+	// wgodot-changes::end
 }
 
 Ref<Image> load_mem_dds(const uint8_t *p_dds, int p_size) {

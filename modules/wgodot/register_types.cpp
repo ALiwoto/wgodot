@@ -13,7 +13,10 @@
 #include "animation/gradient_noise_1d.h"
 #include "animation/skinned_mesh_2d.h"
 #include "codecs/animation_codec.h"
+#include "codecs/audio_interactive_codec.h"
 #include "codecs/curve_codec.h"
+#include "codecs/image_codec.h"
+#include "codecs/native_fields.h"
 #include "codecs/shader_material_codec.h"
 #include "codecs/resource_load_measurement.h"
 #include "object_metadata.h"
@@ -35,6 +38,7 @@
 
 #ifdef TOOLS_ENABLED
 #include "core/object/class_db.h"
+#include "editor/resource_reload.h"
 #include "wgodot_particle_snapshot.h"
 #include "rendering/render_capture.h"
 #include "rendering/scene_snapshot.h"
@@ -72,7 +76,10 @@ void initialize_wgodot_module(ModuleInitializationLevel p_level) {
 		GDREGISTER_CLASS(PlanarReflection3D);
 #endif
 		register_animation_codec();
+		register_audio_interactive_codec();
 		register_curve_codec();
+		register_image_codec();
+		register_native_resource_fields();
 		register_shader_material_codec();
 #if defined(TOOLS_ENABLED) && defined(DEBUG_ENABLED)
 		GDREGISTER_CLASS(WResourceLoadMeasurement);
@@ -81,6 +88,7 @@ void initialize_wgodot_module(ModuleInitializationLevel p_level) {
 		GDREGISTER_ABSTRACT_CLASS(WScalarMath);
 #ifdef TOOLS_ENABLED
 		GDREGISTER_CLASS(WGPUParticleSnapshot);
+		GDREGISTER_ABSTRACT_CLASS(WResourceReload);
 		GDREGISTER_CLASS(WSceneSnapshot);
 		GDREGISTER_CLASS(WSceneTraversal);
 		GDREGISTER_CLASS(WLiveSceneProbe);
@@ -113,7 +121,10 @@ void uninitialize_wgodot_module(ModuleInitializationLevel p_level) {
 	if (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {
 		unregister_shader_material_codec();
 		unregister_curve_codec();
+		unregister_image_codec();
+		unregister_native_resource_fields();
 		unregister_animation_codec();
+		unregister_audio_interactive_codec();
 		WGodotPreloads::deinitialize();
 		WGodotGameBridge::deinitialize();
 		WGodotWaitController::deinitialize();

@@ -294,6 +294,7 @@ void print_cli_help() {
 	print_line("  step_physics [--count <number>]   Advance paused physics ticks.");
 	print_line("  check [--standalone]              Check GDScript and scene/resource syntax; use the editor when available, otherwise check saved files locally without importing assets.");
 	print_line("    --standalone                     Check saved files directly, without editor discovery.");
+	print_line("    --errors-limit <number>           Stop project checking at this many errors (default: 100).");
 	print_line("    --native [--target client|server] [--jobs N] Check native source types without an editor, resource generation or C++ compilation.");
 	print_line("  format [paths...] [options]       Format GDScript using the running editor (--check, --diff).");
 	print_line("  help                              Show this help.");
@@ -792,7 +793,7 @@ int run_check_command(const Dictionary &p_options) {
 	}
 	if (response.is_empty() || String(response.get("error", String())) == "editor_not_found") {
 		print_line("wgodot-check: checking saved files locally (no editor or asset import).");
-		response = WGodotProjectCheck::run_standalone(project_operation_timeout(request));
+		response = WGodotProjectCheck::run_standalone(project_operation_timeout(request), p_options.get("errors_limit", 100));
 	}
 	if (!(bool)response.get("ok", false)) {
 		print_line("wgodot: " + String(response.get("message", "Could not check the project.")));
@@ -1448,6 +1449,15 @@ bool execute_if_requested(int &r_exit_code) {
 		for (int index = 0; index < arguments.size(); index++) {
 			if (command == "check" && arguments[index] == "--standalone") {
 				options["standalone"] = true;
+				continue;
+			}
+			if (command == "check" && arguments[index] == "--errors-limit") {
+				if (++index >= arguments.size() || !arguments[index].is_valid_int() || arguments[index].to_int() < 1 || arguments[index].to_int() > INT32_MAX) {
+					print_line("wgodot: --errors-limit requires an integer between 1 and 2147483647.");
+					r_exit_code = 2;
+					return true;
+				}
+				options["errors_limit"] = arguments[index].to_int();
 				continue;
 			}
 			if (arguments[index] != "--timeout") {

@@ -375,6 +375,7 @@ Ref<PackedScene> ResourceLoaderText::_parse_node_tag(const Ref<PackedScene> &p_c
 			WGodotResourceValueParser value_assignment(
 					declared_type.is_empty() ? inherited_value_type.native : WGodotNamedTypes::native_type(declared_type),
 					named_script.is_valid() ? named_script : inherited_value_type.script, named_types);
+			value_assignment.set_node_paths(path_properties);
 			// wgodot-changes::end
 			while (true) {
 				String assign;
@@ -1742,7 +1743,10 @@ Ref<Resource> ResourceFormatLoaderText::load(const String &p_path, const String 
 					List<PropertyInfo> codec_properties;
 					resource->get_property_list(&codec_properties);
 					for (const PropertyInfo &property : codec_properties) {
-						if ((property.usage & PROPERTY_USAGE_STORAGE) && codec->owns_property(property.name)) {
+						// Codec-handled assignments bypass source_properties too, even
+						// when their text form remains an ordinary storage property.
+						if ((property.usage & PROPERTY_USAGE_STORAGE) &&
+								(codec->owns_property(property.name) || codec->owns_assignment(property.name))) {
 							properties.push_back({ property.name, resource->get(property.name) });
 						}
 					}

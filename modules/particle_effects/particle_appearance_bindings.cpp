@@ -18,7 +18,7 @@ void ParticleColorCurve::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_axis_lock", "value"), &ParticleColorCurve::set_axis_lock);
 	ClassDB::bind_method(D_METHOD("get_axis_lock"), &ParticleColorCurve::get_axis_lock);
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "axis_lock"), "set_axis_lock", "get_axis_lock");
-	ClassDB::bind_method(D_METHOD("set_color_order", "value"), &ParticleColorCurve::set_color_order);
+	ClassDB::bind_method(D_METHOD("set_color_order", "value"), &ParticleColorCurve::set_color_order)->wgodot_set_init_safe();
 	ClassDB::bind_method(D_METHOD("get_color_order"), &ParticleColorCurve::get_color_order);
 	ADD_PROPERTY(PropertyInfo(Variant::VECTOR3I, "color_order"), "set_color_order", "get_color_order");
 	ClassDB::bind_method(D_METHOD("set_channels", "value"), &ParticleColorCurve::set_channels);
@@ -28,10 +28,10 @@ void ParticleColorCurve::_bind_methods() {
 }
 
 void ParticleOrientation3D::_bind_methods() {
-	ClassDB::bind_method(D_METHOD("set_use_shared_random", "value"), &ParticleOrientation3D::set_use_shared_random);
+	ClassDB::bind_method(D_METHOD("set_use_shared_random", "value"), &ParticleOrientation3D::set_use_shared_random)->wgodot_set_init_safe();
 	ClassDB::bind_method(D_METHOD("get_use_shared_random"), &ParticleOrientation3D::get_use_shared_random);
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "use_shared_random"), "set_use_shared_random", "get_use_shared_random");
-	ClassDB::bind_method(D_METHOD("get_random_stream"), &ParticleOrientation3D::get_random_stream);
+	ClassDB::bind_method(D_METHOD("get_random_stream"), &ParticleOrientation3D::get_random_stream)->wgodot_set_init_safe();
 	ClassDB::bind_method(D_METHOD("set_angles", "value"), &ParticleOrientation3D::set_angles);
 	ClassDB::bind_method(D_METHOD("get_angles"), &ParticleOrientation3D::get_angles);
 	ADD_PROPERTY(PropertyInfo(Variant::VECTOR3, "angles"), "set_angles", "get_angles");

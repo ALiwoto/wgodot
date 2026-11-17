@@ -258,6 +258,15 @@ void GeometryInstance3D::set_sorting_subpriority(int32_t p_priority) {
 	RS::get_singleton()->instance_geometry_set_sorting_subpriority(get_instance(), p_priority);
 }
 
+void GeometryInstance3D::set_transparency_sort_group(uint64_t p_group_id, const Vector3 &p_world_origin, int32_t p_order, int32_t p_layer) {
+	const GeometrySortGroup group = { p_group_id, p_world_origin, p_order, p_layer };
+	if (sorting_group == group) {
+		return;
+	}
+	sorting_group = group;
+	RS::get_singleton()->instance_geometry_set_transparency_sort_group(get_instance(), p_group_id, p_world_origin, p_order, p_layer);
+}
+
 void GeometryInstance3D::set_cull_transform(CullTransform p_mode) {
 	ERR_FAIL_COND(p_mode < CULL_TRANSFORM_AUTOMATIC || p_mode > CULL_TRANSFORM_NEGATIVE);
 	if (cull_transform == p_mode) {
@@ -576,6 +585,7 @@ void GeometryInstance3D::_bind_methods() {
 	// wgodot-changes::begin
 	ClassDB::bind_method(D_METHOD("set_sorting_priority", "priority"), &GeometryInstance3D::set_sorting_priority);
 	ClassDB::bind_method(D_METHOD("set_sorting_subpriority", "priority"), &GeometryInstance3D::set_sorting_subpriority);
+	ClassDB::bind_method(D_METHOD("set_transparency_sort_group", "group_id", "world_origin", "order", "layer"), &GeometryInstance3D::set_transparency_sort_group, DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("get_sorting_priority"), &GeometryInstance3D::get_sorting_priority);
 	ClassDB::bind_method(D_METHOD("get_sorting_subpriority"), &GeometryInstance3D::get_sorting_subpriority);
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "sorting_priority"), "set_sorting_priority", "get_sorting_priority");

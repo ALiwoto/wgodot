@@ -215,6 +215,9 @@ class GDScriptAnalyzer {
 	// wgodot-changes::begin
 	static GDScriptParser::DataType wgodot_resource_path_type();
 	GDScriptParser::DataType wgodot_resolve_class_ref(GDScriptParser::TypeNode *p_type);
+	GDScriptParser::DataType wgodot_resolve_weak_ref(GDScriptParser::TypeNode *p_type);
+	void wgodot_reduce_weak_ref(GDScriptParser::CallNode *p_call);
+	static bool wgodot_weak_ref_compatible(const GDScriptParser::DataType &p_target, const GDScriptParser::DataType &p_source, const GDScriptParser::Node *p_source_node);
 	static bool wgodot_class_ref_compatible(const GDScriptParser::DataType &p_target, const GDScriptParser::DataType &p_source, const GDScriptParser::Node *p_source_node);
 	static GDScriptParser::DataType wgodot_resource_path_runtime_type(const GDScriptParser::DataType &p_type);
 	void wgodot_resource_container_signature(const GDScriptParser::DataType &p_container, const StringName &p_method, GDScriptParser::DataType &r_result, List<GDScriptParser::DataType> &r_arguments);

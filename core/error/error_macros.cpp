@@ -29,6 +29,9 @@
 /**************************************************************************/
 
 #include "error_macros.h"
+// wgodot-changes::begin
+#include "wgodot_error_capture.h"
+// wgodot-changes::end
 
 #include "core/core_globals.h"
 #include "core/io/logger.h"
@@ -107,6 +110,11 @@ void _err_print_error(const char *p_function, const char *p_file, int p_line, co
 
 // Main error printing function.
 void _err_print_error(const char *p_function, const char *p_file, int p_line, const char *p_error, const char *p_message, bool p_editor_notify, ErrorHandlerType p_type) {
+	// wgodot-changes::begin
+	if (WGodotErrorCapture::consume(p_file, p_line, (p_message && *p_message) ? p_message : p_error, p_type)) {
+		return;
+	}
+	// wgodot-changes::end
 	if (!CoreGlobals::print_ready) {
 		const char *err_details = (p_message && *p_message) ? p_message : p_error;
 		_err_print_fallback(p_function, p_file, p_line, err_details, p_type, false);

@@ -45,6 +45,9 @@ class MethodBind {
 	int argument_count = 0;
 	// wgodot-changes::begin
 	uint64_t wgodot_resource_path_arguments = 0;
+#ifndef WGODOT_NATIVE_GAME
+	bool wgodot_init_safe = false;
+#endif
 #ifdef TOOLS_ENABLED
 	String wgodot_native_export_error;
 #endif
@@ -71,6 +74,19 @@ protected:
 
 public:
 	// wgodot-changes::begin
+	// Audited for calls on an unfinished receiver: no publication or callbacks.
+	void wgodot_set_init_safe() {
+#ifndef WGODOT_NATIVE_GAME
+		wgodot_init_safe = true;
+#endif
+	}
+	bool wgodot_is_init_safe() const {
+#ifndef WGODOT_NATIVE_GAME
+		return wgodot_init_safe;
+#else
+		return false;
+#endif
+	}
 #ifdef TOOLS_ENABLED
 	void wgodot_set_native_export_error(const String &p_error) { wgodot_native_export_error = p_error; }
 	const String &wgodot_get_native_export_error() const { return wgodot_native_export_error; }

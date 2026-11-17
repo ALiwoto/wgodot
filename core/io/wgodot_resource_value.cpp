@@ -1,5 +1,6 @@
 // wgodot-changes::file
 #include "wgodot_resource_value.h"
+#include "wgodot_native_resource_fields.h"
 
 #include "core/object/class_db.h"
 #include "core/object/script_instance.h"
@@ -48,6 +49,15 @@ WGodotResourceDataType WGodotResourceDataType::from_property(const PropertyInfo 
 		result.name = p_info.class_name;
 		if (result.name.is_empty() && (p_info.hint == PROPERTY_HINT_RESOURCE_TYPE || p_info.hint == PROPERTY_HINT_NODE_TYPE)) {
 			result.name = p_info.hint_string;
+		}
+		if (String(result.name).contains(",")) {
+			const Vector<String> choices = String(result.name).split(",", false);
+			result.name = choices[0];
+			for (const String &choice : choices) {
+				while (result.name != StringName() && !ClassDB::is_parent_class(choice, result.name)) {
+					result.name = ClassDB::get_parent_class(result.name);
+				}
+			}
 		}
 	}
 	if (result.builtin == Variant::ARRAY || result.builtin == Variant::DICTIONARY) {
@@ -202,7 +212,7 @@ Error WGodotResourceValueParser::parse_repeat_count(VP::Stream *p_stream, int &r
 }
 
 WGodotResourceValueParser::WGodotResourceValueParser(const StringName &p_native, const Ref<Script> &p_script, WGodotNamedTypes::Resolver &p_resolver, VP::AssignmentParser *p_custom) :
-		resolver(p_resolver), custom(p_custom) {
+		native_type(p_native), resolver(p_resolver), custom(p_custom) {
 	List<PropertyInfo> properties;
 	if (!p_native.is_empty()) {
 		ClassDB::get_property_list(p_native, &properties);
@@ -218,6 +228,25 @@ WGodotResourceValueParser::WGodotResourceValueParser(const StringName &p_native,
 			type = Type::from_property(property);
 		}
 		fields.insert(property.name, type);
+	}
+}
+
+void WGodotResourceValueParser::set_node_paths(const HashSet<StringName> &p_properties) {
+	const auto defer = [](Type &r_type) {
+		if (r_type.builtin == Variant::OBJECT && ClassDB::is_parent_class(WGodotNamedTypes::native_type(r_type.name), SNAME("Node"))) {
+			r_type.builtin = Variant::NODE_PATH;
+			r_type.name = StringName();
+		}
+	};
+	for (const StringName &name : p_properties) {
+		Type *type = fields.getptr(name);
+		if (!type) {
+			continue;
+		}
+		defer(*type);
+		for (Type &element : type->elements) {
+			defer(element);
+		}
 	}
 }
 
@@ -246,6 +275,13 @@ Error WGodotResourceValueParser::parse(const String &p_name, VP::Token &p_token,
 
 Error WGodotResourceValueParser::parse_value(const String &p_name, VP::Token &p_token, Variant &r_value, VP::Stream *p_stream, int &r_line, String &r_error, VP::ResourceParser *p_resources) {
 	const Type *type = fields.getptr(p_name);
+	if (!type) {
+		PropertyInfo info;
+		if (WGodotNativeResourceFields::field(native_type, p_name, info)) {
+			fields.insert(p_name, Type::from_property(info));
+			type = fields.getptr(p_name);
+		}
+	}
 	if (!type) {
 		return VP::parse_value(p_token, r_value, p_stream, r_line, r_error, p_resources, true);
 	}

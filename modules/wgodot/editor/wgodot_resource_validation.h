@@ -47,6 +47,10 @@ class WGodotResourceValidation : public VariantParser::AssignmentParser {
 	String current_property;
 	String resource_section;
 	bool collect_properties;
+	HashSet<String> deferred_node_properties;
+	bool deferred_node_property = false;
+	String shader_path;
+	String reference_path;
 
 	Error fail(const String &p_message, String &r_error) const;
 	Error token(Stream *p_stream, Token &r_token, int &r_line, String &r_error) const;
@@ -57,7 +61,7 @@ class WGodotResourceValidation : public VariantParser::AssignmentParser {
 	Error container(Stream *p_stream, const Type &p_type, const Qualification &p_qualification, int &r_line, String &r_error, int p_depth);
 	Error record(Stream *p_stream, const Type &p_type, int &r_line, String &r_error, int p_depth);
 	Error reference(Stream *p_stream, const String &p_kind, Type &r_type, Qualification &r_qualification, int &r_line, String &r_error);
-	Error field(const StringName &p_class, const StringName &p_name, Type &r_type, Qualification &r_qualification, String &r_error);
+	Error field(const StringName &p_class, const StringName &p_name, Type &r_type, Qualification &r_qualification, String &r_error, Variant::Type p_literal_type = Variant::NIL);
 	Error resource_type(const String &p_path, StringName &r_type, String &r_error);
 	Error instance(const Reference &p_reference, const String &p_prefix, String &r_error);
 	Error class_type(const StringName &p_type, const StringName &p_base, String &r_error);
