@@ -245,6 +245,9 @@ bool WGodotGDScriptVMCache::prepare(GDScript *p_script) {
 	}
 	for (const Array dependency : Array(entry.data["dependencies"])) {
 		p_script->wgodot_vm_dependencies.insert(dependency[0], dependency[1]);
+		if (dependency[2]) {
+			GDScriptCache::singleton->parser_inverse_dependencies[String(dependency[0])].insert(p_script->path);
+		}
 	}
 	return true;
 }

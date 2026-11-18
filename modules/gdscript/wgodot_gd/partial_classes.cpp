@@ -35,6 +35,7 @@ struct Header {
 Mutex mutex;
 HashMap<String, Header> headers;
 HashMap<String, Vector<String>> groups;
+HashSet<String> ordinary_scripts;
 HashSet<String> indexed_directories;
 HashMap<String, String> class_directories;
 HashMap<String, String> conflicting_directories;
@@ -239,6 +240,22 @@ void ensure_directory(const String &p_directory) {
 }
 
 Vector<String> group_paths(const String &p_path) {
+	if (ordinary_scripts.has(p_path)) {
+		return {};
+	}
+	// Most folders contain no partial classes. Do not enumerate or write a
+	// directory cache merely because an ordinary script is being loaded.
+	if (!indexed_directories.has(p_path.get_base_dir())) {
+		Ref<FileAccess> file = FileAccess::open(p_path, FileAccess::READ);
+		if (file.is_null()) {
+			return {};
+		}
+		const String source = file->get_as_utf8_string();
+		if (!source.contains("@partial") || !read_header(source, p_path).partial) {
+			ordinary_scripts.insert(p_path);
+			return {};
+		}
+	}
 	ensure_directory(p_path.get_base_dir());
 	const Header *header = headers.getptr(p_path);
 	if (!header || !header->partial) {
@@ -361,6 +378,7 @@ void clear() {
 	MutexLock lock(mutex);
 	headers.clear();
 	groups.clear();
+	ordinary_scripts.clear();
 	indexed_directories.clear();
 	class_directories.clear();
 	conflicting_directories.clear();

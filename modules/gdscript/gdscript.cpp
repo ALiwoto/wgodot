@@ -2653,9 +2653,6 @@ struct GDScriptDepSort {
 };
 
 void GDScriptLanguage::reload_all_scripts() {
-	// wgodot-changes::begin
-	WGodotPartialClasses::clear();
-	// wgodot-changes::end
 #ifdef DEBUG_ENABLED
 	print_verbose("GDScript: Reloading all scripts");
 	Array scripts;
@@ -2691,6 +2688,9 @@ void GDScriptLanguage::reload_all_scripts() {
 
 void GDScriptLanguage::reload_scripts(const Array &p_scripts) {
 #ifdef DEBUG_ENABLED
+	// wgodot-changes::begin
+	WGodotPartialClasses::clear();
+	// wgodot-changes::end
 
 	List<Ref<GDScript>> scripts;
 	{
@@ -2784,9 +2784,6 @@ void GDScriptLanguage::reload_scripts(const Array &p_scripts) {
 }
 
 void GDScriptLanguage::reload_tool_script(const Ref<Script> &p_script) {
-	// wgodot-changes::begin
-	WGodotPartialClasses::clear();
-	// wgodot-changes::end
 	Array scripts = { p_script };
 	reload_scripts(scripts);
 }

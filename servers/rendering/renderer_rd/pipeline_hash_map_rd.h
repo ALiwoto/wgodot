@@ -54,8 +54,16 @@ private:
 	LocalVector<Pair<uint32_t, RID>> compiled_queue;
 	Mutex compiled_queue_mutex;
 	RBSet<uint32_t> compilation_set;
-	HashMap<uint32_t, WorkerThreadPool::TaskID> compilation_tasks;
+	// wgodot-changes::begin
+	HashMap<uint32_t, WorkerThreadPool::GroupID> compilation_tasks;
+	// wgodot-changes::end
 	Mutex local_mutex;
+
+	// wgodot-changes::begin
+	void _compile_pipeline_task(uint32_t p_index, Key p_key) {
+		(creation_object->*creation_function)(p_key);
+	}
+	// wgodot-changes::end
 
 	bool _add_new_pipelines_to_map() {
 		thread_local Vector<uint32_t> hashes_added;
@@ -71,32 +79,44 @@ private:
 			compiled_queue.clear();
 		}
 
+		// wgodot-changes::begin
+		LocalVector<WorkerThreadPool::GroupID> completed_tasks;
 		{
 			MutexLock local_lock(local_mutex);
 			for (uint32_t hash : hashes_added) {
-				HashMap<uint32_t, WorkerThreadPool::TaskID>::Iterator task_it = compilation_tasks.find(hash);
+				HashMap<uint32_t, WorkerThreadPool::GroupID>::Iterator task_it = compilation_tasks.find(hash);
 				if (task_it != compilation_tasks.end()) {
+					completed_tasks.push_back(task_it->value);
 					compilation_tasks.remove(task_it);
 				}
 			}
 		}
+		// Publication happens just before the callback returns. Retire each
+		// group exactly once, after releasing both pipeline-map mutexes.
+		for (WorkerThreadPool::GroupID group_id : completed_tasks) {
+			WorkerThreadPool::get_singleton()->wait_for_group_task_completion(group_id);
+		}
+		// wgodot-changes::end
 
 		return !hashes_added.is_empty();
 	}
 
 	void _wait_for_all_pipelines() {
-		thread_local LocalVector<WorkerThreadPool::TaskID> tasks_to_wait;
+		// wgodot-changes::begin
+		thread_local LocalVector<WorkerThreadPool::GroupID> tasks_to_wait;
 		tasks_to_wait.clear();
 		{
 			MutexLock local_lock(local_mutex);
-			for (KeyValue<uint32_t, WorkerThreadPool::TaskID> key_value : compilation_tasks) {
+			for (KeyValue<uint32_t, WorkerThreadPool::GroupID> key_value : compilation_tasks) {
 				tasks_to_wait.push_back(key_value.value);
 			}
+			compilation_tasks.clear();
 		}
 
-		for (WorkerThreadPool::TaskID task_id : tasks_to_wait) {
-			WorkerThreadPool::get_singleton()->wait_for_task_completion(task_id);
+		for (WorkerThreadPool::GroupID group_id : tasks_to_wait) {
+			WorkerThreadPool::get_singleton()->wait_for_group_task_completion(group_id);
 		}
+		// wgodot-changes::end
 	}
 
 public:
@@ -147,13 +167,19 @@ public:
 		print_line("HASH:", p_key_hash, "SOURCE:", source_name);
 #endif
 
-		// Queue a background compilation task.
-		WorkerThreadPool::TaskID task_id = WorkerThreadPool::get_singleton()->add_template_task(creation_object, creation_function, p_key, p_high_priority, "PipelineCompilation");
-		compilation_tasks.insert(p_key_hash, task_id);
+		// wgodot-changes::begin
+		// A waiting render thread must be able to finish this specific job
+		// when resource loaders occupy the pool awaiting render commands.
+		// Group waits already support that without stealing unrelated loads.
+		WorkerThreadPool::GroupID group_id = WorkerThreadPool::get_singleton()->add_template_group_task(this, &PipelineHashMapRD::_compile_pipeline_task, p_key, 1, 1, p_high_priority, "PipelineCompilation");
+		compilation_tasks.insert(p_key_hash, group_id);
+		// wgodot-changes::end
 	}
 
 	void wait_for_pipeline(uint32_t p_key_hash) {
-		WorkerThreadPool::TaskID task_id_to_wait = WorkerThreadPool::INVALID_TASK_ID;
+		// wgodot-changes::begin
+		WorkerThreadPool::GroupID task_id_to_wait = WorkerThreadPool::INVALID_TASK_ID;
+		// wgodot-changes::end
 
 		{
 			MutexLock local_lock(local_mutex);
@@ -162,7 +188,9 @@ public:
 				return;
 			}
 
-			HashMap<uint32_t, WorkerThreadPool::TaskID>::Iterator task_it = compilation_tasks.find(p_key_hash);
+			// wgodot-changes::begin
+			HashMap<uint32_t, WorkerThreadPool::GroupID>::Iterator task_it = compilation_tasks.find(p_key_hash);
+			// wgodot-changes::end
 			if (task_it != compilation_tasks.end()) {
 				// Wait for and remove the compilation task if it exists.
 				task_id_to_wait = task_it->value;
@@ -171,7 +199,9 @@ public:
 		}
 
 		if (task_id_to_wait != WorkerThreadPool::INVALID_TASK_ID) {
-			WorkerThreadPool::get_singleton()->wait_for_task_completion(task_id_to_wait);
+			// wgodot-changes::begin
+			WorkerThreadPool::get_singleton()->wait_for_group_task_completion(task_id_to_wait);
+			// wgodot-changes::end
 		}
 	}
 

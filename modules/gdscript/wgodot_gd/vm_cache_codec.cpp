@@ -20,6 +20,7 @@ enum ValueKind {
 	DICTIONARY,
 	RECORD,
 	EMPTY_HANDLE,
+	NULL_OBJECT,
 };
 
 template <typename T>
@@ -89,7 +90,7 @@ struct WGodotGDScriptVMCache::Writer {
 			case Variant::OBJECT: {
 				Object *object = p_value.get_validated_object();
 				if (!object) {
-					result = Array{ PLAIN, Variant(), false };
+					result = Array{ NULL_OBJECT };
 				} else if (Script *declaration = Object::cast_to<Script>(object)) {
 					result = Array{ SCRIPT, script(declaration) };
 				} else if (GDScriptNativeClass *native = Object::cast_to<GDScriptNativeClass>(object)) {
@@ -468,6 +469,11 @@ struct WGodotGDScriptVMCache::Reader {
 		const Array entry = encoded_values[p_index];
 		Variant result;
 		switch (int(entry[0])) {
+			case NULL_OBJECT:
+				// A null Object constant is distinct from a NIL Variant in the
+				// VM's typed-container checks, even though both print as null.
+				result = static_cast<Object *>(nullptr);
+				break;
 			case PLAIN:
 				result = entry[1];
 				if (entry[2]) {
