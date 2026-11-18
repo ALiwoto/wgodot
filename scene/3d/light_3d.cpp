@@ -475,6 +475,14 @@ void Light3D::_bind_methods() {
 	BIND_ENUM_CONSTANT(PARAM_INTENSITY);
 	BIND_ENUM_CONSTANT(PARAM_CONTACT_SHADOW_OPACITY);
 	BIND_ENUM_CONSTANT(PARAM_CONTACT_SHADOW_BLUR);
+	BIND_ENUM_CONSTANT(PARAM_SHADOW_MINIMUM_SPHERE);
+	BIND_ENUM_CONSTANT(PARAM_SHADOW_SNAP_TEXELS);
+	BIND_ENUM_CONSTANT(PARAM_SHADOW_BORDER_SIZE);
+	BIND_ENUM_CONSTANT(PARAM_SHADOW_DEPTH_CLAMP);
+	BIND_ENUM_CONSTANT(PARAM_SHADOW_CASTER_BIAS);
+	BIND_ENUM_CONSTANT(PARAM_SHADOW_CASTER_SLOPE_BIAS);
+	BIND_ENUM_CONSTANT(PARAM_SHADOW_CASTER_MAX_SLOPE);
+	BIND_ENUM_CONSTANT(PARAM_SHADOW_DEPTH_TRANSITION);
 	BIND_ENUM_CONSTANT(PARAM_MAX);
 
 	BIND_ENUM_CONSTANT(BAKE_DISABLED);
@@ -602,6 +610,14 @@ void DirectionalLight3D::_validate_property(PropertyInfo &p_property) const {
 	}
 }
 
+void DirectionalLight3D::set_shadow_minimum_sphere(bool p_enable) {
+	set_param(PARAM_SHADOW_MINIMUM_SPHERE, p_enable ? 1.0 : 0.0);
+}
+
+bool DirectionalLight3D::is_shadow_minimum_sphere_enabled() const {
+	return get_param(PARAM_SHADOW_MINIMUM_SPHERE) != 0.0;
+}
+
 void DirectionalLight3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_shadow_mode", "mode"), &DirectionalLight3D::set_shadow_mode);
 	ClassDB::bind_method(D_METHOD("get_shadow_mode"), &DirectionalLight3D::get_shadow_mode);
@@ -611,6 +627,8 @@ void DirectionalLight3D::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("set_sky_mode", "mode"), &DirectionalLight3D::set_sky_mode);
 	ClassDB::bind_method(D_METHOD("get_sky_mode"), &DirectionalLight3D::get_sky_mode);
+	ClassDB::bind_method(D_METHOD("set_shadow_minimum_sphere", "enabled"), &DirectionalLight3D::set_shadow_minimum_sphere);
+	ClassDB::bind_method(D_METHOD("is_shadow_minimum_sphere_enabled"), &DirectionalLight3D::is_shadow_minimum_sphere_enabled);
 
 	ADD_GROUP("Directional Shadow", "directional_shadow_");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "directional_shadow_mode", PROPERTY_HINT_ENUM, "Orthogonal (Fast),PSSM 2 Splits (Average),PSSM 4 Splits (Slow)"), "set_shadow_mode", "get_shadow_mode");
@@ -621,6 +639,14 @@ void DirectionalLight3D::_bind_methods() {
 	ADD_PROPERTYI(PropertyInfo(Variant::FLOAT, "directional_shadow_fade_start", PROPERTY_HINT_RANGE, "0,1,0.001"), "set_param", "get_param", PARAM_SHADOW_FADE_START);
 	ADD_PROPERTYI(PropertyInfo(Variant::FLOAT, "directional_shadow_max_distance", PROPERTY_HINT_RANGE, "0,8192,0.1,or_greater,exp"), "set_param", "get_param", PARAM_SHADOW_MAX_DISTANCE);
 	ADD_PROPERTYI(PropertyInfo(Variant::FLOAT, "directional_shadow_pancake_size", PROPERTY_HINT_RANGE, "0,1024,0.1,or_greater,exp"), "set_param", "get_param", PARAM_SHADOW_PANCAKE_SIZE);
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "directional_shadow_minimum_sphere"), "set_shadow_minimum_sphere", "is_shadow_minimum_sphere_enabled");
+	ADD_PROPERTYI(PropertyInfo(Variant::FLOAT, "directional_shadow_snap_texels", PROPERTY_HINT_RANGE, "0,16,1,or_greater"), "set_param", "get_param", PARAM_SHADOW_SNAP_TEXELS);
+	ADD_PROPERTYI(PropertyInfo(Variant::FLOAT, "directional_shadow_border_size", PROPERTY_HINT_RANGE, "0,16,1,or_greater"), "set_param", "get_param", PARAM_SHADOW_BORDER_SIZE);
+	ADD_PROPERTYI(PropertyInfo(Variant::FLOAT, "directional_shadow_depth_clamp", PROPERTY_HINT_RANGE, "0,1024,0.1,or_greater"), "set_param", "get_param", PARAM_SHADOW_DEPTH_CLAMP);
+	ADD_PROPERTYI(PropertyInfo(Variant::FLOAT, "directional_shadow_caster_bias", PROPERTY_HINT_RANGE, "0,16,0.001,or_greater"), "set_param", "get_param", PARAM_SHADOW_CASTER_BIAS);
+	ADD_PROPERTYI(PropertyInfo(Variant::FLOAT, "directional_shadow_caster_slope_bias", PROPERTY_HINT_RANGE, "0,16,0.001,or_greater"), "set_param", "get_param", PARAM_SHADOW_CASTER_SLOPE_BIAS);
+	ADD_PROPERTYI(PropertyInfo(Variant::FLOAT, "directional_shadow_caster_max_slope", PROPERTY_HINT_RANGE, "0,16,0.001,or_greater"), "set_param", "get_param", PARAM_SHADOW_CASTER_MAX_SLOPE);
+	ADD_PROPERTYI(PropertyInfo(Variant::FLOAT, "directional_shadow_depth_transition", PROPERTY_HINT_RANGE, "0,16,0.001,or_greater"), "set_param", "get_param", PARAM_SHADOW_DEPTH_TRANSITION);
 
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "sky_mode", PROPERTY_HINT_ENUM, "Light and Sky,Light Only,Sky Only"), "set_sky_mode", "get_sky_mode");
 

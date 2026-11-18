@@ -4,6 +4,11 @@
 
 #VERSION_DEFINES
 
+#if defined(MODE_RENDER_DEPTH) && !defined(NORMAL_USED)
+// Caster slope bias needs the authored vertex normal, including skinning.
+#define NORMAL_USED
+#endif
+
 /* Include half precision types. */
 #include "../half_inc.glsl"
 #include "scene_forward_clustered_inc.glsl"
@@ -731,7 +736,15 @@ void vertex_shader(vec3 vertex_input,
 #endif //!defined(MODE_RENDER_DEPTH) && !defined(MODE_UNSHADED) && defined(USE_VERTEX_LIGHTING)
 
 #ifdef MODE_RENDER_DEPTH
-	if (bool(scene_data.flags & SCENE_DATA_FLAGS_USE_PANCAKE_SHADOWS)) {
+	if (scene_data.shadow_caster_bias.w > 0.0) {
+		if (gl_Position.z > gl_Position.w) {
+			gl_Position.z = (1.0 - 0.000001 * scene_data.shadow_caster_bias.w) * gl_Position.w;
+		}
+		float cosine = abs(normal.z);
+		float slope = cosine > 0.0 ? sqrt(max(1.0 - cosine * cosine, 0.0)) / cosine : scene_data.shadow_caster_bias.z;
+		slope = clamp(slope, 0.0, scene_data.shadow_caster_bias.z);
+		gl_Position.z -= (scene_data.shadow_caster_bias.x + scene_data.shadow_caster_bias.y * slope) * gl_Position.w;
+	} else if (bool(scene_data.flags & SCENE_DATA_FLAGS_USE_PANCAKE_SHADOWS)) {
 		if (gl_Position.z >= 0.9999) {
 			gl_Position.z = 0.9999;
 		}
@@ -2681,7 +2694,9 @@ void fragment_shader(in SceneData scene_data) {
 
 						pssm_coord /= pssm_coord.w;
 
-						shadow = sample_directional_pcf_shadow(directional_shadow_atlas, scene_data.directional_shadow_pixel_size * directional_lights.data[i].soft_shadow_scale * (blur_factor + (1.0 - blur_factor) * float(directional_lights.data[i].blend_splits)), pssm_coord, scene_data.taa_frame_count);
+						int cascade = depth_z < directional_lights.data[i].shadow_split_offsets.x ? 0 : (depth_z < directional_lights.data[i].shadow_split_offsets.y ? 1 : (depth_z < directional_lights.data[i].shadow_split_offsets.z ? 2 : 3));
+						float transition = directional_lights.data[i].shadow_depth_transition[cascade];
+						shadow = transition > 0.0 ? sample_directional_depth_transition(directional_shadow_atlas, pssm_coord, transition) : sample_directional_pcf_shadow(directional_shadow_atlas, scene_data.directional_shadow_pixel_size * directional_lights.data[i].soft_shadow_scale * (blur_factor + (1.0 - blur_factor) * float(directional_lights.data[i].blend_splits)), pssm_coord, scene_data.taa_frame_count);
 
 						if (directional_lights.data[i].blend_splits) {
 							float pssm_blend;
@@ -2715,7 +2730,8 @@ void fragment_shader(in SceneData scene_data) {
 
 							pssm_coord /= pssm_coord.w;
 
-							float shadow2 = sample_directional_pcf_shadow(directional_shadow_atlas, scene_data.directional_shadow_pixel_size * directional_lights.data[i].soft_shadow_scale * (blur_factor2 + (1.0 - blur_factor2) * float(directional_lights.data[i].blend_splits)), pssm_coord, scene_data.taa_frame_count);
+							float transition2 = directional_lights.data[i].shadow_depth_transition[min(cascade + 1, 3)];
+							float shadow2 = transition2 > 0.0 ? sample_directional_depth_transition(directional_shadow_atlas, pssm_coord, transition2) : sample_directional_pcf_shadow(directional_shadow_atlas, scene_data.directional_shadow_pixel_size * directional_lights.data[i].soft_shadow_scale * (blur_factor2 + (1.0 - blur_factor2) * float(directional_lights.data[i].blend_splits)), pssm_coord, scene_data.taa_frame_count);
 							shadow = mix(shadow, shadow2, pssm_blend);
 						}
 					}

@@ -29,6 +29,7 @@ struct SceneData {
 
 	// Used for billboards to cast correct shadows.
 	mat4 main_cam_inv_view_matrix;
+	vec4 shadow_caster_bias;
 
 	vec2 viewport_size;
 	vec2 screen_pixel_size;

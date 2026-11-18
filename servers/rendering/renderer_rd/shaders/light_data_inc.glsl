@@ -77,6 +77,7 @@ struct DirectionalLightData {
 	uint bake_mode;
 	float volumetric_fog_energy;
 	vec4 shadow_bias;
+	vec4 shadow_depth_transition;
 	vec4 shadow_normal_bias;
 	vec4 shadow_transmittance_bias;
 	vec4 shadow_z_range;

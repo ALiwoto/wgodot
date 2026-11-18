@@ -39,6 +39,30 @@
 		<member name="sky_mode" type="int" setter="set_sky_mode" getter="get_sky_mode" enum="DirectionalLight3D.SkyMode" default="0">
 			Whether this [DirectionalLight3D] is visible in the sky, in the scene, or both in the sky and in the scene.
 		</member>
+		<member name="directional_shadow_minimum_sphere" type="bool" setter="set_shadow_minimum_sphere" getter="is_shadow_minimum_sphere_enabled" default="false">
+			Enables the minimum enclosing sphere projection in Forward+. Snapping, border, caster bias and linear depth-transition settings below apply only to this projection. Other renderers retain the standard projection.
+		</member>
+		<member name="directional_shadow_snap_texels" type="float" setter="set_param" getter="get_param" default="0.0">
+			Translation snap interval in inner shadow-map texels. Coordinates are truncated toward zero in normalized light space. Zero disables snapping.
+		</member>
+		<member name="directional_shadow_border_size" type="float" setter="set_param" getter="get_param" default="0.0">
+			Number of empty texels reserved around each cascade. Use an integral value smaller than half the cascade resolution.
+		</member>
+		<member name="directional_shadow_depth_clamp" type="float" setter="set_param" getter="get_param" default="0.0">
+			Minimum half depth range in world units. The caster side extends by max(radius, clamp); the receiver side ends at the fitted sphere radius. Bias is normalized against twice max(radius, clamp).
+		</member>
+		<member name="directional_shadow_caster_bias" type="float" setter="set_param" getter="get_param" default="0.0">
+			Caster depth bias multiplier. Its normalized offset is multiplier times sphere radius divided by inner resolution and the symmetric depth range. This replaces the standard receiver [member Light3D.shadow_bias] in the minimum-sphere profile; the receiver bias remains available in other renderers.
+		</member>
+		<member name="directional_shadow_caster_slope_bias" type="float" setter="set_param" getter="get_param" default="0.0">
+			Additional caster bias, relative to the constant caster bias, multiplied by the tangent of the angle between the authored vertex normal and the light direction.
+		</member>
+		<member name="directional_shadow_caster_max_slope" type="float" setter="set_param" getter="get_param" default="0.0">
+			Upper limit of the normal-derived slope before applying caster slope bias.
+		</member>
+		<member name="directional_shadow_depth_transition" type="float" setter="set_param" getter="get_param" default="0.0">
+			Linear depth-filter transition multiplier, using the same normalization as caster bias. Positive values select a weighted 3 by 3 point-sampled filter. Zero retains the standard shadow filter.
+		</member>
 	</members>
 	<constants>
 		<constant name="SHADOW_ORTHOGONAL" value="0" enum="ShadowMode">

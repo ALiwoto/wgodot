@@ -60,7 +60,7 @@ private:
 	/* LIGHT */
 	struct Light {
 		RSE::LightType type;
-		float param[RSE::LIGHT_PARAM_MAX];
+		float param[RSE::LIGHT_PARAM_MAX] = {};
 		Color color = Color(1, 1, 1, 1);
 		RID projector;
 		bool shadow = false;
@@ -214,6 +214,7 @@ private:
 		uint32_t bake_mode;
 		float volumetric_fog_energy;
 		float shadow_bias[4];
+		float shadow_depth_transition[4];
 		float shadow_normal_bias[4];
 		float shadow_transmittance_bias[4];
 		float shadow_z_range[4];
@@ -550,6 +551,12 @@ public:
 
 		return light->param[p_param];
 	}
+	virtual bool light_directional_uses_minimum_sphere(RID p_light) const override;
+	struct DirectionalShadowParameters {
+		Vector4 caster_bias;
+		float depth_transition = 0;
+	};
+	DirectionalShadowParameters light_instance_get_directional_shadow_parameters(RID p_light_instance, int p_index);
 
 	_FORCE_INLINE_ RID light_get_projector(RID p_light) {
 		const Light *light = light_owner.get_or_null(p_light);

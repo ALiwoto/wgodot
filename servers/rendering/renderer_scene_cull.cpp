@@ -2467,6 +2467,8 @@ void RendererSceneCull::_light_instance_setup_directional_shadow(int p_shadow_in
 	distances[splits] = max_distance;
 
 	real_t texture_size = RSG::light_storage->get_directional_light_shadow_size(light->instance);
+	const bool minimum_sphere = RSG::light_storage->light_directional_uses_minimum_sphere(p_instance->base);
+	const real_t inner_size = MAX(real_t(1), texture_size - 2 * RSG::light_storage->light_get_param(p_instance->base, RSE::LIGHT_PARAM_SHADOW_BORDER_SIZE));
 
 	bool overlap = RSG::light_storage->light_directional_get_blend_splits(p_instance->base);
 
@@ -2564,6 +2566,18 @@ void RendererSceneCull::_light_instance_setup_directional_shadow(int p_shadow_in
 				center += endpoints[j];
 			}
 			center /= 8.0;
+			if (minimum_sphere && !p_cam_orthogonal) {
+				// The midpoint of the near/far planes needlessly enlarges a
+				// perspective frustum's enclosing sphere. Equalize its distances
+				// to the near and far corner diagonals instead.
+				const real_t split_near = camera_matrix.get_z_near();
+				const real_t split_far = camera_matrix.get_z_far();
+				const real_t tan_x = 1.0 / camera_matrix.columns[0][0];
+				const real_t tan_y = 1.0 / camera_matrix.columns[1][1];
+				const real_t diagonal = tan_x * tan_x + tan_y * tan_y;
+				const real_t offset = (split_near * split_near * diagonal - split_far * split_far * diagonal) / (2 * (split_far - split_near)) + (split_far - split_near) * 0.5;
+				center = p_cam_transform.origin - p_cam_transform.basis.get_column(2) * CLAMP(split_far - offset, split_near, split_far);
+			}
 
 			//center=x_vec*(x_max-x_min)*0.5 + y_vec*(y_max-y_min)*0.5 + z_vec*(z_max-z_min)*0.5;
 
@@ -2574,7 +2588,9 @@ void RendererSceneCull::_light_instance_setup_directional_shadow(int p_shadow_in
 				}
 			}
 
-			radius *= texture_size / (texture_size - 2.0); //add a texel by each side
+			if (!minimum_sphere) {
+				radius *= texture_size / (texture_size - 2.0); //add a texel by each side
+			}
 
 			z_min_cam = z_vec.dot(center) - radius;
 
@@ -2600,6 +2616,20 @@ void RendererSceneCull::_light_instance_setup_directional_shadow(int p_shadow_in
 			x_min_cam = Math::snapped(x_vec.dot(center) - radius - soft_shadow_expand, unit);
 			y_max_cam = Math::snapped(y_vec.dot(center) + radius + soft_shadow_expand, unit);
 			y_min_cam = Math::snapped(y_vec.dot(center) - radius - soft_shadow_expand, unit);
+			if (minimum_sphere) {
+				const real_t snap = RSG::light_storage->light_get_param(p_instance->base, RSE::LIGHT_PARAM_SHADOW_SNAP_TEXELS);
+				real_t center_x = x_vec.dot(center) / radius;
+				real_t center_y = y_vec.dot(center) / radius;
+				if (snap > 0) {
+					const real_t step = 2 * snap / inner_size;
+					center_x -= Math::fmod(center_x, step);
+					center_y -= Math::fmod(center_y, step);
+				}
+				x_min_cam = center_x * radius - radius;
+				x_max_cam = center_x * radius + radius;
+				y_min_cam = center_y * radius - radius;
+				y_max_cam = center_y * radius + radius;
+			}
 		}
 
 		//now that we know all ranges, we can proceed to make the light frustum planes, for culling octree
@@ -2620,6 +2650,9 @@ void RendererSceneCull::_light_instance_setup_directional_shadow(int p_shadow_in
 		// a pre pass will need to be needed to determine the actual z-near to be used
 
 		z_max = z_vec.dot(center) + radius + pancake_size;
+		if (minimum_sphere) {
+			z_max = z_vec.dot(center) + MAX(radius, RSG::light_storage->light_get_param(p_instance->base, RSE::LIGHT_PARAM_SHADOW_DEPTH_CLAMP));
+		}
 
 		{
 			Projection ortho_camera;

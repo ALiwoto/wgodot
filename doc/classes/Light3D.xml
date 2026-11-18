@@ -213,7 +213,31 @@
 		<constant name="PARAM_CONTACT_SHADOW_BLUR" value="22" enum="Param">
 			Constant for accessing [member shadow_contact_shadows_blur].
 		</constant>
-		<constant name="PARAM_MAX" value="23" enum="Param">
+		<constant name="PARAM_SHADOW_MINIMUM_SPHERE" value="23" enum="Param">
+			Constant for accessing [member DirectionalLight3D.directional_shadow_minimum_sphere].
+		</constant>
+		<constant name="PARAM_SHADOW_SNAP_TEXELS" value="24" enum="Param">
+			Constant for accessing [member DirectionalLight3D.directional_shadow_snap_texels].
+		</constant>
+		<constant name="PARAM_SHADOW_BORDER_SIZE" value="25" enum="Param">
+			Constant for accessing [member DirectionalLight3D.directional_shadow_border_size].
+		</constant>
+		<constant name="PARAM_SHADOW_DEPTH_CLAMP" value="26" enum="Param">
+			Constant for accessing [member DirectionalLight3D.directional_shadow_depth_clamp].
+		</constant>
+		<constant name="PARAM_SHADOW_CASTER_BIAS" value="27" enum="Param">
+			Constant for accessing [member DirectionalLight3D.directional_shadow_caster_bias].
+		</constant>
+		<constant name="PARAM_SHADOW_CASTER_SLOPE_BIAS" value="28" enum="Param">
+			Constant for accessing [member DirectionalLight3D.directional_shadow_caster_slope_bias].
+		</constant>
+		<constant name="PARAM_SHADOW_CASTER_MAX_SLOPE" value="29" enum="Param">
+			Constant for accessing [member DirectionalLight3D.directional_shadow_caster_max_slope].
+		</constant>
+		<constant name="PARAM_SHADOW_DEPTH_TRANSITION" value="30" enum="Param">
+			Constant for accessing [member DirectionalLight3D.directional_shadow_depth_transition].
+		</constant>
+		<constant name="PARAM_MAX" value="31" enum="Param">
 			Represents the size of the [enum Param] enum.
 		</constant>
 		<constant name="BAKE_DISABLED" value="0" enum="BakeMode">

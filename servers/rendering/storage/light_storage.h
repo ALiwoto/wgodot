@@ -73,6 +73,8 @@ public:
 	virtual void light_directional_set_shadow_mode(RID p_light, RSE::LightDirectionalShadowMode p_mode) = 0;
 	virtual void light_directional_set_blend_splits(RID p_light, bool p_enable) = 0;
 	virtual bool light_directional_get_blend_splits(RID p_light) const = 0;
+	// Optional Forward+ projection/filter profile; other renderers retain their path.
+	virtual bool light_directional_uses_minimum_sphere(RID p_light) const { return false; }
 	virtual void light_directional_set_sky_mode(RID p_light, RSE::LightDirectionalSkyMode p_mode) = 0;
 	virtual RSE::LightDirectionalSkyMode light_directional_get_sky_mode(RID p_light) const = 0;
 

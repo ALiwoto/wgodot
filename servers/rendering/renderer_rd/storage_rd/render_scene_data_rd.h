@@ -85,6 +85,7 @@ public:
 	bool material_uv2_mode = false;
 	float emissive_exposure_normalization = 0.0;
 	bool shadow_pass = false;
+	Vector4 shadow_caster_bias;
 
 	Size2 shadow_atlas_pixel_size;
 	Size2 directional_shadow_pixel_size;
@@ -140,6 +141,7 @@ private:
 		float eye_offset[RendererSceneRender::MAX_RENDER_VIEWS][4];
 
 		float main_cam_inv_view_matrix[16];
+		float shadow_caster_bias[4];
 
 		float viewport_size[2];
 		float screen_pixel_size[2];

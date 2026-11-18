@@ -309,6 +309,29 @@ float quick_hash(vec2 pos) {
 	return fract(magic.z * fract(dot(pos, magic.xy)));
 }
 
+float sample_directional_depth_transition(texture2D shadow, vec4 coord, float transition) {
+	ivec2 size = textureSize(sampler2D(shadow, SAMPLER_NEAREST_CLAMP), 0);
+	vec2 texel = coord.xy * vec2(size);
+	ivec2 base = ivec2(floor(texel)) - ivec2(1);
+	vec2 fraction = fract(texel);
+	vec3 wx = vec3(1.0 - fraction.x, 1.0, fraction.x);
+	vec3 wy = vec3(1.0 - fraction.y, 1.0, fraction.y);
+	float inverse_transition = 1.0 / transition;
+	// Shadow atlases use reversed Z. Convert both operands before applying the
+	// linear depth transition, then combine the weighted 3x3 point samples.
+	float reference = min(1.0 - coord.z, 0.99999) * inverse_transition - 1.0;
+	float result = 0.0;
+	for (int y = 0; y < 3; y++) {
+		float row = 0.0;
+		for (int x = 0; x < 3; x++) {
+			float depth = 1.0 - texelFetch(sampler2D(shadow, SAMPLER_NEAREST_CLAMP), clamp(base + ivec2(x, y), ivec2(0), size - 1), 0).r;
+			row += wx[x] * clamp(depth * inverse_transition - reference, 0.0, 1.0);
+		}
+		result += wy[y] * row;
+	}
+	return min(result * 0.25, 1.0);
+}
+
 half sample_directional_pcf_shadow(texture2D shadow, vec2 shadow_pixel_size, vec4 coord, float taa_frame_count) {
 	vec2 pos = coord.xy;
 	float depth = coord.z;

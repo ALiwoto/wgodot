@@ -30,6 +30,8 @@
 
 #include "light_storage.h"
 
+#include "servers/rendering/rendering_server.h"
+
 #include "core/config/project_settings.h"
 #include "core/math/geometry_3d.h"
 #include "core/os/os.h"
@@ -218,6 +220,35 @@ void LightStorage::light_set_color(RID p_light, const Color &p_color) {
 	light->color = p_color;
 }
 
+bool LightStorage::light_directional_uses_minimum_sphere(RID p_light) const {
+	const Light *light = light_owner.get_or_null(p_light);
+	ERR_FAIL_NULL_V(light, false);
+	return light->param[RSE::LIGHT_PARAM_SHADOW_MINIMUM_SPHERE] != 0.0 && RenderingServer::get_singleton()->get_current_rendering_method() == "forward_plus";
+}
+
+LightStorage::DirectionalShadowParameters LightStorage::light_instance_get_directional_shadow_parameters(RID p_light_instance, int p_index) {
+	const LightInstance *instance = light_instance_owner.get_or_null(p_light_instance);
+	ERR_FAIL_NULL_V(instance, DirectionalShadowParameters());
+	ERR_FAIL_INDEX_V(p_index, 4, DirectionalShadowParameters());
+	const Light *light = light_owner.get_or_null(instance->light);
+	ERR_FAIL_NULL_V(light, DirectionalShadowParameters());
+	if (!light_directional_uses_minimum_sphere(instance->light)) {
+		return DirectionalShadowParameters();
+	}
+	const float radius = 0.5f / instance->shadow_transform[p_index].uv_scale.x;
+	const float depth = MAX(radius, light->param[RSE::LIGHT_PARAM_SHADOW_DEPTH_CLAMP]);
+	const float resolution = MAX(1.0f, get_directional_light_shadow_size(p_light_instance) - 2.0f * light->param[RSE::LIGHT_PARAM_SHADOW_BORDER_SIZE]);
+	// Normalize against the symmetric depth range before clipping the receiver
+	// side to the sphere. Bias and filtering retain that same reference range.
+	const float depth_unit = radius / resolution / (2.0f * depth);
+	const float bias = depth_unit * light->param[RSE::LIGHT_PARAM_SHADOW_CASTER_BIAS];
+	DirectionalShadowParameters result;
+	result.caster_bias = Vector4(bias, bias * light->param[RSE::LIGHT_PARAM_SHADOW_CASTER_SLOPE_BIAS], light->param[RSE::LIGHT_PARAM_SHADOW_CASTER_MAX_SLOPE], 2.0f * depth / (depth + radius));
+	const float transition_scale = light->param[RSE::LIGHT_PARAM_SHADOW_DEPTH_TRANSITION];
+	result.depth_transition = transition_scale > 0 ? MAX(0.00001f, depth_unit * transition_scale) : 0.0f;
+	return result;
+}
+
 void LightStorage::light_set_param(RID p_light, RSE::LightParam p_param, float p_value) {
 	Light *light = light_owner.get_or_null(p_light);
 	ERR_FAIL_NULL(light);
@@ -236,6 +267,14 @@ void LightStorage::light_set_param(RID p_light, RSE::LightParam p_param, float p
 		case RSE::LIGHT_PARAM_SHADOW_SPLIT_3_OFFSET:
 		case RSE::LIGHT_PARAM_SHADOW_NORMAL_BIAS:
 		case RSE::LIGHT_PARAM_SHADOW_PANCAKE_SIZE:
+		case RSE::LIGHT_PARAM_SHADOW_MINIMUM_SPHERE:
+		case RSE::LIGHT_PARAM_SHADOW_SNAP_TEXELS:
+		case RSE::LIGHT_PARAM_SHADOW_BORDER_SIZE:
+		case RSE::LIGHT_PARAM_SHADOW_DEPTH_CLAMP:
+		case RSE::LIGHT_PARAM_SHADOW_CASTER_BIAS:
+		case RSE::LIGHT_PARAM_SHADOW_CASTER_SLOPE_BIAS:
+		case RSE::LIGHT_PARAM_SHADOW_CASTER_MAX_SLOPE:
+		case RSE::LIGHT_PARAM_SHADOW_DEPTH_TRANSITION:
 		case RSE::LIGHT_PARAM_SHADOW_BIAS: {
 			light->version++;
 			light->dependency.changed_notify(Dependency::DEPENDENCY_CHANGED_LIGHT);
@@ -801,6 +840,11 @@ void LightStorage::update_light_buffers(RenderDataRD *p_render_data, const Paged
 				light_data.sscs_index = light->allow_contact_shadows ? directional_contact_shadows_count++ : 0xffffffff;
 
 				float angular_diameter = light->param[RSE::LIGHT_PARAM_SIZE];
+				if (light_directional_uses_minimum_sphere(light_instance->light) && light->param[RSE::LIGHT_PARAM_SHADOW_DEPTH_TRANSITION] > 0) {
+					// An explicitly selected depth-transition filter supersedes
+					// PCSS, without changing the angular size used for lighting.
+					angular_diameter = 0.0f;
+				}
 				if (angular_diameter > 0.0) {
 					// I know tan(0) is 0, but let's not risk it with numerical precision.
 					// technically this will keep expanding until reaching the sun, but all we care
@@ -846,7 +890,8 @@ void LightStorage::update_light_buffers(RenderDataRD *p_render_data, const Paged
 						Projection shadow_mtx = rectm * bias * matrix * modelview;
 						light_data.shadow_split_offsets[j] = split;
 						float bias_scale = light_instance->shadow_transform[j].bias_scale * light_data.soft_shadow_scale;
-						light_data.shadow_bias[j] = light->param[RSE::LIGHT_PARAM_SHADOW_BIAS] / 100.0 * bias_scale;
+						light_data.shadow_bias[j] = light_directional_uses_minimum_sphere(light_instance->light) ? 0.0f : light->param[RSE::LIGHT_PARAM_SHADOW_BIAS] / 100.0 * bias_scale;
+						light_data.shadow_depth_transition[j] = p_using_shadows && j <= limit ? light_instance_get_directional_shadow_parameters(p_lights[i], j).depth_transition : 0.0f;
 						light_data.shadow_normal_bias[j] = light->param[RSE::LIGHT_PARAM_SHADOW_NORMAL_BIAS] * light_instance->shadow_transform[j].shadow_texel_size;
 						light_data.shadow_transmittance_bias[j] = light->param[RSE::LIGHT_PARAM_TRANSMITTANCE_BIAS] / 100.0 * bias_scale;
 						light_data.shadow_z_range[j] = light_instance->shadow_transform[j].farplane;

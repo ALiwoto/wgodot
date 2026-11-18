@@ -136,6 +136,9 @@ void RenderSceneDataRD::update_ubo(RID p_uniform_buffer, RSE::ViewportDebugDraw 
 	}
 	// wgodot-changes::end
 	ubo.camera_visible_layers = camera_visible_layers;
+	for (int i = 0; i < 4; i++) {
+		ubo.shadow_caster_bias[i] = shadow_caster_bias[i];
+	}
 	ubo.pass_alpha_multiplier = p_opaque_render_buffers && p_apply_alpha_multiplier ? 0.0f : 1.0f;
 
 	ubo.viewport_size[0] = p_viewport_size.x;
