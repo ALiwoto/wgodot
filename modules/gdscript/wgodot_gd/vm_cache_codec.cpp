@@ -61,10 +61,13 @@ struct WGodotGDScriptVMCache::Writer {
 			return {};
 		}
 		GDScript *gdscript = Object::cast_to<GDScript>(p_script);
-		if (gdscript) {
-			return Array{ gdscript->get_root_script()->path, gdscript->fully_qualified_name };
+		const String path = gdscript ? gdscript->get_root_script()->get_script_path() : p_script->get_path();
+		if (path.is_empty()) {
+			// A live declaration without a source identity cannot be restored.
+			valid = false;
+			return {};
 		}
-		return Array{ p_script->get_path(), String() };
+		return Array{ path, gdscript ? gdscript->fully_qualified_name : String() };
 	}
 
 	Array container_type(const ContainerType &p_type) {
@@ -428,6 +431,12 @@ struct WGodotGDScriptVMCache::Reader {
 		}
 		const String path = p_reference[0];
 		const String qualified_name = p_reference[1];
+		if (path.is_empty()) {
+			// Older snapshots may contain an unaddressable declaration. Treat
+			// this as a cache miss before ResourceLoader resolves it to res://.
+			valid = false;
+			return {};
+		}
 		if (path == root->path) {
 			GDScript *found = root->find_class(qualified_name);
 			valid &= found != nullptr;
