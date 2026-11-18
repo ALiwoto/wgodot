@@ -244,6 +244,10 @@ PackedByteArray WLiveSceneProbe::snapshot(Node *p_root, Skeleton3D *p_body) {
 		}
 		if (GeometryInstance3D *geometry = Object::cast_to<GeometryInstance3D>(node)) {
 			writer.record(GEOMETRY, path, {}, { double(geometry->get_sorting_priority()), geometry->get_sorting_offset(), double(geometry->is_sorting_use_aabb_center()), double(geometry->get_cull_transform()), double(geometry->get_sorting_subpriority()) });
+			const AABB world_bounds = geometry->get_custom_world_aabb();
+			if (world_bounds != AABB()) {
+				writer.record(NUMERIC, path, { "culling/world-aabb" }, { world_bounds.position.x, world_bounds.position.y, world_bounds.position.z, world_bounds.size.x, world_bounds.size.y, world_bounds.size.z });
+			}
 			const GeometrySortGroup &group = geometry->get_transparency_sort_group();
 			if (group.id) {
 				writer.record(NUMERIC, path, { "transparency/sort-group", String::num_uint64(group.id) }, { group.origin.x, group.origin.y, group.origin.z, double(group.order), double(group.layer) });
@@ -281,6 +285,10 @@ PackedByteArray WLiveSceneProbe::snapshot(Node *p_root, Skeleton3D *p_body) {
 		}
 #ifdef MODULE_PARTICLE_EFFECTS_ENABLED
 		if (ParticleInstance3D *particle = Object::cast_to<ParticleInstance3D>(node)) {
+			const AABB fixed_bounds = particle->get_visibility_aabb();
+			if (fixed_bounds != AABB()) {
+				writer.record(NUMERIC, path, { "particle/fixed-aabb" }, { fixed_bounds.position.x, fixed_bounds.position.y, fixed_bounds.position.z, fixed_bounds.size.x, fixed_bounds.size.y, fixed_bounds.size.z });
+			}
 			Vector<double> values = { particle->get_birth(), double(particle->get_spawn_index()), particle->get_particle_previous_age(), particle->get_particle_lifetime(), particle->get_particle_relative_age(), particle->get_particle_angle() };
 			Writer::vector(values, particle->get_particle_position());
 			Writer::vector(values, particle->get_particle_velocity());

@@ -2017,6 +2017,16 @@
 				Sets a custom AABB to use when culling objects from the view frustum. Equivalent to setting [member GeometryInstance3D.custom_aabb].
 			</description>
 		</method>
+		<!-- wgodot-changes::begin -->
+		<method name="instance_set_custom_world_aabb">
+			<return type="void" />
+			<param index="0" name="instance" type="RID" />
+			<param index="1" name="aabb" type="AABB" />
+			<description>
+				Overrides the instance's world-space culling box without transforming it by the instance pose. An empty [AABB] clears the override. Equivalent to [member GeometryInstance3D.custom_world_aabb].
+			</description>
+		</method>
+		<!-- wgodot-changes::end -->
 		<method name="instance_set_extra_visibility_margin">
 			<return type="void" />
 			<param index="0" name="instance" type="RID" />

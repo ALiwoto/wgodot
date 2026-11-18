@@ -1238,6 +1238,32 @@ void RendererSceneCull::instance_set_custom_aabb(RID p_instance, AABB p_aabb) {
 	}
 }
 
+// wgodot-changes::begin
+void RendererSceneCull::instance_set_custom_world_aabb(RID p_instance, AABB p_aabb) {
+	Instance *instance = instance_owner.get_or_null(p_instance);
+	ERR_FAIL_NULL(instance);
+	if (p_aabb != AABB()) {
+		if (instance->custom_world_aabb) {
+			if (*instance->custom_world_aabb == p_aabb) {
+				return;
+			}
+		} else {
+			instance->custom_world_aabb = memnew(AABB);
+		}
+		*instance->custom_world_aabb = p_aabb;
+	} else {
+		if (!instance->custom_world_aabb) {
+			return;
+		}
+		memdelete(instance->custom_world_aabb);
+		instance->custom_world_aabb = nullptr;
+	}
+	if (instance->scenario) {
+		_instance_queue_update(instance, true, false);
+	}
+}
+// wgodot-changes::end
+
 void RendererSceneCull::instance_attach_skeleton(RID p_instance, RID p_skeleton) {
 	Instance *instance = instance_owner.get_or_null(p_instance);
 	ERR_FAIL_NULL(instance);
@@ -1939,6 +1965,13 @@ void RendererSceneCull::_update_instance(Instance *p_instance) const {
 
 	AABB new_aabb;
 	new_aabb = instance_xform->xform(p_instance->aabb);
+	// wgodot-changes::begin
+	// A shared fixed box must not be inverse-transformed into each rotating
+	// instance and transformed back: two AABB enclosures enlarge its extents.
+	if (p_instance->custom_world_aabb) {
+		new_aabb = p_instance->custom_world_aabb->grow(p_instance->extra_margin);
+	}
+	// wgodot-changes::end
 	p_instance->transformed_aabb = new_aabb;
 
 	if ((1 << p_instance->base_type) & RSE::INSTANCE_GEOMETRY_MASK) {

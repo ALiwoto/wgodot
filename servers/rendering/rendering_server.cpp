@@ -3348,6 +3348,9 @@ void RenderingServer::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("instance_teleport", "instance"), &RenderingServer::instance_teleport);
 
 	ClassDB::bind_method(D_METHOD("instance_set_custom_aabb", "instance", "aabb"), &RenderingServer::instance_set_custom_aabb);
+	// wgodot-changes::begin
+	ClassDB::bind_method(D_METHOD("instance_set_custom_world_aabb", "instance", "aabb"), &RenderingServer::instance_set_custom_world_aabb);
+	// wgodot-changes::end
 
 	ClassDB::bind_method(D_METHOD("instance_attach_skeleton", "instance", "skeleton"), &RenderingServer::instance_attach_skeleton);
 	ClassDB::bind_method(D_METHOD("instance_set_extra_visibility_margin", "instance", "margin"), &RenderingServer::instance_set_extra_visibility_margin);

@@ -12,6 +12,7 @@ void ParticleInstance3D::collect_render_instances(Node *p_node) {
 		instance.geometry = Object::cast_to<GeometryInstance3D>(visual);
 		if (instance.geometry) {
 			instance.authored_aabb = instance.geometry->get_custom_aabb();
+			instance.authored_world_aabb = instance.geometry->get_custom_world_aabb();
 		}
 		render_instances.push_back(instance);
 	}
@@ -167,13 +168,25 @@ void ParticleInstance3D::update_render_bounds(RenderInstance &p_instance, const 
 	if (!fixed && !sprite && !facing_mesh && camera_distance == 0.0) {
 		if (p_instance.bounds_overridden) {
 			render_geometry->set_custom_aabb(p_instance.authored_aabb);
+			render_geometry->set_custom_world_aabb(p_instance.authored_world_aabb);
 			p_instance.bounds_overridden = false;
 		}
 		return;
 	}
 	if (!p_instance.bounds_overridden) {
 		p_instance.authored_aabb = render_geometry->get_custom_aabb();
+		p_instance.authored_world_aabb = render_geometry->get_custom_world_aabb();
 	}
+	if (fixed) {
+		// Keep authored emitter bounds independent of particle orientation.
+		// Converting this box through each mesh's local axes enlarges it and
+		// can render particles whose complete system is outside the frustum.
+		render_geometry->set_custom_aabb(p_instance.authored_aabb);
+		render_geometry->set_custom_world_aabb(get_emitter_transform().xform(visibility_aabb));
+		p_instance.bounds_overridden = true;
+		return;
+	}
+	render_geometry->set_custom_world_aabb(p_instance.authored_world_aabb);
 	// The renderer itself rejects singular instance transforms. They have no
 	// inverse; the next non-singular pose will publish its bounds normally.
 	if (p_transform.basis.determinant() == 0.0) {
@@ -181,9 +194,7 @@ void ParticleInstance3D::update_render_bounds(RenderInstance &p_instance, const 
 	}
 	const Transform3D inverse = p_transform.affine_inverse();
 	AABB bounds;
-	if (fixed) {
-		bounds = (inverse * get_emitter_transform()).xform(visibility_aabb);
-	} else {
+	{
 		const AABB shape = p_instance.authored_aabb != AABB() ? p_instance.authored_aabb : render_geometry->get_aabb();
 		if (sprite || facing_mesh) {
 			Vector3 corner = shape.get_center().abs() + shape.size * 0.5;

@@ -993,6 +993,9 @@ public:
 	FUNC1(instance_teleport, RID)
 
 	FUNC2(instance_set_custom_aabb, RID, AABB)
+	// wgodot-changes::begin
+	FUNC2(instance_set_custom_world_aabb, RID, AABB)
+	// wgodot-changes::end
 
 	FUNC2(instance_attach_skeleton, RID, RID)
 

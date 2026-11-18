@@ -787,6 +787,9 @@ public:
 	virtual void instance_teleport(RID p_instance) = 0;
 
 	virtual void instance_set_custom_aabb(RID p_instance, AABB aabb) = 0;
+	// wgodot-changes::begin
+	virtual void instance_set_custom_world_aabb(RID p_instance, AABB p_aabb) = 0;
+	// wgodot-changes::end
 
 	virtual void instance_attach_skeleton(RID p_instance, RID p_skeleton) = 0;
 

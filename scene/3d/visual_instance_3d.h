@@ -163,6 +163,9 @@ private:
 
 	float extra_cull_margin = 0.0;
 	AABB custom_aabb;
+	// wgodot-changes::begin
+	AABB custom_world_aabb;
+	// wgodot-changes::end
 	float lightmap_texel_scale = 1.0f;
 	GIMode gi_mode = GI_MODE_STATIC;
 	bool ignore_occlusion_culling = false;
@@ -270,6 +273,10 @@ public:
 
 	void set_custom_aabb(AABB p_aabb);
 	AABB get_custom_aabb() const;
+	// wgodot-changes::begin
+	void set_custom_world_aabb(AABB p_aabb);
+	AABB get_custom_world_aabb() const;
+	// wgodot-changes::end
 
 	void set_ignore_occlusion_culling(bool p_enabled);
 	bool is_ignoring_occlusion_culling();

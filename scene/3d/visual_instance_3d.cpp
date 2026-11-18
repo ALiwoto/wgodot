@@ -469,6 +469,20 @@ AABB GeometryInstance3D::get_custom_aabb() const {
 	return custom_aabb;
 }
 
+// wgodot-changes::begin
+void GeometryInstance3D::set_custom_world_aabb(AABB p_aabb) {
+	if (p_aabb == custom_world_aabb) {
+		return;
+	}
+	custom_world_aabb = p_aabb;
+	RS::get_singleton()->instance_set_custom_world_aabb(get_instance(), p_aabb);
+}
+
+AABB GeometryInstance3D::get_custom_world_aabb() const {
+	return custom_world_aabb;
+}
+// wgodot-changes::end
+
 void GeometryInstance3D::set_lightmap_texel_scale(float p_scale) {
 	lightmap_texel_scale = p_scale;
 }
@@ -652,6 +666,11 @@ void GeometryInstance3D::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("set_custom_aabb", "aabb"), &GeometryInstance3D::set_custom_aabb);
 	ClassDB::bind_method(D_METHOD("get_custom_aabb"), &GeometryInstance3D::get_custom_aabb);
+	// wgodot-changes::begin
+	ClassDB::bind_method(D_METHOD("set_custom_world_aabb", "aabb"), &GeometryInstance3D::set_custom_world_aabb);
+	ClassDB::bind_method(D_METHOD("get_custom_world_aabb"), &GeometryInstance3D::get_custom_world_aabb);
+	ADD_PROPERTY(PropertyInfo(Variant::AABB, "custom_world_aabb", PROPERTY_HINT_NONE, "suffix:m"), "set_custom_world_aabb", "get_custom_world_aabb");
+	// wgodot-changes::end
 
 	ADD_GROUP("Geometry", "");
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "material_override", PROPERTY_HINT_RESOURCE_TYPE, "BaseMaterial3D,ShaderMaterial", PROPERTY_USAGE_DEFAULT), "set_material_override", "get_material_override");

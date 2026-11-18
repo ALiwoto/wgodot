@@ -506,6 +506,9 @@ public:
 		SelfList<Instance> update_item;
 
 		AABB *custom_aabb = nullptr; // <Zylann> would using aabb directly with a bool be better?
+		// wgodot-changes::begin
+		AABB *custom_world_aabb = nullptr;
+		// wgodot-changes::end
 		float extra_margin;
 		ObjectID object_id;
 
@@ -653,6 +656,9 @@ public:
 		~Instance() {
 			memdelete(base_data);
 			memdelete(custom_aabb);
+			// wgodot-changes::begin
+			memdelete(custom_world_aabb);
+			// wgodot-changes::end
 		}
 	};
 
@@ -1084,6 +1090,9 @@ public:
 	virtual void instance_teleport(RID p_instance);
 
 	virtual void instance_set_custom_aabb(RID p_instance, AABB p_aabb);
+	// wgodot-changes::begin
+	virtual void instance_set_custom_world_aabb(RID p_instance, AABB p_aabb);
+	// wgodot-changes::end
 
 	virtual void instance_attach_skeleton(RID p_instance, RID p_skeleton);
 
