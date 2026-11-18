@@ -203,6 +203,7 @@ public:
 
 private:
 	VelocityAlignmentMode velocity_alignment_mode = VELOCITY_ALIGNMENT_BASIS;
+	double velocity_alignment_unit_scale = 1.0;
 	Vector3 rotation;
 	bool faces_camera = false;
 	bool emitter_culling = false;
@@ -223,6 +224,11 @@ protected:
 public:
 	void set_velocity_alignment_mode(VelocityAlignmentMode p_value) { velocity_alignment_mode = p_value; }
 	VelocityAlignmentMode get_velocity_alignment_mode() const { return velocity_alignment_mode; }
+	void set_velocity_alignment_unit_scale(double p_value) {
+		ERR_FAIL_COND(!Math::is_finite(p_value) || p_value <= 0.0);
+		velocity_alignment_unit_scale = p_value;
+	}
+	double get_velocity_alignment_unit_scale() const { return velocity_alignment_unit_scale; }
 	void set_rotation(const Vector3 & p_value) { rotation = p_value; }
 	Vector3 get_rotation() const { return rotation; }
 	void set_faces_camera(bool p_value) { faces_camera = p_value; }

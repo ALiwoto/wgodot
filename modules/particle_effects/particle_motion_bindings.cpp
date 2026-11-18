@@ -213,6 +213,9 @@ void ParticleMeshProfile3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_velocity_alignment_mode", "value"), &ParticleMeshProfile3D::set_velocity_alignment_mode)->wgodot_set_init_safe();
 	ClassDB::bind_method(D_METHOD("get_velocity_alignment_mode"), &ParticleMeshProfile3D::get_velocity_alignment_mode);
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "velocity_alignment_mode", PROPERTY_HINT_ENUM, "Basis,Float32 Euler"), "set_velocity_alignment_mode", "get_velocity_alignment_mode");
+	ClassDB::bind_method(D_METHOD("set_velocity_alignment_unit_scale", "value"), &ParticleMeshProfile3D::set_velocity_alignment_unit_scale)->wgodot_set_init_safe();
+	ClassDB::bind_method(D_METHOD("get_velocity_alignment_unit_scale"), &ParticleMeshProfile3D::get_velocity_alignment_unit_scale);
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "velocity_alignment_unit_scale"), "set_velocity_alignment_unit_scale", "get_velocity_alignment_unit_scale");
 	BIND_ENUM_CONSTANT(VELOCITY_ALIGNMENT_BASIS);
 	BIND_ENUM_CONSTANT(VELOCITY_ALIGNMENT_FLOAT32_EULER);
 	ClassDB::bind_method(D_METHOD("velocity_rotation", "direction_velocity"), &ParticleMeshProfile3D::velocity_rotation);

@@ -13,6 +13,9 @@ Vector3 ParticleMeshProfile3D::velocity_rotation(Vector3 p_direction_velocity) c
 
 	// Imported Euler-additive effects require their binary32 normalization and
 	// pole convention. A Basis round trip changes both near vertical alignment.
+	// Unit conversion changes rounding in normalization, amplified near a pole
+	// by the Euler conversion. Normalize in the profile's authored units.
+	p_direction_velocity *= velocity_alignment_unit_scale;
 	float forward = p_direction_velocity.x;
 	float side = p_direction_velocity.z;
 	float up = p_direction_velocity.y;
