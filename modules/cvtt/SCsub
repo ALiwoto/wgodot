@@ -29,6 +29,10 @@ thirdparty_sources = [thirdparty_dir + file for file in thirdparty_sources]
 env_cvtt.Prepend(CPPPATH=[thirdparty_dir])
 
 env_thirdparty = env_cvtt.Clone()
+# wgodot-changes::begin
+# SIMD compression kernels need optimization even in development editors.
+env_thirdparty.force_optimization_on_debug()
+# wgodot-changes::end
 env_thirdparty.disable_warnings()
 env_thirdparty.add_source_files(thirdparty_obj, thirdparty_sources)
 env.modules_sources += thirdparty_obj
