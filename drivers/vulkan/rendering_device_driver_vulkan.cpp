@@ -1122,6 +1122,14 @@ Error RenderingDeviceDriverVulkan::_check_device_capabilities() {
 		VkPhysicalDeviceAccelerationStructurePropertiesKHR acceleration_structure_properties = {};
 		VkPhysicalDeviceRayTracingPipelinePropertiesKHR raytracing_properties = {};
 		VkPhysicalDeviceProperties2 physical_device_properties_2 = {};
+// wgodot-changes::begin
+		VkPhysicalDeviceDepthStencilResolveProperties depth_resolve_properties = {};
+		if (framebuffer_depth_resolve) {
+			depth_resolve_properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEPTH_STENCIL_RESOLVE_PROPERTIES;
+			depth_resolve_properties.pNext = next_properties;
+			next_properties = &depth_resolve_properties;
+		}
+// wgodot-changes::end
 
 		const bool use_1_1_properties = physical_device_properties.apiVersion >= VK_API_VERSION_1_1;
 		if (use_1_1_properties) {
@@ -1176,6 +1184,18 @@ Error RenderingDeviceDriverVulkan::_check_device_capabilities() {
 		physical_device_properties_2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
 		physical_device_properties_2.pNext = next_properties;
 		functions.GetPhysicalDeviceProperties2(physical_device, &physical_device_properties_2);
+// wgodot-changes::begin
+		if (framebuffer_depth_resolve) {
+			if (depth_resolve_properties.supportedDepthResolveModes & VK_RESOLVE_MODE_MAX_BIT) {
+				depth_resolve_mode = VK_RESOLVE_MODE_MAX_BIT;
+			}
+			// Stencil masks must survive the resolve for later rendering passes.
+			// Without independent modes, SAMPLE_ZERO is mandatory for both aspects.
+			if (depth_resolve_properties.independentResolve) {
+				depth_stencil_resolve_mode = depth_resolve_mode;
+			}
+		}
+// wgodot-changes::end
 
 		subgroup_capabilities.size = subgroup_properties.subgroupSize;
 		subgroup_capabilities.min_size = subgroup_properties.subgroupSize;
@@ -5526,8 +5546,11 @@ RDD::RenderPassID RenderingDeviceDriverVulkan::render_pass_create(VectorView<Att
 			*vk_depth_resolve_info = {};
 			vk_depth_resolve_info->sType = VK_STRUCTURE_TYPE_SUBPASS_DESCRIPTION_DEPTH_STENCIL_RESOLVE;
 			vk_depth_resolve_info->pNext = vk_subpasses[i].pNext;
-			vk_depth_resolve_info->depthResolveMode = VK_RESOLVE_MODE_MAX_BIT_KHR;
-			vk_depth_resolve_info->stencilResolveMode = VK_RESOLVE_MODE_NONE_KHR; // we don't resolve our stencil (for now)
+// wgodot-changes::begin
+			const bool has_stencil = format_has_stencil(p_attachments[p_subpasses[i].depth_resolve_reference.attachment].format);
+			vk_depth_resolve_info->depthResolveMode = has_stencil ? depth_stencil_resolve_mode : depth_resolve_mode;
+			vk_depth_resolve_info->stencilResolveMode = has_stencil ? VK_RESOLVE_MODE_SAMPLE_ZERO_BIT : VK_RESOLVE_MODE_NONE;
+// wgodot-changes::end
 			vk_depth_resolve_info->pDepthStencilResolveAttachment = vk_subpass_depth_resolve_attachment;
 
 			vk_subpasses[i].pNext = vk_depth_resolve_info;

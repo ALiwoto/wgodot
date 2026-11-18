@@ -253,6 +253,9 @@ Ref<RenderSceneBuffers> RendererSceneRenderRD::render_buffers_create() {
 	rb.instantiate();
 
 	rb->set_can_be_storage(_render_buffers_can_be_storage());
+	// wgodot-changes::begin
+	rb->set_color_can_be_storage(_render_buffers_color_can_be_storage());
+	// wgodot-changes::end
 	rb->set_max_cluster_elements(max_cluster_elements);
 	rb->set_preferred_data_format(_render_buffers_get_preferred_color_format());
 	if (vrs) {
@@ -1214,6 +1217,12 @@ RD::DataFormat RendererSceneRenderRD::_render_buffers_get_preferred_color_format
 bool RendererSceneRenderRD::_render_buffers_can_be_storage() {
 	return true;
 }
+
+// wgodot-changes::begin
+bool RendererSceneRenderRD::_render_buffers_color_can_be_storage() {
+	return _render_buffers_can_be_storage();
+}
+// wgodot-changes::end
 
 void RendererSceneRenderRD::gi_set_use_half_resolution(bool p_enable) {
 	gi.half_resolution = p_enable;

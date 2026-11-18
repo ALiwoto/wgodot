@@ -46,6 +46,8 @@
 // wgodot-changes::begin
 #include "wgodot_gd/script_resolution.h"
 #include "wgodot_gd/partial_classes.h"
+#include "wgodot_gd/vm_cache.h"
+#include "core/io/wgodot_file_stamp.h"
 // wgodot-changes::end
 
 #include "core/io/file_access.h"
@@ -106,6 +108,9 @@ Error GDScriptParserRef::raise_status(Status p_new_status) {
 #endif
 				// wgodot-changes::end
 				String remapped_path = ResourceLoader::path_remap(path);
+				// wgodot-changes::begin
+				const String file_stamp = WGodotFileStamp::get(remapped_path);
+				// wgodot-changes::end
 				if (remapped_path.has_extension("gdc")) {
 					Vector<uint8_t> tokens = GDScriptCache::get_binary_tokens(remapped_path);
 					source_hash = hash_djb2_buffer(tokens.ptr(), tokens.size());
@@ -115,6 +120,9 @@ Error GDScriptParserRef::raise_status(Status p_new_status) {
 					source_hash = source.hash();
 					result = get_parser()->parse(source, path, false);
 				}
+				// wgodot-changes::begin
+				wgodot_vm_source_stamp = file_stamp == WGodotFileStamp::get(remapped_path) ? file_stamp : String();
+				// wgodot-changes::end
 			} break;
 			case PARSED: {
 				status = INHERITANCE_SOLVED;
@@ -151,6 +159,9 @@ void GDScriptParserRef::clear() {
 	status = EMPTY;
 	result = OK;
 	source_hash = 0;
+	// wgodot-changes::begin
+	wgodot_vm_source_stamp = String();
+	// wgodot-changes::end
 
 	clearing = false;
 
@@ -357,6 +368,7 @@ Vector<uint8_t> GDScriptCache::get_binary_tokens(const String &p_path) {
 
 Ref<GDScript> GDScriptCache::get_shallow_script(const String &p_path, Error &r_error, const String &p_owner) {
 // wgodot-changes::begin
+	WGodotGDScriptVMCache::LoadScope vm_cache_scope;
 	const String canonical = WGodotPartialClasses::canonical_path(p_path);
 	if (canonical != p_path) {
 		return get_shallow_script(canonical, r_error, p_owner);
@@ -403,10 +415,14 @@ Ref<GDScript> GDScriptCache::get_shallow_script(const String &p_path, Error &r_e
 		return Ref<GDScript>(); // Returns null and does not cache when the script fails to load.
 	}
 
-	Ref<GDScriptParserRef> parser_ref = get_parser(p_path, GDScriptParserRef::PARSED, r_error);
-	if (r_error == OK) {
-		GDScriptCompiler::make_scripts(script.ptr(), parser_ref->get_parser()->get_tree(), true);
+	// wgodot-changes::begin
+	if (!WGodotGDScriptVMCache::prepare(script.ptr())) {
+		Ref<GDScriptParserRef> parser_ref = get_parser(p_path, GDScriptParserRef::PARSED, r_error);
+		if (r_error == OK) {
+			GDScriptCompiler::make_scripts(script.ptr(), parser_ref->get_parser()->get_tree(), true);
+		}
 	}
+	// wgodot-changes::end
 
 	singleton->shallow_gdscript_cache[p_path] = script;
 
@@ -415,6 +431,7 @@ Ref<GDScript> GDScriptCache::get_shallow_script(const String &p_path, Error &r_e
 
 Ref<GDScript> GDScriptCache::get_full_script(const String &p_path, Error &r_error, const String &p_owner, bool p_update_from_disk) {
 	// wgodot-changes::begin
+	WGodotGDScriptVMCache::LoadScope vm_cache_scope;
 	const String canonical = WGodotPartialClasses::canonical_path(p_path);
 	if (canonical != p_path) {
 		return get_full_script(canonical, r_error, p_owner, p_update_from_disk);
@@ -508,6 +525,9 @@ Error GDScriptCache::finish_compiling(const String &p_owner) {
 	singleton->shallow_gdscript_cache.erase(p_owner);
 
 	HashSet<String> depends(singleton->dependencies[p_owner]);
+	// wgodot-changes::begin
+	WGodotGDScriptVMCache::capture_dependencies(script.ptr(), depends);
+	// wgodot-changes::end
 
 	Error err = OK;
 	for (const String &E : depends) {

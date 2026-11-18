@@ -168,6 +168,10 @@ class RenderingDeviceDriverVulkan : public RenderingDeviceDriver {
 	bool pipeline_cache_control_support = false;
 	bool device_fault_support = false;
 	bool framebuffer_depth_resolve = false;
+// wgodot-changes::begin
+	VkResolveModeFlagBits depth_resolve_mode = VK_RESOLVE_MODE_SAMPLE_ZERO_BIT;
+	VkResolveModeFlagBits depth_stencil_resolve_mode = VK_RESOLVE_MODE_SAMPLE_ZERO_BIT;
+// wgodot-changes::end
 #if defined(VK_TRACK_DEVICE_MEMORY)
 	bool device_memory_report_support = false;
 #endif

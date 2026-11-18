@@ -6,6 +6,8 @@ param(
     [string]$GradleExecutable,
     [string]$Proxy,
     [switch]$KeepGoing,
+    [ValidateRange(0, 2147483647)]
+    [int]$WaitForProcessId = 0,
     [string]$StatusPath
 )
 
@@ -43,7 +45,7 @@ try {
         if (Test-Path -LiteralPath $StatusPath) {
             $oldStatus = Get-Content -LiteralPath $StatusPath
             $oldPidLine = $oldStatus | Where-Object { $_ -match '^pid=\d+$' }
-            if ($oldStatus -contains 'state=running' -and $oldPidLine) {
+            if (($oldStatus -contains 'state=running' -or $oldStatus -contains 'state=waiting') -and $oldPidLine) {
                 $oldBuild = Get-Process -Id ($oldPidLine -replace '^pid=', '') -ErrorAction SilentlyContinue
                 if ($oldBuild) {
                     throw "Build is already running: $StatusPath"
@@ -53,6 +55,13 @@ try {
         New-Item -ItemType Directory -Path (Split-Path -Parent $StatusPath) -Force | Out-Null
     }
     $ownsStatus = $true
+    if ($WaitForProcessId) {
+        Write-BuildStatus 'waiting' $Phase
+        $previousBuild = Get-Process -Id $WaitForProcessId -ErrorAction SilentlyContinue
+        if ($previousBuild) {
+            $previousBuild | Wait-Process
+        }
+    }
     if (!(Test-Path -LiteralPath "$env:ANDROID_HOME/ndk/29.0.14206865" -PathType Container)) {
         throw 'Android NDK 29.0.14206865 is required under ANDROID_HOME. Install it before building.'
     }
@@ -69,6 +78,7 @@ try {
             'platform=android', 'arch=arm64', 'target=editor',
             'optimize=none', 'lto=none', 'debug_symbols=no',
             'module_postgresql_enabled=no', 'generate_android_binaries=no',
+            'linkflags=-Wl,-Map=bin/godot.android.editor.arm64.map',
             'progress=no'
         )
         if ($KeepGoing) {

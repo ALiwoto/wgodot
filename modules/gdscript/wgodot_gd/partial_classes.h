@@ -20,6 +20,7 @@ SourceLocation locate(const Vector<SourcePart> &p_parts, const String &p_path, i
 
 String canonical_path(const String &p_path);
 Vector<String> paths(const String &p_path);
+String source_stamp(const String &p_path);
 Error compose(const String &p_source, const String &p_path, String &r_source, String &r_path, Vector<SourcePart> &r_parts, String &r_error);
 void clear();
 } // namespace WGodotPartialClasses

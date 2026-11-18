@@ -1286,7 +1286,10 @@ public class GLSurfaceView extends SurfaceView implements SurfaceHolder.Callback
 	 */
 	static class GLThread extends Thread {
 		GLThread(WeakReference<GLSurfaceView> glSurfaceViewWeakRef) {
-			super();
+			// wgodot-changes::begin
+			// Match native workers and Vulkan when running unoptimized scripts.
+			super(null, null, "GLThread", 8L * 1024 * 1024);
+			// wgodot-changes::end
 			mWidth = 0;
 			mHeight = 0;
 			mRequestRender = true;

@@ -250,6 +250,9 @@ public:
 	/* render buffers */
 	virtual RD::DataFormat _render_buffers_get_preferred_color_format();
 	virtual bool _render_buffers_can_be_storage();
+	// wgodot-changes::begin
+	virtual bool _render_buffers_color_can_be_storage();
+	// wgodot-changes::end
 	virtual Ref<RenderSceneBuffers> render_buffers_create() override;
 	virtual void gi_set_use_half_resolution(bool p_enable) override;
 

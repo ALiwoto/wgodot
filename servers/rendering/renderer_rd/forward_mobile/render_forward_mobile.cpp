@@ -467,6 +467,11 @@ void RenderForwardMobile::update() {
 /* Render functions */
 
 RD::DataFormat RenderForwardMobile::_render_buffers_get_preferred_color_format() {
+	// wgodot-changes::begin
+	if (GLOBAL_GET_CACHED(bool, "rendering/renderer/mobile/use_hdr_color_buffer")) {
+		return RD::DATA_FORMAT_R16G16B16A16_SFLOAT;
+	}
+	// wgodot-changes::end
 	// Using 32bit buffers enables AFBC on mobile devices which should have a definite performance improvement (MALI G710 and newer support this on 64bit RTs)
 	return RD::DATA_FORMAT_A2B10G10R10_UNORM_PACK32;
 }
@@ -476,7 +481,15 @@ bool RenderForwardMobile::_render_buffers_can_be_storage() {
 	return false;
 }
 
-RID RenderForwardMobile::_setup_render_pass_uniform_set(RenderListType p_render_list, const RenderDataRD *p_render_data, bool p_is_multiview, RID p_radiance_texture, const RendererRD::MaterialStorage::Samplers &p_samplers, bool p_use_directional_shadow_atlas, uint32_t p_pass_offset) {
+// wgodot-changes::begin
+bool RenderForwardMobile::_render_buffers_color_can_be_storage() {
+	return GLOBAL_GET_CACHED(bool, "rendering/renderer/mobile/use_hdr_color_buffer");
+}
+// wgodot-changes::end
+
+// wgodot-changes::begin
+RID RenderForwardMobile::_setup_render_pass_uniform_set(RenderListType p_render_list, const RenderDataRD *p_render_data, bool p_is_multiview, RID p_radiance_texture, const RendererRD::MaterialStorage::Samplers &p_samplers, bool p_use_directional_shadow_atlas, uint32_t p_pass_offset, RID p_screen_texture) {
+// wgodot-changes::end
 	RendererRD::LightStorage *light_storage = RendererRD::LightStorage::get_singleton();
 	RendererRD::TextureStorage *texture_storage = RendererRD::TextureStorage::get_singleton();
 
@@ -507,7 +520,10 @@ RID RenderForwardMobile::_setup_render_pass_uniform_set(RenderListType p_render_
 		// many times in a row, now we must reference those.
 		// We use 0u - p_pass_offset instead of -p_pass_offset to make MSVC warnings shut up.
 		// See the "Tricks" section of MultiUmaBuffer documentation.
-		u.append_id(scene_state.uniform_buffers._get(uint32_t(0u - p_pass_offset)));
+		// wgodot-changes::begin
+		// Each pass owns a scene UBO and a screen-effect UBO.
+		u.append_id(scene_state.uniform_buffers._get(uint32_t(0u - p_pass_offset * 2u)));
+		// wgodot-changes::end
 		uniforms.push_back(u);
 	}
 
@@ -655,7 +671,9 @@ RID RenderForwardMobile::_setup_render_pass_uniform_set(RenderListType p_render_
 		RD::Uniform u;
 		u.binding = 10;
 		u.uniform_type = RD::UNIFORM_TYPE_TEXTURE;
-		RID texture = rb_data.is_valid() ? rb->get_back_buffer_texture() : RID();
+// wgodot-changes::begin
+		RID texture = p_screen_texture.is_valid() ? p_screen_texture : (rb_data.is_valid() ? rb->get_back_buffer_texture() : RID());
+// wgodot-changes::end
 		if (texture.is_null()) {
 			if (is_multiview) {
 				texture = texture_storage->texture_rd_get_default(RendererRD::TextureStorage::DEFAULT_RD_TEXTURE_2D_ARRAY_DEPTH);
@@ -743,6 +761,30 @@ RID RenderForwardMobile::_setup_render_pass_uniform_set(RenderListType p_render_
 	}
 #endif // MODULE_TEXTURE_STREAMING_ENABLED
 
+// wgodot-changes::begin
+	{
+		RD::Uniform u;
+		u.binding = 26;
+		u.uniform_type = RD::UNIFORM_TYPE_TEXTURE;
+		RID offsets;
+		// Never expose offsets from an earlier frame or sample an attached image.
+		if (p_render_list == RENDER_LIST_SCREEN_EFFECT && rb_data.is_valid() && !render_list[RENDER_LIST_DISTORTION].elements.is_empty()) {
+			offsets = rb->get_texture(SNAME("ScreenDistortion"), SNAME("offsets"));
+		}
+		if (offsets.is_null()) {
+			offsets = texture_storage->texture_rd_get_default(is_multiview ? RendererRD::TextureStorage::DEFAULT_RD_TEXTURE_2D_ARRAY_TRANSPARENT : RendererRD::TextureStorage::DEFAULT_RD_TEXTURE_TRANSPARENT);
+		}
+		u.append_id(offsets);
+		uniforms.push_back(u);
+	}
+	{
+		RD::Uniform u;
+		u.binding = 27;
+		u.uniform_type = RD::UNIFORM_TYPE_UNIFORM_BUFFER_DYNAMIC;
+		u.append_id(scene_state.uniform_buffers._get(uint32_t(1u - p_pass_offset * 2u)));
+		uniforms.push_back(u);
+	}
+// wgodot-changes::end
 	return UniformSetCacheRD::get_singleton()->get_cache_vec(scene_shader.get_default_shader_rd(is_multiview), RENDER_PASS_UNIFORM_SET, uniforms);
 }
 
@@ -905,6 +947,11 @@ void RenderForwardMobile::_render_scene(RenderDataRD *p_render_data, const Color
 	bool reverse_cull = p_render_data->scene_data->cam_transform.basis.determinant() < 0;
 	bool merge_transparent_pass = true; // If true: we can do our transparent pass in the same pass as our opaque pass.
 	bool using_subpass_post_process = true; // If true: we can do our post processing in a subpass
+	// wgodot-changes::begin
+	if (rb->get_color_can_be_storage()) {
+		using_subpass_post_process = false;
+	}
+	// wgodot-changes::end
 	RendererRD::MaterialStorage::Samplers samplers;
 	bool hdr_render_target = false;
 
@@ -931,8 +978,13 @@ void RenderForwardMobile::_render_scene(RenderDataRD *p_render_data, const Color
 	}
 
 	if (use_msaa && _compositor_effects_has_flag(p_render_data, RSE::COMPOSITOR_EFFECT_FLAG_ACCESS_RESOLVED_DEPTH, RSE::COMPOSITOR_EFFECT_CALLBACK_TYPE_ANY)) {
-		// We'll be able to do this when we finish PR #78598
-		WARN_PRINT_ONCE("Depth buffer resolve for rendering effect callback is not supported in the mobile renderer");
+		// wgodot-changes::begin
+		if (supports_depth_resolve) {
+			resolve_depth_buffer = true;
+		} else {
+			WARN_PRINT_ONCE("The rendering device does not support depth resolve for compositor effects.");
+		}
+		// wgodot-changes::end
 	}
 
 	// We don't need to check resolve color flag, it will be resolved for transparent passes regardless.
@@ -970,6 +1022,12 @@ void RenderForwardMobile::_render_scene(RenderDataRD *p_render_data, const Color
 
 	_fill_instance_data(RENDER_LIST_OPAQUE);
 	_fill_instance_data(RENDER_LIST_ALPHA);
+// wgodot-changes::begin
+	render_list[RENDER_LIST_DISTORTION].sort_by_key();
+	_fill_instance_data(RENDER_LIST_DISTORTION);
+	render_list[RENDER_LIST_SCREEN_EFFECT].sort_by_reverse_depth_and_priority();
+	_fill_instance_data(RENDER_LIST_SCREEN_EFFECT);
+// wgodot-changes::end
 
 	if (p_render_data->render_info) {
 		p_render_data->render_info->info[RSE::VIEWPORT_RENDER_INFO_TYPE_VISIBLE][RSE::VIEWPORT_RENDER_INFO_DRAW_CALLS_IN_FRAME] = p_render_data->instances->size();
@@ -1017,7 +1075,17 @@ void RenderForwardMobile::_render_scene(RenderDataRD *p_render_data, const Color
 			resolve_depth_buffer = true;
 		}
 
-		if (scene_state.used_screen_texture || scene_state.used_depth_texture) {
+// wgodot-changes::begin
+		const bool has_distortion = !render_list[RENDER_LIST_DISTORTION].elements.is_empty();
+		const bool has_screen_effects = !render_list[RENDER_LIST_SCREEN_EFFECT].elements.is_empty();
+		if (has_distortion || has_screen_effects) {
+			using_subpass_post_process = false;
+		}
+		if (has_screen_effects && use_msaa) {
+			resolve_depth_buffer = true;
+		}
+		if (scene_state.used_screen_texture || scene_state.used_depth_texture || scene_state.used_current_screen_texture) {
+// wgodot-changes::end
 			// can't use our last two subpasses because we're reading from screen texture or depth texture
 			merge_transparent_pass = false;
 			using_subpass_post_process = false;
@@ -1393,14 +1461,29 @@ void RenderForwardMobile::_render_scene(RenderDataRD *p_render_data, const Color
 				render_list_params.framebuffer_format = fb_format;
 				render_list_params.subpass = RD::get_singleton()->draw_list_get_current_pass(); // Should now always be 0.
 
-				draw_list = RD::get_singleton()->draw_list_begin(framebuffer, RD::DRAW_DEFAULT_ALL, Vector<Color>(), 1.0f, 0, p_render_data->render_region, breadcrumb);
-				_render_list(draw_list, fb_format, &render_list_params, 0, render_list_params.element_count);
-				RD::get_singleton()->draw_list_end();
+// wgodot-changes::begin
+				if (scene_state.used_current_screen_texture) {
+					const StringName destination = SNAME("screen_read_current");
+					_render_buffers_ensure_screen_texture(p_render_data, destination);
+					RID current_uniform_set = _setup_render_pass_uniform_set(RENDER_LIST_ALPHA, p_render_data, is_multiview, radiance_texture, samplers, true, 0u, rb->get_texture(RB_SCOPE_BUFFERS, destination));
+					_render_list_with_current_screen(&render_list_params, framebuffer, p_render_data, current_uniform_set);
+				} else {
+					draw_list = RD::get_singleton()->draw_list_begin(framebuffer, RD::DRAW_DEFAULT_ALL, Vector<Color>(), 1.0f, 0, p_render_data->render_region, breadcrumb);
+					_render_list(draw_list, fb_format, &render_list_params, 0, render_list_params.element_count);
+					RD::get_singleton()->draw_list_end();
+				}
+// wgodot-changes::end
 
 				RD::get_singleton()->draw_command_end_label(); // Render Transparent Pass
 			}
 		}
 	}
+
+// wgodot-changes::begin
+	if (rb_data.is_valid()) {
+		_render_screen_effects(p_render_data, radiance_texture, samplers, reverse_cull, base_specialization);
+	}
+// wgodot-changes::end
 
 	if (rb_data.is_valid() && !using_subpass_post_process) {
 		RD::get_singleton()->draw_command_begin_label("Post Process Pass");
@@ -2216,6 +2299,9 @@ void RenderForwardMobile::_fill_render_list(RenderListType p_render_list, const 
 
 	if (p_render_list == RENDER_LIST_OPAQUE) {
 		scene_state.used_screen_texture = false;
+// wgodot-changes::begin
+		scene_state.used_current_screen_texture = false;
+// wgodot-changes::end
 		scene_state.used_depth_texture = false;
 		scene_state.used_lightmap = false;
 	}
@@ -2236,6 +2322,10 @@ void RenderForwardMobile::_fill_render_list(RenderListType p_render_list, const 
 		rl->clear();
 		if (p_render_list == RENDER_LIST_OPAQUE) {
 			render_list[RENDER_LIST_ALPHA].clear(); //opaque fills alpha too
+// wgodot-changes::begin
+			render_list[RENDER_LIST_DISTORTION].clear();
+			render_list[RENDER_LIST_SCREEN_EFFECT].clear();
+// wgodot-changes::end
 		}
 	}
 
@@ -2373,12 +2463,20 @@ void RenderForwardMobile::_fill_render_list(RenderListType p_render_list, const 
 #else
 				bool force_alpha = false;
 #endif
-				if (!force_alpha && (surf->flags & GeometryInstanceSurfaceDataCache::FLAG_PASS_OPAQUE)) {
-					rl->add_element(surf);
+// wgodot-changes::begin
+				if (surf->flags & GeometryInstanceSurfaceDataCache::FLAG_PASS_DISTORTION) {
+					render_list[RENDER_LIST_DISTORTION].add_element(surf);
+				} else if (surf->flags & GeometryInstanceSurfaceDataCache::FLAG_PASS_SCREEN_EFFECT) {
+					render_list[RENDER_LIST_SCREEN_EFFECT].add_element(surf);
+				} else {
+					if (!force_alpha && (surf->flags & GeometryInstanceSurfaceDataCache::FLAG_PASS_OPAQUE)) {
+						rl->add_element(surf);
+					}
+					if (force_alpha || (surf->flags & GeometryInstanceSurfaceDataCache::FLAG_PASS_ALPHA)) {
+						render_list[RENDER_LIST_ALPHA].add_element(surf);
+					}
 				}
-				if (force_alpha || (surf->flags & GeometryInstanceSurfaceDataCache::FLAG_PASS_ALPHA)) {
-					render_list[RENDER_LIST_ALPHA].add_element(surf);
-				}
+// wgodot-changes::end
 
 				if (uses_lightmap) {
 					surf->sort.uses_lightmap = 1; // This needs to become our lightmap index but we'll do that in a separate PR.
@@ -2386,9 +2484,15 @@ void RenderForwardMobile::_fill_render_list(RenderListType p_render_list, const 
 					scene_state.used_lightmap = true;
 				}
 
+// wgodot-changes::begin
 				if (surf->flags & GeometryInstanceSurfaceDataCache::FLAG_USES_SCREEN_TEXTURE) {
-					scene_state.used_screen_texture = true;
+					if (surf->shader->screen_read_current) {
+						scene_state.used_current_screen_texture |= !surf->shader->screen_read_after_transparent;
+					} else {
+						scene_state.used_screen_texture = true;
+					}
 				}
+// wgodot-changes::end
 				if (surf->flags & GeometryInstanceSurfaceDataCache::FLAG_USES_DEPTH_TEXTURE) {
 					scene_state.used_depth_texture = true;
 				}
@@ -2427,7 +2531,10 @@ void RenderForwardMobile::_setup_environment(const RenderDataRD *p_render_data, 
 
 	// May do this earlier in RenderSceneRenderRD::render_scene
 	if (scene_state.uniform_buffers.get_size(0u) == 0u) {
+// wgodot-changes::begin
 		scene_state.uniform_buffers.set_uniform_size(0u, p_render_data->scene_data->get_uniform_buffer_size_bytes());
+		scene_state.uniform_buffers.set_uniform_size(1u, sizeof(int32_t) * 4);
+// wgodot-changes::end
 	}
 
 	float luminance_multiplier = p_render_data->render_buffers.is_valid() ? p_render_data->render_buffers->get_luminance_multiplier() : 1.0;
@@ -2435,6 +2542,11 @@ void RenderForwardMobile::_setup_environment(const RenderDataRD *p_render_data, 
 	// Start a new setup.
 	scene_state.uniform_buffers.prepare_for_upload();
 	p_render_data->scene_data->update_ubo(scene_state.uniform_buffers.get_for_upload(0u), get_debug_draw_mode(), env, reflection_probe_instance, p_render_data->camera_attributes, p_pancake_shadows, p_screen_size, p_viewport_size, p_default_bg_color, luminance_multiplier, p_opaque_render_buffers, false);
+// wgodot-changes::begin
+	const Rect2i region = p_render_data->render_region.has_area() ? Rect2i(p_render_data->render_region) : Rect2i(Point2i(), p_screen_size);
+	const int32_t bounds[4] = { region.position.x, region.position.y, region.get_end().x, region.get_end().y };
+	scene_state.uniform_buffers.upload(1u, bounds, sizeof(bounds));
+// wgodot-changes::end
 }
 
 /// RENDERING ///
@@ -2963,6 +3075,13 @@ void RenderForwardMobile::_geometry_instance_add_surface_with_material(GeometryI
 		flags |= GeometryInstanceSurfaceDataCache::FLAG_USES_STENCIL;
 	}
 
+// wgodot-changes::begin
+	if (p_material->shader_data->screen_distortion) {
+		flags |= GeometryInstanceSurfaceDataCache::FLAG_PASS_DISTORTION;
+	} else if (p_material->shader_data->screen_read_after_transparent) {
+		flags |= GeometryInstanceSurfaceDataCache::FLAG_PASS_SCREEN_EFFECT | GeometryInstanceSurfaceDataCache::FLAG_PASS_ALPHA;
+	} else
+// wgodot-changes::end
 	if (p_material->shader_data->uses_alpha_pass()) {
 		flags |= GeometryInstanceSurfaceDataCache::FLAG_PASS_ALPHA;
 		if (p_material->shader_data->uses_depth_in_alpha_pass()) {
@@ -3279,7 +3398,7 @@ void RenderForwardMobile::_geometry_instance_update(RenderGeometryInstance *p_ge
 	ginstance->dirty_list_element.remove_from_list();
 }
 
-static RD::FramebufferFormatID _get_color_framebuffer_format_for_pipeline(RD::DataFormat p_color_format, bool p_can_be_storage, RD::TextureSamples p_samples, RD::TextureSamples p_target_samples, bool p_vrs, bool p_post_pass, bool p_hdr, uint32_t p_view_count) {
+static RD::FramebufferFormatID _get_color_framebuffer_format_for_pipeline(RD::DataFormat p_color_format, bool p_can_be_storage, bool p_color_can_be_storage, RD::TextureSamples p_samples, RD::TextureSamples p_target_samples, bool p_vrs, bool p_post_pass, bool p_hdr, uint32_t p_view_count) {
 	const bool multisampling = p_samples > RD::TEXTURE_SAMPLES_1;
 	RD::AttachmentFormat attachment;
 
@@ -3292,7 +3411,7 @@ static RD::FramebufferFormatID _get_color_framebuffer_format_for_pipeline(RD::Da
 	// Color attachment.
 	attachment.samples = p_samples;
 	attachment.format = p_color_format;
-	attachment.usage_flags = RenderSceneBuffersRD::get_color_usage_bits(false, multisampling, p_can_be_storage);
+	attachment.usage_flags = RenderSceneBuffersRD::get_color_usage_bits(false, multisampling, p_color_can_be_storage);
 	attachments.push_back(attachment);
 
 	// Depth attachment.
@@ -3313,7 +3432,7 @@ static RD::FramebufferFormatID _get_color_framebuffer_format_for_pipeline(RD::Da
 		// Resolve attachment.
 		attachment.samples = RD::TEXTURE_SAMPLES_1;
 		attachment.format = p_color_format;
-		attachment.usage_flags = RenderSceneBuffersRD::get_color_usage_bits(true, false, p_can_be_storage);
+		attachment.usage_flags = RenderSceneBuffersRD::get_color_usage_bits(true, false, p_color_can_be_storage);
 		attachments.push_back(attachment);
 	}
 
@@ -3422,6 +3541,39 @@ void RenderForwardMobile::_mesh_compile_pipelines_for_surface(const SurfacePipel
 
 	const bool multiview_enabled = p_global.use_multiview && scene_shader.is_multiview_shader_group_enabled();
 	const bool buffers_can_be_storage = _render_buffers_can_be_storage();
+	// wgodot-changes::begin
+	const bool color_can_be_storage = _render_buffers_color_can_be_storage();
+	// wgodot-changes::end
+// wgodot-changes::begin
+	if (p_surface.shader->screen_distortion || p_surface.shader->screen_read_after_transparent) {
+		const bool distortion = p_surface.shader->screen_distortion;
+		const bool resolved = p_global.texture_samples != RD::TEXTURE_SAMPLES_1;
+		const uint32_t format_begin = !distortion && !p_global.use_ldr_render_target ? 1u : 0u;
+		const uint32_t format_end = !distortion && p_global.use_hdr_render_target ? 2u : 1u;
+		for (uint32_t hdr = format_begin; hdr < format_end; hdr++) {
+			for (uint32_t views = 1; views <= (multiview_enabled ? 2u : 1u); views++) {
+				if (distortion) {
+					pipeline_key.framebuffer_format_id = RendererRD::ScreenDistortion::framebuffer_format(RD::TextureSamples(p_global.texture_samples), views, buffers_can_be_storage);
+				} else {
+					RD::AttachmentFormat color;
+					color.format = hdr ? RD::DATA_FORMAT_R16G16B16A16_SFLOAT : _render_buffers_get_preferred_color_format();
+					color.usage_flags = RenderSceneBuffersRD::get_color_usage_bits(resolved, false, color_can_be_storage);
+					RD::AttachmentFormat depth;
+					depth.format = RenderSceneBuffersRD::get_depth_format(resolved, false, buffers_can_be_storage);
+					depth.usage_flags = RenderSceneBuffersRD::get_depth_usage_bits(resolved, false, buffers_can_be_storage);
+					pipeline_key.framebuffer_format_id = RD::get_singleton()->framebuffer_format_create({ color, depth }, views);
+				}
+				pipeline_key.version = views > 1 ? SceneShaderForwardMobile::SHADER_VERSION_COLOR_PASS_MULTIVIEW : SceneShaderForwardMobile::SHADER_VERSION_COLOR_PASS;
+				_mesh_compile_pipeline_for_surface(p_surface.shader, p_surface.mesh_surface, p_surface.instanced, p_source, pipeline_key, r_pipeline_pairs);
+				if (p_global.use_lightmaps && p_surface.can_use_lightmap) {
+					pipeline_key.version = views > 1 ? SceneShaderForwardMobile::SHADER_VERSION_LIGHTMAP_COLOR_PASS_MULTIVIEW : SceneShaderForwardMobile::SHADER_VERSION_LIGHTMAP_COLOR_PASS;
+					_mesh_compile_pipeline_for_surface(p_surface.shader, p_surface.mesh_surface, p_surface.instanced, p_source, pipeline_key, r_pipeline_pairs);
+				}
+			}
+		}
+		return;
+	}
+// wgodot-changes::end
 	const uint32_t vrs_iterations = p_global.use_vrs ? 2 : 1;
 
 	const uint32_t post_pass_start = p_global.use_separate_post_pass ? 0 : 1;
@@ -3436,7 +3588,7 @@ void RenderForwardMobile::_mesh_compile_pipelines_for_surface(const SurfacePipel
 			for (uint32_t use_hdr = hdr_start; use_hdr < hdr_iterations; use_hdr++) {
 				const RD::DataFormat buffers_color_format = use_hdr ? RD::DATA_FORMAT_R16G16B16A16_SFLOAT : _render_buffers_get_preferred_color_format();
 				pipeline_key.version = SceneShaderForwardMobile::SHADER_VERSION_COLOR_PASS;
-				pipeline_key.framebuffer_format_id = _get_color_framebuffer_format_for_pipeline(buffers_color_format, buffers_can_be_storage, RD::TextureSamples(p_global.texture_samples), RD::TextureSamples(p_global.target_samples), use_vrs, use_post_pass, use_hdr, 1);
+				pipeline_key.framebuffer_format_id = _get_color_framebuffer_format_for_pipeline(buffers_color_format, buffers_can_be_storage, color_can_be_storage, RD::TextureSamples(p_global.texture_samples), RD::TextureSamples(p_global.target_samples), use_vrs, use_post_pass, use_hdr, 1);
 				_mesh_compile_pipeline_for_surface(p_surface.shader, p_surface.mesh_surface, p_surface.instanced, p_source, pipeline_key, r_pipeline_pairs);
 
 				if (p_global.use_lightmaps && p_surface.can_use_lightmap) {
@@ -3448,7 +3600,7 @@ void RenderForwardMobile::_mesh_compile_pipelines_for_surface(const SurfacePipel
 					// View count is assumed to be 2 as the configuration is dependent on the viewport. It's likely a safe assumption for stereo rendering.
 					const uint32_t view_count = 2;
 					pipeline_key.version = SceneShaderForwardMobile::SHADER_VERSION_COLOR_PASS_MULTIVIEW;
-					pipeline_key.framebuffer_format_id = _get_color_framebuffer_format_for_pipeline(buffers_color_format, buffers_can_be_storage, RD::TextureSamples(p_global.texture_samples), RD::TextureSamples(p_global.target_samples), use_vrs, use_post_pass, use_hdr, view_count);
+					pipeline_key.framebuffer_format_id = _get_color_framebuffer_format_for_pipeline(buffers_color_format, buffers_can_be_storage, color_can_be_storage, RD::TextureSamples(p_global.texture_samples), RD::TextureSamples(p_global.target_samples), use_vrs, use_post_pass, use_hdr, view_count);
 					_mesh_compile_pipeline_for_surface(p_surface.shader, p_surface.mesh_surface, p_surface.instanced, p_source, pipeline_key, r_pipeline_pairs);
 
 					if (p_global.use_lightmaps && p_surface.can_use_lightmap) {
@@ -3627,7 +3779,11 @@ RenderForwardMobile::RenderForwardMobile() {
 		print_verbose("Ubershaders: Enabled");
 	}
 
-	sky.set_texture_format(_render_buffers_get_preferred_color_format());
+	// wgodot-changes::begin
+	// Sky radiance keeps its existing luminance encoding. The HDR option changes
+	// the scene color buffer consumed by compositor effects.
+	sky.set_texture_format(RD::DATA_FORMAT_A2B10G10R10_UNORM_PACK32);
+	// wgodot-changes::end
 
 	String defines;
 
@@ -3691,6 +3847,11 @@ RenderForwardMobile::RenderForwardMobile() {
 }
 
 RenderForwardMobile::~RenderForwardMobile() {
+// wgodot-changes::begin
+	if (screen_distortion) {
+		memdelete(screen_distortion);
+	}
+// wgodot-changes::end
 	RSG::light_storage->directional_shadow_atlas_set_size(0);
 
 	if (ltc.lut1_texture.is_valid()) {

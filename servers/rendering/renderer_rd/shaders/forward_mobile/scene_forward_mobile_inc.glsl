@@ -411,6 +411,17 @@ layout(set = 1, binding = 10) uniform texture2D color_buffer;
 #define multiviewSampler sampler2D
 #endif // USE_MULTIVIEW
 
+// wgodot-changes::begin
+#ifdef USE_MULTIVIEW
+layout(set = 1, binding = 26) uniform texture2DArray screen_distortion_offsets;
+#else
+layout(set = 1, binding = 26) uniform texture2D screen_distortion_offsets;
+#endif
+layout(set = 1, binding = 27, std140) uniform ScreenEffectData {
+	ivec4 region;
+} screen_effect_data;
+// wgodot-changes::end
+
 layout(set = 1, binding = 11) uniform sampler decal_sampler;
 
 layout(set = 1, binding = 12) uniform sampler light_projector_sampler;

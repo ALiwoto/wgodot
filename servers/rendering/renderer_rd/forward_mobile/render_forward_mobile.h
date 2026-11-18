@@ -33,6 +33,9 @@
 #include "core/templates/paged_allocator.h"
 #include "servers/rendering/multi_uma_buffer.h"
 #include "servers/rendering/renderer_rd/forward_mobile/scene_shader_forward_mobile.h"
+// wgodot-changes::begin
+#include "servers/rendering/renderer_rd/effects/screen_distortion.h"
+// wgodot-changes::end
 #include "servers/rendering/renderer_rd/renderer_scene_render_rd.h"
 
 #define RB_SCOPE_MOBILE SNAME("mobile")
@@ -67,12 +70,19 @@ private:
 		RENDER_LIST_OPAQUE, //used for opaque objects
 		RENDER_LIST_ALPHA, //used for transparent objects
 		RENDER_LIST_SECONDARY, //used for shadows and other objects
+// wgodot-changes::begin
+		RENDER_LIST_DISTORTION,
+		RENDER_LIST_SCREEN_EFFECT,
+// wgodot-changes::end
 		RENDER_LIST_MAX
 	};
 
 	/* Scene Shader */
 
 	SceneShaderForwardMobile scene_shader;
+// wgodot-changes::begin
+	RendererRD::ScreenDistortion *screen_distortion = nullptr;
+// wgodot-changes::end
 	bool disable_ubershaders = false;
 
 	/* Render Buffer */
@@ -170,7 +180,9 @@ private:
 
 	/* Render Scene */
 
-	RID _setup_render_pass_uniform_set(RenderListType p_render_list, const RenderDataRD *p_render_data, bool p_is_multiview, RID p_radiance_texture, const RendererRD::MaterialStorage::Samplers &p_samplers, bool p_use_directional_shadow_atlas = false, uint32_t p_pass_offset = 0u);
+// wgodot-changes::begin
+	RID _setup_render_pass_uniform_set(RenderListType p_render_list, const RenderDataRD *p_render_data, bool p_is_multiview, RID p_radiance_texture, const RendererRD::MaterialStorage::Samplers &p_samplers, bool p_use_directional_shadow_atlas = false, uint32_t p_pass_offset = 0u, RID p_screen_texture = RID());
+// wgodot-changes::end
 	void _pre_opaque_render(RenderDataRD *p_render_data);
 
 	uint64_t lightmap_texture_array_version = 0xFFFFFFFF;
@@ -201,7 +213,9 @@ private:
 	/* Scene state */
 
 	struct SceneState {
-		MultiUmaBuffer<1u> uniform_buffers = MultiUmaBuffer<1u>("SceneState::uniform_buffers");
+		// wgodot-changes::begin
+		MultiUmaBuffer<2u> uniform_buffers = MultiUmaBuffer<2u>("SceneState::uniform_buffers");
+		// wgodot-changes::end
 
 		struct PushConstantUbershader {
 			SceneShaderForwardMobile::ShaderSpecialization specialization;
@@ -285,7 +299,15 @@ private:
 		static_assert(std::is_trivially_destructible_v<InstanceData>);
 		static_assert(std::is_trivially_constructible_v<InstanceData>);
 
-		MultiUmaBuffer<1u> instance_buffer[RENDER_LIST_MAX] = { MultiUmaBuffer<1u>("RENDER_LIST_OPAQUE"), MultiUmaBuffer<1u>("RENDER_LIST_ALPHA"), MultiUmaBuffer<1u>("RENDER_LIST_SECONDARY") };
+// wgodot-changes::begin
+		MultiUmaBuffer<1u> instance_buffer[RENDER_LIST_MAX] = {
+			MultiUmaBuffer<1u>("RENDER_LIST_OPAQUE"),
+			MultiUmaBuffer<1u>("RENDER_LIST_ALPHA"),
+			MultiUmaBuffer<1u>("RENDER_LIST_SECONDARY"),
+			MultiUmaBuffer<1u>("RENDER_LIST_DISTORTION"),
+			MultiUmaBuffer<1u>("RENDER_LIST_SCREEN_EFFECT")
+		};
+// wgodot-changes::end
 		InstanceData *curr_gpu_ptr[RENDER_LIST_MAX] = {};
 
 		// !BAS! We need to change lightmaps, we're not going to do this with a buffer but pushing the used lightmap in
@@ -302,6 +324,9 @@ private:
 		RID lightmap_capture_buffer;
 
 		bool used_screen_texture = false;
+// wgodot-changes::begin
+		bool used_current_screen_texture = false;
+// wgodot-changes::end
 		bool used_depth_texture = false;
 		bool used_lightmap = false;
 		bool used_opaque_stencil = false;
@@ -432,6 +457,11 @@ private:
 	void _render_list(RenderingDevice::DrawListID p_draw_list, RenderingDevice::FramebufferFormatID p_framebuffer_Format, RenderListParameters *p_params, uint32_t p_from_element, uint32_t p_to_element);
 	void _render_list_with_draw_list(RenderListParameters *p_params, RID p_framebuffer, BitField<RD::DrawFlags> p_clear_colors = RD::DRAW_DEFAULT_ALL, const Vector<Color> &p_clear_color_values = Vector<Color>(), float p_clear_depth_value = 0.0, uint32_t p_clear_stencil_value = 0, const Rect2 &p_region = Rect2());
 
+// wgodot-changes::begin
+	void _render_list_with_current_screen(RenderListParameters *p_params, RID p_framebuffer, const RenderDataRD *p_render_data, RID p_current_uniform_set);
+	void _render_screen_effects(const RenderDataRD *p_render_data, RID p_radiance_texture, const RendererRD::MaterialStorage::Samplers &p_samplers, bool p_reverse_cull, SceneShaderForwardMobile::ShaderSpecialization p_specialization);
+
+// wgodot-changes::end
 	RenderList render_list[RENDER_LIST_MAX];
 
 protected:
@@ -440,6 +470,9 @@ protected:
 
 	virtual RD::DataFormat _render_buffers_get_preferred_color_format() override;
 	virtual bool _render_buffers_can_be_storage() override;
+	// wgodot-changes::begin
+	bool _render_buffers_color_can_be_storage() override;
+	// wgodot-changes::end
 
 	virtual RID _render_buffers_get_normal_texture(Ref<RenderSceneBuffersRD> p_render_buffers) override;
 	virtual RID _render_buffers_get_velocity_texture(Ref<RenderSceneBuffersRD> p_render_buffers) override;
@@ -490,6 +523,10 @@ protected:
 			FLAG_PASS_OPAQUE = 2,
 			FLAG_PASS_ALPHA = 4,
 			FLAG_PASS_SHADOW = 8,
+// wgodot-changes::begin
+			FLAG_PASS_DISTORTION = 16,
+			FLAG_PASS_SCREEN_EFFECT = 32,
+// wgodot-changes::end
 			FLAG_USES_SHARED_SHADOW_MATERIAL = 128,
 			FLAG_USES_SUBSURFACE_SCATTERING = 2048,
 			FLAG_USES_SCREEN_TEXTURE = 4096,

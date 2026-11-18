@@ -1149,6 +1149,9 @@ void GDScriptByteCodeGenerator::write_assign_default_parameter(const Address &p_
 void GDScriptByteCodeGenerator::write_store_global(const Address &p_dst, int p_global_index) {
 	append_opcode(GDScriptFunction::OPCODE_STORE_GLOBAL);
 	append(p_dst);
+	// wgodot-changes::begin
+	function->wgodot_global_operands.push_back(opcodes.size());
+	// wgodot-changes::end
 	append(p_global_index);
 }
 

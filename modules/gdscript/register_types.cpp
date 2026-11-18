@@ -31,6 +31,10 @@
 #include "register_types.h"
 
 #include "gdscript.h"
+// wgodot-changes::begin
+#include "wgodot_gd/vm_cache.h"
+#include "core/config/project_settings.h"
+// wgodot-changes::end
 #include "gdscript_cache.h"
 #include "gdscript_parser.h"
 #include "gdscript_resource_format.h"
@@ -173,6 +177,7 @@ static void _editor_init() {
 void initialize_gdscript_module(ModuleInitializationLevel p_level) {
 	if (p_level == MODULE_INITIALIZATION_LEVEL_SERVERS) {
 		// wgodot-changes::begin
+		GLOBAL_DEF("wgodot/gdscript/vm_cache", true);
 		GDScriptParser::initialize();
 		WGodotGDScriptStringObfuscation::clear_runtime_cache();
 		// wgodot-changes::end
@@ -219,6 +224,9 @@ void initialize_gdscript_module(ModuleInitializationLevel p_level) {
 
 void uninitialize_gdscript_module(ModuleInitializationLevel p_level) {
 	if (p_level == MODULE_INITIALIZATION_LEVEL_SERVERS) {
+		// wgodot-changes::begin
+		WGodotGDScriptVMCache::clear();
+		// wgodot-changes::end
 		ScriptServer::unregister_language(script_language_gd);
 
 		memdelete(gdscript_cache);

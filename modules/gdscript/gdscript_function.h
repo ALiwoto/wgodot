@@ -381,6 +381,10 @@ public:
 
 private:
 	friend class GDScript;
+	// wgodot-changes::begin
+	friend class WGodotGDScriptVMCache;
+	Vector<int> wgodot_global_operands;
+	// wgodot-changes::end
 	friend class GDScriptCompiler;
 	friend class GDScriptByteCodeGenerator;
 	friend class GDScriptLanguage;

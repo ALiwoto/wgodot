@@ -29,6 +29,9 @@
 /**************************************************************************/
 
 #include "scene_shader_forward_mobile.h"
+// wgodot-changes::begin
+#include "servers/rendering/renderer_rd/effects/screen_distortion.h"
+// wgodot-changes::end
 
 #include "core/config/project_settings.h"
 #include "core/math/math_defs.h"
@@ -80,6 +83,11 @@ void SceneShaderForwardMobile::ShaderData::set_code(const String &p_code) {
 	uses_bent_normal_map = false;
 	wireframe = false;
 
+// wgodot-changes::begin
+	screen_distortion = false;
+	screen_read_current = false;
+	screen_read_after_transparent = false;
+// wgodot-changes::end
 	unshaded = false;
 	uses_vertex = false;
 	uses_sss = false;
@@ -124,13 +132,13 @@ void SceneShaderForwardMobile::ShaderData::set_code(const String &p_code) {
 
 	actions.render_mode_flags["unshaded"] = &unshaded;
 	// wgodot-changes::begin
-	bool screen_distortion = false;
-	bool screen_read_current = false;
+	bool uses_distortion_output = false;
+	bool uses_distortion_uv = false;
 	actions.render_mode_flags["screen_distortion"] = &screen_distortion;
 	actions.render_mode_flags["screen_read_current"] = &screen_read_current;
-	actions.render_mode_flags["screen_read_after_transparent"] = &screen_read_current;
-	actions.usage_flag_pointers["SCREEN_DISTORTION"] = &screen_distortion;
-	actions.usage_flag_pointers["SCREEN_DISTORTION_UV"] = &screen_distortion;
+	actions.render_mode_flags["screen_read_after_transparent"] = &screen_read_after_transparent;
+	actions.usage_flag_pointers["SCREEN_DISTORTION"] = &uses_distortion_output;
+	actions.usage_flag_pointers["SCREEN_DISTORTION_UV"] = &uses_distortion_uv;
 	// wgodot-changes::end
 	actions.render_mode_flags["wireframe"] = &wireframe;
 	actions.render_mode_flags["particle_trails"] = &uses_particle_trails;
@@ -185,8 +193,6 @@ void SceneShaderForwardMobile::ShaderData::set_code(const String &p_code) {
 
 	// wgodot-changes::begin
 	Error err = SceneShaderForwardMobile::singleton->compiler.compile_concurrent(RSE::SHADER_SPATIAL, code, &actions, path, gen_code);
-	ERR_FAIL_COND_MSG(screen_distortion, "Screen distortion materials require the Forward+ renderer.");
-	ERR_FAIL_COND_MSG(screen_read_current, "Current screen reads require the Forward+ renderer.");
 	// wgodot-changes::end
 	MutexLock lock(SceneShaderForwardMobile::singleton_mutex);
 
@@ -202,6 +208,28 @@ void SceneShaderForwardMobile::ShaderData::set_code(const String &p_code) {
 		version = SceneShaderForwardMobile::singleton->shader.version_create(false);
 	}
 
+// wgodot-changes::begin
+	ERR_FAIL_COND_MSG(uses_distortion_output && !screen_distortion, "SCREEN_DISTORTION requires render_mode screen_distortion.");
+	ERR_FAIL_COND_MSG(uses_distortion_uv && !screen_read_after_transparent, "SCREEN_DISTORTION_UV requires render_mode screen_read_after_transparent.");
+	// Late screen effects read the preceding effect's result, after the scene's
+	// transparency, MSAA resolve and distortion have completed.
+	screen_read_current |= screen_read_after_transparent;
+	ERR_FAIL_COND_MSG(screen_read_current && (screen_distortion || !gen_code.uses_screen_texture), "screen_read_current requires a screen texture and cannot be combined with screen_distortion.");
+	if (screen_read_after_transparent) {
+		depth_drawi = DEPTH_DRAW_DISABLED;
+		uses_depth_prepass_alpha = false;
+		alpha_antialiasing_mode = ALPHA_ANTIALIASING_OFF;
+	}
+	if (screen_distortion) {
+		depth_drawi = DEPTH_DRAW_DISABLED;
+		unshaded = true;
+		uses_depth_prepass_alpha = false;
+		alpha_antialiasing_mode = ALPHA_ANTIALIASING_OFF;
+	}
+	if (screen_distortion || uses_distortion_uv) {
+		gen_code.defines.push_back(RendererRD::ScreenDistortion::encoding_defines());
+	}
+// wgodot-changes::end
 	depth_draw = DepthDraw(depth_drawi);
 	if (depth_test_disabledi) {
 		depth_test = DEPTH_TEST_DISABLED;
@@ -276,6 +304,11 @@ bool SceneShaderForwardMobile::ShaderData::is_animated() const {
 }
 
 bool SceneShaderForwardMobile::ShaderData::casts_shadows() const {
+// wgodot-changes::begin
+	if (screen_distortion) {
+		return false;
+	}
+// wgodot-changes::end
 	bool has_read_screen_alpha = uses_screen_texture || uses_depth_texture || uses_normal_texture;
 	bool has_base_alpha = (uses_alpha && (!uses_alpha_clip || uses_alpha_antialiasing)) || has_read_screen_alpha;
 	bool has_alpha = has_base_alpha || uses_blend_alpha;
@@ -319,6 +352,17 @@ void SceneShaderForwardMobile::ShaderData::_create_pipeline(PipelineKey p_pipeli
 #endif
 
 	RD::PipelineColorBlendState::Attachment blend_attachment = blend_mode_to_blend_attachment(BlendMode(blend_mode));
+// wgodot-changes::begin
+	if (screen_distortion) {
+		blend_attachment.enable_blend = true;
+		blend_attachment.src_color_blend_factor = RD::BLEND_FACTOR_ONE;
+		blend_attachment.dst_color_blend_factor = RD::BLEND_FACTOR_ONE;
+		blend_attachment.color_blend_op = RD::BLEND_OP_ADD;
+		blend_attachment.src_alpha_blend_factor = RD::BLEND_FACTOR_ONE;
+		blend_attachment.dst_alpha_blend_factor = RD::BLEND_FACTOR_ONE;
+		blend_attachment.alpha_blend_op = RD::BLEND_OP_ADD;
+	}
+// wgodot-changes::end
 	RD::PipelineColorBlendState blend_state_blend;
 	blend_state_blend.attachments.push_back(blend_attachment);
 	RD::PipelineColorBlendState blend_state_opaque = RD::PipelineColorBlendState::create_disabled(1);
@@ -406,7 +450,11 @@ void SceneShaderForwardMobile::ShaderData::_create_pipeline(PipelineKey p_pipeli
 	multisample_state.sample_count = RD::get_singleton()->framebuffer_format_get_texture_samples(p_pipeline_key.framebuffer_format_id, 0);
 
 	RD::PipelineColorBlendState blend_state;
-	if (uses_alpha || uses_blend_alpha) {
+// wgodot-changes::begin
+	// Distortion always accumulates offsets, including shaders with implicit alpha.
+	const bool blend_color = uses_alpha || uses_blend_alpha || screen_distortion;
+// wgodot-changes::end
+	if (blend_color) {
 		// These flags should only go through if we have some form of MSAA.
 		if (alpha_antialiasing_mode == ALPHA_ANTIALIASING_ALPHA_TO_COVERAGE) {
 			multisample_state.enable_alpha_to_coverage = true;
@@ -650,6 +698,9 @@ void SceneShaderForwardMobile::init(const String p_defines) {
 		Vector<uint64_t> dynamic_buffers;
 		dynamic_buffers.push_back(ShaderRD::DynamicBuffer::encode(RenderForwardMobile::RENDER_PASS_UNIFORM_SET, 0));
 		dynamic_buffers.push_back(ShaderRD::DynamicBuffer::encode(RenderForwardMobile::RENDER_PASS_UNIFORM_SET, 1));
+		// wgodot-changes::begin
+		dynamic_buffers.push_back(ShaderRD::DynamicBuffer::encode(RenderForwardMobile::RENDER_PASS_UNIFORM_SET, 27));
+		// wgodot-changes::end
 		shader.initialize(shader_versions, p_defines, immutable_samplers, dynamic_buffers);
 
 		if (RendererCompositorRD::get_singleton()->is_xr_enabled()) {
@@ -733,6 +784,11 @@ void SceneShaderForwardMobile::init(const String p_defines) {
 		actions.renames["POINT_COORD"] = "point_coord";
 		actions.renames["INSTANCE_CUSTOM"] = "instance_custom";
 		actions.renames["SCREEN_UV"] = "screen_uv";
+// wgodot-changes::begin
+		actions.renames["SCREEN_DISTORTION"] = "distortion_offset";
+		actions.renames["SCREEN_DISTORTION_UV"] = "distorted_screen_uv";
+		actions.usage_defines["SCREEN_DISTORTION_UV"] = "#define SCREEN_DISTORTION_UV_USED\n";
+// wgodot-changes::end
 		actions.renames["DEPTH"] = "gl_FragDepth";
 		actions.renames["FOG"] = "fog_highp";
 		actions.renames["RADIANCE"] = "custom_radiance_highp";
@@ -860,6 +916,9 @@ void SceneShaderForwardMobile::init(const String p_defines) {
 		actions.render_mode_defines["ambient_light_disabled"] = "#define AMBIENT_LIGHT_DISABLED\n";
 		actions.render_mode_defines["shadow_to_opacity"] = "#define USE_SHADOW_TO_OPACITY\n";
 		actions.render_mode_defines["unshaded"] = "#define MODE_UNSHADED\n";
+// wgodot-changes::begin
+		actions.render_mode_defines["screen_distortion"] = "#define MODE_SCREEN_DISTORTION\n#define MODE_UNSHADED\n#define FOG_DISABLED\n";
+// wgodot-changes::end
 
 		bool force_vertex_shading = GLOBAL_GET("rendering/shading/overrides/force_vertex_shading");
 		if (!force_vertex_shading) {

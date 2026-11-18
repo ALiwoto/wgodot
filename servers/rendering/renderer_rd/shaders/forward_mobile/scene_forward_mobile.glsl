@@ -1044,6 +1044,12 @@ layout(set = MATERIAL_UNIFORM_SET, binding = 0, std140) uniform MaterialUniforms
 /* clang-format on */
 #endif
 
+// wgodot-changes::begin
+#ifdef SCREEN_DISTORTION_UV_USED
+#include "../effects/screen_distortion_inc.glsl"
+#endif
+// wgodot-changes::end
+
 #GLOBALS
 
 #define scene_data scene_data_block.data
@@ -1263,6 +1269,23 @@ void main() {
 	float normal_map_depth_highp = 1.0;
 
 	vec2 screen_uv = gl_FragCoord.xy * scene_data.screen_pixel_size;
+// wgodot-changes::begin
+#ifdef SCREEN_DISTORTION_UV_USED
+	vec2 distorted_screen_uv = screen_uv;
+#ifndef MODE_RENDER_SDF
+#ifdef USE_MULTIVIEW
+	vec4 packed_distortion = textureLod(sampler2DArray(screen_distortion_offsets, SAMPLER_NEAREST_CLAMP), vec3(screen_uv, ViewIndex), 0.0);
+#else
+	vec4 packed_distortion = textureLod(sampler2D(screen_distortion_offsets, SAMPLER_NEAREST_CLAMP), screen_uv, 0.0);
+#endif
+	vec2 distortion_size = vec2(textureSize(multiviewSampler(color_buffer, SAMPLER_NEAREST_CLAMP), 0).xy);
+	screen_distortion_uv(ivec2(gl_FragCoord.xy), distortion_size, screen_effect_data.region, packed_distortion, distorted_screen_uv);
+#endif
+#endif
+#ifdef MODE_SCREEN_DISTORTION
+	vec2 distortion_offset = vec2(0.0);
+#endif
+// wgodot-changes::end
 
 	float sss_strength_highp = 0.0;
 
@@ -2507,7 +2530,7 @@ void main() {
 // wgodot-changes::begin
 #ifndef MODE_SCREEN_DISTORTION
 	if (scene_data.geometry_fade_color.a != 0.0 && (instances.data[draw_call.instance_index].layer_mask & scene_data.geometry_fade_layers.x) == 0u) {
-		out_color.rgb = mix(out_color.rgb, scene_data.geometry_fade_color.rgb, scene_data.geometry_fade_color.a);
+		out_color.rgb = hvec3(mix(vec3(out_color.rgb), scene_data.geometry_fade_color.rgb, scene_data.geometry_fade_color.a));
 	}
 #endif
 // wgodot-changes::end
@@ -2543,6 +2566,16 @@ void main() {
 		frag_color.rgb += (dither.rgb - 0.5) / 1023.0;
 	}
 
+// wgodot-changes::begin
+#ifdef MODE_SCREEN_DISTORTION
+#ifdef DISTORTION_PACKED_RANGE
+	vec2 packed_offset = distortion_offset * float(alpha) / DISTORTION_PACKED_RANGE;
+	frag_color = vec4(max(packed_offset, vec2(0.0)), max(-packed_offset, vec2(0.0)));
+#else
+	frag_color = vec4(distortion_offset * float(alpha), 0.0, 0.0);
+#endif
+#endif
+// wgodot-changes::end
 #endif //MODE_MULTIPLE_RENDER_TARGETS
 
 #endif //MODE_RENDER_DEPTH

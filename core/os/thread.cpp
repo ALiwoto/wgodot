@@ -37,6 +37,12 @@
 #ifdef THREADS_ENABLED
 #include "core/object/script_language.h"
 
+// wgodot-changes::begin
+#ifdef ANDROID_ENABLED
+#include <memory>
+#endif
+// wgodot-changes::end
+
 SafeNumeric<uint64_t> Thread::id_counter(1); // The first value after .increment() is 2, hence by default the main thread ID should be 1.
 thread_local Thread::ID Thread::caller_id = Thread::id_counter.increment();
 
@@ -72,7 +78,42 @@ void Thread::callback(ID p_caller_id, const Settings &p_settings, Callback p_cal
 Thread::ID Thread::start(Thread::Callback p_callback, void *p_user, const Settings &p_settings) {
 	ERR_FAIL_COND_V_MSG(id != UNASSIGNED_ID, UNASSIGNED_ID, "A Thread object has been re-started without wait_to_finish() having been called on it.");
 	id = id_counter.increment();
+	// wgodot-changes::begin
+#ifdef ANDROID_ENABLED
+	struct StartData {
+		ID id;
+		Settings settings;
+		Callback callback;
+		void *user;
+	};
+	// Match the desktop engine's 8 MiB stack. Android's default 1 MiB stack
+	// overflows during nested interpreted calls in unoptimized development builds.
+	pthread_attr_t attributes;
+	int error = pthread_attr_init(&attributes);
+	if (error == 0) {
+		error = pthread_attr_setstacksize(&attributes, 8 * 1024 * 1024);
+		if (error == 0) {
+			auto data = std::make_unique<StartData>(StartData{ id, p_settings, p_callback, p_user });
+			error = pthread_create(&thread, &attributes, [](void *p_data) -> void * {
+				const StartData data = *static_cast<StartData *>(p_data);
+				delete static_cast<StartData *>(p_data);
+				Thread::callback(data.id, data.settings, data.callback, data.user);
+				return nullptr;
+			}, data.get());
+			if (error == 0) {
+				data.release();
+			}
+		}
+		pthread_attr_destroy(&attributes);
+	}
+	if (error != 0) {
+		id = UNASSIGNED_ID;
+		ERR_FAIL_V_MSG(UNASSIGNED_ID, vformat("Cannot create Android engine thread (pthread error %d).", error));
+	}
+#else
 	thread = THREADING_NAMESPACE::thread(&Thread::callback, id, p_settings, p_callback, p_user);
+#endif
+	// wgodot-changes::end
 	return id;
 }
 
@@ -83,8 +124,16 @@ bool Thread::is_started() const {
 void Thread::wait_to_finish() {
 	ERR_FAIL_COND_MSG(id == UNASSIGNED_ID, "Attempt of waiting to finish on a thread that was never started.");
 	ERR_FAIL_COND_MSG(id == get_caller_id(), "Threads can't wait to finish on themselves, another thread must wait.");
+	// wgodot-changes::begin
+#ifdef ANDROID_ENABLED
+	const int error = pthread_join(thread, nullptr);
+	ERR_FAIL_COND_MSG(error != 0, vformat("Cannot join Android engine thread (pthread error %d).", error));
+	thread = {};
+#else
 	thread.join();
 	thread = THREADING_NAMESPACE::thread();
+#endif
+	// wgodot-changes::end
 	id = UNASSIGNED_ID;
 }
 
@@ -117,7 +166,13 @@ Thread::~Thread() {
 				"A Thread object is being destroyed without its completion having been realized.\n"
 				"Please call wait_to_finish() on it to ensure correct cleanup.");
 #endif
+		// wgodot-changes::begin
+#ifdef ANDROID_ENABLED
+		pthread_detach(thread);
+#else
 		thread.detach();
+#endif
+		// wgodot-changes::end
 	}
 }
 

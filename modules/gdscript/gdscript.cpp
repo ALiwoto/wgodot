@@ -53,6 +53,10 @@
 #include "gdscript_linter.h"
 #include "gdscript_parser.h"
 #include "gdscript_tokenizer_buffer.h"
+// wgodot-changes::begin
+#include "wgodot_gd/vm_cache.h"
+#include "core/io/wgodot_file_stamp.h"
+// wgodot-changes::end
 #include "gdscript_warning.h"
 // wgodot-changes::begin
 #include "wgodot_gd/project_settings.h"
@@ -559,6 +563,11 @@ void GDScript::set_source_code(const String &p_code) {
 		return;
 	}
 	source = p_code;
+	// wgodot-changes::begin
+	wgodot_vm_source_stamp = String();
+	wgodot_vm_snapshot.clear();
+	wgodot_vm_dependencies.clear();
+	// wgodot-changes::end
 #ifdef TOOLS_ENABLED
 	source_changed_cache = true;
 #endif
@@ -865,6 +874,13 @@ Error GDScript::reload(bool p_keep_state) {
 		return OK;
 	}
 	reloading = true;
+	// wgodot-changes::begin
+	Error cache_error = OK;
+	if (WGodotGDScriptVMCache::restore(this, cache_error)) {
+		reloading = false;
+		return cache_error;
+	}
+	// wgodot-changes::end
 
 	bool has_instances;
 	{
@@ -1044,6 +1060,9 @@ Error GDScript::reload(bool p_keep_state) {
 #endif // !TOOLS_ENABLED
 // wgodot-changes::end
 
+	// wgodot-changes::begin
+	WGodotGDScriptVMCache::store(this, parser);
+	// wgodot-changes::end
 	reloading = false;
 	return OK;
 }
@@ -1296,6 +1315,12 @@ Error GDScript::load_source_code(const String &p_path) {
 		return OK;
 	}
 
+	// wgodot-changes::begin
+	const String source_stamp = WGodotFileStamp::get(p_path);
+	wgodot_vm_snapshot.clear();
+	wgodot_vm_dependencies.clear();
+	wgodot_vm_source_stamp = String();
+	// wgodot-changes::end
 	Vector<uint8_t> sourcef;
 	Error err;
 	Ref<FileAccess> f = FileAccess::open(p_path, FileAccess::READ, &err);
@@ -1322,6 +1347,11 @@ Error GDScript::load_source_code(const String &p_path) {
 	}
 
 	source = s;
+	// wgodot-changes::begin
+	if (source_stamp != "<missing>" && source_stamp == WGodotFileStamp::get(p_path)) {
+		wgodot_vm_source_stamp = source_stamp;
+	}
+	// wgodot-changes::end
 	path = p_path;
 	path_valid = true;
 #ifdef TOOLS_ENABLED

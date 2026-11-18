@@ -64,6 +64,10 @@ private:
 	Error result = OK;
 	String path;
 	uint32_t source_hash = 0;
+	// wgodot-changes::begin
+	String wgodot_vm_source_stamp;
+	friend class WGodotGDScriptVMCache;
+	// wgodot-changes::end
 	bool clearing = false;
 	bool abandoned = false;
 	// wgodot-changes::begin
@@ -112,6 +116,9 @@ class GDScriptCache {
 	friend class GDScriptParserRef;
 	friend class GDScriptInstance;
 	friend class GDScriptTests::TestGDScriptCacheAccessor;
+	// wgodot-changes::begin
+	friend class WGodotGDScriptVMCache;
+	// wgodot-changes::end
 
 	static GDScriptCache *singleton;
 

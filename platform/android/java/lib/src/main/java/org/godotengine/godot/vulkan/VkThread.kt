@@ -41,7 +41,10 @@ import kotlin.concurrent.withLock
  *
  * The implementation is modeled after [android.opengl.GLSurfaceView]'s GLThread.
  */
-internal class VkThread(private val vkSurfaceView: VkSurfaceView, private val vkRenderer: VkRenderer) : Thread(TAG) {
+// wgodot-changes::begin
+// Match native engine workers: unoptimized GDScript needs the desktop stack capacity.
+internal class VkThread(private val vkSurfaceView: VkSurfaceView, private val vkRenderer: VkRenderer) : Thread(null, null, TAG, 8L * 1024 * 1024) {
+// wgodot-changes::end
 	companion object {
 		private val TAG = VkThread::class.java.simpleName
 	}

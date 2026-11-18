@@ -1,10 +1,16 @@
 // wgodot-changes::file
 #include "partial_classes.h"
+#include "script_resolution.h"
 
 #include "core/config/project_settings.h"
 #include "core/io/dir_access.h"
 #include "core/io/file_access.h"
+#include "core/io/wgodot_build_fingerprint.h"
+#include "core/io/wgodot_file_stamp.h"
 #include "core/os/mutex.h"
+#include "core/os/os.h"
+#include "core/os/thread.h"
+#include "core/profiling/wgodot_startup_profile.h"
 
 #include "modules/gdscript/gdscript_parser.h"
 #ifdef TOOLS_ENABLED
@@ -23,12 +29,15 @@ struct Header {
 	Vector<int> lines;
 	Vector<Annotation> annotations;
 	bool partial = false;
+	String source_stamp;
 };
 
 Mutex mutex;
 HashMap<String, Header> headers;
 HashMap<String, Vector<String>> groups;
-bool indexed = false;
+HashSet<String> indexed_directories;
+HashMap<String, String> class_directories;
+HashMap<String, String> conflicting_directories;
 
 Header read_header(const String &p_source, const String &p_path) {
 	GDScriptParser parser;
@@ -80,53 +89,162 @@ Header read_header(const String &p_source, const String &p_path) {
 	return header;
 }
 
-void scan(const String &p_path) {
-	Ref<DirAccess> directory = DirAccess::open(p_path);
-	if (directory.is_null() || directory->file_exists(".gdignore")) {
-		return;
-	}
-	directory->list_dir_begin();
-	for (String name = directory->get_next(); !name.is_empty(); name = directory->get_next()) {
-		if (name.begins_with(".") || directory->is_link(name)) {
-			continue;
+struct IndexCache {
+	Dictionary previous_directories;
+	Dictionary previous_scripts;
+	Dictionary directories;
+	Dictionary scripts;
+	String path;
+	bool changed = false;
+	bool stable = true;
+
+	IndexCache(const String &p_directory) {
+		const String &build = WGodotBuildFingerprint::get();
+		if (build.is_empty()) {
+			return;
 		}
-		const String path = p_path.path_join(name);
-		if (directory->current_is_dir()) {
-			scan(path);
-		} else if (name.get_extension() == "gd") {
-			Header header = read_header(FileAccess::get_file_as_string(path), path);
-			if (!header.name.is_empty()) {
-				groups[header.name].push_back(path);
-				headers.insert(path, header);
+		path = ProjectSettings::get_singleton()->get_project_data_path().path_join("partial_class_cache").path_join(build).path_join(p_directory.trim_prefix("res://")).path_join("index.bin");
+		Ref<FileAccess> file = FileAccess::open(path, FileAccess::READ);
+		if (file.is_null()) {
+			return;
+		}
+		const Variant stored = file->get_var(false);
+		if (stored.get_type() != Variant::DICTIONARY) {
+			return;
+		}
+		const Dictionary data = stored;
+		if (int(data.get("version", 0)) == 2) {
+			previous_directories = data.get("directories", Dictionary());
+			previous_scripts = data.get("scripts", Dictionary());
+		}
+	}
+
+	Array list(const String &p_path) {
+		const String stamp = WGodotFileStamp::get(p_path);
+		const Array previous = previous_directories.get(p_path, Array());
+		if (previous.size() == 2 && previous[0] == Variant(stamp) && stamp != "<missing>") {
+			directories[p_path] = previous;
+			return previous;
+		}
+		changed = true;
+		Array sources;
+		Ref<DirAccess> directory = DirAccess::open(p_path);
+		if (directory.is_valid() && !directory->file_exists(".gdignore")) {
+			directory->list_dir_begin();
+			for (String name = directory->get_next(); !name.is_empty(); name = directory->get_next()) {
+				if (name.begins_with(".") || directory->is_link(name)) {
+					continue;
+				}
+				const String child = p_path.path_join(name);
+				if (!directory->current_is_dir() && name.get_extension() == "gd") {
+					sources.push_back(child);
+				}
+			}
+		}
+		stable &= stamp == WGodotFileStamp::get(p_path);
+		const Array result{ stamp, sources };
+		directories[p_path] = result;
+		return result;
+	}
+
+	Header read(const String &p_path) {
+		const String stamp = WGodotFileStamp::get(p_path);
+		const Array previous = previous_scripts.get(p_path, Array());
+		Header result;
+		if (previous.size() == 6 && previous[0] == Variant(stamp) && stamp != "<missing>") {
+			result.source_stamp = stamp;
+			result.name = previous[1];
+			result.base = previous[2];
+			result.partial = previous[3];
+			for (const Variant &line : Array(previous[4])) {
+				result.lines.push_back(line);
+			}
+			for (const Array annotation : Array(previous[5])) {
+				result.annotations.push_back({ StringName(annotation[0]), String(annotation[1]) });
+			}
+			scripts[p_path] = previous;
+			return result;
+		}
+		changed = true;
+		const String source = FileAccess::get_file_as_string(p_path);
+		if (source.contains("@partial")) {
+			result = read_header(source, p_path);
+		}
+		if (stamp == WGodotFileStamp::get(p_path) && stamp != "<missing>") {
+			result.source_stamp = stamp;
+		} else {
+			stable = false;
+		}
+		Array lines;
+		for (int line : result.lines) {
+			lines.push_back(line);
+		}
+		Array annotations;
+		for (const auto &annotation : result.annotations) {
+			annotations.push_back(Array{ annotation.name, annotation.source });
+		}
+		scripts[p_path] = Array{ stamp, result.name, result.base, result.partial, lines, annotations };
+		return result;
+	}
+
+	void save() {
+		if (path.is_empty() || !stable || (!changed && directories.size() == previous_directories.size() && scripts.size() == previous_scripts.size())) {
+			return;
+		}
+		if (DirAccess::make_dir_recursive_absolute(path.get_base_dir()) != OK) {
+			return;
+		}
+		const String temporary = path + "." + itos(OS::get_singleton()->get_process_id()) + "." + uitos(Thread::get_caller_id()) + ".tmp";
+		Ref<FileAccess> file = FileAccess::open(temporary, FileAccess::WRITE);
+		if (file.is_valid()) {
+			file->store_var(Dictionary{ { "version", 2 }, { "directories", directories }, { "scripts", scripts } }, false);
+			const Error error = file->get_error();
+			file.unref();
+			if (error == OK) {
+				DirAccess::rename_absolute(temporary, path);
 			}
 		}
 	}
-}
+};
 
-void ensure_index() {
-	if (indexed || !ProjectSettings::get_singleton()->is_project_loaded()) {
+void ensure_directory(const String &p_directory) {
+	if (indexed_directories.has(p_directory) || !p_directory.begins_with("res://") || !ProjectSettings::get_singleton()->is_project_loaded()) {
 		return;
 	}
-	indexed = true;
-	scan("res://");
-	for (auto &entry : groups) {
-		entry.value.sort();
+	indexed_directories.insert(p_directory);
+	WGodotStartupProfile::Scope profile("GDScript partial class directory", p_directory);
+	IndexCache cache(p_directory);
+	const Array listing = cache.list(p_directory);
+	HashSet<String> names;
+	for (const String path : Array(listing[1])) {
+		const Header header = cache.read(path);
+		if (!header.partial || header.name.is_empty()) {
+			continue;
+		}
+		groups[p_directory.path_join(header.name)].push_back(path);
+		headers.insert(path, header);
+		names.insert(header.name);
+		if (const String *previous = class_directories.getptr(header.name)) {
+			if (*previous != p_directory) {
+				conflicting_directories.insert(header.name, p_directory);
+			}
+		} else {
+			class_directories.insert(header.name, p_directory);
+		}
+	}
+	cache.save();
+	for (const String &name : names) {
+		groups[p_directory.path_join(name)].sort();
 	}
 }
 
 Vector<String> group_paths(const String &p_path) {
-	ensure_index();
+	ensure_directory(p_path.get_base_dir());
 	const Header *header = headers.getptr(p_path);
 	if (!header || !header->partial) {
 		return {};
 	}
-	const Vector<String> &paths = groups[header->name];
-	for (const String &path : paths) {
-		if (!headers[path].partial) {
-			return {}; // The ordinary duplicate-class diagnostic applies.
-		}
-	}
-	return paths;
+	return groups[p_path.get_base_dir().path_join(header->name)];
 }
 } // namespace
 
@@ -144,6 +262,13 @@ Vector<String> paths(const String &p_path) {
 	return group_paths(p_path);
 }
 
+String source_stamp(const String &p_path) {
+	MutexLock lock(mutex);
+	ensure_directory(p_path.get_base_dir());
+	const Header *header = headers.getptr(p_path);
+	return header ? header->source_stamp : String();
+}
+
 Error compose(const String &p_source, const String &p_path, String &r_source, String &r_path, Vector<SourcePart> &r_parts, String &r_error) {
 	r_source = p_source;
 	r_path = p_path;
@@ -155,6 +280,25 @@ Error compose(const String &p_source, const String &p_path, String &r_source, St
 		return OK;
 	}
 	Vector<String> parts = paths(p_path);
+	String other_directory;
+	const String directory = p_path.get_base_dir();
+	if (WGodotGDScriptResolution::is_global_class(own.name)) {
+		const String registered = WGodotGDScriptResolution::get_global_class_path(own.name).get_base_dir();
+		if (registered != directory) {
+			other_directory = registered;
+		}
+	}
+	{
+		MutexLock lock(mutex);
+		if (conflicting_directories.has(own.name)) {
+			const String &first = class_directories[own.name];
+			other_directory = first == directory ? conflicting_directories[own.name] : first;
+		}
+	}
+	if (!other_directory.is_empty()) {
+		r_error = vformat("All declarations of partial class \"%s\" must be in the same directory. Found \"%s\" and \"%s\".", own.name, directory, other_directory);
+		return ERR_PARSE_ERROR;
+	}
 	if (parts.is_empty()) {
 		return OK;
 	}
@@ -217,7 +361,9 @@ void clear() {
 	MutexLock lock(mutex);
 	headers.clear();
 	groups.clear();
-	indexed = false;
+	indexed_directories.clear();
+	class_directories.clear();
+	conflicting_directories.clear();
 }
 
 SourceLocation locate(const Vector<SourcePart> &p_parts, const String &p_path, int p_line) {

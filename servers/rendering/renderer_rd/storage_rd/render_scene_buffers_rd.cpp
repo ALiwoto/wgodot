@@ -183,7 +183,9 @@ void RenderSceneBuffersRD::configure(const RenderSceneBuffersConfiguration *p_co
 
 	// Create our color buffer.
 	const bool resolve_target = msaa_3d != RSE::VIEWPORT_MSAA_DISABLED;
-	create_texture(RB_SCOPE_BUFFERS, RB_TEX_COLOR, get_base_data_format(), get_color_usage_bits(resolve_target, false, can_be_storage));
+	// wgodot-changes::begin
+	create_texture(RB_SCOPE_BUFFERS, RB_TEX_COLOR, get_base_data_format(), get_color_usage_bits(resolve_target, false, color_can_be_storage));
+	// wgodot-changes::end
 
 	// TODO: Detect when it is safe to use RD::TEXTURE_USAGE_TRANSIENT_BIT for RB_TEX_DEPTH, RB_TEX_COLOR_MSAA and/or RB_TEX_DEPTH_MSAA.
 	// (it means we cannot sample from it, we cannot copy from/to it) to save VRAM (and maybe performance too).
@@ -196,7 +198,9 @@ void RenderSceneBuffersRD::configure(const RenderSceneBuffersConfiguration *p_co
 		texture_samples = RD::TEXTURE_SAMPLES_1;
 	} else {
 		texture_samples = msaa_to_samples(msaa_3d);
-		create_texture(RB_SCOPE_BUFFERS, RB_TEX_COLOR_MSAA, get_base_data_format(), get_color_usage_bits(false, true, can_be_storage), texture_samples, Size2i(), 0, 1, true, true);
+		// wgodot-changes::begin
+		create_texture(RB_SCOPE_BUFFERS, RB_TEX_COLOR_MSAA, get_base_data_format(), get_color_usage_bits(false, true, color_can_be_storage), texture_samples, Size2i(), 0, 1, true, true);
+		// wgodot-changes::end
 		create_texture(RB_SCOPE_BUFFERS, RB_TEX_DEPTH_MSAA, get_depth_format(false, true, can_be_storage), get_depth_usage_bits(false, true, can_be_storage), texture_samples, Size2i(), 0, 1, true, true);
 	}
 
@@ -655,7 +659,9 @@ RID RenderSceneBuffersRD::get_color_subsampled() {
 	tf.width = internal_size.x;
 	tf.height = internal_size.y;
 	tf.array_layers = view_count;
-	tf.usage_bits = get_color_usage_bits(use_msaa, false, can_be_storage);
+	// wgodot-changes::begin
+	tf.usage_bits = get_color_usage_bits(use_msaa, false, color_can_be_storage);
+	// wgodot-changes::end
 	tf.is_subsampled = true;
 
 	return create_texture_from_format(RB_SCOPE_BUFFERS, RB_TEX_COLOR_SUBSAMPLED, tf);
@@ -673,7 +679,9 @@ RID RenderSceneBuffersRD::get_color_msaa_subsampled() {
 	tf.height = internal_size.y;
 	tf.array_layers = view_count;
 	tf.samples = msaa_to_samples(msaa_3d);
-	tf.usage_bits = get_color_usage_bits(false, true, can_be_storage);
+	// wgodot-changes::begin
+	tf.usage_bits = get_color_usage_bits(false, true, color_can_be_storage);
+	// wgodot-changes::end
 	tf.is_discardable = true;
 	tf.is_subsampled = true;
 
@@ -849,7 +857,10 @@ uint32_t RenderSceneBuffersRD::get_depth_usage_bits(bool p_resolve, bool p_msaa,
 			usage_bits |= RD::TEXTURE_USAGE_STORAGE_BIT;
 		} else if (RenderingDevice::get_singleton()->has_feature(RD::SUPPORTS_FRAMEBUFFER_DEPTH_RESOLVE)) {
 			// We're able to resolve depth in (sub)passes and we make use of this in our mobile renderer.
-			usage_bits |= RD::TEXTURE_USAGE_DEPTH_RESOLVE_ATTACHMENT_BIT;
+// wgodot-changes::begin
+			// Late screen effects use the resolved depth/stencil as an attachment.
+			usage_bits |= RD::TEXTURE_USAGE_DEPTH_RESOLVE_ATTACHMENT_BIT | RD::TEXTURE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+// wgodot-changes::end
 		}
 	} else {
 		usage_bits |= RD::TEXTURE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
@@ -877,5 +888,7 @@ uint32_t RenderSceneBuffersRD::get_vrs_usage_bits() {
 float RenderSceneBuffersRD::get_luminance_multiplier() const {
 	// On mobile renderer when not using HDR2D we need to scale HDR values by two
 	// to fit 0-2 range color values into a UNORM buffer.
-	return (force_hdr || can_be_storage) ? 1.0 : 2.0;
+	// wgodot-changes::begin
+	return get_base_data_format() == RD::DATA_FORMAT_R16G16B16A16_SFLOAT ? 1.0 : 2.0;
+	// wgodot-changes::end
 }

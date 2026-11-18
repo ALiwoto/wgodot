@@ -59,6 +59,12 @@
 #define THREADING_NAMESPACE std
 #endif
 
+// wgodot-changes::begin
+#ifdef ANDROID_ENABLED
+#include <pthread.h>
+#endif
+// wgodot-changes::end
+
 class String;
 
 class Thread {
@@ -110,7 +116,13 @@ private:
 	static inline SafeFlag is_main_thread_assigned{ false };
 	static SafeNumeric<uint64_t> id_counter;
 	static thread_local ID caller_id;
+	// wgodot-changes::begin
+#ifdef ANDROID_ENABLED
+	pthread_t thread{};
+#else
 	THREADING_NAMESPACE::thread thread;
+#endif
+	// wgodot-changes::end
 
 	static void callback(ID p_caller_id, const Settings &p_settings, Thread::Callback p_callback, void *p_userdata);
 

@@ -76,6 +76,12 @@ class GDScript : public Script {
 	friend class GDScriptFunction;
 	friend class GDScriptAnalyzer;
 	friend class GDScriptCompiler;
+	// wgodot-changes::begin
+	friend class WGodotGDScriptVMCache;
+	Dictionary wgodot_vm_snapshot;
+	HashMap<String, String> wgodot_vm_dependencies;
+	String wgodot_vm_source_stamp;
+	// wgodot-changes::end
 	friend class GDScriptDocGen;
 	friend class GDScriptLambdaCallable;
 	friend class GDScriptLambdaSelfCallable;
