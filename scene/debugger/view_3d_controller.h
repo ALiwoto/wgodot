@@ -166,6 +166,12 @@ public:
 		Point2 region_end;
 
 		Cursor() {
+			// wgodot-changes::begin
+			// Scalar positions need the zero initialization formerly provided by
+			// Vector3, including before the editor restores a viewport state.
+			pos_x = pos_y = pos_z = 0.0;
+			eye_pos_x = eye_pos_y = eye_pos_z = 0.0;
+			// wgodot-changes::end
 			// These rotations place the camera in +X +Y +Z, aka south east, facing north west.
 			x_rot = 0.5;
 			y_rot = -0.5;
