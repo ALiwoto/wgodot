@@ -1,6 +1,7 @@
 // wgodot-changes::file
 #include "wgodot_mesh_collision.h"
 
+#include "core/io/dir_access.h"
 #include "core/io/file_access.h"
 #include "core/io/resource_importer.h"
 #include "core/io/resource_loader.h"
@@ -35,10 +36,36 @@ String WGodotMeshCollision::import_signature(const String &p_source) {
 
 bool WGodotMeshCollision::import_dependency_changed(const String &p_source) {
 	// Imported scenes embed their collision nodes, so the sidecar need not appear
-	// in their external dependencies. Compare the metadata written by the importer.
-	const Variant metadata = ResourceFormatImporter::get_singleton()->get_resource_metadata(p_source);
-	const Dictionary values = metadata.get_type() == Variant::DICTIONARY ? Dictionary(metadata) : Dictionary();
-	return String(values.get("mesh_collision", String())) != import_signature(p_source);
+	// in their external dependencies. File timestamps belong in the local cache.
+	const String path = import_state_path(p_source);
+	const String signature = import_signature(p_source);
+	if (!FileAccess::exists(path)) {
+		return !signature.is_empty();
+	}
+	const Ref<FileAccess> file = FileAccess::open(path, FileAccess::READ);
+	return file.is_null() || file->get_as_text() != signature;
+}
+
+String WGodotMeshCollision::import_state_path(const String &p_source) {
+	return ResourceFormatImporter::get_singleton()->get_import_base_path(p_source) + ".collision";
+}
+
+Error WGodotMeshCollision::save_import_state(const String &p_source, const String &p_signature) {
+	const String path = import_state_path(p_source);
+	if (p_signature.is_empty()) {
+		return FileAccess::exists(path) ? DirAccess::remove_absolute(path) : OK;
+	}
+	Error error = OK;
+	const String temporary = path + ".tmp";
+	Ref<FileAccess> file = FileAccess::open(temporary, FileAccess::WRITE, &error);
+	if (file.is_null()) {
+		return error;
+	}
+	file->store_string(p_signature);
+	file->flush();
+	error = file->get_error();
+	file.unref();
+	return error == OK ? DirAccess::rename_absolute(temporary, path) : error;
 }
 
 Error WGodotMeshCollision::append_to_scene(Node *p_scene, const String &p_source) {

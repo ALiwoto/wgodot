@@ -3295,7 +3295,7 @@ Error ResourceImporterScene::_check_resource_save_paths(ResourceUID::ID p_source
 
 // wgodot-changes::begin
 bool ResourceImporterScene::are_import_settings_valid(const String &p_path, const Dictionary &p_meta) const {
-	return _scene_import_type != "PackedScene" || (String(p_meta.get("mesh_collision", String())) == WGodotMeshCollision::import_signature(p_path) &&
+	return _scene_import_type != "PackedScene" || (!WGodotMeshCollision::import_dependency_changed(p_path) &&
 			FileAccess::exists(WGodotSceneDeclarations::path_for_source(p_path)));
 }
 // wgodot-changes::end
@@ -3544,16 +3544,13 @@ Error ResourceImporterScene::import(ResourceUID::ID p_source_id, const String &p
 
 	progress.step(TTR("Saving..."), 104);
 	// wgodot-changes::begin
+	String collision_signature;
 	if (_scene_import_type == "PackedScene") {
+		collision_signature = WGodotMeshCollision::import_signature(p_source_file);
 		const Error collision_error = WGodotMeshCollision::append_to_scene(scene, p_source_file);
 		if (collision_error != OK) {
 			memdelete(scene);
 			return collision_error;
-		}
-		if (r_metadata) {
-			Dictionary collision_metadata;
-			collision_metadata["mesh_collision"] = WGodotMeshCollision::import_signature(p_source_file);
-			*r_metadata = collision_metadata;
 		}
 	}
 	// wgodot-changes::end
@@ -3594,8 +3591,13 @@ Error ResourceImporterScene::import(ResourceUID::ID p_source_id, const String &p
 		const String declarations = p_save_path + ".nodes";
 		err = WGodotSceneDeclarations::save(packer->get_state(), declarations);
 		ERR_FAIL_COND_V_MSG(err != OK, err, "Cannot save scene declarations: " + declarations);
+		err = WGodotMeshCollision::save_import_state(p_source_file, collision_signature);
+		ERR_FAIL_COND_V_MSG(err != OK, err, "Cannot save mesh collision import state: " + p_source_file);
 		if (r_gen_files) {
 			r_gen_files->push_back(declarations);
+			if (!collision_signature.is_empty()) {
+				r_gen_files->push_back(WGodotMeshCollision::import_state_path(p_source_file));
+			}
 		}
 		// wgodot-changes::end
 		EditorInterface::get_singleton()->make_scene_preview(p_source_file, scene, 1024);

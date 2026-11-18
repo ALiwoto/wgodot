@@ -15,6 +15,8 @@ public:
 	static String effective_path(const String &p_source);
 	static bool is_superseded(const String &p_path);
 	static String import_signature(const String &p_source);
+	static String import_state_path(const String &p_source);
+	static Error save_import_state(const String &p_source, const String &p_signature);
 	static bool import_dependency_changed(const String &p_source);
 	static Error append_to_scene(Node *p_scene, const String &p_source);
 };
