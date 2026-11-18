@@ -247,6 +247,10 @@ void ParticleInstance3D::publish_render_instances() {
 		RenderInstance &instance = render_instances.write[i];
 		VisualInstance3D *visual = instance.visual;
 		const bool visible = is_render_visible(visual);
+		const Transform3D transform = get_render_transform(visual);
+		// Hidden particles still follow emitter transforms. Keep their culling
+		// bounds current before they become visible or are inspected.
+		update_render_bounds(instance, transform);
 		if (visible) {
 			if (instance.geometry) {
 				if (emitter_culling) {
@@ -260,8 +264,6 @@ void ParticleInstance3D::publish_render_instances() {
 					instance.culling_overridden = false;
 				}
 			}
-			const Transform3D transform = get_render_transform(visual);
-			update_render_bounds(instance, transform);
 			const bool referenced_light = visual == light && get_light_position_reference();
 			const bool aligned_mesh = visual == geometry && motion.is_valid() && state_surface_normal != Vector3();
 			if (!instance_pool && (referenced_light || aligned_mesh)) {
