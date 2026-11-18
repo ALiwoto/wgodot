@@ -195,6 +195,14 @@ public:
 class ParticleMeshProfile3D : public ParticleMotionProfile3D {
 	GDCLASS(ParticleMeshProfile3D, ParticleMotionProfile3D);
 
+public:
+	enum VelocityAlignmentMode {
+		VELOCITY_ALIGNMENT_BASIS,
+		VELOCITY_ALIGNMENT_FLOAT32_EULER,
+	};
+
+private:
+	VelocityAlignmentMode velocity_alignment_mode = VELOCITY_ALIGNMENT_BASIS;
 	Vector3 rotation;
 	bool faces_camera = false;
 	bool emitter_culling = false;
@@ -213,6 +221,8 @@ protected:
 	static void _bind_methods();
 
 public:
+	void set_velocity_alignment_mode(VelocityAlignmentMode p_value) { velocity_alignment_mode = p_value; }
+	VelocityAlignmentMode get_velocity_alignment_mode() const { return velocity_alignment_mode; }
 	void set_rotation(const Vector3 & p_value) { rotation = p_value; }
 	Vector3 get_rotation() const { return rotation; }
 	void set_faces_camera(bool p_value) { faces_camera = p_value; }
@@ -243,3 +253,5 @@ public:
 	Vector3 scale_at(double p_relative_age, Vector3 p_initial_size, const Ref<RandomStream32> & p_random, const Ref<RandomStream32> & p_life_random, bool p_spawning, Vector3 p_velocity = Vector3(), double p_task_ratio = 0.0) const;
 	Vector3 angular_velocity_at(double p_relative_age, Vector3 p_initial_rate, double p_task_ratio = 0.0) const;
 };
+
+VARIANT_ENUM_CAST(ParticleMeshProfile3D::VelocityAlignmentMode);

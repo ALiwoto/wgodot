@@ -132,6 +132,11 @@ GeometryInstance3D::VisibilityRangeFadeMode ImporterMeshInstance3D::get_visibili
 }
 
 void ImporterMeshInstance3D::_bind_methods() {
+	// wgodot-changes::begin
+	ClassDB::bind_method(D_METHOD("set_lod_use_previous_frame", "enabled"), &ImporterMeshInstance3D::set_lod_use_previous_frame);
+	ClassDB::bind_method(D_METHOD("is_lod_using_previous_frame"), &ImporterMeshInstance3D::is_lod_using_previous_frame);
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "lod_use_previous_frame"), "set_lod_use_previous_frame", "is_lod_using_previous_frame");
+	// wgodot-changes::end
 	ClassDB::bind_method(D_METHOD("set_mesh", "mesh"), &ImporterMeshInstance3D::set_mesh);
 	ClassDB::bind_method(D_METHOD("get_mesh"), &ImporterMeshInstance3D::get_mesh);
 

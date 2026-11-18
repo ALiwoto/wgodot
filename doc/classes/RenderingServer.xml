@@ -1926,6 +1926,16 @@
 				Sets the lightmap GI instance to use for the specified 3D geometry instance. The lightmap UV scale for the specified instance (equivalent to [member GeometryInstance3D.gi_lightmap_scale]) and lightmap atlas slice must also be specified.
 			</description>
 		</method>
+		<!-- wgodot-changes::begin -->
+		<method name="instance_geometry_set_lod_use_previous_frame">
+			<return type="void" />
+			<param index="0" name="instance" type="RID" />
+			<param index="1" name="enabled" type="bool" />
+			<description>
+				Sets [member MeshInstance3D.lod_use_previous_frame] for this instance. Disabled by default; toggling clears previous selection history.
+			</description>
+		</method>
+		<!-- wgodot-changes::end -->
 		<method name="instance_geometry_set_lod_bias">
 			<return type="void" />
 			<param index="0" name="instance" type="RID" />

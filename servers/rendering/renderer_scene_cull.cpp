@@ -32,6 +32,7 @@
 #include "modules/modules_enabled.gen.h"
 #if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
 #include "modules/wgodot/rendering/gpu_profile.h"
+#include "modules/wgodot/rendering/render_stepper.h"
 #endif
 // wgodot-changes::end
 
@@ -643,6 +644,10 @@ void RendererSceneCull::_instance_update_mesh_instance(Instance *p_instance) con
 void RendererSceneCull::instance_set_base(RID p_instance, RID p_base) {
 	Instance *instance = instance_owner.get_or_null(p_instance);
 	ERR_FAIL_NULL(instance);
+	// wgodot-changes::begin
+	instance->lod_history_frame = 0;
+	instance->lod_selection_pass = 0;
+	// wgodot-changes::end
 
 	Scenario *scenario = instance->scenario;
 
@@ -893,6 +898,9 @@ void RendererSceneCull::instance_set_base(RID p_instance, RID p_base) {
 void RendererSceneCull::instance_set_scenario(RID p_instance, RID p_scenario) {
 	Instance *instance = instance_owner.get_or_null(p_instance);
 	ERR_FAIL_NULL(instance);
+	// wgodot-changes::begin
+	instance->lod_history_frame = 0;
+	// wgodot-changes::end
 
 	if (instance->scenario) {
 		instance->scenario->instances.remove(&instance->scenario_item);
@@ -1715,6 +1723,7 @@ void RendererSceneCull::instance_geometry_set_lod_source(RID p_instance, RID p_s
 		ERR_FAIL_COND_MSG(ancestor == instance, "Mesh LOD sources must not form a cycle.");
 	}
 	instance->lod_source = p_source;
+	instance->lod_history_frame = 0;
 }
 
 void RendererSceneCull::instance_geometry_set_lod_override(RID p_instance, int p_level) {
@@ -1722,6 +1731,14 @@ void RendererSceneCull::instance_geometry_set_lod_override(RID p_instance, int p
 	ERR_FAIL_NULL(instance);
 	ERR_FAIL_COND(p_level < -1);
 	instance->lod_override = p_level;
+	instance->lod_history_frame = 0;
+}
+
+void RendererSceneCull::instance_geometry_set_lod_use_previous_frame(RID p_instance, bool p_enabled) {
+	Instance *instance = instance_owner.get_or_null(p_instance);
+	ERR_FAIL_NULL(instance);
+	instance->lod_use_previous_frame = p_enabled;
+	instance->lod_history_frame = 0;
 }
 
 int RendererSceneCull::_select_mesh_lod(Instance *p_instance, const MeshLODData &p_lod, const CullData &p_cull_data) {
@@ -1741,7 +1758,18 @@ int RendererSceneCull::_select_mesh_lod(Instance *p_instance, const MeshLODData 
 	} else if (source_lod) {
 		level = CLAMP(_select_mesh_lod(source, *source_lod, p_cull_data), p_lod.minimum_level, p_lod.thresholds.size() - 1);
 	} else {
-		level = p_cull_data.mesh_lod_scale == 0.0f ? p_lod.minimum_level : p_lod.select(p_instance->transform, *p_cull_data.camera_matrix, p_cull_data.cam_transform.origin, p_instance->lod_bias / p_cull_data.mesh_lod_scale, level);
+		const int desired = p_cull_data.mesh_lod_scale == 0.0f ? p_lod.minimum_level : p_lod.select(p_instance->transform, *p_cull_data.camera_matrix, p_cull_data.cam_transform.origin, p_instance->lod_bias / p_cull_data.mesh_lod_scale, level);
+		if (!p_instance->lod_use_previous_frame) {
+			level = desired;
+		} else if (p_instance->lod_history_frame != mesh_lod_frame) {
+			// Publish the completed frame's best view. First visibility seeds
+			// directly; subsequent views contribute only to the next frame.
+			level = p_instance->lod_history_frame == 0 ? desired : CLAMP(p_instance->lod_pending_level, p_lod.minimum_level, p_lod.thresholds.size() - 1);
+			p_instance->lod_pending_level = desired;
+			p_instance->lod_history_frame = mesh_lod_frame;
+		} else if (!mesh_lod_history_frozen) {
+			p_instance->lod_pending_level = MIN(p_instance->lod_pending_level, desired);
+		}
 	}
 	p_instance->lod_selection_pass = render_pass;
 	return level;
@@ -4687,6 +4715,12 @@ void RendererSceneCull::update() {
 	// wgodot-changes::begin
 #if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
 	WGodotGPUProfile::Scope profile_scope("render.prepare.scene");
+	mesh_lod_history_frozen = WRenderStepper::is_repeated_frame();
+	if (!mesh_lod_history_frozen) {
+		mesh_lod_frame++;
+	}
+#else
+	mesh_lod_frame++;
 #endif
 	// wgodot-changes::end
 	//optimize bvhs

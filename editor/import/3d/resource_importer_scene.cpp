@@ -2722,6 +2722,9 @@ void ResourceImporterScene::get_import_options(const String &p_path, List<Import
 	r_options->push_back(ImportOption(PropertyInfo(Variant::BOOL, "meshes/preserve_triangle_order"), false));
 	// wgodot-changes::end
 	r_options->push_back(ImportOption(PropertyInfo(Variant::BOOL, "skins/use_named_skins"), true));
+	// wgodot-changes::begin
+	r_options->push_back(ImportOption(PropertyInfo(Variant::BOOL, "skins/use_previous_frame_lod"), false));
+	// wgodot-changes::end
 	r_options->push_back(ImportOption(PropertyInfo(Variant::BOOL, "animation/import"), true));
 	r_options->push_back(ImportOption(PropertyInfo(Variant::FLOAT, "animation/fps", PROPERTY_HINT_RANGE, "1,120,1"), 30));
 	r_options->push_back(ImportOption(PropertyInfo(Variant::BOOL, "animation/trimming"), trimming_defaults_on));
@@ -2794,7 +2797,7 @@ Array ResourceImporterScene::_get_skinned_pose_transforms(ImporterMeshInstance3D
 }
 
 // wgodot-changes::begin
-Node *ResourceImporterScene::_generate_meshes(Node *p_node, const Dictionary &p_mesh_data, bool p_generate_lods, bool p_create_shadow_meshes, LightBakeMode p_light_bake_mode, float p_lightmap_texel_size, const Vector<uint8_t> &p_src_lightmap_cache, Vector<Vector<uint8_t>> &r_lightmap_caches, bool p_preserve_triangle_order) {
+Node *ResourceImporterScene::_generate_meshes(Node *p_node, const Dictionary &p_mesh_data, bool p_generate_lods, bool p_create_shadow_meshes, LightBakeMode p_light_bake_mode, float p_lightmap_texel_size, const Vector<uint8_t> &p_src_lightmap_cache, Vector<Vector<uint8_t>> &r_lightmap_caches, bool p_preserve_triangle_order, bool p_use_previous_frame_lod) {
 	// wgodot-changes::end
 	ImporterMeshInstance3D *src_mesh_node = Object::cast_to<ImporterMeshInstance3D>(p_node);
 	if (src_mesh_node) {
@@ -2803,6 +2806,9 @@ Node *ResourceImporterScene::_generate_meshes(Node *p_node, const Dictionary &p_
 		mesh_node->set_name(src_mesh_node->get_name());
 		mesh_node->set_transform(src_mesh_node->get_transform());
 		mesh_node->set_skin(src_mesh_node->get_skin());
+		// wgodot-changes::begin
+		mesh_node->set_lod_use_previous_frame(src_mesh_node->is_lod_using_previous_frame() || (p_use_previous_frame_lod && src_mesh_node->get_skin().is_valid()));
+		// wgodot-changes::end
 		mesh_node->set_skeleton_path(src_mesh_node->get_skeleton_path());
 		mesh_node->merge_meta_from(src_mesh_node);
 
@@ -3002,7 +3008,7 @@ Node *ResourceImporterScene::_generate_meshes(Node *p_node, const Dictionary &p_
 
 	for (int i = 0; i < p_node->get_child_count(); i++) {
 		// wgodot-changes::begin
-		_generate_meshes(p_node->get_child(i), p_mesh_data, p_generate_lods, p_create_shadow_meshes, p_light_bake_mode, p_lightmap_texel_size, p_src_lightmap_cache, r_lightmap_caches, p_preserve_triangle_order);
+		_generate_meshes(p_node->get_child(i), p_mesh_data, p_generate_lods, p_create_shadow_meshes, p_light_bake_mode, p_lightmap_texel_size, p_src_lightmap_cache, r_lightmap_caches, p_preserve_triangle_order, p_use_previous_frame_lod);
 		// wgodot-changes::end
 	}
 
@@ -3450,7 +3456,7 @@ Error ResourceImporterScene::import(ResourceUID::ID p_source_id, const String &p
 	}
 
 	// wgodot-changes::begin
-	scene = _generate_meshes(scene, mesh_data, gen_lods, create_shadow_meshes, LightBakeMode(light_bake_mode), lightmap_texel_size, src_lightmap_cache, mesh_lightmap_caches, p_options["meshes/preserve_triangle_order"]);
+	scene = _generate_meshes(scene, mesh_data, gen_lods, create_shadow_meshes, LightBakeMode(light_bake_mode), lightmap_texel_size, src_lightmap_cache, mesh_lightmap_caches, p_options["meshes/preserve_triangle_order"], p_options["skins/use_previous_frame_lod"]);
 	trace.phase("custom_and_save");
 	// wgodot-changes::end
 

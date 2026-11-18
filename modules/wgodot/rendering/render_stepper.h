@@ -11,6 +11,8 @@ class WRenderStepper : public RefCounted {
 	static WRenderStepper *active;
 	// Render-thread state; writes are ordered with draw submission.
 	static double shader_time_override;
+	static bool repeated_frame;
+	static void _set_repeated_frame(bool p_repeated);
 	static void _set_shader_time(double p_time);
 	static void _set_authored_sampler_anisotropy_disabled(bool p_disabled);
 	bool authored_sampler_anisotropy_disabled = false;
@@ -31,6 +33,8 @@ public:
 	// those too, without rewriting shaders or changing gameplay assets.
 	Error set_authored_sampler_anisotropy_disabled(bool p_disabled);
 	static double shader_time(double p_default_time);
+	// Render-thread query: zero-time inspection redraws retain LOD history.
+	static bool is_repeated_frame() { return repeated_frame; }
 	// Ready CPU preparation can continue without spending another displayed
 	// frame interval. Waiting for I/O must not request immediate processing.
 	void request_processing();

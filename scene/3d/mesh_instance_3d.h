@@ -62,6 +62,7 @@ protected:
 	// -1 selects automatically (or follows lod_source); otherwise a zero-based
 	// authored geometry level, clamped to the resident mesh's allowed range.
 	int lod_override = -1;
+	bool lod_use_previous_frame = false;
 	void _resolve_lod_source();
 	// wgodot-changes::end
 
@@ -101,6 +102,8 @@ public:
 	NodePath get_lod_source_path() const { return lod_source_path; }
 	void set_lod_override(int p_level);
 	int get_lod_override() const { return lod_override; }
+	void set_lod_use_previous_frame(bool p_enabled);
+	bool is_lod_using_previous_frame() const { return lod_use_previous_frame; }
 	// wgodot-changes::end
 
 	Ref<SkinReference> get_skin_reference() const;

@@ -210,6 +210,11 @@ void ParticleMeshProfile3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_pre_orientation", "value"), &ParticleMeshProfile3D::set_pre_orientation);
 	ClassDB::bind_method(D_METHOD("get_pre_orientation"), &ParticleMeshProfile3D::get_pre_orientation);
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "pre_orientation", PROPERTY_HINT_RESOURCE_TYPE, "ParticleOrientation3D"), "set_pre_orientation", "get_pre_orientation");
+	ClassDB::bind_method(D_METHOD("set_velocity_alignment_mode", "value"), &ParticleMeshProfile3D::set_velocity_alignment_mode)->wgodot_set_init_safe();
+	ClassDB::bind_method(D_METHOD("get_velocity_alignment_mode"), &ParticleMeshProfile3D::get_velocity_alignment_mode);
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "velocity_alignment_mode", PROPERTY_HINT_ENUM, "Basis,Float32 Euler"), "set_velocity_alignment_mode", "get_velocity_alignment_mode");
+	BIND_ENUM_CONSTANT(VELOCITY_ALIGNMENT_BASIS);
+	BIND_ENUM_CONSTANT(VELOCITY_ALIGNMENT_FLOAT32_EULER);
 	ClassDB::bind_method(D_METHOD("velocity_rotation", "direction_velocity"), &ParticleMeshProfile3D::velocity_rotation);
 	ClassDB::bind_method(D_METHOD("scale_at", "relative_age", "initial_size", "random", "life_random", "spawning", "velocity", "task_ratio"), &ParticleMeshProfile3D::scale_at, DEFVAL(Vector3()), DEFVAL(0.0));
 	ClassDB::bind_method(D_METHOD("angular_velocity_at", "relative_age", "initial_rate", "task_ratio"), &ParticleMeshProfile3D::angular_velocity_at, DEFVAL(0.0));

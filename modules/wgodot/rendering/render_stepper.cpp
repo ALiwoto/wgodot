@@ -15,6 +15,11 @@
 
 WRenderStepper *WRenderStepper::active = nullptr;
 double WRenderStepper::shader_time_override = -1.0;
+bool WRenderStepper::repeated_frame = false;
+
+void WRenderStepper::_set_repeated_frame(bool p_repeated) {
+	repeated_frame = p_repeated;
+}
 
 void WRenderStepper::_bind_methods() {
 	ClassDB::bind_static_method(get_class_static(), D_METHOD("begin"), &WRenderStepper::begin);
@@ -88,6 +93,7 @@ void WRenderStepper::finish() {
 			authored_sampler_anisotropy_disabled = false;
 		}
 		active = nullptr;
+		RenderingServer::get_singleton()->call_on_render_thread(callable_mp_static(&WRenderStepper::_set_repeated_frame).bind(false));
 		RenderingServer::get_singleton()->call_on_render_thread(callable_mp_static(&WRenderStepper::_set_shader_time).bind(-1.0));
 	}
 	requested = false;
@@ -127,6 +133,7 @@ bool WRenderStepper::iterate(bool p_pending_resources) {
 	if (stepper->requested) {
 		stepper->requested = false;
 		stepper->draw_pending = true;
+		RenderingServer::get_singleton()->call_on_render_thread(callable_mp_static(&WRenderStepper::_set_repeated_frame).bind(stepper->frame_step == 0.0));
 		RenderingServer::get_singleton()->draw(true, stepper->frame_step);
 		Engine::get_singleton()->increment_frames_drawn();
 	} else if (p_pending_resources && !stepper->processing_requested) {
@@ -152,6 +159,7 @@ WRenderStepper::~WRenderStepper() {
 			RenderingServer::get_singleton()->call_on_render_thread(callable_mp_static(&WRenderStepper::_set_authored_sampler_anisotropy_disabled).bind(false));
 		}
 		active = nullptr;
+		RenderingServer::get_singleton()->call_on_render_thread(callable_mp_static(&WRenderStepper::_set_repeated_frame).bind(false));
 		RenderingServer::get_singleton()->call_on_render_thread(callable_mp_static(&WRenderStepper::_set_shader_time).bind(-1.0));
 	}
 }

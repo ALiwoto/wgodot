@@ -3364,6 +3364,7 @@ void RenderingServer::_bind_methods() {
 	// wgodot-changes::begin
 	ClassDB::bind_method(D_METHOD("instance_geometry_set_lod_source", "instance", "source"), &RenderingServer::instance_geometry_set_lod_source);
 	ClassDB::bind_method(D_METHOD("instance_geometry_set_lod_override", "instance", "level"), &RenderingServer::instance_geometry_set_lod_override);
+	ClassDB::bind_method(D_METHOD("instance_geometry_set_lod_use_previous_frame", "instance", "enabled"), &RenderingServer::instance_geometry_set_lod_use_previous_frame);
 	// wgodot-changes::end
 
 	ClassDB::bind_method(D_METHOD("instance_geometry_set_shader_parameter", "instance", "parameter", "value"), &RenderingServer::instance_geometry_set_shader_parameter);

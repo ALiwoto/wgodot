@@ -7,6 +7,11 @@
 	<tutorials>
 	</tutorials>
 	<members>
+		<!-- wgodot-changes::begin -->
+		<member name="lod_use_previous_frame" type="bool" setter="set_lod_use_previous_frame" getter="is_lod_using_previous_frame" default="false">
+			Preserves [member MeshInstance3D.lod_use_previous_frame] when converting the imported node.
+		</member>
+		<!-- wgodot-changes::end -->
 		<member name="cast_shadow" type="int" setter="set_cast_shadows_setting" getter="get_cast_shadows_setting" enum="GeometryInstance3D.ShadowCastingSetting" default="1">
 		</member>
 		<member name="layer_mask" type="int" setter="set_layer_mask" getter="get_layer_mask" default="1">

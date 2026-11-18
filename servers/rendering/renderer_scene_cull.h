@@ -444,6 +444,9 @@ public:
 		int lod_override = -1;
 		Mutex lod_selection_mutex;
 		uint64_t lod_selection_pass = 0;
+		bool lod_use_previous_frame = false;
+		uint64_t lod_history_frame = 0;
+		int lod_pending_level = 0;
 		// wgodot-changes::end
 
 		bool ignore_occlusion_culling;
@@ -1110,6 +1113,7 @@ public:
 	// wgodot-changes::begin
 	virtual void instance_geometry_set_lod_source(RID p_instance, RID p_source) override;
 	virtual void instance_geometry_set_lod_override(RID p_instance, int p_level) override;
+	virtual void instance_geometry_set_lod_use_previous_frame(RID p_instance, bool p_enabled) override;
 	// wgodot-changes::end
 	// wgodot-changes::begin
 #ifdef TOOLS_ENABLED
@@ -1213,6 +1217,8 @@ public:
 	void _scene_cull_threaded(uint32_t p_thread, CullData *cull_data);
 	// wgodot-changes::begin
 	int _select_mesh_lod(Instance *p_instance, const MeshLODData &p_lod, const CullData &p_cull_data);
+	uint64_t mesh_lod_frame = 1;
+	bool mesh_lod_history_frozen = false;
 	// wgodot-changes::end
 	void _scene_cull(CullData &cull_data, InstanceCullResult &cull_result, uint64_t p_from, uint64_t p_to);
 	static void _scene_particles_set_view_axis(RID p_particles, const Vector3 &p_axis, const Vector3 &p_up_axis);

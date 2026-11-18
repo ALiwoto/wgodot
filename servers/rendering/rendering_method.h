@@ -134,6 +134,7 @@ public:
 	// wgodot-changes::begin
 	virtual void instance_geometry_set_lod_source(RID p_instance, RID p_source) = 0;
 	virtual void instance_geometry_set_lod_override(RID p_instance, int p_level) = 0;
+	virtual void instance_geometry_set_lod_use_previous_frame(RID p_instance, bool p_enabled) = 0;
 	// wgodot-changes::end
 	// wgodot-changes::begin
 #ifdef TOOLS_ENABLED

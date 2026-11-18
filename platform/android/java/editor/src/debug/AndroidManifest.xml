@@ -1,0 +1,10 @@
+<!-- wgodot-changes::file -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <application>
+        <!-- Allow ADB to run an interpreted XR project directly in development builds. -->
+        <activity android:name=".GodotXRGame"
+            android:exported="true"
+            tools:replace="android:exported" />
+    </application>
+</manifest>

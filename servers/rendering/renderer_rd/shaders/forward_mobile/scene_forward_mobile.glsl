@@ -86,6 +86,9 @@ layout(location = 12) in vec4 previous_vertex_attrib;
 
 #if defined(NORMAL_USED) || defined(TANGENT_USED)
 layout(location = 13) in vec4 previous_normal_attrib;
+// wgodot-changes::begin
+layout(location = 14) in vec4 previous_authored_tangent_attrib;
+// wgodot-changes::end
 #endif
 
 #endif // MODE_RENDER_MOTION_VECTORS
@@ -779,6 +782,9 @@ void main() {
 			instances.data[draw_call.instance_index].compressed_aabb_size_pad.xyz,
 #if defined(NORMAL_USED) || defined(TANGENT_USED)
 			previous_normal_attrib,
+			// wgodot-changes::begin
+			previous_authored_tangent_attrib, bool(instances.data[draw_call.instance_index].flags & INSTANCE_FLAGS_PRESERVE_TANGENT_FRAME),
+			// wgodot-changes::end
 #ifdef NORMAL_USED
 			prev_normal,
 #endif
@@ -842,7 +848,7 @@ void main() {
 #if defined(NORMAL_USED) || defined(TANGENT_USED)
 			axis_tangent_attrib,
 			// wgodot-changes::begin
-			authored_tangent_attrib, bool(instances.data[instance_index].flags & INSTANCE_FLAGS_PRESERVE_TANGENT_FRAME),
+			authored_tangent_attrib, bool(instances.data[draw_call.instance_index].flags & INSTANCE_FLAGS_PRESERVE_TANGENT_FRAME),
 			// wgodot-changes::end
 #ifdef NORMAL_USED
 			normal,

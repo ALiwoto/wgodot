@@ -112,6 +112,11 @@
 		<member name="nodes/use_node_type_suffixes" type="bool" setter="" getter="" default="true">
 			If [code]true[/code], will use suffixes in the node names to determine the node type, such as [code]-col[/code] for collision shapes. This is only used when [member nodes/use_name_suffixes] is [code]true[/code]. Disabling this makes editor-imported files more similar to the original files, and more similar to files imported at runtime. See [url=$DOCS_URL/tutorials/assets_pipeline/importing_3d_scenes/node_type_customization.html]Node type customization using name suffixes[/url] for more information.
 		</member>
+		<!-- wgodot-changes::begin -->
+		<member name="skins/use_previous_frame_lod" type="bool" setter="" getter="" default="false">
+			Enables [member MeshInstance3D.lod_use_previous_frame] on imported skinned meshes. Only authored [MeshLODProfile] selection is affected; unskinned meshes and ordinary index-only LODs retain their existing behavior. Stored in the asset's plaintext [code].import[/code] file.
+		</member>
+		<!-- wgodot-changes::end -->
 		<member name="skins/use_named_skins" type="bool" setter="" getter="" default="true">
 			If checked, use named [Skin]s for animation. The [MeshInstance3D] node contains 3 properties of relevance here: a skeleton [NodePath] pointing to the [Skeleton3D] node (usually [code]..[/code]), a mesh, and a skin:
 			- The [Skeleton3D] node contains a list of bones with names, their pose and rest, a name, and a parent bone.

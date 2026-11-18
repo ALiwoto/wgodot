@@ -113,13 +113,6 @@ double ParticleMotionProfile3D::sample_frame(double p_relative_age, const Ref<Ra
 	return fractional_frame ? frame : double(int(frame));
 }
 
-Vector3 ParticleMeshProfile3D::velocity_rotation(Vector3 p_direction_velocity) const {
-	const Vector3 direction = p_direction_velocity.normalized();
-	const double weight = 1.0 + direction.x;
-	const Quaternion orientation = weight < 0.000001 ? Quaternion(0.0, 1.0, 0.0, 0.0) : Quaternion(0.0, -direction.z, direction.y, weight).normalized();
-	return Basis(orientation).get_euler(EulerOrder::YZX);
-}
-
 Vector3 ParticleMeshProfile3D::scale_at(double p_relative_age, Vector3 p_initial_size, const Ref<RandomStream32> &p_random, const Ref<RandomStream32> &p_life_random, bool p_spawning, Vector3 p_velocity, double p_task_ratio) const {
 	Vector3 scale = p_initial_size;
 	if (get_size_scale().is_valid()) {

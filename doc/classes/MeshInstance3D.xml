@@ -134,6 +134,9 @@
 	</methods>
 	<members>
 		<!-- wgodot-changes::begin -->
+		<member name="lod_use_previous_frame" type="bool" setter="set_lod_use_previous_frame" getter="is_lod_using_previous_frame" default="false">
+			Uses the previous render update's most detailed requested authored LOD across views for both geometry and skinning/morph preparation. First visibility seeds from the current view; hysteresis still applies. Explicit [member lod_override] takes effect immediately; [member lod_source] follows its source without another delay. Does not delay transforms, animation or ordinary index-only LODs. Render/display scheduling determines visible latency. Can be toggled per instance at runtime; imported skins can opt in with [member ResourceImporterScene.skins/use_previous_frame_lod].
+		</member>
 		<member name="lod_override" type="int" setter="set_lod_override" getter="get_lod_override" default="-1">
 			Explicit zero-based geometry level for meshes with an authored [MeshLODProfile], clamped to the mesh's allowed levels. Takes precedence over [member lod_source]. The default [code]-1[/code] preserves automatic selection or follows [member lod_source]. Does not change shared mesh resources or ordinary index-only Godot LODs.
 		</member>

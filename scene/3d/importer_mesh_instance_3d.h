@@ -44,6 +44,9 @@ class ImporterMeshInstance3D : public Node3D {
 	NodePath skeleton_path;
 	Vector<Ref<Material>> surface_materials;
 	uint32_t layer_mask = 1;
+	// wgodot-changes::begin
+	bool lod_use_previous_frame = false;
+	// wgodot-changes::end
 	GeometryInstance3D::ShadowCastingSetting shadow_casting_setting = GeometryInstance3D::SHADOW_CASTING_SETTING_ON;
 	float visibility_range_begin = 0.0;
 	float visibility_range_end = 0.0;
@@ -69,6 +72,10 @@ public:
 
 	void set_layer_mask(const uint32_t p_layer_mask);
 	uint32_t get_layer_mask() const;
+	// wgodot-changes::begin
+	void set_lod_use_previous_frame(bool p_enabled) { lod_use_previous_frame = p_enabled; }
+	bool is_lod_using_previous_frame() const { return lod_use_previous_frame; }
+	// wgodot-changes::end
 
 	void set_cast_shadows_setting(GeometryInstance3D::ShadowCastingSetting p_shadow_casting_setting);
 	GeometryInstance3D::ShadowCastingSetting get_cast_shadows_setting() const;

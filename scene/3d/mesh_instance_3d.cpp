@@ -229,6 +229,14 @@ Ref<SkinReference> MeshInstance3D::get_skin_reference() const {
 }
 
 // wgodot-changes::begin
+void MeshInstance3D::set_lod_use_previous_frame(bool p_enabled) {
+	if (lod_use_previous_frame == p_enabled) {
+		return;
+	}
+	lod_use_previous_frame = p_enabled;
+	RenderingServer::get_singleton()->instance_geometry_set_lod_use_previous_frame(get_instance(), p_enabled);
+}
+
 void MeshInstance3D::set_lod_override(int p_level) {
 	ERR_FAIL_COND(p_level < -1);
 	if (lod_override == p_level) {
@@ -971,6 +979,8 @@ void MeshInstance3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_lod_source_path"), &MeshInstance3D::get_lod_source_path);
 	ClassDB::bind_method(D_METHOD("set_lod_override", "level"), &MeshInstance3D::set_lod_override);
 	ClassDB::bind_method(D_METHOD("get_lod_override"), &MeshInstance3D::get_lod_override);
+	ClassDB::bind_method(D_METHOD("set_lod_use_previous_frame", "enabled"), &MeshInstance3D::set_lod_use_previous_frame);
+	ClassDB::bind_method(D_METHOD("is_lod_using_previous_frame"), &MeshInstance3D::is_lod_using_previous_frame);
 	ADD_SIGNAL(MethodInfo("mesh_changed"));
 	// wgodot-changes::end
 
@@ -1009,6 +1019,7 @@ void MeshInstance3D::_bind_methods() {
 	// wgodot-changes::begin
 	ADD_PROPERTY(PropertyInfo(Variant::NODE_PATH, "lod_source", PROPERTY_HINT_NODE_PATH_VALID_TYPES, "MeshInstance3D"), "set_lod_source_path", "get_lod_source_path");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "lod_override", PROPERTY_HINT_RANGE, "-1,255,1,or_greater"), "set_lod_override", "get_lod_override");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "lod_use_previous_frame"), "set_lod_use_previous_frame", "is_lod_using_previous_frame");
 	// wgodot-changes::end
 
 	// wgodot-changes::begin

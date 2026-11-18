@@ -1017,6 +1017,7 @@ public:
 	// wgodot-changes::begin
 	FUNC2(instance_geometry_set_lod_source, RID, RID)
 	FUNC2(instance_geometry_set_lod_override, RID, int)
+	FUNC2(instance_geometry_set_lod_use_previous_frame, RID, bool)
 	// wgodot-changes::end
 	FUNC2(instance_geometry_set_transparency, RID, float)
 	FUNC3(instance_geometry_set_shader_parameter, RID, const StringName &, const Variant &)
