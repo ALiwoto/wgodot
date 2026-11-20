@@ -12,6 +12,9 @@
 #ifdef MODULE_AUDIO_GRAPH_ENABLED
 #include "modules/audio_graph/audio_stream_group.h"
 #endif
+#ifdef MODULE_INTERACTIVE_MUSIC_ENABLED
+#include "modules/interactive_music/audio_stream_interactive.h"
+#endif
 
 void WAudioPlaybackProbe::append(Snapshot &r_snapshot, const Ref<AudioStream> &p_stream,
 		const Ref<AudioStreamPlayback> &p_playback, const String &p_path,
@@ -40,6 +43,10 @@ void WAudioPlaybackProbe::append(Snapshot &r_snapshot, const Ref<AudioStream> &p
 	voice.finishing = p_finishing;
 	voice.leaf = !p_stream->is_meta_stream();
 	voice.children_supported = voice.leaf;
+	voice.metadata_only = p_playback->is_metadata_only();
+	if (AudioServer::get_singleton()->is_metadata_only_enabled() && voice.leaf && !voice.metadata_only) {
+		r_snapshot.errors.push_back(p_path + ": metadata-only decoding is unsupported for " + voice.stream_class);
+	}
 	const Variant looping = p_playback->get_parameter(SNAME("looping"));
 	voice.looping = looping.get_type() == Variant::BOOL ? bool(looping) : p_stream->has_loop();
 	const int parent = r_snapshot.voices.size();
@@ -72,6 +79,25 @@ void WAudioPlaybackProbe::append(Snapshot &r_snapshot, const Ref<AudioStream> &p
 				}
 				append(r_snapshot, group->group->streams[i], child, p_path + "/child" + itos(i),
 						voice.volume * group->group->stream_volume(i), voice.pitch, false, false, r_ancestors);
+			}
+		}
+	}
+#endif
+#ifdef MODULE_INTERACTIVE_MUSIC_ENABLED
+	else if (Ref<AudioStreamPlaybackInteractive> interactive = p_playback; interactive.is_valid()) {
+		voice.children_supported = true;
+		voice.selection = interactive->playback_current;
+		for (int i = 0; i < interactive->stream->get_clip_count(); i++) {
+			const AudioStreamPlaybackInteractive::State &state = interactive->states[i];
+			if (!state.active) {
+				continue;
+			}
+			const int child = r_snapshot.voices.size();
+			append(r_snapshot, state.stream, state.playback, p_path + "/clip" + itos(i),
+					p_volume * state.fade_volume, p_pitch, state.first_mix,
+					state.fade_speed < 0.0, r_ancestors);
+			if (r_snapshot.voices.size() > child) {
+				r_snapshot.voices.write[child].delay += state.fade_wait;
 			}
 		}
 	}

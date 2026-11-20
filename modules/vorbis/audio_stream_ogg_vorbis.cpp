@@ -32,6 +32,7 @@
 
 // wgodot-changes::begin
 #include "core/io/wgodot_resource_trace.h"
+#include "servers/audio/audio_server.h"
 // wgodot-changes::end
 
 #include "core/io/file_access.h"
@@ -150,6 +151,21 @@ int AudioStreamPlaybackOggVorbis::_mix_internal(AudioFrame *p_buffer, int p_fram
 
 int AudioStreamPlaybackOggVorbis::_mix_frames_vorbis(AudioFrame *p_buffer, int p_frames) {
 	ERR_FAIL_COND_V(!ready, p_frames);
+	// wgodot-changes::begin
+	if (metadata_only) {
+		// Preserve the normal resampler, loop and cue clocks. Only the leaf
+		// decoder is replaced; the final Ogg granule supplies its exact length.
+		const int64_t remaining = MAX(int64_t(0), vorbis_data->get_final_granule_pos() - metadata_cursor);
+		const int frames = int(MIN(int64_t(p_frames), remaining));
+		for (int frame = 0; frame < frames; frame++) {
+			p_buffer[frame] = AudioFrame();
+		}
+		metadata_cursor += frames;
+		have_samples_left = metadata_cursor < vorbis_data->get_final_granule_pos();
+		have_packets_left = have_samples_left;
+		return frames;
+	}
+	// wgodot-changes::end
 	if (!have_samples_left) {
 		ogg_packet *packet = nullptr;
 		int err;
@@ -199,6 +215,14 @@ float AudioStreamPlaybackOggVorbis::get_stream_sampling_rate() {
 }
 
 bool AudioStreamPlaybackOggVorbis::_alloc_vorbis() {
+	// wgodot-changes::begin
+	if (AudioServer::get_singleton()->is_metadata_only_enabled()) {
+		ERR_FAIL_COND_V(vorbis_data.is_null() || vorbis_data->get_sampling_rate() <= 0 || vorbis_data->get_final_granule_pos() < 0, false);
+		metadata_only = true;
+		ready = true;
+		return true;
+	}
+	// wgodot-changes::end
 	vorbis_info_init(&info);
 	info_is_allocated = true;
 	vorbis_comment_init(&comment);
@@ -293,6 +317,14 @@ void AudioStreamPlaybackOggVorbis::seek(double p_time) {
 	}
 
 	frames_mixed = uint32_t(vorbis_data->get_sampling_rate() * p_time);
+	// wgodot-changes::begin
+	if (metadata_only) {
+		metadata_cursor = frames_mixed;
+		have_samples_left = metadata_cursor < vorbis_data->get_final_granule_pos();
+		have_packets_left = have_samples_left;
+		return;
+	}
+	// wgodot-changes::end
 
 	const int64_t desired_sample = p_time * get_stream_sampling_rate();
 

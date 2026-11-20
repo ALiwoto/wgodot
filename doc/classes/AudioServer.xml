@@ -195,6 +195,12 @@
 				Returns the relative time until the next mix occurs, in seconds.
 			</description>
 		</method>
+		<method name="is_metadata_only_enabled" qualifiers="const">
+			<return type="bool" />
+			<description>
+				Returns whether [member ProjectSettings.audio/driver/dummy_metadata_only] is active. Decoder-free leaves retain their normal playback lifecycle; bus effects are not processed. Composite streams retain their cue selection and timing.
+			</description>
+		</method>
 		<method name="is_bus_bypassing_effects" qualifiers="const">
 			<return type="bool" />
 			<param index="0" name="bus_idx" type="int" />

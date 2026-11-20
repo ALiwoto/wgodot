@@ -140,6 +140,9 @@ void AudioStreamPlayback::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_sample_playback", "playback_sample"), &AudioStreamPlayback::set_sample_playback);
 	ClassDB::bind_method(D_METHOD("get_sample_playback"), &AudioStreamPlayback::get_sample_playback);
 	ClassDB::bind_method(D_METHOD("mix_audio", "rate_scale", "frames"), &AudioStreamPlayback::_mix_audio_bind);
+	// wgodot-changes::begin
+	ClassDB::bind_method(D_METHOD("is_metadata_only"), &AudioStreamPlayback::is_metadata_only);
+	// wgodot-changes::end
 	ClassDB::bind_method(D_METHOD("start", "from_pos"), &AudioStreamPlayback::start_playback, DEFVAL(0.0));
 	ClassDB::bind_method(D_METHOD("seek", "time"), &AudioStreamPlayback::seek_playback, DEFVAL(0.0));
 	ClassDB::bind_method(D_METHOD("stop"), &AudioStreamPlayback::stop_playback);

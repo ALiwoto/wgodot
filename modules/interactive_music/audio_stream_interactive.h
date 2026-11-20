@@ -200,6 +200,9 @@ VARIANT_ENUM_CAST(AudioStreamInteractive::FadeMode)
 class AudioStreamPlaybackInteractive : public AudioStreamPlayback {
 	GDCLASS(AudioStreamPlaybackInteractive, AudioStreamPlayback)
 	friend class AudioStreamInteractive;
+	// wgodot-changes::begin
+	friend class WAudioPlaybackProbe;
+	// wgodot-changes::end
 
 private:
 	Ref<AudioStreamInteractive> stream;

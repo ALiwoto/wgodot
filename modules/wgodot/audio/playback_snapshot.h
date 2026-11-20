@@ -29,6 +29,7 @@ public:
 		bool leaf = false;
 		bool children_supported = false;
 		bool looping = false;
+		bool metadata_only = false;
 	};
 	struct Snapshot {
 		Vector<Voice> voices;

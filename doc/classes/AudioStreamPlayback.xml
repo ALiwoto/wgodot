@@ -97,6 +97,12 @@
 				Returns the [AudioSamplePlayback] associated with this [AudioStreamPlayback] for playing back the audio sample of this stream.
 			</description>
 		</method>
+		<method name="is_metadata_only" qualifiers="const">
+			<return type="bool" />
+			<description>
+				Returns [code]true[/code] for a leaf playback that advances without decoding samples. Composite streams return [code]false[/code]; inspect their children individually. Currently supported by [AudioStreamOggVorbis] when [member ProjectSettings.audio/driver/dummy_metadata_only] is enabled.
+			</description>
+		</method>
 		<method name="is_playing" qualifiers="const">
 			<return type="bool" />
 			<description>

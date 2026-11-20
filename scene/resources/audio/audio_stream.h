@@ -107,6 +107,10 @@ public:
 	virtual Variant get_parameter(const StringName &p_name) const;
 
 	virtual int mix(AudioFrame *p_buffer, float p_rate_scale, int p_frames);
+	// wgodot-changes::begin
+	// Decoder-free leaf playback; composite streams report their children.
+	virtual bool is_metadata_only() const { return false; }
+	// wgodot-changes::end
 
 	virtual void set_is_sample(bool p_is_sample) {}
 	virtual bool get_is_sample() const { return false; }

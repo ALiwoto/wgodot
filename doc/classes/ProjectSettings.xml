@@ -453,6 +453,9 @@
 			To query the value that is being used at runtime (which may be overridden by command-line arguments or headless mode), use [method AudioServer.get_driver_name].
 			[b]Note:[/b] The driver in use can be overridden at runtime via the [code]--audio-driver[/code] [url=$DOCS_URL/tutorials/editor/command_line_tutorial.html]command line argument[/url].
 		</member>
+		<member name="audio/driver/dummy_metadata_only" type="bool" setter="" getter="" default="false">
+			Enables decoder-free Vorbis playback and bypasses bus DSP when using the Dummy driver. Cue graphs, pitch, loops, playback clocks and spatial/routing metadata remain active. Other leaf formats do not yet support decoder-free playback; use [method AudioStreamPlayback.is_metadata_only] to check support. This mode does not establish waveform or audible-output parity. Requires restarting the application.
+		</member>
 		<member name="audio/driver/enable_input" type="bool" setter="" getter="" default="false">
 			If [code]true[/code], microphone input will be allowed. This requires appropriate permissions to be set when exporting to Android or iOS.
 			[b]Note:[/b] If the operating system blocks access to audio input devices (due to the user's privacy settings), audio capture will only return silence. On Windows, make sure that apps are allowed to access the microphone in the OS's privacy settings.

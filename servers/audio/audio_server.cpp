@@ -231,7 +231,10 @@ void AudioServer::_mix_step() {
 		AudioStreamPlaybackBusDetails bus_details = *bus_details_ptr;
 
 		// Mix to any active buses.
-		for (int idx = 0; idx < AuSC::MAX_BUSES_PER_PLAYBACK; idx++) {
+		// wgodot-changes::begin
+		// Metadata playback retains routing/gain state, without bus DSP.
+		for (int idx = 0; !metadata_only && idx < AuSC::MAX_BUSES_PER_PLAYBACK; idx++) {
+			// wgodot-changes::end
 			if (!bus_details.bus_active[idx]) {
 				continue;
 			}
@@ -272,7 +275,9 @@ void AudioServer::_mix_step() {
 		}
 
 		// Now go through and fade-out any buses that were being played to previously that we missed by going through current data.
-		for (int idx = 0; idx < AuSC::MAX_BUSES_PER_PLAYBACK; idx++) {
+		// wgodot-changes::begin
+		for (int idx = 0; !metadata_only && idx < AuSC::MAX_BUSES_PER_PLAYBACK; idx++) {
+			// wgodot-changes::end
 			if (!playback->prev_bus_details->bus_active[idx]) {
 				continue;
 			}
@@ -328,7 +333,9 @@ void AudioServer::_mix_step() {
 	}
 
 	// Now that all of the buses have their audio sources mixed into them, we can process the effects and bus sends.
-	for (int i = buses.size() - 1; i >= 0; i--) {
+	// wgodot-changes::begin
+	for (int i = buses.size() - 1; !metadata_only && i >= 0; i--) {
+		// wgodot-changes::end
 		Bus *bus = buses[i];
 
 		for (int k = 0; k < bus->channels.size(); k++) {
@@ -1331,6 +1338,13 @@ void AudioServer::init_channels_and_buffers() {
 }
 
 void AudioServer::init() {
+	// wgodot-changes::begin
+	metadata_only = GLOBAL_DEF_RST("audio/driver/dummy_metadata_only", false);
+	if (metadata_only && get_driver_name() != "Dummy") {
+		ERR_PRINT("Audio metadata-only playback requires the Dummy driver.");
+		metadata_only = false;
+	}
+	// wgodot-changes::end
 	channel_disable_threshold_db = GLOBAL_DEF_RST(PropertyInfo(Variant::FLOAT, "audio/buses/channel_disable_threshold_db", PROPERTY_HINT_RANGE, "-80,0,0.1,suffix:dB"), -60.0);
 	channel_disable_frames = float(GLOBAL_DEF_RST(PropertyInfo(Variant::FLOAT, "audio/buses/channel_disable_time", PROPERTY_HINT_RANGE, "0,5,0.01,or_greater"), 2.0)) * get_mix_rate();
 	// TODO: Buffer size is hardcoded for now. This would be really nice to have as a project setting because currently it limits audio latency to an absolute minimum of 11ms with default mix rate, but there's some additional work required to make that happen. See TODOs in `_mix_step_for_channel`.
@@ -1917,6 +1931,9 @@ void AudioServer::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_input_mix_rate"), &AudioServer::get_input_mix_rate);
 
 	ClassDB::bind_method(D_METHOD("get_driver_name"), &AudioServer::get_driver_name);
+	// wgodot-changes::begin
+	ClassDB::bind_method(D_METHOD("is_metadata_only_enabled"), &AudioServer::is_metadata_only_enabled);
+	// wgodot-changes::end
 
 	ClassDB::bind_method(D_METHOD("get_output_device_list"), &AudioServer::get_output_device_list);
 	ClassDB::bind_method(D_METHOD("get_output_device"), &AudioServer::get_output_device);

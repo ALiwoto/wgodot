@@ -74,6 +74,9 @@ private:
 	float playback_speed_scale = 1.0f;
 
 	bool tag_used_audio_streams = false;
+	// wgodot-changes::begin
+	bool metadata_only = false;
+	// wgodot-changes::end
 
 #ifdef DEBUG_ENABLED
 	bool debug_mute = false;
@@ -306,6 +309,9 @@ public:
 	uint64_t get_mixed_frames() const;
 
 	String get_driver_name() const;
+	// wgodot-changes::begin
+	bool is_metadata_only_enabled() const { return metadata_only; }
+	// wgodot-changes::end
 
 	void notify_listener_changed();
 

@@ -65,6 +65,10 @@ class AudioStreamPlaybackOggVorbis : public AudioStreamPlaybackResampled {
 	bool block_is_allocated = false;
 
 	bool ready = false;
+	// wgodot-changes::begin
+	bool metadata_only = false;
+	int64_t metadata_cursor = 0;
+	// wgodot-changes::end
 
 	bool have_samples_left = false;
 	bool have_packets_left = false;
@@ -99,6 +103,9 @@ public:
 	virtual void seek(double p_time) override;
 
 	virtual void tag_used_streams() override;
+	// wgodot-changes::begin
+	virtual bool is_metadata_only() const override { return metadata_only; }
+	// wgodot-changes::end
 
 	virtual void set_parameter(const StringName &p_name, const Variant &p_value) override;
 	virtual Variant get_parameter(const StringName &p_name) const override;
