@@ -26,39 +26,7 @@ Variant::Type literal_type(const VP::Token &p_token) {
 	return Variant::NIL;
 }
 
-int numeric_component_width(Variant::Type p_type) {
-	switch (p_type) {
-		case Variant::VECTOR2:
-		case Variant::VECTOR2I:
-		case Variant::PACKED_VECTOR2_ARRAY:
-			return 2;
-		case Variant::VECTOR3:
-		case Variant::VECTOR3I:
-		case Variant::PACKED_VECTOR3_ARRAY:
-			return 3;
-		case Variant::VECTOR4:
-		case Variant::VECTOR4I:
-		case Variant::RECT2:
-		case Variant::RECT2I:
-		case Variant::PLANE:
-		case Variant::QUATERNION:
-		case Variant::COLOR:
-		case Variant::PACKED_VECTOR4_ARRAY:
-		case Variant::PACKED_COLOR_ARRAY:
-			return 4;
-		case Variant::TRANSFORM2D:
-		case Variant::AABB:
-			return 6;
-		case Variant::BASIS:
-			return 9;
-		case Variant::TRANSFORM3D:
-			return 12;
-		case Variant::PROJECTION:
-			return 16;
-		default:
-			return Variant::is_packed_array_type(p_type) ? 1 : 0;
-	}
-}
+
 } // namespace
 
 WGodotResourceValidation::WGodotResourceValidation(const String &p_path, const WGodotResourceTypes *p_types, WGodotResourceSyntax::Result &r_result, HashSet<String> *p_scene_stack, bool p_collect_properties) :
@@ -323,6 +291,7 @@ Error WGodotResourceValidation::value(Token p_token, Stream *p_stream, const Typ
 	if (p_expected.resource_path && p_token.type != VP::TK_STRING) {
 		return fail("WResPath requires a literal resource path.", r_error);
 	}
+	RETURN_IF_ERROR(WGodotResourceValueParser::infer_constructor(p_token, p_expected, p_stream, r_error));
 	if (p_token.type == VP::TK_CURLY_BRACKET_OPEN && p_expected.builtin == Variant::WRECORD) {
 		r_actual = p_expected;
 		return record(p_stream, p_expected, r_line, r_error, p_depth);
@@ -428,7 +397,7 @@ Error WGodotResourceValidation::value(Token p_token, Stream *p_stream, const Typ
 			if (r_actual.builtin == Variant::VARIANT_MAX || r_actual.builtin == Variant::NIL || r_actual.builtin == Variant::OBJECT || r_actual.builtin == Variant::RID || r_actual.builtin == Variant::CALLABLE || r_actual.builtin == Variant::SIGNAL) {
 				return fail("Dynamic or unsupported constructor: " + name, r_error);
 			}
-			const int width = numeric_component_width(r_actual.builtin);
+			const int width = Type::component_width(r_actual.builtin);
 			RETURN_IF_ERROR(expect(p_stream, VP::TK_PARENTHESIS_OPEN, r_line, r_error));
 			if (r_actual.builtin == Variant::NODE_PATH || r_actual.builtin == Variant::STRING_NAME || r_actual.builtin == Variant::STRING) {
 				RETURN_IF_ERROR(token(p_stream, p_token, r_line, r_error));

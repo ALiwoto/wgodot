@@ -118,6 +118,39 @@ WGodotResourceDataType WGodotResourceDataType::packed_element(Variant::Type p_ty
 	return result;
 }
 
+int WGodotResourceDataType::component_width(Variant::Type p_type) {
+	switch (p_type) {
+		case Variant::VECTOR2:
+		case Variant::VECTOR2I:
+		case Variant::PACKED_VECTOR2_ARRAY:
+			return 2;
+		case Variant::VECTOR3:
+		case Variant::VECTOR3I:
+		case Variant::PACKED_VECTOR3_ARRAY:
+			return 3;
+		case Variant::VECTOR4:
+		case Variant::VECTOR4I:
+		case Variant::RECT2:
+		case Variant::RECT2I:
+		case Variant::PLANE:
+		case Variant::QUATERNION:
+		case Variant::COLOR:
+		case Variant::PACKED_VECTOR4_ARRAY:
+		case Variant::PACKED_COLOR_ARRAY:
+			return 4;
+		case Variant::TRANSFORM2D:
+		case Variant::AABB:
+			return 6;
+		case Variant::BASIS:
+			return 9;
+		case Variant::TRANSFORM3D:
+			return 12;
+		case Variant::PROJECTION:
+			return 16;
+		default:
+			return Variant::is_packed_array_type(p_type) ? 1 : 0;
+	}
+}
 namespace {
 using VP = VariantParser;
 
@@ -147,8 +180,8 @@ Error packed_repeat(Variant &r_value, const Variant &p_value, Variant::Type p_el
 	return OK;
 }
 
-template <class T>
-Error packed_literal(Variant &r_value, Variant::Type p_element, VP::Stream *p_stream, int &r_line, String &r_error, VP::ResourceParser *p_resources) {
+template <class T, class Parse>
+Error packed_literal(Variant &r_value, Variant::Type p_element, VP::Stream *p_stream, int &r_line, String &r_error, Parse p_parse) {
 	Vector<T> values;
 	T batch[1024];
 	int count = 0;
@@ -166,7 +199,7 @@ Error packed_literal(Variant &r_value, Variant::Type p_element, VP::Stream *p_st
 	RETURN_IF_ERROR(VP::get_token(p_stream, token, r_line, r_error));
 	while (token.type != VP::TK_BRACKET_CLOSE) {
 		Variant value;
-		RETURN_IF_ERROR(VP::parse_value(token, value, p_stream, r_line, r_error, p_resources));
+		RETURN_IF_ERROR(p_parse(token, value));
 		RETURN_IF_ERROR(packed_element<T>(value, p_element, r_error));
 		batch[count++] = value;
 		if (count == 1024) {
@@ -189,6 +222,24 @@ Error packed_literal(Variant &r_value, Variant::Type p_element, VP::Stream *p_st
 	return OK;
 }
 } // namespace
+
+Error WGodotResourceValueParser::infer_constructor(VP::Token &r_token, const Type &p_type, VP::Stream *p_stream, String &r_error) {
+	if (r_token.type != VP::TK_PARENTHESIS_OPEN) {
+		return OK;
+	}
+	if (!p_type.concrete() || !(Type::component_width(p_type.builtin) > 0 ||
+			Variant::get_member_constructor(p_type.builtin) >= 0 ||
+			p_type.builtin == Variant::STRING || p_type.builtin == Variant::STRING_NAME || p_type.builtin == Variant::NODE_PATH)) {
+		r_error = "Unnamed constructor requires a declared value type.";
+		return ERR_PARSE_ERROR;
+	}
+	// get_token consumes '(' without lookahead. Replay that delimiter so the
+	// existing constructor parser retains its exact numeric layout/precision.
+	r_token.type = VP::TK_IDENTIFIER;
+	r_token.value = Variant::get_type_name(p_type.builtin);
+	p_stream->saved = '(';
+	return OK;
+}
 
 Error WGodotResourceValueParser::parse_repeat_count(VP::Stream *p_stream, int &r_count, int &r_line, String &r_error) {
 	VP::Token token;
@@ -276,6 +327,9 @@ Error WGodotResourceValueParser::parse(const String &p_name, VP::Token &p_token,
 Error WGodotResourceValueParser::parse_value(const String &p_name, VP::Token &p_token, Variant &r_value, VP::Stream *p_stream, int &r_line, String &r_error, VP::ResourceParser *p_resources) {
 	const Type *type = fields.getptr(p_name);
 	if (!type) {
+		if (!declarations_required) {
+			return VP::parse_value(p_token, r_value, p_stream, r_line, r_error, p_resources, true);
+		}
 		PropertyInfo info;
 		if (WGodotNativeResourceFields::field(native_type, p_name, info)) {
 			fields.insert(p_name, Type::from_property(info));
@@ -283,7 +337,8 @@ Error WGodotResourceValueParser::parse_value(const String &p_name, VP::Token &p_
 		}
 	}
 	if (!type) {
-		return VP::parse_value(p_token, r_value, p_stream, r_line, r_error, p_resources, true);
+		r_error = "Unknown field '" + p_name + "' on " + String(native_type) + "; a declared resource field type is required.";
+		return ERR_PARSE_ERROR;
 	}
 	return value(p_token, r_value, *type, p_stream, r_line, r_error, p_resources);
 }
@@ -301,10 +356,18 @@ Error WGodotResourceValueParser::value(VP::Token &p_token, Variant &r_value, con
 }
 
 Error WGodotResourceValueParser::value_data(VP::Token &p_token, Variant &r_value, const Type &p_type, VP::Stream *p_stream, int &r_line, String &r_error, VP::ResourceParser *p_resources, int p_depth) {
+	if (!p_type.concrete()) {
+		if (!declarations_required) {
+			return VP::parse_value(p_token, r_value, p_stream, r_line, r_error, p_resources, true);
+		}
+		r_error = "Resource fields require a concrete type, including every container element/key/value; got " + p_type.text() + ".";
+		return ERR_PARSE_ERROR;
+	}
 	if (p_depth > 64) {
 		r_error = "Resource value nesting is too deep.";
 		return ERR_PARSE_ERROR;
 	}
+	RETURN_IF_ERROR(infer_constructor(p_token, p_type, p_stream, r_error));
 	if (p_type.builtin == Variant::WRECORD) {
 		Variant record_fields;
 		RETURN_IF_ERROR(VP::parse_value(p_token, record_fields, p_stream, r_line, r_error, p_resources));
@@ -376,11 +439,14 @@ Error WGodotResourceValueParser::value_data(VP::Token &p_token, Variant &r_value
 		return VP::parse_value(p_token, r_value, p_stream, r_line, r_error, p_resources, true);
 	}
 	if (p_token.type == VP::TK_BRACKET_OPEN && Variant::is_packed_array_type(p_type.builtin)) {
-		const Variant::Type element = Type::packed_element(p_type.builtin).builtin;
+		const Type element = Type::packed_element(p_type.builtin);
+		auto parse_element = [&](VP::Token &p_token, Variant &r_item) -> Error {
+			return value(p_token, r_item, element, p_stream, r_line, r_error, p_resources, p_depth + 1);
+		};
 		switch (p_type.builtin) {
 #define WG_PACKED_LITERAL(m_kind, m_type) \
 	case Variant::m_kind: \
-		return packed_literal<m_type>(r_value, element, p_stream, r_line, r_error, p_resources);
+		return packed_literal<m_type>(r_value, element.builtin, p_stream, r_line, r_error, parse_element);
 			WG_PACKED_LITERAL(PACKED_BYTE_ARRAY, uint8_t)
 			WG_PACKED_LITERAL(PACKED_INT32_ARRAY, int32_t)
 			WG_PACKED_LITERAL(PACKED_INT64_ARRAY, int64_t)

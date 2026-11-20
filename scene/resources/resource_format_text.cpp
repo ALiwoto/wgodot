@@ -963,6 +963,9 @@ Error ResourceLoaderText::load() {
 #else
 		WGodotResourceValueParser value_assignment(is_scene ? StringName("PackedScene") : StringName(resource->get_class()), is_scene ? Ref<Script>() : Ref<Script>(resource->get_script()), named_types);
 #endif
+		// Engine-private configuration outside the project (e.g. editor settings)
+		// uses Godot's configuration format, not the compiled resource schema.
+		value_assignment.require_declarations(local_path.begins_with("res://"));
 		if (wgodot_initializing_owned && !wgodot_source_properties) {
 			value_assignment.initialize_owned(resource.ptr());
 		}
