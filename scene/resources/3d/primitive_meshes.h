@@ -34,6 +34,9 @@
 #include "scene/resources/font.h"
 #include "scene/resources/mesh.h"
 #include "servers/text/text_server.h"
+// wgodot-changes::begin
+#include "core/os/mutex.h"
+// wgodot-changes::end
 
 ///@TODO probably should change a few integers to unsigned integers...
 
@@ -61,6 +64,11 @@ private:
 
 	// make sure we do an update after we've finished constructing our object
 	mutable bool pending_request = true;
+// wgodot-changes::begin
+	// Shared primitives may be first consumed by parallel scene preparation.
+	// Serialize lazy generation and publication of the single renderer surface.
+	mutable Mutex mesh_update_mutex;
+// wgodot-changes::end
 	void _update() const;
 
 protected:

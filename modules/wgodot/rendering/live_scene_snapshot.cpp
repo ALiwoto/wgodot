@@ -26,6 +26,7 @@
 #include "servers/rendering/rendering_method.h"
 #include "servers/rendering/rendering_server.h"
 #include "servers/rendering/rendering_server_globals.h"
+#include "servers/rendering/storage/mesh_storage.h"
 #include "modules/modules_enabled.gen.h"
 #ifdef MODULE_PARTICLE_EFFECTS_ENABLED
 #include "modules/particle_effects/particle_instance_3d.h"
@@ -38,17 +39,21 @@ namespace {
 // See tools/porting/live/wire.py in the client project's research tooling.
 enum Kind { SPATIAL = 1, SKELETON, MESH, MATERIAL, UNIFORM, PARTICLE, CAMERA, LIGHT, DECAL, AUDIO, ANIMATION, BODY, GEOMETRY, INSTANCE_UNIFORM, MESH_LOD, PLANAR_REFLECTION, NUMERIC };
 
-struct MeshLevelBatch : public RefCounted {
-	GDSOFTCLASS(MeshLevelBatch, RefCounted);
+struct MeshRenderBatch : public RefCounted {
+	GDSOFTCLASS(MeshRenderBatch, RefCounted);
 
 public:
 	Vector<RID> instances;
+	Vector<RID> meshes;
 	Vector<int32_t> levels;
+	Vector<int32_t> surface_counts;
 	Semaphore completed;
-	static void read(Ref<MeshLevelBatch> p_batch) {
+	static void read(Ref<MeshRenderBatch> p_batch) {
 		p_batch->levels.resize(p_batch->instances.size());
+		p_batch->surface_counts.resize(p_batch->meshes.size());
 		for (int i = 0; i < p_batch->instances.size(); i++) {
 			p_batch->levels.write[i] = RSG::scene->instance_geometry_get_mesh_lod(p_batch->instances[i]);
+			p_batch->surface_counts.write[i] = RSG::mesh_storage->mesh_get_surface_count(p_batch->meshes[i]);
 		}
 		p_batch->completed.post();
 	}
@@ -225,7 +230,7 @@ PackedByteArray WLiveSceneProbe::snapshot(Node *p_root, Skeleton3D *p_body) {
 	}
 	Vector<Node *> pending = { p_root };
 	Vector<MeshInstance3D *> meshes;
-	Ref<MeshLevelBatch> mesh_levels;
+	Ref<MeshRenderBatch> mesh_levels;
 	mesh_levels.instantiate();
 	HashSet<ObjectID> visited;
 	while (!pending.is_empty()) {
@@ -312,6 +317,7 @@ PackedByteArray WLiveSceneProbe::snapshot(Node *p_root, Skeleton3D *p_body) {
 				writer.record(MESH, path, { mesh->get_mesh()->get_path(), mesh->get_mesh()->get_name(), skeleton_path }, { double(mesh->get_layer_mask()), double(mesh->get_cast_shadows_setting()), mesh->get_transparency() });
 				meshes.push_back(mesh);
 				mesh_levels->instances.push_back(mesh->get_instance());
+				mesh_levels->meshes.push_back(mesh->get_mesh()->get_rid());
 			}
 		}
 #ifdef MODULE_PARTICLE_EFFECTS_ENABLED
@@ -395,7 +401,7 @@ PackedByteArray WLiveSceneProbe::snapshot(Node *p_root, Skeleton3D *p_body) {
 	}
 	if (!meshes.is_empty()) {
 		// One batched fence per explicit inspection, never per mesh or gameplay frame.
-		RenderingServer::get_singleton()->call_on_render_thread(callable_mp_static(&MeshLevelBatch::read).bind(mesh_levels));
+		RenderingServer::get_singleton()->call_on_render_thread(callable_mp_static(&MeshRenderBatch::read).bind(mesh_levels));
 		mesh_levels->completed.wait();
 		for (int i = 0; i < meshes.size(); i++) {
 			MeshInstance3D *mesh = meshes[i];
@@ -403,6 +409,7 @@ PackedByteArray WLiveSceneProbe::snapshot(Node *p_root, Skeleton3D *p_body) {
 			Ref<ArrayMesh> array_mesh = mesh->get_mesh();
 			Ref<MeshLODProfile> profile = array_mesh.is_valid() ? array_mesh->get_lod_profile() : Ref<MeshLODProfile>();
 			const int level = mesh_levels->levels[i];
+			writer.record(NUMERIC, path, { "mesh/surface-count" }, { double(mesh->get_mesh()->get_surface_count()), double(mesh_levels->surface_counts[i]) });
 			Vector<double> surfaces;
 			for (int surface = 0; surface < mesh->get_mesh()->get_surface_count(); surface++) {
 				if (profile.is_valid() && level >= 0 && profile->get_data().surface_levels[surface] != level) {

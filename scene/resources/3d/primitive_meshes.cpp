@@ -137,6 +137,9 @@ void PrimitiveMesh::_update() const {
 }
 
 void PrimitiveMesh::request_update() {
+// wgodot-changes::begin
+	MutexLock lock(mesh_update_mutex);
+// wgodot-changes::end
 	if (pending_request) {
 		return;
 	}
@@ -144,6 +147,9 @@ void PrimitiveMesh::request_update() {
 }
 
 int PrimitiveMesh::get_surface_count() const {
+// wgodot-changes::begin
+	MutexLock lock(mesh_update_mutex);
+// wgodot-changes::end
 	if (pending_request) {
 		_update();
 	}
@@ -151,6 +157,9 @@ int PrimitiveMesh::get_surface_count() const {
 }
 
 int PrimitiveMesh::surface_get_array_len(int p_idx) const {
+// wgodot-changes::begin
+	MutexLock lock(mesh_update_mutex);
+// wgodot-changes::end
 	ERR_FAIL_INDEX_V(p_idx, 1, -1);
 	if (pending_request) {
 		_update();
@@ -160,6 +169,9 @@ int PrimitiveMesh::surface_get_array_len(int p_idx) const {
 }
 
 int PrimitiveMesh::surface_get_array_index_len(int p_idx) const {
+// wgodot-changes::begin
+	MutexLock lock(mesh_update_mutex);
+// wgodot-changes::end
 	ERR_FAIL_INDEX_V(p_idx, 1, -1);
 	if (pending_request) {
 		_update();
@@ -169,6 +181,9 @@ int PrimitiveMesh::surface_get_array_index_len(int p_idx) const {
 }
 
 Array PrimitiveMesh::surface_get_arrays(int p_surface) const {
+// wgodot-changes::begin
+	MutexLock lock(mesh_update_mutex);
+// wgodot-changes::end
 	ERR_FAIL_INDEX_V(p_surface, 1, Array());
 	if (pending_request) {
 		_update();
@@ -224,6 +239,9 @@ void PrimitiveMesh::set_blend_shape_name(int p_index, const StringName &p_name) 
 }
 
 AABB PrimitiveMesh::get_aabb() const {
+// wgodot-changes::begin
+	MutexLock lock(mesh_update_mutex);
+// wgodot-changes::end
 	if (pending_request) {
 		_update();
 	}
@@ -232,6 +250,9 @@ AABB PrimitiveMesh::get_aabb() const {
 }
 
 RID PrimitiveMesh::get_rid() const {
+// wgodot-changes::begin
+	MutexLock lock(mesh_update_mutex);
+// wgodot-changes::end
 	if (pending_request) {
 		_update();
 	}
@@ -268,6 +289,9 @@ void PrimitiveMesh::_bind_methods() {
 }
 
 void PrimitiveMesh::set_material(const Ref<Material> &p_material) {
+// wgodot-changes::begin
+	MutexLock lock(mesh_update_mutex);
+// wgodot-changes::end
 	if (p_material == material) {
 		return;
 	}
