@@ -1,0 +1,174 @@
+// wgodot-changes::file
+#include "audio_stepper.h"
+
+#ifdef TOOLS_ENABLED
+#include "core/math/math_funcs.h"
+#include "core/object/class_db.h"
+#include "core/os/thread.h"
+#include "scene/2d/audio_stream_player_2d.h"
+#include "scene/3d/audio_stream_player_3d.h"
+#include "scene/audio/audio_stream_player.h"
+#include "scene/main/scene_tree.h"
+#include "scene/main/window.h"
+#include "servers/audio/audio_driver_dummy.h"
+#include "servers/audio/audio_server.h"
+
+WAudioStepper *WAudioStepper::active = nullptr;
+SafeFlag WAudioStepper::clock_owned;
+
+void WAudioStepper::_bind_methods() {
+	ClassDB::bind_static_method(get_class_static(), D_METHOD("begin", "root"), &WAudioStepper::begin);
+	ClassDB::bind_method(D_METHOD("advance", "seconds"), &WAudioStepper::advance);
+	ClassDB::bind_method(D_METHOD("get_advanced_frames"), &WAudioStepper::get_advanced_frames);
+	ClassDB::bind_method(D_METHOD("finish"), &WAudioStepper::finish);
+}
+
+bool WAudioStepper::owns(Node *p_node) {
+	if (!active || !p_node) {
+		return false;
+	}
+	Node *root = Object::cast_to<Node>(ObjectDB::get_instance(active->root_id));
+	return root && (root == p_node || root->is_ancestor_of(p_node));
+}
+
+bool WAudioStepper::can_process(Node *p_node) {
+	if (!owns(p_node) || active->releasing) {
+		return p_node->can_process();
+	}
+	// A held SceneTree is the inspection clock, not an authored audio pause.
+	// Keep disabled/when-paused process modes and explicit stream pauses intact.
+	return p_node->can_process_with_scene_pause(false);
+}
+
+bool WAudioStepper::skip_notification(Node *p_node, int p_notification) {
+	if (p_notification != Node::NOTIFICATION_INTERNAL_PROCESS && p_notification != Node::NOTIFICATION_INTERNAL_PHYSICS_PROCESS) {
+		return false;
+	}
+	// Process groups can dispatch these notifications on worker threads. They
+	// must not dereference the main-thread scope or traverse its scene nodes.
+	if (!Thread::is_main_thread()) {
+		return clock_owned.is_set();
+	}
+	return owns(p_node) && !active->stepping;
+}
+
+void WAudioStepper::entered(Node *p_node) {
+	if (owns(p_node)) {
+		active->players.push_back(p_node->get_instance_id());
+	}
+}
+
+void WAudioStepper::exited(Node *p_node) {
+	if (active) {
+		active->players.erase(p_node->get_instance_id());
+	}
+}
+
+void WAudioStepper::collect(Node *p_node) {
+	if (Object::cast_to<AudioStreamPlayer>(p_node) || Object::cast_to<AudioStreamPlayer2D>(p_node) || Object::cast_to<AudioStreamPlayer3D>(p_node)) {
+		players.push_back(p_node->get_instance_id());
+	}
+	for (int i = 0; i < p_node->get_child_count(); i++) {
+		collect(p_node->get_child(i));
+	}
+}
+
+Ref<WAudioStepper> WAudioStepper::begin(Node *p_root) {
+	ERR_FAIL_COND_V(!Thread::is_main_thread(), Ref<WAudioStepper>());
+	ERR_FAIL_NULL_V(p_root, Ref<WAudioStepper>());
+	ERR_FAIL_COND_V(!p_root->is_inside_tree(), Ref<WAudioStepper>());
+	ERR_FAIL_COND_V_MSG(p_root != p_root->get_tree()->get_root(), Ref<WAudioStepper>(), "The global audio clock requires the complete SceneTree root.");
+	ERR_FAIL_COND_V_MSG(active, Ref<WAudioStepper>(), "Another controller owns the audio clock.");
+	ERR_FAIL_COND_V_MSG(p_root->get_tree()->is_paused(), Ref<WAudioStepper>(), "Begin audio stepping before holding the SceneTree.");
+	ERR_FAIL_COND_V_MSG(AudioServer::get_singleton()->get_driver_name() != "Dummy", Ref<WAudioStepper>(), "Audio stepping requires the Dummy driver.");
+	Ref<WAudioStepper> result;
+	result.instantiate();
+	result->root_id = p_root->get_instance_id();
+	result->collect(p_root);
+	AudioDriverDummy::get_dummy_singleton()->set_manual_advance(true);
+	active = result.ptr();
+	clock_owned.set();
+	return result;
+}
+
+Error WAudioStepper::update_players() {
+	// Finished callbacks may remove players or add new ones. Do not retain
+	// raw nodes or an iterator across those ordinary gameplay callbacks.
+	Vector<ObjectID> pending;
+	for (ObjectID id : players) {
+		pending.push_back(id);
+	}
+	for (ObjectID id : pending) {
+		Node *node = Object::cast_to<Node>(ObjectDB::get_instance(id));
+		if (!owns(node) || !can_process(node)) {
+			continue;
+		}
+		AudioStreamPlayer3D *spatial = Object::cast_to<AudioStreamPlayer3D>(node);
+		ERR_FAIL_COND_V_MSG(spatial && spatial->get_doppler_tracking() != AudioStreamPlayer3D::DOPPLER_TRACKING_DISABLED,
+				ERR_UNAVAILABLE, "Offline audio does not yet own the Doppler velocity-history clock.");
+		if (node->is_physics_processing_internal()) {
+			node->notification(Node::NOTIFICATION_INTERNAL_PHYSICS_PROCESS);
+		} else if (node->is_processing_internal()) {
+			node->notification(Node::NOTIFICATION_INTERNAL_PROCESS);
+		}
+	}
+	return OK;
+}
+
+Error WAudioStepper::advance(double p_seconds) {
+	ERR_FAIL_COND_V(!Thread::is_main_thread(), ERR_UNAUTHORIZED);
+	ERR_FAIL_COND_V(active != this, ERR_UNCONFIGURED);
+	ERR_FAIL_COND_V(stepping, ERR_BUSY);
+	ERR_FAIL_COND_V(!Math::is_finite(p_seconds) || p_seconds < 0.0 || p_seconds > 60.0, ERR_INVALID_PARAMETER);
+	Node *root = Object::cast_to<Node>(ObjectDB::get_instance(root_id));
+	ERR_FAIL_COND_V(!root || !root->is_inside_tree() || !root->get_tree()->is_paused(), ERR_UNCONFIGURED);
+	Ref<WAudioStepper> keep_alive(this);
+	stepping = true;
+	const Error player_error = update_players();
+	if (player_error != OK) {
+		stepping = false;
+		return player_error;
+	}
+	// Callbacks can release the clock; do not advance a subsequently restored driver.
+	if (active != this) {
+		stepping = false;
+		return ERR_UNCONFIGURED;
+	}
+	AudioDriverDummy *driver = AudioDriverDummy::get_dummy_singleton();
+	const double exact_frames = fractional_frames + p_seconds * driver->get_mix_rate();
+	const int frames = int(Math::floor(exact_frames));
+	const Error error = driver->advance_manual(frames);
+	if (error == OK) {
+		fractional_frames = exact_frames - frames;
+		advanced_frames += frames;
+	}
+	stepping = false;
+	return error;
+}
+
+void WAudioStepper::finish() {
+	ERR_FAIL_COND(!Thread::is_main_thread());
+	if (active == this) {
+		if (releasing) {
+			return;
+		}
+		releasing = true;
+		const Vector<ObjectID> pending = players;
+		for (ObjectID id : pending) {
+			Node *node = Object::cast_to<Node>(ObjectDB::get_instance(id));
+			if (node && node->is_inside_tree() && !node->can_process()) {
+				node->notification(Node::NOTIFICATION_PAUSED);
+			}
+		}
+		active = nullptr;
+		AudioDriverDummy::get_dummy_singleton()->set_manual_advance(false);
+		clock_owned.clear();
+		releasing = false;
+	}
+	players.clear();
+}
+
+WAudioStepper::~WAudioStepper() {
+	finish();
+}
+#endif

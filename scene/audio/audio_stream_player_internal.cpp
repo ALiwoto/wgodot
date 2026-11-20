@@ -37,6 +37,21 @@
 #include "scene/resources/audio/audio_stream.h"
 #include "servers/audio/audio_server.h"
 
+// wgodot-changes::begin
+#include "modules/modules_enabled.gen.h"
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+#include "modules/wgodot/audio/audio_stepper.h"
+#endif
+
+static bool audio_player_can_process(Node *p_node) {
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	return WAudioStepper::can_process(p_node);
+#else
+	return p_node->can_process();
+#endif
+}
+// wgodot-changes::end
+
 void AudioStreamPlayerInternal::_set_process(bool p_enabled) {
 	if (physical) {
 		node->set_physics_process_internal(p_enabled);
@@ -99,13 +114,25 @@ void AudioStreamPlayerInternal::ensure_playback_limit() {
 void AudioStreamPlayerInternal::notification(int p_what) {
 	switch (p_what) {
 		case Node::NOTIFICATION_ENTER_TREE: {
+			// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+			WAudioStepper::entered(node);
+#endif
+			// wgodot-changes::end
 			if (autoplay && !Engine::get_singleton()->is_editor_hint()) {
 				play_callable.call(0.0);
 			}
-			set_stream_paused(!node->can_process());
+			// wgodot-changes::begin
+			set_stream_paused(!audio_player_can_process(node));
+			// wgodot-changes::end
 		} break;
 
 		case Node::NOTIFICATION_EXIT_TREE: {
+			// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+			WAudioStepper::exited(node);
+#endif
+			// wgodot-changes::end
 			set_stream_paused(true);
 		} break;
 
@@ -122,7 +149,9 @@ void AudioStreamPlayerInternal::notification(int p_what) {
 
 		case Node::NOTIFICATION_SUSPENDED:
 		case Node::NOTIFICATION_PAUSED: {
-			bool can_process = node->is_inside_tree() && node->can_process();
+			// wgodot-changes::begin
+			bool can_process = audio_player_can_process(node);
+			// wgodot-changes::end
 			if (!can_process) {
 				// Node can't process so we start fading out to silence
 				set_stream_paused(true);

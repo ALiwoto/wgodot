@@ -53,6 +53,9 @@ class AudioDriverDummy : public AudioDriver {
 	SafeFlag exit_thread;
 
 	bool use_threads = true;
+	// wgodot-changes::begin
+	bool manual_advance = false; // Protected by mutex, including driver-thread reads.
+	// wgodot-changes::end
 
 	static AudioDriverDummy *singleton;
 
@@ -77,6 +80,10 @@ public:
 	uint32_t get_channels() const;
 
 	void mix_audio(int p_frames, int32_t *p_buffer);
+	// wgodot-changes::begin
+	void set_manual_advance(bool p_enabled);
+	Error advance_manual(int p_frames);
+	// wgodot-changes::end
 
 	static AudioDriverDummy *get_dummy_singleton() { return singleton; }
 

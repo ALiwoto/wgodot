@@ -36,9 +36,23 @@
 #include "scene/audio/audio_stream_player_internal.h"
 #include "scene/resources/audio/audio_stream.h"
 #include "servers/audio/audio_server.h"
+
+// wgodot-changes::begin
+#include "modules/modules_enabled.gen.h"
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+#include "modules/wgodot/audio/audio_stepper.h"
+#endif
+// wgodot-changes::end
 #include "servers/display/accessibility_server.h"
 
 void AudioStreamPlayer::_notification(int p_what) {
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	if (WAudioStepper::skip_notification(this, p_what)) {
+		return;
+	}
+#endif
+	// wgodot-changes::end
 	if (p_what == NOTIFICATION_ACCESSIBILITY_UPDATE) {
 		RID ae = get_accessibility_element();
 		ERR_FAIL_COND(ae.is_null());

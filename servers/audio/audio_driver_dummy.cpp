@@ -63,7 +63,11 @@ void AudioDriverDummy::thread_func(void *p_udata) {
 			ad->lock();
 			ad->start_counting_ticks();
 
-			ad->audio_server_process(ad->buffer_frames, ad->samples_in);
+			// wgodot-changes::begin
+			if (!ad->manual_advance) {
+				ad->audio_server_process(ad->buffer_frames, ad->samples_in);
+			}
+			// wgodot-changes::end
 
 			ad->stop_counting_ticks();
 			ad->unlock();
@@ -144,6 +148,25 @@ void AudioDriverDummy::finish() {
 		memdelete_arr(samples_in);
 	}
 }
+
+// wgodot-changes::begin
+void AudioDriverDummy::set_manual_advance(bool p_enabled) {
+	MutexLock guard(mutex);
+	manual_advance = p_enabled;
+}
+
+Error AudioDriverDummy::advance_manual(int p_frames) {
+	MutexLock guard(mutex);
+	ERR_FAIL_COND_V(!manual_advance || !active.is_set(), ERR_UNCONFIGURED);
+	ERR_FAIL_COND_V(p_frames < 0, ERR_INVALID_PARAMETER);
+	while (p_frames) {
+		const int frames = MIN(int(buffer_frames), p_frames);
+		audio_server_process(frames, samples_in);
+		p_frames -= frames;
+	}
+	return OK;
+}
+// wgodot-changes::end
 
 AudioDriverDummy::AudioDriverDummy() {
 	singleton = this;

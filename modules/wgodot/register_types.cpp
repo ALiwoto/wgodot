@@ -47,6 +47,7 @@
 #include "rendering/capture_paths.h"
 #include "rendering/particle_replay_inputs.h"
 #include "rendering/render_stepper.h"
+#include "audio/audio_stepper.h"
 #include "editor/editor_node.h"
 #include "editor/export/editor_export.h"
 #include "editor/plugins/editor_plugin.h"
@@ -98,6 +99,7 @@ void initialize_wgodot_module(ModuleInitializationLevel p_level) {
 		GDREGISTER_CLASS(WParticleReplayInputs);
 #endif
 		GDREGISTER_CLASS(WRenderStepper);
+		GDREGISTER_CLASS(WAudioStepper);
 #endif
 		WGodotPreloads::initialize();
 #ifdef MODULE_GDSCRIPT_ENABLED

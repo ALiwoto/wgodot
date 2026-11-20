@@ -922,6 +922,12 @@ bool Node::can_process() const {
 	return is_inside_tree() && !data.tree->is_suspended() && _can_process(data.tree->is_paused());
 }
 
+// wgodot-changes::begin
+bool Node::can_process_with_scene_pause(bool p_paused) const {
+	return is_inside_tree() && !data.tree->is_suspended() && _can_process(p_paused);
+}
+// wgodot-changes::end
+
 bool Node::_can_process(bool p_paused) const {
 	// wgodot-changes::begin
 #ifdef MODULE_WGODOT_ENABLED

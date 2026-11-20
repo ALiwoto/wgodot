@@ -41,6 +41,13 @@
 #include "scene/resources/world_2d.h"
 #include "servers/audio/audio_server.h"
 
+// wgodot-changes::begin
+#include "modules/modules_enabled.gen.h"
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+#include "modules/wgodot/audio/audio_stepper.h"
+#endif
+// wgodot-changes::end
+
 #ifndef PHYSICS_2D_DISABLED
 #include "scene/2d/physics/area_2d.h"
 #include "servers/physics_2d/direct_states/physics_direct_space_state_2d.h"
@@ -48,6 +55,13 @@
 #endif // PHYSICS_2D_DISABLED
 
 void AudioStreamPlayer2D::_notification(int p_what) {
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	if (WAudioStepper::skip_notification(this, p_what)) {
+		return;
+	}
+#endif
+	// wgodot-changes::end
 	internal->notification(p_what);
 
 	switch (p_what) {

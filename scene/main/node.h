@@ -765,6 +765,9 @@ public:
 	void set_process_mode(ProcessMode p_mode);
 	ProcessMode get_process_mode() const;
 	bool can_process() const;
+	// wgodot-changes::begin
+	bool can_process_with_scene_pause(bool p_paused) const;
+	// wgodot-changes::end
 	bool can_process_notification(int p_what) const;
 
 	void set_physics_interpolation_mode(PhysicsInterpolationMode p_mode);

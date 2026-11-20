@@ -42,6 +42,13 @@
 #include "scene/resources/audio/audio_stream.h"
 #include "servers/audio/audio_server.h"
 
+// wgodot-changes::begin
+#include "modules/modules_enabled.gen.h"
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+#include "modules/wgodot/audio/audio_stepper.h"
+#endif
+// wgodot-changes::end
+
 #ifndef PHYSICS_3D_DISABLED
 #include "scene/3d/physics/area_3d.h"
 #include "servers/physics_3d/physics_server_3d.h"
@@ -263,6 +270,13 @@ float AudioStreamPlayer3D::_get_attenuation_db(float p_distance) const {
 }
 
 void AudioStreamPlayer3D::_notification(int p_what) {
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	if (WAudioStepper::skip_notification(this, p_what)) {
+		return;
+	}
+#endif
+	// wgodot-changes::end
 	internal->notification(p_what);
 	switch (p_what) {
 		case NOTIFICATION_ENTER_TREE: {
