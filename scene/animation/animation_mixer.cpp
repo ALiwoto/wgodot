@@ -2616,9 +2616,7 @@ void AnimationMixer::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("find_animation_library", "animation"), &AnimationMixer::find_animation_library);
 
 	// wgodot-changes::begin
-#ifdef TOOLS_ENABLED
 	ClassDB::add_native_property_pattern(get_class_static(), { "libraries/", "", "set_animation_library", "get_animation_library", Variant::STRING_NAME, Variant::NIL, "libraries", "clear_animation_libraries" });
-#endif
 	// wgodot-changes::end
 }
 

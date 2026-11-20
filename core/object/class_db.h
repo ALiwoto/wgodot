@@ -113,7 +113,6 @@ public:
 
 public:
 	// wgodot-changes::begin
-#ifdef TOOLS_ENABLED
 	struct NativePropertyPattern {
 		String prefix;
 		String suffix;
@@ -133,7 +132,6 @@ public:
 	};
 	static void add_native_property_pattern(const StringName &p_class, const NativePropertyPattern &p_pattern);
 	static NativeProperty get_native_property(const StringName &p_class, const StringName &p_property, Variant::Type p_value_type);
-#endif
 	// wgodot-changes::end
 	struct ClassInfo {
 		// wgodot-changes::begin
@@ -155,10 +153,10 @@ public:
 
 #ifdef TOOLS_ENABLED
 		List<StringName> dependency_list;
+#endif
 		// wgodot-changes::begin
 		Vector<NativePropertyPattern> native_property_patterns;
 		// wgodot-changes::end
-#endif
 
 		HashMap<StringName, Vector<uint32_t>> virtual_methods_compat;
 

@@ -3,6 +3,7 @@
 #include "wgodot_native_resource_fields.h"
 
 #include "core/object/class_db.h"
+#include "core/object/method_bind.h"
 #include "core/object/script_instance.h"
 #include "core/variant/variant_internal.h"
 
@@ -83,6 +84,45 @@ WGodotResourceDataType WGodotResourceDataType::from_property(const PropertyInfo 
 		}
 	}
 	return result;
+}
+
+bool WGodotResourceDataType::native_field(const StringName &p_class, const StringName &p_name, WGodotResourceDataType &r_type, Variant::Type p_literal_type) {
+	if (ClassDB::is_parent_class(p_class, SNAME("Node"))) {
+		if (p_name == SNAME("metadata/wgodot_target")) {
+			r_type = WGodotResourceDataType();
+			r_type.builtin = Variant::STRING;
+			return true;
+		}
+		if (String(p_name).begins_with("metadata/_edit_")) {
+			// Match the static checker's explicit editor-annotation contract.
+			// Export strips these; ordinary gameplay metadata stays undeclared.
+			r_type = WGodotResourceDataType();
+			r_type.builtin = p_literal_type;
+			return r_type.builtin != Variant::OBJECT && r_type.concrete();
+		}
+	}
+	PropertyInfo info;
+	if (WGodotNativeResourceFields::field(p_class, p_name, info)) {
+		r_type = from_property(info);
+		return true;
+	}
+	const ClassDB::NativeProperty property = ClassDB::get_native_property(p_class, p_name, p_literal_type);
+	if (!property.collection_prefix.is_empty()) {
+		const auto entry = ClassDB::get_native_property(p_class, property.collection_prefix, Variant::NIL);
+		if (!entry.setter || !entry.indexed || entry.setter->get_argument_count() != 2) {
+			return false;
+		}
+		r_type = WGodotResourceDataType();
+		r_type.builtin = Variant::DICTIONARY;
+		r_type.elements.push_back(from_property(entry.setter->get_argument_info(0)));
+		r_type.elements.push_back(from_property(entry.setter->get_argument_info(1)));
+	} else {
+		if (!property.setter || property.setter->is_vararg() || property.setter->get_argument_count() != (property.indexed ? 2 : 1)) {
+			return false;
+		}
+		r_type = from_property(property.setter->get_argument_info(property.indexed ? 1 : 0));
+	}
+	return true;
 }
 
 WGodotResourceDataType WGodotResourceDataType::packed_element(Variant::Type p_type) {
@@ -264,6 +304,7 @@ Error WGodotResourceValueParser::parse_repeat_count(VP::Stream *p_stream, int &r
 
 WGodotResourceValueParser::WGodotResourceValueParser(const StringName &p_native, const Ref<Script> &p_script, WGodotNamedTypes::Resolver &p_resolver, VP::AssignmentParser *p_custom) :
 		native_type(p_native), resolver(p_resolver), custom(p_custom) {
+	declaration_source = WGodotNativeResourceFields::dependency(p_native);
 	List<PropertyInfo> properties;
 	if (!p_native.is_empty()) {
 		ClassDB::get_property_list(p_native, &properties);
@@ -330,9 +371,16 @@ Error WGodotResourceValueParser::parse_value(const String &p_name, VP::Token &p_
 		if (!declarations_required) {
 			return VP::parse_value(p_token, r_value, p_stream, r_line, r_error, p_resources, true);
 		}
-		PropertyInfo info;
-		if (WGodotNativeResourceFields::field(native_type, p_name, info)) {
-			fields.insert(p_name, Type::from_property(info));
+		Variant::Type literal_type = Variant::NIL;
+		if (p_token.type == VP::TK_NUMBER || p_token.type == VP::TK_STRING || p_token.type == VP::TK_STRING_NAME) {
+			literal_type = p_token.value.get_type();
+		} else if (p_token.type == VP::TK_IDENTIFIER) {
+			const String name = p_token.value;
+			literal_type = name == "true" || name == "false" ? Variant::BOOL : Variant::get_type_by_name(name);
+		}
+		Type declaration;
+		if (Type::native_field(native_type, p_name, declaration, literal_type)) {
+			fields.insert(p_name, declaration);
 			type = fields.getptr(p_name);
 		}
 	}
@@ -340,7 +388,23 @@ Error WGodotResourceValueParser::parse_value(const String &p_name, VP::Token &p_
 		r_error = "Unknown field '" + p_name + "' on " + String(native_type) + "; a declared resource field type is required.";
 		return ERR_PARSE_ERROR;
 	}
-	return value(p_token, r_value, *type, p_stream, r_line, r_error, p_resources);
+	RETURN_IF_ERROR(value(p_token, r_value, *type, p_stream, r_line, r_error, p_resources));
+	if (declaration_source.declarations && p_name == declaration_source.property) {
+		// Declarations come from the referenced schema (e.g. a compiled shader),
+		// never from the values of the dependent assignments.
+		for (const StringName &name : dependent_fields) {
+			fields.erase(name);
+		}
+		dependent_fields.clear();
+		List<PropertyInfo> declarations;
+		declaration_source.declarations(r_value, declarations);
+		for (const PropertyInfo &declaration : declarations) {
+			const StringName name = declaration_source.prefix + declaration.name;
+			fields.insert(name, Type::from_property(declaration));
+			dependent_fields.insert(name);
+		}
+	}
+	return OK;
 }
 
 Ref<Script> WGodotResourceValueParser::element_script(const Type &p_type) {

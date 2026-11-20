@@ -2,6 +2,7 @@
 #pragma once
 
 #include "wgodot_named_types.h"
+#include "wgodot_native_resource_fields.h"
 
 #include "core/variant/variant_parser.h"
 #include "core/templates/hash_set.h"
@@ -16,6 +17,7 @@ struct WGodotResourceDataType {
 	bool concrete() const;
 	String text() const;
 	static WGodotResourceDataType from_property(const PropertyInfo &p_info);
+	static bool native_field(const StringName &p_class, const StringName &p_name, WGodotResourceDataType &r_type, Variant::Type p_literal_type = Variant::NIL);
 	static WGodotResourceDataType packed_element(Variant::Type p_type);
 	static int component_width(Variant::Type p_type);
 };
@@ -26,6 +28,8 @@ class WGodotResourceValueParser : public VariantParser::AssignmentParser {
 	using Type = WGodotResourceDataType;
 	HashMap<StringName, Type> fields;
 	StringName native_type;
+	WGodotNativeResourceFields::Dependency declaration_source;
+	HashSet<StringName> dependent_fields;
 	WGodotNamedTypes::Resolver &resolver;
 	VariantParser::AssignmentParser *custom;
 	Object *initializing = nullptr;

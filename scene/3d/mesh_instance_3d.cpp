@@ -1023,9 +1023,7 @@ void MeshInstance3D::_bind_methods() {
 	// wgodot-changes::end
 
 	// wgodot-changes::begin
-#ifdef TOOLS_ENABLED
 	ClassDB::add_native_property_pattern(get_class_static(), { "surface_material_override/", "", "set_surface_override_material", "get_surface_override_material", Variant::INT });
-#endif
 	// wgodot-changes::end
 }
 

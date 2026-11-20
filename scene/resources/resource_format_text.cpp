@@ -387,10 +387,12 @@ Ref<PackedScene> ResourceLoaderText::_parse_node_tag(const Ref<PackedScene> &p_c
 
 				// ERR_FILE_MISSING_DEPENDENCIES = Resource loading error, just skip it.
 				if (error && error != ERR_FILE_MISSING_DEPENDENCIES) {
+					// wgodot-changes::begin
 					ERR_FAIL_COND_V_MSG(
 							error != ERR_FILE_EOF,
 							Ref<PackedScene>(),
-							vformat("Parse Error: %s. [Resource file %s:%d]", error_names[error], res_path, lines));
+							vformat("Parse Error: %s. [Resource file %s:%d]", error_text.is_empty() ? String(error_names[error]) : error_text, res_path, lines));
+					// wgodot-changes::end
 
 					error = OK;
 					return p_current_scene;

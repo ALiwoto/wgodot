@@ -1,8 +1,6 @@
 // wgodot-changes::file
 #include "class_db.h"
 
-#ifdef TOOLS_ENABLED
-
 void ClassDB::add_native_property_pattern(const StringName &p_class, const NativePropertyPattern &p_pattern) {
 	Locker::Lock lock(Locker::STATE_WRITE);
 	ClassInfo *info = classes.getptr(p_class);
@@ -54,5 +52,3 @@ ClassDB::NativeProperty ClassDB::get_native_property(const StringName &p_class, 
 	}
 	return result;
 }
-
-#endif

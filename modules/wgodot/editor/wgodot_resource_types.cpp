@@ -1,6 +1,5 @@
 // wgodot-changes::file
 #include "wgodot_resource_types.h"
-#include "core/io/wgodot_native_resource_fields.h"
 #include "core/object/wgodot_class_references.h"
 
 #include "core/object/class_db.h"
@@ -260,21 +259,9 @@ bool WGodotResourceTypes::field(const StringName &p_class, const StringName &p_n
 		const Class *script = classes.getptr(name);
 		if (!script) {
 			PropertyInfo info;
-			if (!ClassDB::get_property_info(name, p_name, &info) && !WGodotNativeResourceFields::field(name, p_name, info)) {
-				const ClassDB::NativeProperty property = ClassDB::get_native_property(name, p_name, p_literal_type);
-				if (!property.collection_prefix.is_empty()) {
-					const auto entry = ClassDB::get_native_property(name, property.collection_prefix, Variant::NIL);
-					if (!entry.setter || !entry.indexed || entry.setter->get_argument_count() != 2) {
-						return false;
-					}
-					r_field.type.builtin = Variant::DICTIONARY;
-					r_field.type.elements.push_back(native_type(entry.setter->get_argument_info(0)));
-					r_field.type.elements.push_back(native_type(entry.setter->get_argument_info(1)));
-				} else {
-					if (!property.setter || property.setter->is_vararg() || property.setter->get_argument_count() != (property.indexed ? 2 : 1)) {
-						return false;
-					}
-					r_field.type = native_type(property.setter->get_argument_info(property.indexed ? 1 : 0));
+			if (!ClassDB::get_property_info(name, p_name, &info)) {
+				if (!Type::native_field(name, p_name, r_field.type, p_literal_type)) {
+					return false;
 				}
 				r_field.qualification = native_qualification(r_field.type);
 				r_field.exposed = true;

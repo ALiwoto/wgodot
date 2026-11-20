@@ -4,8 +4,16 @@
 #include "core/io/wgodot_native_resource_fields.h"
 #include "core/object/class_db.h"
 #include "scene/resources/theme.h"
+#include "scene/resources/shader.h"
 
 namespace {
+void shader_fields(const Variant &p_shader, List<PropertyInfo> &r_fields) {
+	const Ref<Shader> shader = p_shader;
+	if (shader.is_valid()) {
+		shader->get_shader_uniform_list(&r_fields, false, true);
+	}
+}
+
 bool theme_field(const String &p_name, PropertyInfo &r_info) {
 	const Vector<String> parts = p_name.split("/", true);
 	if (parts.size() < 2 || !Theme::is_valid_type_name(parts[0])) {
@@ -71,9 +79,11 @@ bool bus_field(const String &p_name, PropertyInfo &r_info) {
 void register_native_resource_fields() {
 	WGodotNativeResourceFields::register_type("Theme", &theme_field);
 	WGodotNativeResourceFields::register_type("AudioBusLayout", &bus_field);
+	WGodotNativeResourceFields::register_dependency("ShaderMaterial", { SNAME("shader"), "shader_parameter/", &shader_fields });
 }
 
 void unregister_native_resource_fields() {
 	WGodotNativeResourceFields::unregister_type("Theme");
 	WGodotNativeResourceFields::unregister_type("AudioBusLayout");
+	WGodotNativeResourceFields::unregister_type("ShaderMaterial");
 }

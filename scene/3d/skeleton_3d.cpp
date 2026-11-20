@@ -1553,7 +1553,6 @@ void Skeleton3D::_bind_methods() {
 #endif // _DISABLE_DEPRECATED
 
 	// wgodot-changes::begin
-#ifdef TOOLS_ENABLED
 	ClassDB::add_native_property_pattern(get_class_static(), { "bones/", "/name", "set_serialized_bone_name", "get_bone_name", Variant::INT });
 	ClassDB::add_native_property_pattern(get_class_static(), { "bones/", "/parent", "set_bone_parent", "get_bone_parent", Variant::INT });
 	ClassDB::add_native_property_pattern(get_class_static(), { "bones/", "/rest", "set_bone_rest", "get_bone_rest", Variant::INT });
@@ -1562,7 +1561,6 @@ void Skeleton3D::_bind_methods() {
 	ClassDB::add_native_property_pattern(get_class_static(), { "bones/", "/rotation", "set_bone_pose_rotation", "get_bone_pose_rotation", Variant::INT });
 	ClassDB::add_native_property_pattern(get_class_static(), { "bones/", "/scale", "set_bone_pose_scale", "get_bone_pose_scale", Variant::INT });
 	ClassDB::add_native_property_pattern(get_class_static(), { "bones/", "/skin_scale", "set_bone_skin_scale", "get_bone_skin_scale", Variant::INT });
-#endif
 	// wgodot-changes::end
 }
 
