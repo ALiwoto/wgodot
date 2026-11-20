@@ -415,6 +415,9 @@ private:
 				if (A->owner->sorting_priority != B->owner->sorting_priority) {
 					return A->owner->sorting_priority < B->owner->sorting_priority;
 				}
+				if (A->owner->sorting_group.sequence != B->owner->sorting_group.sequence) {
+					return A->owner->sorting_group.sequence < B->owner->sorting_group.sequence;
+				}
 				if (A->sort.priority != B->sort.priority) {
 					return A->sort.priority < B->sort.priority;
 				}

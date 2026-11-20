@@ -1093,10 +1093,10 @@ void RendererSceneCull::instance_geometry_set_sorting_subpriority(RID p_instance
 	}
 }
 
-void RendererSceneCull::instance_geometry_set_transparency_sort_group(RID p_instance, uint64_t p_group_id, const Vector3 &p_world_origin, int32_t p_order, int32_t p_layer) {
+void RendererSceneCull::instance_geometry_set_transparency_sort_group(RID p_instance, uint64_t p_group_id, const Vector3 &p_world_origin, int32_t p_order, int32_t p_layer, int64_t p_sequence) {
 	Instance *instance = instance_owner.get_or_null(p_instance);
 	ERR_FAIL_NULL(instance);
-	instance->sorting_group = { p_group_id, p_world_origin, p_order, p_layer };
+	instance->sorting_group = { p_group_id, p_world_origin, p_order, p_layer, p_sequence };
 	if (((1 << instance->base_type) & RSE::INSTANCE_GEOMETRY_MASK) && instance->base_data) {
 		InstanceGeometryData *geometry = static_cast<InstanceGeometryData *>(instance->base_data);
 		geometry->geometry_instance->set_transparency_sort_group(instance->sorting_group);

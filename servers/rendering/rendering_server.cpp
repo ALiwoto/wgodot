@@ -3340,7 +3340,7 @@ void RenderingServer::_bind_methods() {
 	// wgodot-changes::begin
 	ClassDB::bind_method(D_METHOD("instance_geometry_set_sorting_priority", "instance", "priority"), &RenderingServer::instance_geometry_set_sorting_priority);
 	ClassDB::bind_method(D_METHOD("instance_geometry_set_sorting_subpriority", "instance", "priority"), &RenderingServer::instance_geometry_set_sorting_subpriority);
-	ClassDB::bind_method(D_METHOD("instance_geometry_set_transparency_sort_group", "instance", "group_id", "world_origin", "order", "layer"), &RenderingServer::instance_geometry_set_transparency_sort_group, DEFVAL(0));
+	ClassDB::bind_method(D_METHOD("instance_geometry_set_transparency_sort_group", "instance", "group_id", "world_origin", "order", "layer", "sequence"), &RenderingServer::instance_geometry_set_transparency_sort_group, DEFVAL(0), DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("instance_geometry_set_cull_transform", "instance", "mode"), &RenderingServer::instance_geometry_set_cull_transform);
 	BIND_ENUM_CONSTANT(RSE::INSTANCE_CULL_TRANSFORM_AUTOMATIC);
 	BIND_ENUM_CONSTANT(RSE::INSTANCE_CULL_TRANSFORM_POSITIVE);

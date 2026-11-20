@@ -1077,7 +1077,7 @@ public:
 	// wgodot-changes::begin
 	virtual void instance_geometry_set_sorting_priority(RID p_instance, int32_t p_priority) override;
 	virtual void instance_geometry_set_sorting_subpriority(RID p_instance, int32_t p_priority) override;
-	virtual void instance_geometry_set_transparency_sort_group(RID p_instance, uint64_t p_group_id, const Vector3 &p_world_origin, int32_t p_order, int32_t p_layer) override;
+	virtual void instance_geometry_set_transparency_sort_group(RID p_instance, uint64_t p_group_id, const Vector3 &p_world_origin, int32_t p_order, int32_t p_layer, int64_t p_sequence) override;
 	virtual void instance_geometry_set_cull_transform(RID p_instance, RSE::InstanceCullTransform p_mode) override;
 	// wgodot-changes::end
 	virtual void instance_set_transform(RID p_instance, const Transform3D &p_transform);

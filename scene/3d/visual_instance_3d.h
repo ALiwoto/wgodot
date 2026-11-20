@@ -206,7 +206,7 @@ public:
 	// wgodot-changes::begin
 	void set_sorting_priority(int32_t p_priority);
 	void set_sorting_subpriority(int32_t p_priority);
-	void set_transparency_sort_group(uint64_t p_group_id, const Vector3 &p_world_origin, int32_t p_order, int32_t p_layer = 0);
+	void set_transparency_sort_group(uint64_t p_group_id, const Vector3 &p_world_origin, int32_t p_order, int32_t p_layer = 0, int64_t p_sequence = 0);
 	const GeometrySortGroup &get_transparency_sort_group() const { return sorting_group; }
 	int32_t get_sorting_priority() const { return sorting_priority; }
 	int32_t get_sorting_subpriority() const { return sorting_subpriority; }

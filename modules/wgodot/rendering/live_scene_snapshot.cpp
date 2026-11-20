@@ -286,7 +286,7 @@ PackedByteArray WLiveSceneProbe::snapshot(Node *p_root, Skeleton3D *p_body) {
 			}
 			const GeometrySortGroup &group = geometry->get_transparency_sort_group();
 			if (group.id) {
-				writer.record(NUMERIC, path, { "transparency/sort-group", String::num_uint64(group.id) }, { group.origin.x, group.origin.y, group.origin.z, double(group.order), double(group.layer) });
+				writer.record(NUMERIC, path, { "transparency/sort-group", String::num_uint64(group.id) }, { group.origin.x, group.origin.y, group.origin.z, double(group.order), double(group.layer), double(group.sequence) });
 			}
 			for (const WInstanceShaderParameters::Item &item : geometry->get_instance_shader_parameters()->snapshot()) {
 				if (item.gpu_index < 0) {
