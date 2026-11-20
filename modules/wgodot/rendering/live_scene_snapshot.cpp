@@ -16,6 +16,8 @@
 #include "scene/3d/skeleton_3d.h"
 #include "scene/animation/animation_player.h"
 #include "scene/3d/audio_stream_player_3d.h"
+#include "scene/2d/audio_stream_player_2d.h"
+#include "scene/audio/audio_stream_player.h"
 #include "scene/main/canvas_item.h"
 #include "scene/main/viewport.h"
 #include "scene/resources/material.h"
@@ -85,6 +87,18 @@ struct Writer {
 			vector(r_values, p_value.basis.get_column(column));
 		}
 		vector(r_values, p_value.origin);
+	}
+	template <typename Player>
+	void audio(Player *p_player, const String &p_path, int p_dimensions, const Vector3 &p_position = Vector3()) {
+		Ref<AudioStream> stream = p_player->get_stream();
+		Vector<double> values = {
+			double(p_player->is_playing()), p_player->get_playback_position(), p_player->get_volume_db(), p_player->get_pitch_scale(),
+			double(p_player->get_stream_paused()), stream.is_valid() ? stream->get_length() : 0.0,
+			double(stream.is_valid() && stream->has_loop()), double(p_player->get_max_polyphony()), double(p_dimensions)
+		};
+		vector(values, p_position);
+		record(AUDIO, p_path, { stream.is_valid() ? stream->get_path() : String(), p_player->get_bus(),
+				stream.is_valid() ? String(stream->get_class()) : String() }, values);
 	}
 	void material(const Ref<Material> &p_material, const String &p_path) {
 		if (p_material.is_null()) {
@@ -205,7 +219,7 @@ PackedByteArray WLiveSceneProbe::snapshot(Node *p_root, Skeleton3D *p_body) {
 	while (!pending.is_empty()) {
 		Node *node = pending[pending.size() - 1];
 		pending.resize(pending.size() - 1);
-		if (visited.has(node->get_instance_id()) || Object::cast_to<CanvasItem>(node)) {
+		if (visited.has(node->get_instance_id())) {
 			continue;
 		}
 		visited.insert(node->get_instance_id());
@@ -215,6 +229,11 @@ PackedByteArray WLiveSceneProbe::snapshot(Node *p_root, Skeleton3D *p_body) {
 		}
 		for (int i = node->get_child_count() - 1; i >= 0; i--) {
 			pending.push_back(node->get_child(i));
+		}
+		// UI branches can own music/UI sounds. Traverse them without capturing
+		// canvas geometry; spatial 2D players still carry useful audio metadata.
+		if (Object::cast_to<CanvasItem>(node) && !Object::cast_to<AudioStreamPlayer2D>(node)) {
+			continue;
 		}
 #ifdef MODULE_PARTICLE_EFFECTS_ENABLED
 		if (ParticleInstancePool3D *pool = Object::cast_to<ParticleInstancePool3D>(node)) {
@@ -340,9 +359,20 @@ PackedByteArray WLiveSceneProbe::snapshot(Node *p_root, Skeleton3D *p_body) {
 			Writer::color(values, decal->get_modulate());
 			writer.record(DECAL, path, textures, values);
 		}
-		if (AudioStreamPlayer3D *audio = Object::cast_to<AudioStreamPlayer3D>(node)) {
-			Ref<AudioStream> stream = audio->get_stream();
-			writer.record(AUDIO, path, { stream.is_valid() ? stream->get_path() : String() }, { double(audio->is_playing()), audio->get_playback_position(), audio->get_volume_db(), audio->get_pitch_scale() });
+		if (AudioStreamPlayer3D *audio_3d = Object::cast_to<AudioStreamPlayer3D>(node)) {
+			writer.audio(audio_3d, path, 3, audio_3d->get_global_position());
+			writer.record(NUMERIC, path, { "audio_spatial" }, {
+				double(audio_3d->get_attenuation_model()), audio_3d->get_unit_size(), audio_3d->get_max_distance(), audio_3d->get_max_db(),
+				audio_3d->get_panning_strength(), audio_3d->get_attenuation_filter_cutoff_hz(), audio_3d->get_attenuation_filter_db()
+			});
+		} else if (AudioStreamPlayer2D *audio_2d = Object::cast_to<AudioStreamPlayer2D>(node)) {
+			const Vector2 position = audio_2d->get_global_position();
+			writer.audio(audio_2d, path, 2, Vector3(position.x, position.y, 0));
+			writer.record(NUMERIC, path, { "audio_spatial_2d" }, {
+				audio_2d->get_attenuation(), audio_2d->get_max_distance(), audio_2d->get_panning_strength()
+			});
+		} else if (AudioStreamPlayer *audio = Object::cast_to<AudioStreamPlayer>(node)) {
+			writer.audio(audio, path, 0);
 		}
 		if (AnimationPlayer *animation = Object::cast_to<AnimationPlayer>(node)) {
 			const bool valid = animation->is_valid();
