@@ -65,11 +65,13 @@ void WGodotShaderDeclarations::parse(const String &p_path, Entry &r_entry) {
 	for (const auto &uniform : language.get_shader()->uniforms) {
 		if (uniform.value.scope == ShaderLanguage::ShaderNode::Uniform::SCOPE_LOCAL) {
 			r_entry.uniforms.insert(uniform.key, ShaderLanguage::uniform_to_property_info(uniform.value));
+		} else if (uniform.value.scope == ShaderLanguage::ShaderNode::Uniform::SCOPE_INSTANCE) {
+			r_entry.instance_uniforms.insert(uniform.key, ShaderLanguage::uniform_to_property_info(uniform.value));
 		}
 	}
 }
 
-Error WGodotShaderDeclarations::uniform(const String &p_path, const StringName &p_name, PropertyInfo &r_info, HashMap<String, String> &r_dependencies, String &r_error) const {
+Error WGodotShaderDeclarations::uniform(const String &p_path, const StringName &p_name, PropertyInfo &r_info, HashMap<String, String> &r_dependencies, String &r_error, bool p_instance) const {
 	std::shared_ptr<Entry> entry;
 	{
 		MutexLock lock(mutex);
@@ -91,10 +93,10 @@ Error WGodotShaderDeclarations::uniform(const String &p_path, const StringName &
 		r_error = entry->message;
 		return entry->error;
 	}
-	const PropertyInfo *info = entry->uniforms.getptr(p_name);
+	const PropertyInfo *info = (p_instance ? entry->instance_uniforms : entry->uniforms).getptr(p_name);
 	if (!info) {
-		r_error = "No material uniform '" + String(p_name) + "' in " + p_path;
-		return ERR_INVALID_DATA;
+		r_error = "No " + String(p_instance ? "instance" : "material") + " uniform '" + String(p_name) + "' in " + p_path;
+		return ERR_DOES_NOT_EXIST;
 	}
 	r_info = *info;
 	return OK;

@@ -10,6 +10,8 @@ class WGodotResourceTypes;
 class WGodotExportTarget;
 
 namespace WGodotResourceSyntax {
+using ShaderPaths = Vector<String>;
+using ShaderBindings = HashMap<String, ShaderPaths>;
 struct Result {
 	Error error = OK;
 	int line = 1;
@@ -19,6 +21,8 @@ struct Result {
 	HashMap<String, String> declarations;
 	HashMap<String, StringName> nodes;
 	HashMap<String, HashSet<StringName>> properties;
+	HashMap<String, ShaderPaths> resource_shaders;
+	HashMap<String, ShaderBindings> node_shaders;
 };
 
 // Parses source without loading dependencies, constructing scenes or running scripts.

@@ -363,6 +363,9 @@ public:
 	// wgodot-changes::end
 	FUNC3(material_set_param, RID, const StringName &, const Variant &)
 	FUNC2RC(Variant, material_get_param, RID, const StringName &)
+	// wgodot-changes::begin
+	FUNC2SC(material_get_instance_shader_parameter_list, RID, List<PropertyInfo> *)
+	// wgodot-changes::end
 
 	FUNC2(material_set_render_priority, RID, int)
 	FUNC2(material_set_next_pass, RID, RID)

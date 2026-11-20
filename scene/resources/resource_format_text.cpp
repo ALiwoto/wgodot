@@ -64,6 +64,7 @@
 #include "core/object/script_language.h"
 // wgodot-changes::begin
 #include "wgodot_scene_types.h"
+#include "wgodot_scene_shader_fields.h"
 
 #include "core/io/wgodot_named_types.h"
 #include "core/io/wgodot_resource_value.h"
@@ -372,10 +373,15 @@ Ref<PackedScene> ResourceLoaderText::_parse_node_tag(const Ref<PackedScene> &p_c
 
 			// wgodot-changes::begin
 			const WGodotSceneTypes::Type inherited_value_type = inherited_types.resolve(node_path);
+			const StringName value_native_type = declared_type.is_empty() ? inherited_value_type.native : WGodotNamedTypes::native_type(declared_type);
 			WGodotResourceValueParser value_assignment(
-					declared_type.is_empty() ? inherited_value_type.native : WGodotNamedTypes::native_type(declared_type),
+					value_native_type,
 					named_script.is_valid() ? named_script : inherited_value_type.script, named_types);
 			value_assignment.set_node_paths(path_properties);
+			WGodotSceneShaderFields shader_fields(inherited_value_type.shader_bindings);
+			if (ClassDB::is_parent_class(value_native_type, SNAME("GeometryInstance3D"))) {
+				value_assignment.set_field_resolver(&shader_fields);
+			}
 			// wgodot-changes::end
 			while (true) {
 				String assign;
@@ -405,6 +411,7 @@ Ref<PackedScene> ResourceLoaderText::_parse_node_tag(const Ref<PackedScene> &p_c
 						error_text = "Script assignments are forbidden. Directly use the class_name name on the type attribute.";
 						ERR_FAIL_V_MSG(Ref<PackedScene>(), _get_error_string());
 					}
+					shader_fields.assign(assign, value);
 					// wgodot-changes::end
 					StringName assign_name = assign;
 					int nameidx = p_current_scene->get_state()->add_name(assign_name);

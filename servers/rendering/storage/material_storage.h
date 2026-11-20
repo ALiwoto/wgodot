@@ -115,6 +115,15 @@ public:
 	};
 
 	virtual void material_get_instance_shader_parameters(RID p_material, List<InstanceShaderParam> *r_parameters) = 0;
+	// wgodot-changes::begin
+	void material_get_instance_shader_parameter_list(RID p_material, List<PropertyInfo> *r_parameters) {
+		List<InstanceShaderParam> parameters;
+		material_get_instance_shader_parameters(p_material, &parameters);
+		for (const InstanceShaderParam &parameter : parameters) {
+			r_parameters->push_back(parameter.info);
+		}
+	}
+	// wgodot-changes::end
 
 	virtual void material_update_dependency(RID p_material, DependencyTracker *p_instance) = 0;
 };

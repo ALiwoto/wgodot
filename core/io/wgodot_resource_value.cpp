@@ -367,6 +367,14 @@ Error WGodotResourceValueParser::parse(const String &p_name, VP::Token &p_token,
 
 Error WGodotResourceValueParser::parse_value(const String &p_name, VP::Token &p_token, Variant &r_value, VP::Stream *p_stream, int &r_line, String &r_error, VP::ResourceParser *p_resources) {
 	const Type *type = fields.getptr(p_name);
+	Type contextual_type;
+	if (field_resolver) {
+		bool found = false;
+		RETURN_IF_ERROR(field_resolver->field(p_name, contextual_type, found, r_error));
+		if (found) {
+			type = &contextual_type;
+		}
+	}
 	if (!type) {
 		if (!declarations_required) {
 			return VP::parse_value(p_token, r_value, p_stream, r_line, r_error, p_resources, true);
@@ -413,6 +421,14 @@ Ref<Script> WGodotResourceValueParser::element_script(const Type &p_type) {
 
 Error WGodotResourceValueParser::value(VP::Token &p_token, Variant &r_value, const Type &p_type, VP::Stream *p_stream, int &r_line, String &r_error, VP::ResourceParser *p_resources, int p_depth) {
 	RETURN_IF_ERROR(value_data(p_token, r_value, p_type, p_stream, r_line, r_error, p_resources, p_depth));
+	const Variant::Type actual = r_value.get_type();
+	if (declarations_required && actual != p_type.builtin &&
+			!(actual == Variant::NIL && p_type.builtin == Variant::OBJECT) &&
+			!(actual == Variant::INT && p_type.builtin == Variant::FLOAT) &&
+			!(actual == Variant::STRING && p_type.builtin == Variant::STRING_NAME)) {
+		r_error = "Expected " + p_type.text() + ", got " + Variant::get_type_name(actual) + ".";
+		return ERR_PARSE_ERROR;
+	}
 	if (p_type.value_container) {
 		r_value.wgodot_make_value_container();
 	}

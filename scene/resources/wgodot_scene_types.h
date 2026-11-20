@@ -8,6 +8,7 @@ namespace WGodotSceneTypes {
 struct Type {
 	StringName native;
 	Ref<Script> script;
+	HashMap<StringName, Variant> shader_bindings;
 };
 // Instances authored earlier in the text, indexed without walking ordinary nodes.
 class InheritedTypes {

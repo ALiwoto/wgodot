@@ -25,7 +25,16 @@ struct WGodotResourceDataType {
 // Resolves omitted value/container constructors from declarations, without executing
 // property getters or constructing nodes just to discover their field types.
 class WGodotResourceValueParser : public VariantParser::AssignmentParser {
+public:
+	class FieldResolver {
+	public:
+		virtual Error field(const String &p_name, WGodotResourceDataType &r_type, bool &r_found, String &r_error) = 0;
+		virtual ~FieldResolver() = default;
+	};
+
+private:
 	using Type = WGodotResourceDataType;
+	FieldResolver *field_resolver = nullptr;
 	HashMap<StringName, Type> fields;
 	StringName native_type;
 	WGodotNativeResourceFields::Dependency declaration_source;
@@ -44,6 +53,7 @@ public:
 	WGodotResourceValueParser(const StringName &p_native, const Ref<Script> &p_script, WGodotNamedTypes::Resolver &p_resolver, VariantParser::AssignmentParser *p_custom = nullptr);
 	void initialize_owned(Object *p_resource) { initializing = p_resource; }
 	void require_declarations(bool p_required) { declarations_required = p_required; }
+	void set_field_resolver(FieldResolver *p_resolver) { field_resolver = p_resolver; }
 	void set_node_paths(const HashSet<StringName> &p_properties);
 	Error parse(const String &p_name, VariantParser::Token &p_token, VariantParser::Stream *p_stream, int &r_line, String &r_error, VariantParser::ResourceParser *p_resources) override;
 	Error parse_value(const String &p_name, VariantParser::Token &p_token, Variant &r_value, VariantParser::Stream *p_stream, int &r_line, String &r_error, VariantParser::ResourceParser *p_resources) override;

@@ -1,5 +1,6 @@
 // wgodot-changes::file
 #include "wgodot_scene_types.h"
+#include "wgodot_scene_shader_fields.h"
 
 namespace {
 String path_text(const NodePath &p_path) {
@@ -27,11 +28,9 @@ WGodotSceneTypes::Type WGodotSceneTypes::resolve(const Ref<SceneState> &p_state,
 			for (int j = 0; j < p_state->get_node_property_count(i); j++) {
 				if (p_state->get_node_property_name(i, j) == SNAME("script")) {
 					result.script = p_state->get_node_property_value(i, j);
-					break;
+				} else if (WGodotSceneShaderFields::is_binding(p_state->get_node_property_name(i, j))) {
+					result.shader_bindings.insert(p_state->get_node_property_name(i, j), p_state->get_node_property_value(i, j));
 				}
-			}
-			if (!result.native.is_empty()) {
-				return result;
 			}
 		}
 		if (p_state->get_node_instance(i).is_valid()) {
@@ -50,7 +49,14 @@ WGodotSceneTypes::Type WGodotSceneTypes::resolve(const Ref<SceneState> &p_state,
 	} else if (p_state->get_base_scene_state().is_valid()) {
 		inherited = resolve(p_state->get_base_scene_state(), path);
 	}
-	result.native = inherited.native;
+	if (result.native.is_empty()) {
+		result.native = inherited.native;
+	}
+	for (const auto &binding : inherited.shader_bindings) {
+		if (!result.shader_bindings.has(binding.key)) {
+			result.shader_bindings.insert(binding.key, binding.value);
+		}
+	}
 	if (result.script.is_null()) {
 		result.script = inherited.script;
 	}

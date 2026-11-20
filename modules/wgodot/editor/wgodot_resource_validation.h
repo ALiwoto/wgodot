@@ -31,7 +31,7 @@ class WGodotResourceValidation : public VariantParser::AssignmentParser {
 	HashMap<String, Reference> external;
 	HashMap<String, Reference> internal;
 	HashMap<String, StringName> resource_headers;
-	HashMap<String, WGodotResourceSyntax::Result> scenes;
+	HashMap<String, WGodotResourceSyntax::Result> resources;
 	HashSet<String> owned_scene_stack;
 	HashSet<String> *scene_stack;
 	HashSet<String> assignments;
@@ -44,6 +44,7 @@ class WGodotResourceValidation : public VariantParser::AssignmentParser {
 	bool nested_scene = false;
 	String nested_scene_id;
 	HashMap<String, HashMap<String, StringName>> nested_nodes;
+	HashMap<String, HashMap<String, WGodotResourceSyntax::ShaderBindings>> nested_shaders;
 	String current_property;
 	String resource_section;
 	bool collect_properties;
@@ -63,6 +64,9 @@ class WGodotResourceValidation : public VariantParser::AssignmentParser {
 	Error reference(Stream *p_stream, const String &p_kind, Type &r_type, Qualification &r_qualification, int &r_line, String &r_error);
 	Error field(const StringName &p_class, const StringName &p_name, Type &r_type, Qualification &r_qualification, String &r_error, Variant::Type p_literal_type = Variant::NIL);
 	Error resource_type(const String &p_path, StringName &r_type, String &r_error);
+	Error resource_declarations(const String &p_path, const WGodotResourceSyntax::Result *&r_result, String &r_error);
+	Error resource_shaders(const String &p_reference, WGodotResourceSyntax::ShaderPaths &r_shaders, String &r_error);
+	Error instance_field(const String &p_name, Type &r_type, bool &r_found, String &r_error);
 	Error instance(const Reference &p_reference, const String &p_prefix, String &r_error);
 	Error class_type(const StringName &p_type, const StringName &p_base, String &r_error);
 	Error literal(const Variant &p_value, const Type &p_expected, const Qualification &p_qualification, String &r_error);

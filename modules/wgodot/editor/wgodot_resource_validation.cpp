@@ -7,6 +7,7 @@
 #include "core/io/wgodot_file_stamp.h"
 #include "core/io/wgodot_global_resources.h"
 #include "editor/import/3d/wgodot_scene_declarations.h"
+#include "scene/resources/wgodot_scene_shader_fields.h"
 
 #include "modules/wgodot/codecs/resource_codec.h"
 #include "modules/wgodot/serialization/wire.h"
@@ -531,6 +532,14 @@ Error WGodotResourceValidation::parse(const String &p_name, Token &p_token, Stre
 			element.immutable = expected.elements.size() == 1 && expected.elements[0].builtin == Variant::OBJECT;
 			qualification.elements.push_back(element);
 		}
+	} else if (node_section && p_name.begins_with("instance_shader_parameters/") && types->derives(owner_type, SNAME("GeometryInstance3D"))) {
+		bool found = false;
+		RETURN_IF_ERROR(instance_field(p_name, expected, found, r_error));
+		if (!found) {
+			// Runtime-bound materials still require an explicitly registered
+			// typed setter; unnamed values require a preceding shader binding.
+			RETURN_IF_ERROR(field(owner_type, p_name, expected, qualification, r_error, literal_type(p_token)));
+		}
 	} else {
 		// Select only explicitly registered native overloads. This does not
 		// infer a schema for undeclared fields or application Variant values.
@@ -542,6 +551,18 @@ Error WGodotResourceValidation::parse(const String &p_name, Token &p_token, Stre
 	RETURN_IF_ERROR(value(p_token, p_stream, expected, qualification, actual, r_line, r_error));
 	if (p_name == "shader" && types->derives(owner_type, SNAME("ShaderMaterial"))) {
 		shader_path = reference_path;
+		if (!shader_path.is_empty()) {
+			result.resource_shaders[resource_section].push_back(shader_path);
+		}
+	} else if (node_section && WGodotSceneShaderFields::is_binding(p_name) && types->derives(owner_type, SNAME("GeometryInstance3D"))) {
+		WGodotResourceSyntax::ShaderPaths shaders;
+		RETURN_IF_ERROR(resource_shaders(reference_path, shaders, r_error));
+		result.node_shaders[owner_node].insert(p_name, shaders);
+	} else if ((p_name == "next_pass" && types->derives(owner_type, SNAME("Material"))) ||
+			(p_name == "material" && types->derives(owner_type, SNAME("Mesh")))) {
+		WGodotResourceSyntax::ShaderPaths shaders;
+		RETURN_IF_ERROR(resource_shaders(reference_path, shaders, r_error));
+		result.resource_shaders[resource_section].append_array(shaders);
 	}
 	return OK;
 }
@@ -585,17 +606,103 @@ Error WGodotResourceValidation::header(const StringName &p_type, String &r_error
 	return types ? class_type(p_type, SNAME("Resource"), r_error) : OK;
 }
 
+Error WGodotResourceValidation::resource_declarations(const String &p_path, const WGodotResourceSyntax::Result *&r_result, String &r_error) {
+	if (!resources.has(p_path)) {
+		if (scene_stack->has(p_path) || p_path == path) {
+			return fail("Cyclic resource declaration: " + p_path, r_error);
+		}
+		const Ref<FileAccess> file = FileAccess::open(p_path, FileAccess::READ);
+		if (file.is_null()) {
+			return fail("Cannot read resource declarations: " + p_path, r_error);
+		}
+		scene_stack->insert(path);
+		const auto checked = WGodotResourceSyntax::check(file, types, scene_stack);
+		scene_stack->erase(path);
+		if (checked.error != OK) {
+			return fail(p_path + ":" + itos(checked.line) + ": " + checked.message, r_error);
+		}
+		result.dependencies.insert(p_path, WGodotFileStamp::get(p_path));
+		for (const auto &dependency : checked.dependencies) {
+			result.dependencies.insert(dependency.key, dependency.value);
+		}
+		for (const auto &declaration : checked.declarations) {
+			result.declarations.insert(declaration.key, declaration.value);
+		}
+		resources.insert(p_path, checked);
+	}
+	r_result = resources.getptr(p_path);
+	return OK;
+}
+
+Error WGodotResourceValidation::resource_shaders(const String &p_reference, WGodotResourceSyntax::ShaderPaths &r_shaders, String &r_error) {
+	const WGodotResourceSyntax::ShaderPaths *shaders = nullptr;
+	if (p_reference.begins_with("::")) {
+		shaders = result.resource_shaders.getptr(p_reference.substr(2));
+	} else if (p_reference.get_extension() == "tres") {
+		const WGodotResourceSyntax::Result *source = nullptr;
+		RETURN_IF_ERROR(resource_declarations(p_reference, source, r_error));
+		shaders = source->resource_shaders.getptr(String());
+	}
+	if (shaders) {
+		r_shaders = *shaders;
+	}
+	return OK;
+}
+
+Error WGodotResourceValidation::instance_field(const String &p_name, Type &r_type, bool &r_found, String &r_error) {
+	r_found = false;
+	const auto *bindings = result.node_shaders.getptr(owner_node);
+	if (!bindings) {
+		return OK;
+	}
+	const auto *override = bindings->getptr("material_override");
+	const bool has_override = override && !override->is_empty();
+	HashSet<String> shaders;
+	for (const auto &binding : *bindings) {
+		if (!has_override || binding.key == "material_override" || binding.key == "material_overlay") {
+			for (const String &shader : binding.value) {
+				shaders.insert(shader);
+			}
+		}
+	}
+	for (const String &shader : shaders) {
+		PropertyInfo info;
+		String message;
+		const Error error = types->get_shaders().uniform(shader, p_name.trim_prefix("instance_shader_parameters/"), info, result.dependencies, message, true);
+		if (error == ERR_DOES_NOT_EXIST) {
+			continue;
+		}
+		if (error != OK) {
+			return fail(message, r_error);
+		}
+		const Type type = Type::from_property(info);
+		if (r_found && r_type.text() != type.text()) {
+			return fail("Conflicting material declarations for " + p_name + ".", r_error);
+		}
+		r_found = true;
+		r_type = type;
+	}
+	if (!r_found && !shaders.is_empty()) {
+		return fail("No bound shader declares " + p_name + ".", r_error);
+	}
+	return OK;
+}
+
 Error WGodotResourceValidation::instance(const Reference &p_reference, const String &p_prefix, String &r_error) {
 	if (p_reference.type != SNAME("PackedScene")) {
 		return fail("A scene instance must reference a PackedScene.", r_error);
 	}
 	HashMap<String, StringName> nodes;
+	HashMap<String, WGodotResourceSyntax::ShaderBindings> shaders;
 	if (p_reference.path.begins_with("::")) {
 		const auto *source = nested_nodes.getptr(p_reference.path.substr(2));
 		if (!source) {
 			return fail("Embedded scene has no declared nodes.", r_error);
 		}
 		nodes = *source;
+		if (const auto *bindings = nested_shaders.getptr(p_reference.path.substr(2))) {
+			shaders = *bindings;
+		}
 	} else if (p_reference.path.get_extension() != "tscn") {
 		const String declarations = WGodotSceneDeclarations::path_for_source(p_reference.path);
 		result.dependencies.insert(declarations, WGodotFileStamp::get(declarations));
@@ -604,35 +711,19 @@ Error WGodotResourceValidation::instance(const Reference &p_reference, const Str
 			return fail("Imported scene declarations are missing or invalid; reimport " + p_reference.path, r_error);
 		}
 	} else {
-		if (!scenes.has(p_reference.path)) {
-			if (scene_stack->has(p_reference.path) || p_reference.path == path) {
-				return fail("Cyclic scene instance: " + p_reference.path, r_error);
-			}
-			scene_stack->insert(path);
-			Ref<FileAccess> file = FileAccess::open(p_reference.path, FileAccess::READ);
-			if (file.is_null()) {
-				return fail("Cannot read scene instance: " + p_reference.path, r_error);
-			}
-			const auto checked = WGodotResourceSyntax::check(file, types, scene_stack);
-			scene_stack->erase(path);
-			if (checked.error != OK) {
-				return fail(p_reference.path + ":" + itos(checked.line) + ": " + checked.message, r_error);
-			}
-			for (const auto &dependency : checked.dependencies) {
-				result.dependencies.insert(dependency.key, dependency.value);
-			}
-			for (const auto &declaration : checked.declarations) {
-				result.declarations.insert(declaration.key, declaration.value);
-			}
-			scenes.insert(p_reference.path, checked);
-		}
-		nodes = scenes[p_reference.path].nodes;
+		const WGodotResourceSyntax::Result *source = nullptr;
+		RETURN_IF_ERROR(resource_declarations(p_reference.path, source, r_error));
+		nodes = source->nodes;
+		shaders = source->node_shaders;
 	}
 	for (const auto &node : nodes) {
 		result.declarations.insert(node.value, types->signature(node.value));
 		const String name = node.key == "." ? p_prefix : p_prefix == "." ? node.key
 																		 : p_prefix.path_join(node.key);
 		result.nodes.insert(name, node.value);
+		if (const auto *bindings = shaders.getptr(node.key)) {
+			result.node_shaders.insert(name, *bindings);
+		}
 	}
 	return OK;
 }
@@ -672,7 +763,9 @@ Error WGodotResourceValidation::tag(const VP::Tag &p_tag, const StringName &p_re
 	} else if (p_tag.name == "sub_resource") {
 		if (nested_scene) {
 			nested_nodes.insert(nested_scene_id, result.nodes);
+			nested_shaders.insert(nested_scene_id, result.node_shaders);
 			result.nodes.clear();
+			result.node_shaders.clear();
 		}
 		const String id = p_tag.fields["id"];
 		if (internal.has(id)) {
@@ -687,7 +780,9 @@ Error WGodotResourceValidation::tag(const VP::Tag &p_tag, const StringName &p_re
 	} else if (p_tag.name == "resource") {
 		if (nested_scene) {
 			nested_nodes.insert(nested_scene_id, result.nodes);
+			nested_shaders.insert(nested_scene_id, result.node_shaders);
 			result.nodes.clear();
+			result.node_shaders.clear();
 			nested_scene = false;
 		}
 		owner_type = p_resource_type;

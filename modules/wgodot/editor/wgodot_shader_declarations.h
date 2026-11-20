@@ -16,6 +16,7 @@ class WGodotShaderDeclarations {
 		Error error = OK;
 		String message;
 		HashMap<StringName, PropertyInfo> uniforms;
+		HashMap<StringName, PropertyInfo> instance_uniforms;
 		HashMap<String, String> dependencies;
 	};
 	mutable Mutex mutex;
@@ -23,5 +24,5 @@ class WGodotShaderDeclarations {
 	static void parse(const String &p_path, Entry &r_entry);
 
 public:
-	Error uniform(const String &p_path, const StringName &p_name, PropertyInfo &r_info, HashMap<String, String> &r_dependencies, String &r_error) const;
+	Error uniform(const String &p_path, const StringName &p_name, PropertyInfo &r_info, HashMap<String, String> &r_dependencies, String &r_error, bool p_instance = false) const;
 };
