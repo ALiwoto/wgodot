@@ -81,21 +81,18 @@ void AudioStreamPlaybackPolyphonic::stop() {
 		return;
 	}
 
-	bool locked = false;
+	// wgodot-changes::begin
+	// One lock covers every voice. Locking per active voice and unlocking only
+	// once leaves the recursive driver mutex held when several voices stop.
+	AudioServer::get_singleton()->lock();
 	for (Stream &s : streams) {
-		if (s.active.is_set()) {
-			// Need locking because something may still be mixing.
-			locked = true;
-			AudioServer::get_singleton()->lock();
-		}
 		s.active.clear();
 		s.finish_request.clear();
 		s.stream_playback.unref();
 		s.stream.unref();
 	}
-	if (locked) {
-		AudioServer::get_singleton()->unlock();
-	}
+	AudioServer::get_singleton()->unlock();
+	// wgodot-changes::end
 
 	active = false;
 }

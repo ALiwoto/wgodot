@@ -347,6 +347,15 @@ int AudioStreamPlaybackGroup::mix(AudioFrame *p_buffer, float p_rate_scale, int 
 			start_children();
 		}
 	}
+	const float gain = playback_gain();
+	for (int i = 0; i < mixed; i++) {
+		p_buffer[i] *= gain;
+	}
+	position += mixed * seconds_per_frame;
+	return mixed;
+}
+
+float AudioStreamPlaybackGroup::playback_gain() const {
 	float gain = volume;
 	if (group->volume_parameter_curve.is_valid()) {
 		MutexLock lock(parameter_mutex);
@@ -358,11 +367,7 @@ int AudioStreamPlaybackGroup::mix(AudioFrame *p_buffer, float p_rate_scale, int 
 			gain = 0.0;
 		}
 	}
-	for (int i = 0; i < mixed; i++) {
-		p_buffer[i] *= gain;
-	}
-	position += mixed * seconds_per_frame;
-	return mixed;
+	return gain;
 }
 
 void AudioStreamPlaybackGroup::set_parameter(const StringName &p_name, const Variant &p_value) {

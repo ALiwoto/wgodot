@@ -70,6 +70,9 @@ private:
 
 	static constexpr int64_t VOLUME_VECTOR_SIZE = AuSC::MAX_CHANNELS_PER_BUS;
 
+	// wgodot-changes::begin
+	friend class WAudioPlaybackProbe;
+	// wgodot-changes::end
 	AudioStreamPlayerInternal *internal = nullptr;
 
 	SafeNumeric<float> setplay{ -1.0 };

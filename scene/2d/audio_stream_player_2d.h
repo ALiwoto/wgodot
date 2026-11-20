@@ -48,6 +48,9 @@ private:
 
 	};
 
+	// wgodot-changes::begin
+	friend class WAudioPlaybackProbe;
+	// wgodot-changes::end
 	AudioStreamPlayerInternal *internal = nullptr;
 
 	SafeNumeric<float> setplay{ -1.0 };

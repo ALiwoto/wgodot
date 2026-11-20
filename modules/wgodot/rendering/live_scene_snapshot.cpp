@@ -1,5 +1,6 @@
 // wgodot-changes::file
 #include "live_scene_probe.h"
+#include "modules/wgodot/audio/playback_snapshot.h"
 #ifdef TOOLS_ENABLED
 #include "core/io/stream_peer.h"
 #include "core/io/marshalls.h"
@@ -99,6 +100,17 @@ struct Writer {
 		vector(values, p_position);
 		record(AUDIO, p_path, { stream.is_valid() ? stream->get_path() : String(), p_player->get_bus(),
 				stream.is_valid() ? String(stream->get_class()) : String() }, values);
+		const WAudioPlaybackProbe::Snapshot snapshot = WAudioPlaybackProbe::player(p_player);
+		record(NUMERIC, p_path, { "audio_playbacks" }, { 1.0, double(snapshot.voices.size()) });
+		for (const WAudioPlaybackProbe::Voice &voice : snapshot.voices) {
+			record(NUMERIC, p_path + "#" + voice.path, { "audio_voice", p_path, voice.stream_path, voice.stream_class }, {
+				voice.position, voice.duration, voice.volume, voice.pitch, voice.delay, double(voice.loops), double(voice.selection),
+				double(voice.playing), double(voice.pending), double(voice.finishing), double(voice.leaf), double(voice.children_supported), double(voice.looping)
+			});
+		}
+		for (const String &error : snapshot.errors) {
+			record(NUMERIC, p_path, { "audio_error", error }, {});
+		}
 	}
 	void material(const Ref<Material> &p_material, const String &p_path) {
 		if (p_material.is_null()) {

@@ -12,6 +12,7 @@ class AudioStreamGroup : public AudioStream {
 	GDCLASS(AudioStreamGroup, AudioStream);
 	OBJ_SAVE_TYPE(AudioStream);
 	friend class AudioStreamPlaybackGroup;
+	friend class WAudioPlaybackProbe;
 
 public:
 	enum Mode { PARALLEL, SEQUENTIAL, RANDOM, SHUFFLE, SWITCH };
@@ -89,6 +90,7 @@ VARIANT_ENUM_CAST(AudioStreamGroup::Mode);
 class AudioStreamPlaybackGroup : public AudioStreamPlayback {
 	GDCLASS(AudioStreamPlaybackGroup, AudioStreamPlayback);
 	friend class AudioStreamGroup;
+	friend class WAudioPlaybackProbe;
 	Ref<AudioStreamGroup> group;
 	Vector<Ref<AudioStreamPlayback>> children;
 	HashMap<StringName, Variant> parameters;
@@ -112,6 +114,7 @@ class AudioStreamPlaybackGroup : public AudioStreamPlayback {
 	void finish_seek();
 	void advance_to(double p_time);
 	int mix_children(AudioFrame *p_buffer, float p_rate_scale, int p_frames);
+	float playback_gain() const;
 
 protected:
 	static void _bind_methods() {}

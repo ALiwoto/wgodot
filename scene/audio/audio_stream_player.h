@@ -49,6 +49,9 @@ public:
 	};
 
 private:
+	// wgodot-changes::begin
+	friend class WAudioPlaybackProbe;
+	// wgodot-changes::end
 	AudioStreamPlayerInternal *internal = nullptr;
 
 	MixTarget mix_target = MIX_TARGET_STEREO;
