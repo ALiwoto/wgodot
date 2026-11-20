@@ -96,7 +96,10 @@ Vector3 ParticleSpriteProfile3D::scale_at(double p_relative_age, Vector3 p_initi
 		if (size_scale_maximum.is_valid()) {
 			multiplier += (size_scale_maximum->sample(p_relative_age, Ref<RandomStream32>(), p_task_ratio) - multiplier) * p_random->next_weight(size_scale_axis_lock);
 		}
-		scale = scale.abs() * multiplier;
+		// Still sample an overwritten birth modifier so its random stream advances.
+		if (!p_spawning || get_size_scale_on_spawn()) {
+			scale = scale.abs() * multiplier;
+		}
 	}
 	return scale_size_over_life(scale, p_initial_size, p_relative_age, p_life_random, p_spawning, p_velocity, p_task_ratio);
 }
@@ -116,7 +119,10 @@ double ParticleMotionProfile3D::sample_frame(double p_relative_age, const Ref<Ra
 Vector3 ParticleMeshProfile3D::scale_at(double p_relative_age, Vector3 p_initial_size, const Ref<RandomStream32> &p_random, const Ref<RandomStream32> &p_life_random, bool p_spawning, Vector3 p_velocity, double p_task_ratio) const {
 	Vector3 scale = p_initial_size;
 	if (get_size_scale().is_valid()) {
-		scale = scale.abs() * get_size_scale()->sample(p_relative_age, p_random, p_task_ratio);
+		const Vector3 multiplier = get_size_scale()->sample(p_relative_age, p_random, p_task_ratio);
+		if (!p_spawning || get_size_scale_on_spawn()) {
+			scale = scale.abs() * multiplier;
+		}
 	}
 	scale = scale_size_over_life(scale, p_initial_size, p_relative_age, p_life_random, p_spawning, p_velocity, p_task_ratio);
 	for (int axis : flattened_axes) {

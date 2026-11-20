@@ -64,6 +64,9 @@ void ParticleMotionProfile3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_size_life_spawn_start", "value"), &ParticleMotionProfile3D::set_size_life_spawn_start);
 	ClassDB::bind_method(D_METHOD("get_size_life_spawn_start"), &ParticleMotionProfile3D::get_size_life_spawn_start);
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "size_life_spawn_start"), "set_size_life_spawn_start", "get_size_life_spawn_start");
+	ClassDB::bind_method(D_METHOD("set_size_scale_on_spawn", "value"), &ParticleMotionProfile3D::set_size_scale_on_spawn);
+	ClassDB::bind_method(D_METHOD("get_size_scale_on_spawn"), &ParticleMotionProfile3D::get_size_scale_on_spawn);
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "size_scale_on_spawn"), "set_size_scale_on_spawn", "get_size_scale_on_spawn");
 	ClassDB::bind_method(D_METHOD("set_inherit_parent_rotation", "value"), &ParticleMotionProfile3D::set_inherit_parent_rotation);
 	ClassDB::bind_method(D_METHOD("get_inherit_parent_rotation"), &ParticleMotionProfile3D::get_inherit_parent_rotation);
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "inherit_parent_rotation"), "set_inherit_parent_rotation", "get_inherit_parent_rotation");

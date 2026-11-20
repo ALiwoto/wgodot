@@ -25,6 +25,7 @@ class ParticleMotionProfile3D : public Resource {
 	Ref<ParticleBirthRule3D> initial_velocity;
 	Ref<ParticleVectorCurve3D> source_movement;
 	Ref<ParticleVectorCurve3D> size_scale;
+	bool size_scale_on_spawn = true;
 	bool size_by_speed = false;
 	Vector2 size_speed_scale;
 	Vector2 size_speed_maximum = Vector2(1, 1);
@@ -95,6 +96,8 @@ public:
 	int get_size_speed_life_start() const { return size_speed_life_start; }
 	void set_size_scale(const Ref<ParticleVectorCurve3D> & p_value) { size_scale = p_value; }
 	Ref<ParticleVectorCurve3D> get_size_scale() const { return size_scale; }
+	void set_size_scale_on_spawn(bool p_value) { size_scale_on_spawn = p_value; }
+	bool get_size_scale_on_spawn() const { return size_scale_on_spawn; }
 	void set_size_over_life(const TypedArray<ParticleVectorCurve3D> & p_value) { size_over_life = p_value; }
 	TypedArray<ParticleVectorCurve3D> get_size_over_life() const { return size_over_life; }
 	void set_size_life_spawn_start(int p_value) { size_life_spawn_start = p_value; }
