@@ -35,6 +35,9 @@ public:
 		int group_mode = -1;
 		int group_streams = 0;
 		bool group_loop = false;
+		int pan_channels = 0;
+		bool pan_spatial = false;
+		Vector<double> pan_matrix;
 	};
 	struct Route {
 		String bus;

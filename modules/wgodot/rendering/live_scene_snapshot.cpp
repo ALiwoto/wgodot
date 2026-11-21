@@ -124,6 +124,11 @@ struct Writer {
 					double(voice.input_channels), double(voice.sample_rate)
 				});
 			}
+			if (voice.pan_channels > 0) {
+				Vector<double> pan = { double(voice.pan_channels), double(voice.pan_spatial) };
+				pan.append_array(voice.pan_matrix);
+				record(NUMERIC, p_path + "#" + voice.path, { "audio_pan" }, pan);
+			}
 		}
 		for (const WAudioPlaybackProbe::Mixer &mixer : snapshot.mixers) {
 			record(NUMERIC, p_path + "#" + mixer.path, { "audio_mixer", p_path }, {

@@ -57,6 +57,9 @@
 		<member name="panning_enabled" type="bool" setter="set_panning_enabled" getter="is_panning_enabled" default="true">
 			If [code]false[/code], routes the stream's left/right channels to the front stereo speakers at unity gain before volume and distance attenuation. Distance, filtering, area routing and Doppler remain active. This differs from [member panning_strength] set to zero, which retains the panner's centered gain.
 		</member>
+		<member name="stream_spatialization_enabled" type="bool" setter="set_stream_spatialization_enabled" getter="is_stream_spatialization_enabled" default="true">
+			Allows per-stream spatialization through the listener frame supplied to the playback graph. Disable this to retain non-spatial channel identity in an [AudioStreamPanner], while distance attenuation remains active. This is independent of the player's outer [member panning_enabled].
+		</member>
 		<!-- wgodot-changes::end -->
 		<member name="area_mask" type="int" setter="set_area_mask" getter="get_area_mask" default="0">
 			Determines which [Area3D] layers affect the sound for reverb and audio bus effects. Areas can be used to redirect [AudioStream]s so that they play in a certain audio bus. An example of how you might use this is making a "water" area so that sounds played in the water are redirected through an audio bus to make them sound like they are being played underwater.

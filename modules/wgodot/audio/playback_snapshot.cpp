@@ -15,6 +15,7 @@
 #endif
 #ifdef MODULE_AUDIO_GRAPH_ENABLED
 #include "modules/audio_graph/audio_stream_group.h"
+#include "modules/audio_graph/audio_stream_panner.h"
 #endif
 #ifdef MODULE_INTERACTIVE_MUSIC_ENABLED
 #include "modules/interactive_music/audio_stream_interactive.h"
@@ -89,6 +90,15 @@ void WAudioPlaybackProbe::append(Snapshot &r_snapshot, const Ref<AudioStream> &p
 		}
 	}
 #ifdef MODULE_AUDIO_GRAPH_ENABLED
+	else if (Ref<AudioStreamPlaybackPanner> panner = p_playback; panner.is_valid()) {
+		voice.children_supported = true;
+		voice.pan_channels = panner->settings.input_channels;
+		voice.pan_spatial = panner->is_spatialized();
+		const Vector4 matrix = panner->channel_matrix();
+		voice.pan_matrix = { matrix.x, matrix.y, matrix.z, matrix.w };
+		append(r_snapshot, panner->source, panner->child, p_path + "/stream",
+				p_volume, p_pitch, p_pending, p_finishing, r_ancestors);
+	}
 	else if (Ref<AudioStreamPlaybackGroup> group = p_playback; group.is_valid()) {
 		voice.children_supported = true;
 		voice.group_mode = group->group->mode;

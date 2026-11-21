@@ -397,6 +397,7 @@ static float _get_max_volume(const FixedVector<AudioFrame, AuSC::MAX_CHANNELS_PE
 Vector<AudioFrame> AudioStreamPlayer3D::_update_panning() {
 	// wgodot-changes::begin
 	float nearest_listener_distance = INFINITY;
+	Transform3D nearest_listener_frame;
 	// wgodot-changes::end
 	Vector<AudioFrame> output_volume_vector;
 	output_volume_vector.resize(VOLUME_VECTOR_SIZE);
@@ -459,11 +460,18 @@ Vector<AudioFrame> AudioStreamPlayer3D::_update_panning() {
 			listener_node = listener;
 		}
 
-		Vector3 local_pos = listener_node->get_global_transform().orthonormalized().affine_inverse().xform(global_pos);
+		// wgodot-changes::begin
+		const Transform3D listener_inverse = listener_node->get_global_transform().orthonormalized().affine_inverse();
+		Vector3 local_pos = listener_inverse.xform(global_pos);
+		// wgodot-changes::end
 
 		float dist = local_pos.length();
 		// wgodot-changes::begin
-		nearest_listener_distance = MIN(nearest_listener_distance, dist);
+		if (dist < nearest_listener_distance) {
+			nearest_listener_distance = dist;
+			nearest_listener_frame = listener_inverse;
+			nearest_listener_frame.origin = local_pos;
+		}
 		// wgodot-changes::end
 
 #ifndef PHYSICS_3D_DISABLED
@@ -581,6 +589,7 @@ Vector<AudioFrame> AudioStreamPlayer3D::_update_panning() {
 	for (Ref<AudioStreamPlayback> &playback : internal->stream_playbacks) {
 		// wgodot-changes::begin
 		playback->set_parameter(SNAME("listener_distance"), nearest_listener_distance);
+		playback->set_parameter(SNAME("listener_frame"), stream_spatialization_enabled && Math::is_finite(nearest_listener_distance) ? Variant(nearest_listener_frame) : Variant());
 		// wgodot-changes::end
 		AudioServer::get_singleton()->set_playback_highshelf_params(playback, linear_attenuation, attenuation_filter_cutoff_hz);
 	}
@@ -869,6 +878,15 @@ void AudioStreamPlayer3D::set_panning_enabled(bool p_enabled) {
 bool AudioStreamPlayer3D::is_panning_enabled() const {
 	return panning_enabled;
 }
+
+void AudioStreamPlayer3D::set_stream_spatialization_enabled(bool p_enabled) {
+	stream_spatialization_enabled = p_enabled;
+	force_update_panning = true;
+}
+
+bool AudioStreamPlayer3D::is_stream_spatialization_enabled() const {
+	return stream_spatialization_enabled;
+}
 // wgodot-changes::end
 
 float AudioStreamPlayer3D::get_panning_strength() const {
@@ -966,6 +984,8 @@ void AudioStreamPlayer3D::_bind_methods() {
 	// wgodot-changes::begin
 	ClassDB::bind_method(D_METHOD("set_panning_enabled", "enabled"), &AudioStreamPlayer3D::set_panning_enabled);
 	ClassDB::bind_method(D_METHOD("is_panning_enabled"), &AudioStreamPlayer3D::is_panning_enabled);
+	ClassDB::bind_method(D_METHOD("set_stream_spatialization_enabled", "enabled"), &AudioStreamPlayer3D::set_stream_spatialization_enabled);
+	ClassDB::bind_method(D_METHOD("is_stream_spatialization_enabled"), &AudioStreamPlayer3D::is_stream_spatialization_enabled);
 	// wgodot-changes::end
 	ClassDB::bind_method(D_METHOD("get_panning_strength"), &AudioStreamPlayer3D::get_panning_strength);
 
@@ -990,6 +1010,7 @@ void AudioStreamPlayer3D::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "panning_strength", PROPERTY_HINT_RANGE, "0,3,0.01,or_greater"), "set_panning_strength", "get_panning_strength");
 	// wgodot-changes::begin
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "panning_enabled"), "set_panning_enabled", "is_panning_enabled");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "stream_spatialization_enabled"), "set_stream_spatialization_enabled", "is_stream_spatialization_enabled");
 	// wgodot-changes::end
 	ADD_PROPERTY(PropertyInfo(Variant::STRING_NAME, "bus", PROPERTY_HINT_AUDIO_BUS), "set_bus", "get_bus");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "area_mask", PROPERTY_HINT_LAYERS_3D_PHYSICS), "set_area_mask", "get_area_mask");

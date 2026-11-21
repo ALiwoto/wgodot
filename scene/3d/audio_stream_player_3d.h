@@ -128,6 +128,7 @@ private:
 	float panning_strength = 1.0f;
 	// wgodot-changes::begin
 	bool panning_enabled = true;
+	bool stream_spatialization_enabled = true;
 	// wgodot-changes::end
 	float cached_global_panning_strength = 0.5f;
 
@@ -216,6 +217,8 @@ public:
 	// wgodot-changes::begin
 	void set_panning_enabled(bool p_enabled);
 	bool is_panning_enabled() const;
+	void set_stream_spatialization_enabled(bool p_enabled);
+	bool is_stream_spatialization_enabled() const;
 	// wgodot-changes::end
 	float get_panning_strength() const;
 
