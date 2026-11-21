@@ -17,6 +17,7 @@
 #include "scene/3d/skeleton_3d.h"
 #include "scene/animation/animation_player.h"
 #include "scene/3d/audio_stream_player_3d.h"
+#include "scene/3d/audio_listener_3d.h"
 #include "scene/2d/audio_stream_player_2d.h"
 #include "scene/audio/audio_stream_player.h"
 #include "scene/main/canvas_item.h"
@@ -226,6 +227,15 @@ PackedByteArray WLiveSceneProbe::snapshot(Node *p_root, Skeleton3D *p_body) {
 	ERR_FAIL_NULL_V(p_root, PackedByteArray());
 	snapshot_root = p_root->get_instance_id();
 	Writer writer;
+	Viewport *audio_viewport = p_root->get_viewport();
+	AudioListener3D *listener = audio_viewport->get_audio_listener_3d();
+	Camera3D *listener_camera = audio_viewport->get_camera_3d();
+	if (listener || listener_camera) {
+		Vector<double> values;
+		Writer::transform(values, listener ? listener->get_listener_transform() : listener_camera->get_camera_transform());
+		writer.record(NUMERIC, "@audio/listener", { "audio_listener", listener ? "listener" : "camera",
+				String((listener ? static_cast<Node *>(listener) : static_cast<Node *>(listener_camera))->get_path()) }, values);
+	}
 	AudioServer *audio_server = AudioServer::get_singleton();
 	for (int index = 0; index < audio_server->get_bus_count(); index++) {
 		const String name = audio_server->get_bus_name(index);
