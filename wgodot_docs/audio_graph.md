@@ -1,4 +1,27 @@
-# AudioStreamGroup delayed children
+# Audio graph playback
+
+## Shared voice limits
+
+`max_instances` limits simultaneously admitted playbacks of the same group
+resource across all players; zero means unlimited. `instance_limit_mode` selects
+`STOP_OLDEST` or `REJECT_NEW`. Resources with distinct identities have independent
+limits. Apply a limit to the root group to cover a whole cue graph.
+
+Admission happens before random choices or child starts. Stopping, natural
+completion and destruction release admission. Seeking an active playback retains
+its age; restarting an inactive playback takes a new slot. A rejected start does
+not consume random choices. Reducing the limit evicts older voices in Stop Oldest
+mode; Reject New leaves existing voices until they finish.
+
+Admission is protected by a resource-local mutex. Eviction sets an atomic flag;
+the affected playback stops its own children on its next mix. No thread mutates
+another playback's children or keeps a strong resource/playback ownership cycle.
+The offline event observer reports these retirements as `limited`, distinct from
+natural completion. Limits work with decoded and metadata-only playback.
+The mixer stops retired playback graphs after their final block or stop fade;
+admission and children do not depend on deferred object destruction.
+
+## Delayed child playback
 
 `delay_range` holds a group's mixing before its selected children contribute.
 By default, children start after that delay. Set `start_children_before_delay`

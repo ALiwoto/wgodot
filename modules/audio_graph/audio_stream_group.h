@@ -2,6 +2,7 @@
 #pragma once
 
 #include "core/os/mutex.h"
+#include "core/templates/safe_refcount.h"
 #include "scene/resources/audio/audio_stream.h"
 #include "scene/resources/curve.h"
 
@@ -17,6 +18,7 @@ class AudioStreamGroup : public AudioStream {
 
 public:
 	enum Mode { PARALLEL, SEQUENTIAL, RANDOM, SHUFFLE, SWITCH };
+	enum InstanceLimitMode { STOP_OLDEST, REJECT_NEW };
 
 private:
 	Mode mode = PARALLEL;
@@ -38,6 +40,15 @@ private:
 	double volume_parameter_cutoff = -1.0;
 	Vector<uint8_t> used;
 	Mutex selection_mutex;
+	int max_instances = 0;
+	InstanceLimitMode instance_limit_mode = STOP_OLDEST;
+	mutable Mutex instance_mutex;
+	// Non-owning entries are removed before playback destruction. Admission
+	// only sets atomic retirement flags; child playback stays on its mixer.
+	List<AudioStreamPlaybackGroup *> instances;
+	bool admit_instance(AudioStreamPlaybackGroup *p_playback);
+	void release_instance(AudioStreamPlaybackGroup *p_playback);
+	void enforce_instance_limit();
 
 	int choose_index();
 	float stream_volume(int p_index) const;
@@ -47,6 +58,10 @@ protected:
 	static void _bind_methods();
 
 public:
+	void set_max_instances(int p_value);
+	int get_max_instances() const;
+	void set_instance_limit_mode(InstanceLimitMode p_value);
+	InstanceLimitMode get_instance_limit_mode() const;
 	void set_mode(Mode p_value) { mode = p_value; }
 	Mode get_mode() const { return mode; }
 	void set_streams(const TypedArray<AudioStream> &p_value);
@@ -90,6 +105,7 @@ public:
 };
 
 VARIANT_ENUM_CAST(AudioStreamGroup::Mode);
+VARIANT_ENUM_CAST(AudioStreamGroup::InstanceLimitMode);
 
 class AudioStreamPlaybackGroup : public AudioStreamPlayback {
 	GDCLASS(AudioStreamPlaybackGroup, AudioStreamPlayback);
@@ -102,6 +118,7 @@ class AudioStreamPlaybackGroup : public AudioStreamPlayback {
 	HashMap<StringName, Variant> parameters;
 	mutable Mutex parameter_mutex;
 	bool active = false;
+	SafeFlag instance_limited;
 	bool children_started = false;
 	int index = 0;
 	int loops = 0;
@@ -115,6 +132,7 @@ class AudioStreamPlaybackGroup : public AudioStreamPlayback {
 	float pitch = 1.0;
 
 	void start_child(int p_index);
+	void stop_children();
 	void start_children();
 	void reset_for_seek();
 	void finish_seek();
@@ -127,6 +145,8 @@ protected:
 	static void _bind_methods() {}
 
 public:
+	~AudioStreamPlaybackGroup() override;
+	bool was_instance_limited() const { return instance_limited.is_set(); }
 	virtual void start(double p_from_pos = 0.0) override;
 	virtual void stop() override;
 	virtual bool is_playing() const override { return active; }

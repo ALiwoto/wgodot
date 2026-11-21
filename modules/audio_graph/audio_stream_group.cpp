@@ -7,6 +7,63 @@
 #include "modules/wgodot/audio/audio_stepper.h"
 #endif
 
+void AudioStreamGroup::enforce_instance_limit() {
+	// Caller holds instance_mutex. Never call another playback here: its mixer
+	// may be running, and stopping its children would reverse lock ordering.
+	while (instance_limit_mode == STOP_OLDEST && max_instances > 0 && instances.size() > max_instances) {
+		instances.front()->get()->instance_limited.set();
+		instances.pop_front();
+	}
+}
+
+bool AudioStreamGroup::admit_instance(AudioStreamPlaybackGroup *p_playback) {
+	MutexLock lock(instance_mutex);
+	instances.erase(p_playback);
+	p_playback->instance_limited.clear();
+	if (instance_limit_mode == REJECT_NEW && max_instances > 0 && instances.size() >= max_instances) {
+		p_playback->instance_limited.set();
+		return false;
+	}
+	instances.push_back(p_playback);
+	enforce_instance_limit();
+	return true;
+}
+
+void AudioStreamGroup::release_instance(AudioStreamPlaybackGroup *p_playback) {
+	MutexLock lock(instance_mutex);
+	instances.erase(p_playback);
+}
+
+void AudioStreamGroup::set_max_instances(int p_value) {
+	ERR_FAIL_COND(p_value < 0);
+	{
+		MutexLock lock(instance_mutex);
+		max_instances = p_value;
+		enforce_instance_limit();
+	}
+	emit_changed();
+}
+
+int AudioStreamGroup::get_max_instances() const {
+	MutexLock lock(instance_mutex);
+	return max_instances;
+}
+
+void AudioStreamGroup::set_instance_limit_mode(InstanceLimitMode p_value) {
+	ERR_FAIL_COND(p_value < STOP_OLDEST || p_value > REJECT_NEW);
+	{
+		MutexLock lock(instance_mutex);
+		instance_limit_mode = p_value;
+		enforce_instance_limit();
+	}
+	emit_changed();
+}
+
+AudioStreamGroup::InstanceLimitMode AudioStreamGroup::get_instance_limit_mode() const {
+	MutexLock lock(instance_mutex);
+	return instance_limit_mode;
+}
+
 void AudioStreamGroup::set_streams(const TypedArray<AudioStream> &p_value) {
 	MutexLock lock(selection_mutex);
 	streams = p_value;
@@ -200,6 +257,9 @@ real_t AudioStreamPlaybackGroup::sample_range(Vector2 p_range, const StringName 
 
 void AudioStreamPlaybackGroup::start(double p_from_pos) {
 	stop();
+	if (!group->admit_instance(this)) {
+		return;
+	}
 	position = 0.0;
 	initialized = true;
 	seeking = false;
@@ -236,6 +296,19 @@ void AudioStreamPlaybackGroup::start(double p_from_pos) {
 }
 
 void AudioStreamPlaybackGroup::stop() {
+	if (group.is_valid()) {
+		group->release_instance(this);
+	}
+	stop_children();
+}
+
+AudioStreamPlaybackGroup::~AudioStreamPlaybackGroup() {
+	if (group.is_valid()) {
+		group->release_instance(this);
+	}
+}
+
+void AudioStreamPlaybackGroup::stop_children() {
 	active = false;
 	children_mixing.fill(0);
 	for (const Ref<AudioStreamPlayback> &child : children) {
@@ -246,7 +319,15 @@ void AudioStreamPlaybackGroup::stop() {
 }
 
 void AudioStreamPlaybackGroup::reset_for_seek() {
-	stop();
+	// A seek within an active voice retains its admission age. Restarting an
+	// inactive voice takes a new slot, as start() does.
+	if (!active || instance_limited.is_set()) {
+		if (!group->admit_instance(this)) {
+			stop_children();
+			return;
+		}
+	}
+	stop_children();
 	active = true;
 	seeking = true;
 	position = 0.0;
@@ -361,6 +442,10 @@ int AudioStreamPlaybackGroup::mix(AudioFrame *p_buffer, float p_rate_scale, int 
 	for (int i = 0; i < p_frames; i++) {
 		p_buffer[i] = AudioFrame();
 	}
+	if (instance_limited.is_set()) {
+		stop();
+		return 0;
+	}
 	if (!active) {
 		return 0;
 	}
@@ -384,6 +469,7 @@ int AudioStreamPlaybackGroup::mix(AudioFrame *p_buffer, float p_rate_scale, int 
 			}
 			if (!group->loop || cycle_frames == 0) {
 				active = false;
+				group->release_instance(this);
 				break;
 			}
 			loops++;
@@ -441,6 +527,14 @@ void AudioStreamPlaybackGroup::tag_used_streams() {
 }
 
 void AudioStreamGroup::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("set_max_instances", "count"), &AudioStreamGroup::set_max_instances);
+	ClassDB::bind_method(D_METHOD("get_max_instances"), &AudioStreamGroup::get_max_instances);
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "max_instances", PROPERTY_HINT_RANGE, "0,1024,1,or_greater"), "set_max_instances", "get_max_instances");
+	ClassDB::bind_method(D_METHOD("set_instance_limit_mode", "mode"), &AudioStreamGroup::set_instance_limit_mode);
+	ClassDB::bind_method(D_METHOD("get_instance_limit_mode"), &AudioStreamGroup::get_instance_limit_mode);
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "instance_limit_mode", PROPERTY_HINT_ENUM, "Stop Oldest,Reject New"), "set_instance_limit_mode", "get_instance_limit_mode");
+	BIND_ENUM_CONSTANT(STOP_OLDEST);
+	BIND_ENUM_CONSTANT(REJECT_NEW);
 	ClassDB::bind_method(D_METHOD("set_mode", "mode"), &AudioStreamGroup::set_mode);
 	ClassDB::bind_method(D_METHOD("get_mode"), &AudioStreamGroup::get_mode);
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "mode", PROPERTY_HINT_ENUM, "Parallel,Sequential,Random,Shuffle,Switch"), "set_mode", "get_mode");

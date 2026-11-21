@@ -318,6 +318,12 @@ void AudioServer::_mix_step() {
 		switch (playback->state.load()) {
 			case AudioStreamPlaybackListNode::AWAITING_DELETION:
 			case AudioStreamPlaybackListNode::FADE_OUT_TO_DELETION:
+				// wgodot-changes::begin
+				// Mixing (including a requested stop fade) is complete. Release
+				// graph children/admission now, even if other references keep the
+				// playback alive until deferred main-thread reclamation.
+				playback->stream_playback->stop();
+				// wgodot-changes::end
 				// Remove the playback from the list.
 				_delete_stream_playback_list_node(playback);
 				break;

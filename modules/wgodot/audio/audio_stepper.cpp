@@ -5,6 +5,7 @@
 #include "core/math/math_funcs.h"
 #include "core/object/class_db.h"
 #include "core/os/thread.h"
+#include "modules/modules_enabled.gen.h"
 #include "scene/2d/audio_stream_player_2d.h"
 #include "scene/3d/audio_stream_player_3d.h"
 #include "scene/audio/audio_stream_player.h"
@@ -14,6 +15,9 @@
 #include "scene/resources/audio/audio_stream.h"
 #include "servers/audio/audio_driver_dummy.h"
 #include "servers/audio/audio_server.h"
+#ifdef MODULE_AUDIO_GRAPH_ENABLED
+#include "modules/audio_graph/audio_stream_group.h"
+#endif
 
 WAudioStepper *WAudioStepper::active = nullptr;
 SafeFlag WAudioStepper::clock_owned;
@@ -69,6 +73,12 @@ void WAudioStepper::observe(Node *p_node, const AudioStreamPlayerInternal &p_pla
 	}
 	WAudioPlaybackEvent event;
 	event.kind = p_kind;
+#ifdef MODULE_AUDIO_GRAPH_ENABLED
+	Ref<AudioStreamPlaybackGroup> group = p_playback;
+	if (event.kind == "finished" && group.is_valid() && group->was_instance_limited()) {
+		event.kind = "limited";
+	}
+#endif
 	event.player = String(p_node->get_path());
 	event.playback_id = uitos(p_playback->get_instance_id());
 	event.stream = p_player.stream.is_valid() ? p_player.stream->get_path() : String();
