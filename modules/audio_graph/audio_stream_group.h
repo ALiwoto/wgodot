@@ -13,6 +13,7 @@ class AudioStreamGroup : public AudioStream {
 	OBJ_SAVE_TYPE(AudioStream);
 	friend class AudioStreamPlaybackGroup;
 	friend class WAudioPlaybackProbe;
+	friend class WAudioStepper;
 
 public:
 	enum Mode { PARALLEL, SEQUENTIAL, RANDOM, SHUFFLE, SWITCH };

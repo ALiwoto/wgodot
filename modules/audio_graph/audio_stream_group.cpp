@@ -2,6 +2,10 @@
 #include "audio_stream_group.h"
 #include "core/object/class_db.h"
 #include "servers/audio/audio_server.h"
+#include "modules/modules_enabled.gen.h"
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+#include "modules/wgodot/audio/audio_stepper.h"
+#endif
 
 void AudioStreamGroup::set_streams(const TypedArray<AudioStream> &p_value) {
 	MutexLock lock(selection_mutex);
@@ -23,6 +27,16 @@ float AudioStreamGroup::stream_volume(int p_index) const {
 
 int AudioStreamGroup::choose_index() {
 	MutexLock lock(selection_mutex);
+	double unit = 0;
+	bool controlled = false;
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	controlled = WAudioStepper::random_input(this, unit);
+	if (controlled) {
+		if (unit < 0) {
+			return -1; // The inspection history reports the invalid/missing input.
+		}
+	}
+#endif
 	double total = 0.0;
 	for (int i = 0; i < streams.size(); i++) {
 		if (mode != SHUFFLE || !used[i]) {
@@ -38,7 +52,7 @@ int AudioStreamGroup::choose_index() {
 	if (total <= 0.0) {
 		return -1;
 	}
-	double choice = Math::randd() * total;
+	double choice = (controlled ? unit : Math::randd()) * total;
 	int selected = -1;
 	for (int i = 0; i < streams.size(); i++) {
 		const float weight = i < weights.size() ? weights[i] : 1.0f;

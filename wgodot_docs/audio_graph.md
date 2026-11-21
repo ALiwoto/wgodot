@@ -68,3 +68,23 @@ thread events produce a sticky capture error without inspecting scene state from
 that thread. Capture only runs with the offline clock owned and history enabled;
 it does not retain players/resources or change normal gameplay timing. Tree
 detachment is a separate event, not proof that an audio-server fade has completed.
+
+## Replaying independent random inputs
+
+With a whole-tree `WAudioStepper`, call `begin_random_frame()`, then
+`queue_random_input(stream_path, unit_value, prior_used_mask)` for each expected
+random/shuffle choice. The ordinary `AudioStreamGroup` selector consumes these
+inputs; callers cannot choose its output branch. Resource paths identify groups,
+including subresources. Each path's inputs retain their own order.
+
+The first shuffle input establishes history from before inspection. Later inputs
+must match the group's own evolving history; they cannot overwrite a divergent
+state. `end_random_frame()` rejects missing/unused inputs, wrong branch counts,
+history differences and worker-thread consumption. Errors appear in the ordinary
+audio inspection history. The queue is bounded at 4,096 entries per frame.
+
+`end_random_inputs()`, `reset_events()` and `finish()` restore the groups' prior
+shuffle histories and disable replay. Only object IDs and copied values are
+retained. Without explicit replay, selection keeps its ordinary random source.
+The API requires the whole-tree offline clock because shared stream resources
+have no independent scene ownership.

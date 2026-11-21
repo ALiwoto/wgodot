@@ -25,6 +25,10 @@ void WAudioStepper::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_advanced_frames"), &WAudioStepper::get_advanced_frames);
 	ClassDB::bind_method(D_METHOD("finish"), &WAudioStepper::finish);
 	ClassDB::bind_method(D_METHOD("reset_events"), &WAudioStepper::reset_events);
+	ClassDB::bind_method(D_METHOD("begin_random_frame"), &WAudioStepper::begin_random_frame);
+	ClassDB::bind_method(D_METHOD("queue_random_input", "stream", "unit", "used"), &WAudioStepper::queue_random_input);
+	ClassDB::bind_method(D_METHOD("end_random_frame"), &WAudioStepper::end_random_frame);
+	ClassDB::bind_method(D_METHOD("end_random_inputs"), &WAudioStepper::end_random_inputs);
 }
 
 double WAudioStepper::clock_seconds() const {
@@ -35,6 +39,7 @@ Error WAudioStepper::reset_events() {
 	ERR_FAIL_COND_V(!Thread::is_main_thread(), ERR_UNAUTHORIZED);
 	ERR_FAIL_COND_V(active != this, ERR_UNCONFIGURED);
 	ERR_FAIL_COND_V(stepping || releasing, ERR_BUSY);
+	end_random_inputs();
 	history = WAudioPlaybackHistory();
 	history.enabled = true;
 	history_origin = clock_seconds();
@@ -217,6 +222,7 @@ void WAudioStepper::finish() {
 		if (releasing) {
 			return;
 		}
+		end_random_inputs();
 		releasing = true;
 		const Vector<ObjectID> pending = players;
 		for (ObjectID id : pending) {
