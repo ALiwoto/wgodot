@@ -39,6 +39,14 @@ void WAudioPlaybackProbe::append(Snapshot &r_snapshot, const Ref<AudioStream> &p
 	voice.stream_path = p_stream->get_path();
 	voice.stream_class = p_stream->get_class();
 	voice.position = p_playback->get_playback_position();
+	if (Ref<AudioStreamPlaybackResampled> resampled = p_playback; resampled.is_valid()) {
+		// Decoder position includes this unconsumed lookahead. Report it
+		// independently; do not change ordinary playback-position semantics.
+		const uint32_t valid = resampled->internal_buffer_end == uint32_t(-1)
+				? uint32_t(AudioStreamPlaybackResampled::INTERNAL_BUFFER_LEN)
+				: resampled->internal_buffer_end;
+		voice.buffered_frames = MAX(0.0, double(valid) - double(resampled->mix_offset) / AudioStreamPlaybackResampled::FP_LEN);
+	}
 	voice.duration = p_stream->get_length();
 	voice.volume = p_volume;
 	voice.pitch = p_pitch;
@@ -145,6 +153,18 @@ void WAudioPlaybackProbe::append(Snapshot &r_snapshot, const Ref<AudioStream> &p
 	}
 	r_snapshot.voices.write[parent] = voice;
 	r_ancestors.erase(p_playback->get_instance_id());
+}
+
+WAudioPlaybackProbe::OutputClock WAudioPlaybackProbe::output_clock() {
+	OutputClock result;
+	AudioServer *server = AudioServer::get_singleton();
+	server->lock();
+	result.mixed_frames = server->mix_frames;
+	result.queued_frames = server->to_mix;
+	result.block_frames = server->buffer_size;
+	result.lookahead_frames = AuSC::LOOKAHEAD_BUFFER_SIZE;
+	server->unlock();
+	return result;
 }
 
 WAudioPlaybackProbe::Snapshot WAudioPlaybackProbe::player(Node *p_player) {

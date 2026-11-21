@@ -12,11 +12,18 @@ class Node;
 // audio driver lock; no playback pointers escape to a later inspection.
 class WAudioPlaybackProbe {
 public:
+	struct OutputClock {
+		uint64_t mixed_frames = 0;
+		int queued_frames = 0;
+		uint32_t block_frames = 0;
+		int lookahead_frames = 0;
+	};
 	struct Voice {
 		String path;
 		String stream_path;
 		String stream_class;
 		double position = 0;
+		double buffered_frames = -1;
 		double duration = 0;
 		float volume = 1;
 		float pitch = 1;
@@ -58,6 +65,7 @@ public:
 	};
 
 	static Snapshot player(Node *p_player);
+	static OutputClock output_clock();
 
 private:
 	static void append(Snapshot &r_snapshot, const Ref<AudioStream> &p_stream,

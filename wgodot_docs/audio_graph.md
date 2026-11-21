@@ -34,3 +34,15 @@ spatialization for a component without editing the shared stream resource.
 `channel_matrix(position, up, spatial)` returns the row-major 2×2 matrix used by
 the mixer. The live observer captures the actual playback matrix and child;
 declared channel count is checked separately against the waveform's format.
+
+## Playback timing inspection
+
+`WLiveSceneProbe` preserves the ordinary playback-position value and reports
+`audio_buffer` separately for resampled playbacks: source frames decoded ahead
+of consumption. This applies equally to decoded and metadata-only playback.
+Subtract those frames from the decoder position in samples to recover the
+resampler's consumed position; account for source loop ownership independently.
+The `audio_clock` output record reports mixed frames, queued output frames,
+mixer block size and mixer lookahead. Mixed minus queued frames is delivery to
+the driver, not an estimate of speaker latency. Captures read playback and mixer
+state under the existing audio lock and do not advance either clock.

@@ -124,6 +124,9 @@ struct Writer {
 					double(voice.input_channels), double(voice.sample_rate)
 				});
 			}
+			if (voice.buffered_frames >= 0) {
+				record(NUMERIC, p_path + "#" + voice.path, { "audio_buffer" }, { voice.buffered_frames });
+			}
 			if (voice.pan_channels > 0) {
 				Vector<double> pan = { double(voice.pan_channels), double(voice.pan_spatial) };
 				pan.append_array(voice.pan_matrix);
@@ -262,6 +265,10 @@ PackedByteArray WLiveSceneProbe::snapshot(Node *p_root, Skeleton3D *p_body) {
 	AudioServer *audio_server = AudioServer::get_singleton();
 	writer.record(NUMERIC, "@audio/output", { "audio_output" }, {
 		double(audio_server->get_mix_rate()), double(audio_server->get_channel_count()), double(audio_server->get_speaker_mode())
+	});
+	const WAudioPlaybackProbe::OutputClock audio_clock = WAudioPlaybackProbe::output_clock();
+	writer.record(NUMERIC, "@audio/output", { "audio_clock" }, {
+		double(audio_clock.mixed_frames), double(audio_clock.queued_frames), double(audio_clock.block_frames), double(audio_clock.lookahead_frames)
 	});
 	for (int index = 0; index < audio_server->get_bus_count(); index++) {
 		const String name = audio_server->get_bus_name(index);

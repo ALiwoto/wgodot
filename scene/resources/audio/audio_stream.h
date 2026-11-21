@@ -128,6 +128,9 @@ public:
 
 class AudioStreamPlaybackResampled : public AudioStreamPlayback {
 	GDCLASS(AudioStreamPlaybackResampled, AudioStreamPlayback);
+	// wgodot-changes::begin
+	friend class WAudioPlaybackProbe;
+	// wgodot-changes::end
 
 	enum {
 		FP_BITS = 16, //fixed point used for resampling
