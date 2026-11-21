@@ -29,9 +29,11 @@ public:
 		float volume = 1;
 		float pitch = 1;
 		double delay = 0;
+		double initial_delay = -1;
 		int loops = 0;
 		int selection = -1;
 		bool playing = false;
+		bool draining = false;
 		bool pending = false;
 		bool finishing = false;
 		bool leaf = false;

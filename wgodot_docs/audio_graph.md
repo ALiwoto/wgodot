@@ -10,6 +10,13 @@ and applies the same lifecycle. The setting defaults to false.
 The live audio observer reports these real children as pending through the delayed
 ancestor. Each group's delay remains on that group's record, in its own clock
 units. It does not fabricate unsampled random branches or flatten distinct clocks.
+The observer also retains the sampled initial delay after its countdown expires.
+
+Groups and panners drain children until `mix()` returns fewer frames than
+requested. A decoder can report EOF while its resampler still has valid buffered
+samples; using that decoder flag as the group's completion signal truncates tails
+and short sounds. Explicit stop still stops immediately. Parallel, sequential and
+looping groups keep independent mixing state for each child.
 
 ## Per-stream stereo panning
 
@@ -40,6 +47,7 @@ declared channel count is checked separately against the waveform's format.
 `WLiveSceneProbe` preserves the ordinary playback-position value and reports
 `audio_buffer` separately for resampled playbacks: source frames decoded ahead
 of consumption. This applies equally to decoded and metadata-only playback.
+Its draining flag distinguishes buffered tails from an active decoder.
 Subtract those frames from the decoder position in samples to recover the
 resampler's consumed position; account for source loop ownership independently.
 The `audio_clock` output record reports mixed frames, queued output frames,

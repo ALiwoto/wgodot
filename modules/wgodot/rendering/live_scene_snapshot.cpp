@@ -118,7 +118,7 @@ struct Writer {
 			});
 			if (voice.group_mode >= 0) {
 				record(NUMERIC, p_path + "#" + voice.path, { "audio_group" }, {
-					double(voice.group_mode), double(voice.group_streams), double(voice.group_loop)
+					double(voice.group_mode), double(voice.group_streams), double(voice.group_loop), voice.initial_delay
 				});
 			}
 			if (voice.input_channels > 0) {
@@ -127,7 +127,7 @@ struct Writer {
 				});
 			}
 			if (voice.buffered_frames >= 0) {
-				record(NUMERIC, p_path + "#" + voice.path, { "audio_buffer" }, { voice.buffered_frames });
+				record(NUMERIC, p_path + "#" + voice.path, { "audio_buffer" }, { voice.buffered_frames, double(voice.draining) });
 			}
 			if (voice.pan_channels > 0) {
 				Vector<double> pan = { double(voice.pan_channels), double(voice.pan_spatial) };

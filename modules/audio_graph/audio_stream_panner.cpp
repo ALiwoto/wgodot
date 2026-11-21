@@ -116,16 +116,28 @@ bool AudioStreamPlaybackPanner::is_spatialized() const {
 	return listener_active && settings.mode != AudioStreamPanner::DISABLED;
 }
 
-void AudioStreamPlaybackPanner::start(double p_from_pos) { child->start(p_from_pos); }
-void AudioStreamPlaybackPanner::stop() { child->stop(); }
-bool AudioStreamPlaybackPanner::is_playing() const { return child->is_playing(); }
+void AudioStreamPlaybackPanner::start(double p_from_pos) {
+	child->start(p_from_pos);
+	mixing.set();
+}
+void AudioStreamPlaybackPanner::stop() {
+	child->stop();
+	mixing.clear();
+}
+bool AudioStreamPlaybackPanner::is_playing() const { return mixing.is_set(); }
 int AudioStreamPlaybackPanner::get_loop_count() const { return child->get_loop_count(); }
 double AudioStreamPlaybackPanner::get_playback_position() const { return child->get_playback_position(); }
 void AudioStreamPlaybackPanner::seek(double p_time) { child->seek(p_time); }
 
 int AudioStreamPlaybackPanner::mix(AudioFrame *p_buffer, float p_rate_scale, int p_frames) {
+	if (!mixing.is_set()) {
+		return 0;
+	}
 	const Vector4 matrix = channel_matrix();
 	const int mixed = child->mix(p_buffer, p_rate_scale, p_frames);
+	if (mixed < p_frames) {
+		mixing.clear();
+	}
 	if (!child->is_metadata_only()) {
 		for (int i = 0; i < mixed; i++) {
 			const AudioFrame source = p_buffer[i];

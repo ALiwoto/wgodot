@@ -68,6 +68,7 @@ class AudioStreamPlaybackPanner : public AudioStreamPlayback {
 	Vector3 position;
 	Vector3 up = Vector3(0, 1, 0);
 	bool listener_active = false;
+	SafeFlag mixing;
 
 protected:
 	static void _bind_methods() {}

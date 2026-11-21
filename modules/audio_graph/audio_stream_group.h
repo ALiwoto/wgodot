@@ -96,6 +96,8 @@ class AudioStreamPlaybackGroup : public AudioStreamPlayback {
 	friend class WAudioPlaybackProbe;
 	Ref<AudioStreamGroup> group;
 	Vector<Ref<AudioStreamPlayback>> children;
+	// Mixer completion, independent of a child's decoder/prefetch state.
+	Vector<uint8_t> children_mixing;
 	HashMap<StringName, Variant> parameters;
 	mutable Mutex parameter_mutex;
 	bool active = false;

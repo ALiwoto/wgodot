@@ -53,6 +53,7 @@ void WAudioPlaybackProbe::append(Snapshot &r_snapshot, const Ref<AudioStream> &p
 	voice.pitch = p_pitch;
 	voice.loops = p_playback->get_loop_count();
 	voice.playing = p_playback->is_playing();
+	voice.draining = !voice.playing && voice.buffered_frames > 0;
 	voice.pending = p_pending;
 	voice.finishing = p_finishing;
 	voice.leaf = !p_stream->is_meta_stream();
@@ -116,11 +117,12 @@ void WAudioPlaybackProbe::append(Snapshot &r_snapshot, const Ref<AudioStream> &p
 		voice.volume *= group->playback_gain();
 		voice.pitch *= group->pitch;
 		voice.delay = group->delay;
+		voice.initial_delay = group->delay_duration;
 		voice.selection = group->index;
 		if (group->children_started && group->active) {
 			for (int i = 0; i < group->children.size(); i++) {
 				const Ref<AudioStreamPlayback> &child = group->children[i];
-				if (child.is_null() || !child->is_playing()) {
+				if (!group->children_mixing[i]) {
 					continue;
 				}
 				append(r_snapshot, group->group->streams[i], child, p_path + "/child" + itos(i),

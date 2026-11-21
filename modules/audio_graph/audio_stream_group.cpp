@@ -73,6 +73,8 @@ Ref<AudioStreamPlayback> AudioStreamGroup::instantiate_playback() {
 	playback.instantiate();
 	playback->group = Ref<AudioStreamGroup>(this);
 	playback->children.resize(streams.size());
+	playback->children_mixing.resize(streams.size());
+	playback->children_mixing.fill(0);
 	for (int i = 0; i < streams.size(); i++) {
 		Ref<AudioStream> child = streams[i];
 		if (child.is_valid()) {
@@ -152,6 +154,7 @@ void AudioStreamPlaybackGroup::start_child(int p_index) {
 	} else {
 		children[p_index]->start(0.0);
 	}
+	children_mixing.write[p_index] = 1;
 }
 
 void AudioStreamPlaybackGroup::start_children() {
@@ -208,6 +211,7 @@ void AudioStreamPlaybackGroup::start(double p_from_pos) {
 
 void AudioStreamPlaybackGroup::stop() {
 	active = false;
+	children_mixing.fill(0);
 	for (const Ref<AudioStreamPlayback> &child : children) {
 		if (child.is_valid()) {
 			child->stop();
@@ -277,6 +281,7 @@ int AudioStreamPlaybackGroup::mix_children(AudioFrame *p_buffer, float p_rate_sc
 		if (selected != index) {
 			if (index >= 0 && index < children.size() && children[index].is_valid()) {
 				children[index]->stop();
+				children_mixing.write[index] = 0;
 			}
 			index = selected;
 			start_child(index);
@@ -286,7 +291,7 @@ int AudioStreamPlaybackGroup::mix_children(AudioFrame *p_buffer, float p_rate_sc
 	if (group->mode == AudioStreamGroup::PARALLEL) {
 		AudioFrame buffer[256];
 		for (int i = 0; i < children.size(); i++) {
-			if (children[i].is_null() || !children[i]->is_playing()) {
+			if (!children_mixing[i]) {
 				continue;
 			}
 			int offset = 0;
@@ -298,6 +303,7 @@ int AudioStreamPlaybackGroup::mix_children(AudioFrame *p_buffer, float p_rate_sc
 				}
 				offset += frames;
 				if (frames < count) {
+					children_mixing.write[i] = 0;
 					break;
 				}
 			}
@@ -307,7 +313,10 @@ int AudioStreamPlaybackGroup::mix_children(AudioFrame *p_buffer, float p_rate_sc
 		while (index >= 0 && index < children.size() && mixed < p_frames) {
 			Ref<AudioStreamPlayback> child = children[index];
 			const int count = p_frames - mixed;
-			const int frames = child.is_valid() && child->is_playing() ? child->mix(p_buffer + mixed, p_rate_scale * pitch, count) : 0;
+			const int frames = children_mixing[index] ? child->mix(p_buffer + mixed, p_rate_scale * pitch, count) : 0;
+			if (frames < count) {
+				children_mixing.write[index] = 0;
+			}
 			for (int frame = 0; frame < frames; frame++) {
 				p_buffer[mixed + frame] *= group->stream_volume(index);
 			}
