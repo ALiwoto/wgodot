@@ -89,7 +89,9 @@ public:
 
 	StringName get_bus() const;
 
-	Ref<AudioStreamPlayback> play_basic();
+	// wgodot-changes::begin
+	Ref<AudioStreamPlayback> play_basic(double p_from_pos);
+	// wgodot-changes::end
 	void seek(float p_seconds);
 	void stop_basic();
 	bool is_playing() const;

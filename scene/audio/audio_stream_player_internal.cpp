@@ -92,6 +92,11 @@ void AudioStreamPlayerInternal::process() {
 	}
 	// Now go through and remove playbacks that have finished. Removing elements from a Vector in a range based for is asking for trouble.
 	for (Ref<AudioStreamPlayback> &playback : playbacks_to_remove) {
+		// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+		WAudioStepper::observe(node, *this, playback, "finished");
+#endif
+		// wgodot-changes::end
 		stream_playbacks.erase(playback);
 	}
 	if (!playbacks_to_remove.is_empty() && stream_playbacks.is_empty()) {
@@ -106,6 +111,11 @@ void AudioStreamPlayerInternal::process() {
 
 void AudioStreamPlayerInternal::ensure_playback_limit() {
 	while (stream_playbacks.size() > max_polyphony) {
+		// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+		WAudioStepper::observe(node, *this, stream_playbacks[0], "limited");
+#endif
+		// wgodot-changes::end
 		AudioServer::get_singleton()->stop_playback_stream(stream_playbacks[0]);
 		stream_playbacks.remove_at(0);
 	}
@@ -130,6 +140,9 @@ void AudioStreamPlayerInternal::notification(int p_what) {
 		case Node::NOTIFICATION_EXIT_TREE: {
 			// wgodot-changes::begin
 #if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+			for (const Ref<AudioStreamPlayback> &playback : stream_playbacks) {
+				WAudioStepper::observe(node, *this, playback, "detached");
+			}
 			WAudioStepper::exited(node);
 #endif
 			// wgodot-changes::end
@@ -171,7 +184,9 @@ void AudioStreamPlayerInternal::notification(int p_what) {
 	}
 }
 
-Ref<AudioStreamPlayback> AudioStreamPlayerInternal::play_basic() {
+// wgodot-changes::begin
+Ref<AudioStreamPlayback> AudioStreamPlayerInternal::play_basic(double p_from_pos) {
+// wgodot-changes::end
 	Ref<AudioStreamPlayback> stream_playback;
 	if (stream.is_null()) {
 		return stream_playback;
@@ -207,6 +222,11 @@ Ref<AudioStreamPlayback> AudioStreamPlayerInternal::play_basic() {
 	}
 
 	stream_playbacks.push_back(stream_playback);
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	WAudioStepper::observe(node, *this, stream_playback, "play", p_from_pos);
+#endif
+	// wgodot-changes::end
 	active.set();
 	_set_process(true);
 	return stream_playback;
@@ -292,6 +312,11 @@ void AudioStreamPlayerInternal::seek(float p_seconds) {
 
 void AudioStreamPlayerInternal::stop_basic() {
 	for (Ref<AudioStreamPlayback> &playback : stream_playbacks) {
+		// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+		WAudioStepper::observe(node, *this, playback, "stop");
+#endif
+		// wgodot-changes::end
 		AudioServer::get_singleton()->stop_playback_stream(playback);
 	}
 	stream_playbacks.clear();

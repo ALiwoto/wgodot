@@ -122,7 +122,9 @@ int AudioStreamPlayer::get_max_polyphony() const {
 }
 
 void AudioStreamPlayer::play(float p_from_pos) {
-	Ref<AudioStreamPlayback> stream_playback = internal->play_basic();
+	// wgodot-changes::begin
+	Ref<AudioStreamPlayback> stream_playback = internal->play_basic(p_from_pos);
+	// wgodot-changes::end
 	if (stream_playback.is_null()) {
 		return;
 	}

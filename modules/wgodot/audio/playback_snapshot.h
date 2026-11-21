@@ -20,6 +20,7 @@ public:
 	};
 	struct Voice {
 		String path;
+		String playback_id;
 		String stream_path;
 		String stream_class;
 		double position = 0;

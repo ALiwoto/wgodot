@@ -46,3 +46,17 @@ The `audio_clock` output record reports mixed frames, queued output frames,
 mixer block size and mixer lookahead. Mixed minus queued frames is delivery to
 the driver, not an estimate of speaker latency. Captures read playback and mixer
 state under the existing audio lock and do not advance either clock.
+
+`WAudioStepper.reset_events()` starts a bounded observation window at the current
+manual clock, without seeking or resetting playback. Ordinary 1D/2D/3D players
+then record play requests (including offsets), stops, natural completion,
+polyphony eviction and tree detachment. `WLiveSceneProbe` includes this history
+even after a player is freed. Playback IDs are decimal strings so binary64 wire
+numbers cannot lose their precision. Snapshots identify those same runtime
+instances independently of changing player-list indices.
+
+The window retains at most 4,096 events and reports overflow explicitly. Worker
+thread events produce a sticky capture error without inspecting scene state from
+that thread. Capture only runs with the offline clock owned and history enabled;
+it does not retain players/resources or change normal gameplay timing. Tree
+detachment is a separate event, not proof that an audio-server fade has completed.

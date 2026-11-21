@@ -8,19 +8,83 @@
 #include "scene/2d/audio_stream_player_2d.h"
 #include "scene/3d/audio_stream_player_3d.h"
 #include "scene/audio/audio_stream_player.h"
+#include "scene/audio/audio_stream_player_internal.h"
 #include "scene/main/scene_tree.h"
 #include "scene/main/window.h"
+#include "scene/resources/audio/audio_stream.h"
 #include "servers/audio/audio_driver_dummy.h"
 #include "servers/audio/audio_server.h"
 
 WAudioStepper *WAudioStepper::active = nullptr;
 SafeFlag WAudioStepper::clock_owned;
+SafeFlag WAudioStepper::event_thread_error;
 
 void WAudioStepper::_bind_methods() {
 	ClassDB::bind_static_method(get_class_static(), D_METHOD("begin", "root"), &WAudioStepper::begin);
 	ClassDB::bind_method(D_METHOD("advance", "seconds"), &WAudioStepper::advance);
 	ClassDB::bind_method(D_METHOD("get_advanced_frames"), &WAudioStepper::get_advanced_frames);
 	ClassDB::bind_method(D_METHOD("finish"), &WAudioStepper::finish);
+	ClassDB::bind_method(D_METHOD("reset_events"), &WAudioStepper::reset_events);
+}
+
+double WAudioStepper::clock_seconds() const {
+	return (advanced_frames + fractional_frames) / AudioDriverDummy::get_dummy_singleton()->get_mix_rate();
+}
+
+Error WAudioStepper::reset_events() {
+	ERR_FAIL_COND_V(!Thread::is_main_thread(), ERR_UNAUTHORIZED);
+	ERR_FAIL_COND_V(active != this, ERR_UNCONFIGURED);
+	ERR_FAIL_COND_V(stepping || releasing, ERR_BUSY);
+	history = WAudioPlaybackHistory();
+	history.enabled = true;
+	history_origin = clock_seconds();
+	return OK;
+}
+
+void WAudioStepper::observe(Node *p_node, const AudioStreamPlayerInternal &p_player,
+		const Ref<AudioStreamPlayback> &p_playback, const char *p_kind, double p_offset) {
+	if (!clock_owned.is_set()) {
+		return;
+	}
+	// Never read active, player properties or scene hierarchy on a worker.
+	if (!Thread::is_main_thread()) {
+		event_thread_error.set();
+		return;
+	}
+	if (!owns(p_node) || !active->history.enabled) {
+		return;
+	}
+	WAudioPlaybackHistory &history = active->history;
+	if (history.events.size() >= 4096) {
+		if (history.errors.is_empty()) {
+			history.errors.push_back("Audio playback event budget exceeded (4096)");
+		}
+		return;
+	}
+	WAudioPlaybackEvent event;
+	event.kind = p_kind;
+	event.player = String(p_node->get_path());
+	event.playback_id = uitos(p_playback->get_instance_id());
+	event.stream = p_player.stream.is_valid() ? p_player.stream->get_path() : String();
+	event.bus = p_player.get_bus();
+	event.seconds = active->clock_seconds() - active->history_origin;
+	event.offset = p_offset;
+	event.volume_db = p_player.volume_db;
+	event.pitch = p_player.pitch_scale;
+	history.events.push_back(event);
+}
+
+WAudioPlaybackHistory WAudioStepper::playback_history() {
+	ERR_FAIL_COND_V(!Thread::is_main_thread(), WAudioPlaybackHistory());
+	if (!active) {
+		return WAudioPlaybackHistory();
+	}
+	WAudioPlaybackHistory result = active->history;
+	result.seconds = active->clock_seconds() - active->history_origin;
+	if (event_thread_error.is_set()) {
+		result.errors.push_back("Audio playback event dispatched outside the main inspection thread");
+	}
+	return result;
 }
 
 bool WAudioStepper::owns(Node *p_node) {
@@ -87,6 +151,7 @@ Ref<WAudioStepper> WAudioStepper::begin(Node *p_root) {
 	result->collect(p_root);
 	AudioDriverDummy::get_dummy_singleton()->set_manual_advance(true);
 	active = result.ptr();
+	event_thread_error.clear();
 	clock_owned.set();
 	return result;
 }

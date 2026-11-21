@@ -1,6 +1,7 @@
 // wgodot-changes::file
 #include "live_scene_probe.h"
 #include "modules/wgodot/audio/playback_snapshot.h"
+#include "modules/wgodot/audio/audio_stepper.h"
 #ifdef TOOLS_ENABLED
 #include "core/io/stream_peer.h"
 #include "core/io/marshalls.h"
@@ -110,6 +111,7 @@ struct Writer {
 		const WAudioPlaybackProbe::Snapshot snapshot = WAudioPlaybackProbe::player(p_player);
 		record(NUMERIC, p_path, { "audio_playbacks" }, { 2.0, double(snapshot.voices.size()) });
 		for (const WAudioPlaybackProbe::Voice &voice : snapshot.voices) {
+			record(NUMERIC, p_path + "#" + voice.path, { "audio_instance", voice.playback_id }, {});
 			record(NUMERIC, p_path + "#" + voice.path, { "audio_voice", p_path, voice.stream_path, voice.stream_class }, {
 				voice.position, voice.duration, voice.volume, voice.pitch, voice.delay, double(voice.loops), double(voice.selection),
 				double(voice.playing), double(voice.pending), double(voice.finishing), double(voice.leaf), double(voice.children_supported), double(voice.looping), double(voice.metadata_only)
@@ -270,6 +272,19 @@ PackedByteArray WLiveSceneProbe::snapshot(Node *p_root, Skeleton3D *p_body) {
 	writer.record(NUMERIC, "@audio/output", { "audio_clock" }, {
 		double(audio_clock.mixed_frames), double(audio_clock.queued_frames), double(audio_clock.block_frames), double(audio_clock.lookahead_frames)
 	});
+	const WAudioPlaybackHistory history = WAudioStepper::playback_history();
+	writer.record(NUMERIC, "@audio/events", { "audio_history" }, {
+		1.0, double(history.enabled), history.seconds, double(history.events.size())
+	});
+	for (int index = 0; index < history.events.size(); index++) {
+		const WAudioPlaybackEvent &event = history.events[index];
+		writer.record(NUMERIC, "@audio/events/" + itos(index), {
+			"audio_event", event.kind, event.player, event.playback_id, event.stream, event.bus
+		}, { double(index), event.seconds, event.offset, event.volume_db, event.pitch });
+	}
+	for (const String &error : history.errors) {
+		writer.record(NUMERIC, "@audio/events", { "audio_error", error }, {});
+	}
 	for (int index = 0; index < audio_server->get_bus_count(); index++) {
 		const String name = audio_server->get_bus_name(index);
 		writer.record(NUMERIC, "@audio/bus/" + name, { "audio_bus", name, audio_server->get_bus_send(index) }, {

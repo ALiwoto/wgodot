@@ -257,7 +257,9 @@ float AudioStreamPlayer2D::get_pitch_scale() const {
 }
 
 void AudioStreamPlayer2D::play(float p_from_pos) {
-	Ref<AudioStreamPlayback> stream_playback = internal->play_basic();
+	// wgodot-changes::begin
+	Ref<AudioStreamPlayback> stream_playback = internal->play_basic(p_from_pos);
+	// wgodot-changes::end
 	if (stream_playback.is_null()) {
 		return;
 	}

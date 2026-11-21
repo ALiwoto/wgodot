@@ -36,6 +36,7 @@ void WAudioPlaybackProbe::append(Snapshot &r_snapshot, const Ref<AudioStream> &p
 	r_ancestors.insert(p_playback->get_instance_id());
 	Voice voice;
 	voice.path = p_path;
+	voice.playback_id = uitos(p_playback->get_instance_id());
 	voice.stream_path = p_stream->get_path();
 	voice.stream_class = p_stream->get_class();
 	voice.position = p_playback->get_playback_position();
