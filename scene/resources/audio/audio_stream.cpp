@@ -168,7 +168,12 @@ void AudioStreamPlaybackResampled::begin_resample() {
 	internal_buffer[2] = AudioFrame(0.0, 0.0);
 	internal_buffer[3] = AudioFrame(0.0, 0.0);
 	//mix buffer
-	_mix_internal(internal_buffer + 4, INTERNAL_BUFFER_LEN);
+	// wgodot-changes::begin
+	// A restarted playback must not inherit the preceding stream's EOF marker.
+	// The first refill can also end early, just like subsequent refills in mix().
+	const int mixed_frames = _mix_internal(internal_buffer + 4, INTERNAL_BUFFER_LEN);
+	internal_buffer_end = mixed_frames == INTERNAL_BUFFER_LEN ? -1 : mixed_frames;
+	// wgodot-changes::end
 	mix_offset = 0;
 }
 
