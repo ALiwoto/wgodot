@@ -133,6 +133,20 @@ int AudioStreamPlaybackPanner::mix(AudioFrame *p_buffer, float p_rate_scale, int
 	if (!mixing.is_set()) {
 		return 0;
 	}
+	if (settings.stop_on_muted_bus != StringName()) {
+		AudioServer *server = AudioServer::get_singleton();
+		const int bus = server->get_bus_index(settings.stop_on_muted_bus);
+		if (bus < 0) {
+			stop();
+			ERR_FAIL_V_MSG(0, "Audio stream's stop-on-mute bus does not exist: " + String(settings.stop_on_muted_bus));
+		}
+		if (server->is_bus_mute(bus)) {
+			// The selection/start has already happened. Terminate this leaf
+			// before further mixing; unmuting must not revive the one-shot.
+			stop();
+			return 0;
+		}
+	}
 	const Vector4 matrix = channel_matrix();
 	const int mixed = child->mix(p_buffer, p_rate_scale, p_frames);
 	if (mixed < p_frames) {
@@ -140,9 +154,9 @@ int AudioStreamPlaybackPanner::mix(AudioFrame *p_buffer, float p_rate_scale, int
 	}
 	if (!child->is_metadata_only()) {
 		for (int i = 0; i < mixed; i++) {
-			const AudioFrame source = p_buffer[i];
-			p_buffer[i] = AudioFrame(matrix.x * source.left + matrix.y * source.right,
-					matrix.z * source.left + matrix.w * source.right);
+			const AudioFrame input = p_buffer[i];
+			p_buffer[i] = AudioFrame(matrix.x * input.left + matrix.y * input.right,
+					matrix.z * input.left + matrix.w * input.right);
 		}
 	}
 	return mixed;
@@ -184,6 +198,8 @@ void AudioStreamPanner::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_omnidirectional_radius"), &AudioStreamPanner::get_omnidirectional_radius);
 	ClassDB::bind_method(D_METHOD("set_stereo_spread", "spread"), &AudioStreamPanner::set_stereo_spread);
 	ClassDB::bind_method(D_METHOD("get_stereo_spread"), &AudioStreamPanner::get_stereo_spread);
+	ClassDB::bind_method(D_METHOD("set_stop_on_muted_bus", "bus"), &AudioStreamPanner::set_stop_on_muted_bus);
+	ClassDB::bind_method(D_METHOD("get_stop_on_muted_bus"), &AudioStreamPanner::get_stop_on_muted_bus);
 	ClassDB::bind_method(D_METHOD("channel_matrix", "position", "up", "spatial"), &AudioStreamPanner::channel_matrix);
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "stream", PROPERTY_HINT_RESOURCE_TYPE, "AudioStream"), "set_stream", "get_stream");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "input_channels", PROPERTY_HINT_RANGE, "1,2,1"), "set_input_channels", "get_input_channels");
@@ -191,6 +207,7 @@ void AudioStreamPanner::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "mono_gain", PROPERTY_HINT_RANGE, "0,1,0.001,or_greater"), "set_mono_gain", "get_mono_gain");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "omnidirectional_radius", PROPERTY_HINT_RANGE, "0,100,0.01,or_greater,suffix:m"), "set_omnidirectional_radius", "get_omnidirectional_radius");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "stereo_spread", PROPERTY_HINT_RANGE, "0,100,0.01,or_greater,suffix:m"), "set_stereo_spread", "get_stereo_spread");
+	ADD_PROPERTY(PropertyInfo(Variant::STRING_NAME, "stop_on_muted_bus"), "set_stop_on_muted_bus", "get_stop_on_muted_bus");
 	BIND_ENUM_CONSTANT(DISABLED);
 	BIND_ENUM_CONSTANT(LINEAR);
 	BIND_ENUM_CONSTANT(EQUAL_POWER);

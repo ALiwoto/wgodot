@@ -24,6 +24,7 @@ public:
 		float mono_gain = 1.0f;
 		float omnidirectional_radius = 0.0f;
 		float stereo_spread = 0.0f;
+		StringName stop_on_muted_bus;
 	};
 
 private:
@@ -46,6 +47,8 @@ public:
 	float get_omnidirectional_radius() const { return settings.omnidirectional_radius; }
 	void set_stereo_spread(float p_spread);
 	float get_stereo_spread() const { return settings.stereo_spread; }
+	void set_stop_on_muted_bus(const StringName &p_bus) { settings.stop_on_muted_bus = p_bus; }
+	StringName get_stop_on_muted_bus() const { return settings.stop_on_muted_bus; }
 	Vector4 channel_matrix(Vector3 p_position, Vector3 p_up, bool p_spatial) const;
 	Ref<AudioStreamPlayback> instantiate_playback() override;
 	double get_length() const override;

@@ -42,6 +42,14 @@ spatialization for a component without editing the shared stream resource.
 the mixer. The live observer captures the actual playback matrix and child;
 declared channel count is checked separately against the waveform's format.
 
+`stop_on_muted_bus` optionally names a bus whose mute state terminates this leaf
+before its next mix. It defaults to empty (disabled). Selection/start still runs;
+unmuting cannot revive a terminated one-shot. This checks the named bus's explicit
+mute state, not an inferred loudness threshold or the output device volume.
+Only enable it for leaves whose lifecycle permits termination: looping or
+play-while-silent content must keep the default. The same rule runs in decoded
+and metadata-only playback. A missing named bus is an error.
+
 ## Playback timing inspection
 
 `WLiveSceneProbe` preserves the ordinary playback-position value and reports
