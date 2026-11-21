@@ -49,7 +49,7 @@ public:
 	float get_stereo_spread() const { return settings.stereo_spread; }
 	void set_stop_on_muted_bus(const StringName &p_bus) { settings.stop_on_muted_bus = p_bus; }
 	StringName get_stop_on_muted_bus() const { return settings.stop_on_muted_bus; }
-	Vector4 channel_matrix(Vector3 p_position, Vector3 p_up, bool p_spatial) const;
+	Vector4 channel_matrix(Vector3 p_position, bool p_spatial) const;
 	Ref<AudioStreamPlayback> instantiate_playback() override;
 	double get_length() const override;
 	bool has_loop() const override;
@@ -69,7 +69,6 @@ class AudioStreamPlaybackPanner : public AudioStreamPlayback {
 	Ref<AudioStreamPlayback> child;
 	mutable Mutex parameter_mutex;
 	Vector3 position;
-	Vector3 up = Vector3(0, 1, 0);
 	bool listener_active = false;
 	SafeFlag mixing;
 

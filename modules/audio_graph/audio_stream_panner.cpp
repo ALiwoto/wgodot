@@ -34,10 +34,11 @@ void AudioStreamPanner::set_stereo_spread(float p_spread) {
 	settings.stereo_spread = p_spread;
 }
 
-static Vector2 azimuth_gains(Vector3 p_position, AudioStreamPanner::Mode p_mode, float p_omni) {
-	float angle = Math::rad_to_deg(Math::atan2(p_position.x, -p_position.z));
+static Vector2 azimuth_gains(float angle, AudioStreamPanner::Mode p_mode, float p_omni) {
 	if (angle < 0) {
 		angle += 360.0f;
+	} else if (angle > 360.0f) {
+		angle -= 360.0f;
 	}
 	const bool previous_right = angle > 90.0f && angle <= 270.0f;
 	const float previous = previous_right ? 90.0f : (angle > 270.0f ? 270.0f : -90.0f);
@@ -52,7 +53,7 @@ static Vector2 azimuth_gains(Vector3 p_position, AudioStreamPanner::Mode p_mode,
 	return gains.lerp(Vector2(0.5f, 0.5f), p_omni);
 }
 
-static Vector4 panning_matrix(const AudioStreamPanner::Settings &p_settings, Vector3 p_position, Vector3 p_up, bool p_spatial) {
+static Vector4 panning_matrix(const AudioStreamPanner::Settings &p_settings, Vector3 p_position, bool p_spatial) {
 	if (p_settings.mode == AudioStreamPanner::DISABLED || !p_spatial) {
 		return p_settings.input_channels == 1 ? Vector4(p_settings.mono_gain, 0, p_settings.mono_gain, 0) : Vector4(1, 0, 0, 1);
 	}
@@ -62,20 +63,27 @@ static Vector4 panning_matrix(const AudioStreamPanner::Settings &p_settings, Vec
 		const float relative = distance / p_settings.omnidirectional_radius;
 		omni = 1.0f - relative * relative;
 	}
+	const float azimuth = Math::rad_to_deg(Math::atan2(p_position.x, -p_position.z));
 	if (p_settings.input_channels == 1) {
-		const Vector2 gains = azimuth_gains(p_position, p_settings.mode, omni);
+		const Vector2 gains = azimuth_gains(azimuth, p_settings.mode, omni);
 		return Vector4(gains.x, 0, gains.y, 0);
 	}
-	// The spread axis uses world up expressed in the listener's frame. Keep
-	// its shortened magnitude for vertical emitters rather than normalizing it.
-	const Vector3 offset = p_up.cross(p_position.normalized()) * (p_settings.stereo_spread * 0.5f);
-	const Vector2 left = azimuth_gains(p_position + offset, p_settings.mode, omni);
-	const Vector2 right = azimuth_gains(p_position - offset, p_settings.mode, omni);
+	// Speaker panning uses angular width, not a pair of world-space emitters.
+	// In particular, elevation must not collapse a stereo sound to mono.
+	float left_azimuth = 90.0f;
+	float right_azimuth = 270.0f;
+	if (distance > 1e-6f) {
+		const float offset = Math::rad_to_deg(Math::atan(0.5f * p_settings.stereo_spread / distance));
+		left_azimuth = azimuth - offset;
+		right_azimuth = azimuth + offset;
+	}
+	const Vector2 left = azimuth_gains(left_azimuth, p_settings.mode, omni);
+	const Vector2 right = azimuth_gains(right_azimuth, p_settings.mode, omni);
 	return Vector4(left.x, right.x, left.y, right.y);
 }
 
-Vector4 AudioStreamPanner::channel_matrix(Vector3 p_position, Vector3 p_up, bool p_spatial) const {
-	return panning_matrix(settings, p_position, p_up, p_spatial);
+Vector4 AudioStreamPanner::channel_matrix(Vector3 p_position, bool p_spatial) const {
+	return panning_matrix(settings, p_position, p_spatial);
 }
 
 Ref<AudioStreamPlayback> AudioStreamPanner::instantiate_playback() {
@@ -108,7 +116,7 @@ void AudioStreamPanner::get_parameter_list(List<Parameter> *r_parameters) {
 
 Vector4 AudioStreamPlaybackPanner::channel_matrix() const {
 	MutexLock lock(parameter_mutex);
-	return panning_matrix(settings, position, up, listener_active);
+	return panning_matrix(settings, position, listener_active);
 }
 
 bool AudioStreamPlaybackPanner::is_spatialized() const {
@@ -170,7 +178,6 @@ void AudioStreamPlaybackPanner::set_parameter(const StringName &p_name, const Va
 		ERR_FAIL_COND(!frame.is_finite());
 		MutexLock lock(parameter_mutex);
 		position = frame.origin;
-		up = frame.basis.xform(Vector3(0, 1, 0));
 		listener_active = active;
 	}
 	child->set_parameter(p_name, p_value);
@@ -200,7 +207,7 @@ void AudioStreamPanner::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_stereo_spread"), &AudioStreamPanner::get_stereo_spread);
 	ClassDB::bind_method(D_METHOD("set_stop_on_muted_bus", "bus"), &AudioStreamPanner::set_stop_on_muted_bus);
 	ClassDB::bind_method(D_METHOD("get_stop_on_muted_bus"), &AudioStreamPanner::get_stop_on_muted_bus);
-	ClassDB::bind_method(D_METHOD("channel_matrix", "position", "up", "spatial"), &AudioStreamPanner::channel_matrix);
+	ClassDB::bind_method(D_METHOD("channel_matrix", "position", "spatial"), &AudioStreamPanner::channel_matrix);
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "stream", PROPERTY_HINT_RESOURCE_TYPE, "AudioStream"), "set_stream", "get_stream");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "input_channels", PROPERTY_HINT_RANGE, "1,2,1"), "set_input_channels", "get_input_channels");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "mode", PROPERTY_HINT_ENUM, "Disabled,Linear,Equal Power"), "set_mode", "get_mode");

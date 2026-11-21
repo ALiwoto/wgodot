@@ -25,8 +25,11 @@ looping groups keep independent mixing state for each child.
 panning between the left/right speakers at −90/+90 degrees. `mono_gain` controls
 each channel's non-spatial mono gain; non-spatial stereo keeps its identity.
 `omnidirectional_radius` blends toward equal channel gains inside the given
-radius, and `stereo_spread` separates the two spatial stereo emitters. Distances
-use metres. This wrapper produces front stereo; it does not implement surround.
+radius. `stereo_spread` sets the width around the emitter's azimuth using
+`atan(spread / (2 * distance))`; listener elevation does not collapse that width.
+Within 1 micrometre of the listener, the azimuths are +90/−90 degrees for the
+left/right inputs respectively. Distances use metres. This wrapper produces
+front stereo; it does not implement surround.
 
 The ordinary 3D player sends its nearest listener's `listener_frame` atomically:
 origin is emitter position in listener coordinates, basis transforms world axes
@@ -38,7 +41,7 @@ parameters and metadata-only playback are preserved.
 The player's `stream_spatialization_enabled` can independently disable graph
 spatialization for a component without editing the shared stream resource.
 
-`channel_matrix(position, up, spatial)` returns the row-major 2×2 matrix used by
+`channel_matrix(position, spatial)` returns the row-major 2×2 matrix used by
 the mixer. The live observer captures the actual playback matrix and child;
 declared channel count is checked separately against the waveform's format.
 
