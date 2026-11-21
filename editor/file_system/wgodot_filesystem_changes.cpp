@@ -10,7 +10,12 @@
 bool EditorFileSystem::_prepare_changed_directories(bool p_use_notifications) {
 	WGodotFileSystemWatcher::Changes changes = file_watcher.take_changes();
 #ifdef MODULE_WGODOT_ENABLED
-	WGodotResourceCheck::invalidate(changes.paths, !changes.available || changes.rescan_all);
+	// Platforms without a native watcher still validate each resource's file
+	// stamp, dependency stamps and compiled declaration signatures on every
+	// check. Missing notifications are not evidence that all entries changed.
+	if (changes.available) {
+		WGodotResourceCheck::invalidate(changes.paths, changes.rescan_all);
+	}
 #endif
 	filtered_change_scan = p_use_notifications && changes.available && !changes.rescan_all;
 	changed_directories.clear();
