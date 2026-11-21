@@ -27,6 +27,7 @@ void WAudioStepper::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("reset_events"), &WAudioStepper::reset_events);
 	ClassDB::bind_method(D_METHOD("begin_random_frame"), &WAudioStepper::begin_random_frame);
 	ClassDB::bind_method(D_METHOD("queue_random_input", "stream", "unit", "used"), &WAudioStepper::queue_random_input);
+	ClassDB::bind_method(D_METHOD("queue_range_input", "stream", "parameter", "unit"), &WAudioStepper::queue_range_input);
 	ClassDB::bind_method(D_METHOD("end_random_frame"), &WAudioStepper::end_random_frame);
 	ClassDB::bind_method(D_METHOD("end_random_inputs"), &WAudioStepper::end_random_inputs);
 }

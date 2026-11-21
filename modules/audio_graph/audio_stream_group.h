@@ -121,6 +121,7 @@ class AudioStreamPlaybackGroup : public AudioStreamPlayback {
 	void advance_to(double p_time);
 	int mix_children(AudioFrame *p_buffer, float p_rate_scale, int p_frames);
 	float playback_gain() const;
+	real_t sample_range(Vector2 p_range, const StringName &p_parameter);
 
 protected:
 	static void _bind_methods() {}

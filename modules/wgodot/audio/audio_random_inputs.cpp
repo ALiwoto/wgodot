@@ -22,7 +22,7 @@ Error WAudioStepper::begin_random_frame() {
 	// Group resources have no scene owner. Random replay requires the whole-tree
 	// offline clock, preventing changes to players outside the inspection scope.
 	ERR_FAIL_COND_V(!SceneTree::get_singleton() || root_id != SceneTree::get_singleton()->get_root()->get_instance_id(), ERR_UNAUTHORIZED);
-	ERR_FAIL_COND_V(!random_inputs.is_empty(), ERR_ALREADY_IN_USE);
+	ERR_FAIL_COND_V(!random_inputs.is_empty() || !range_inputs.is_empty(), ERR_ALREADY_IN_USE);
 	random_controlled.set();
 	return OK;
 }
@@ -80,6 +80,45 @@ bool WAudioStepper::random_input(AudioStreamGroup *p_group, double &r_unit) {
 	return true;
 }
 
+Error WAudioStepper::queue_range_input(const String &p_stream, const StringName &p_parameter, double p_unit) {
+	ERR_FAIL_COND_V(!Thread::is_main_thread(), ERR_UNAUTHORIZED);
+	ERR_FAIL_COND_V(active != this || !random_controlled.is_set() || stepping || releasing, ERR_UNCONFIGURED);
+	ERR_FAIL_COND_V(p_stream.is_empty() || !Math::is_finite(p_unit) || p_unit < 0 || p_unit > 1, ERR_INVALID_PARAMETER);
+	ERR_FAIL_COND_V(p_parameter != SNAME("volume") && p_parameter != SNAME("pitch") && p_parameter != SNAME("delay"), ERR_INVALID_PARAMETER);
+	ERR_FAIL_COND_V(range_inputs.size() >= 4096, ERR_INVALID_PARAMETER);
+	RangeInput input;
+	input.stream = p_stream;
+	input.parameter = p_parameter;
+	input.unit = p_unit;
+	range_inputs.push_back(input);
+	return OK;
+}
+
+bool WAudioStepper::range_input(AudioStreamGroup *p_group, const StringName &p_parameter, bool p_required, double &r_unit) {
+	if (!random_controlled.is_set()) {
+		return false;
+	}
+	r_unit = -1;
+	if (!Thread::is_main_thread()) {
+		event_thread_error.set();
+		return true;
+	}
+	ERR_FAIL_NULL_V(active, true);
+	for (int i = 0; i < active->range_inputs.size(); i++) {
+		RangeInput &input = active->range_inputs.write[i];
+		if (input.consumed || input.stream != p_group->get_path() || input.parameter != p_parameter) {
+			continue;
+		}
+		input.consumed = true;
+		r_unit = input.unit;
+		return true;
+	}
+	if (p_required) {
+		active->random_error("Missing independent audio range input: " + p_group->get_path() + ":" + p_parameter);
+	}
+	return p_required;
+}
+
 Error WAudioStepper::end_random_frame() {
 	ERR_FAIL_COND_V(!Thread::is_main_thread(), ERR_UNAUTHORIZED);
 	ERR_FAIL_COND_V(active != this || stepping || releasing, ERR_BUSY);
@@ -90,7 +129,14 @@ Error WAudioStepper::end_random_frame() {
 			random_error("Unused independent audio random input: " + input.stream);
 		}
 	}
+	for (const RangeInput &input : range_inputs) {
+		if (!input.consumed) {
+			unused = true;
+			random_error("Unused independent audio range input: " + input.stream + ":" + input.parameter);
+		}
+	}
 	random_inputs.clear();
+	range_inputs.clear();
 	return unused || event_thread_error.is_set() || !history.errors.is_empty() ? ERR_INVALID_DATA : OK;
 }
 
@@ -99,6 +145,7 @@ void WAudioStepper::end_random_inputs() {
 	ERR_FAIL_COND(active != this || stepping);
 	random_controlled.clear();
 	random_inputs.clear();
+	range_inputs.clear();
 	for (const KeyValue<ObjectID, Vector<uint8_t>> &entry : random_original_used) {
 		AudioStreamGroup *group = Object::cast_to<AudioStreamGroup>(ObjectDB::get_instance(entry.key));
 		if (group) {

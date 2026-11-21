@@ -85,6 +85,15 @@ random/shuffle choice. The ordinary `AudioStreamGroup` selector consumes these
 inputs; callers cannot choose its output branch. Resource paths identify groups,
 including subresources. Each path's inputs retain their own order.
 
+`queue_range_input(stream_path, parameter, unit_value)` supplies an independent
+unit draw for `volume`, `pitch` or `delay`. The ordinary group interpolates its
+own authored range from low to high; callers supply no resulting gain, pitch or
+delay. A varying range requires an input during replay. Fixed ranges need none,
+but consume a queued input when supplied. Each path/parameter retains its own
+order. Missing/unused entries and off-thread consumption fail the same history
+checks as branch choices. This queue is also bounded at 4,096 entries per frame.
+Outside explicit replay, all ranges retain their ordinary random source.
+
 The first shuffle input establishes history from before inspection. Later inputs
 must match the group's own evolving history; they cannot overwrite a divergent
 state. `end_random_frame()` rejects missing/unused inputs, wrong branch counts,

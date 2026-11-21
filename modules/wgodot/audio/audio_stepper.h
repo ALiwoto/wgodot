@@ -36,6 +36,13 @@ class WAudioStepper : public RefCounted {
 		bool consumed = false;
 	};
 	Vector<RandomInput> random_inputs;
+	struct RangeInput {
+		String stream;
+		StringName parameter;
+		double unit = 0;
+		bool consumed = false;
+	};
+	Vector<RangeInput> range_inputs;
 	HashMap<ObjectID, Vector<uint8_t>> random_original_used;
 	void random_error(const String &p_error);
 	double clock_seconds() const;
@@ -52,10 +59,12 @@ public:
 	Error reset_events();
 	Error begin_random_frame();
 	Error queue_random_input(const String &p_stream, double p_unit, const Vector<uint8_t> &p_used);
+	Error queue_range_input(const String &p_stream, const StringName &p_parameter, double p_unit);
 	Error end_random_frame();
 	void end_random_inputs();
 	// Called under the group's selection mutex. False retains normal randomness.
 	static bool random_input(AudioStreamGroup *p_group, double &r_unit);
+	static bool range_input(AudioStreamGroup *p_group, const StringName &p_parameter, bool p_required, double &r_unit);
 	static WAudioPlaybackHistory playback_history();
 	static void observe(Node *p_node, const AudioStreamPlayerInternal &p_player,
 			const Ref<AudioStreamPlayback> &p_playback, const char *p_kind, double p_offset = 0);

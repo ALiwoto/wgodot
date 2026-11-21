@@ -186,15 +186,27 @@ void AudioStreamPlaybackGroup::start_children() {
 	}
 }
 
+real_t AudioStreamPlaybackGroup::sample_range(Vector2 p_range, const StringName &p_parameter) {
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	double unit = 0;
+	if (WAudioStepper::range_input(group.ptr(), p_parameter, p_range.x != p_range.y, unit)) {
+		// Missing inputs fail the inspection history; keep the live graph valid
+		// so that all other diagnostics can still be collected on this frame.
+		return unit < 0 ? p_range.x : p_range.x + (p_range.y - p_range.x) * unit;
+	}
+#endif
+	return Math::random(p_range.x, p_range.y);
+}
+
 void AudioStreamPlaybackGroup::start(double p_from_pos) {
 	stop();
 	position = 0.0;
 	initialized = true;
 	seeking = false;
 	loops = 0;
-	volume = Math::random(group->volume_range.x, group->volume_range.y);
-	pitch = MAX(Math::random(group->pitch_range.x, group->pitch_range.y), 0.001f);
-	delay_duration = MAX(Math::random(group->delay_range.x, group->delay_range.y), 0.0f);
+	volume = sample_range(group->volume_range, SNAME("volume"));
+	pitch = MAX(sample_range(group->pitch_range, SNAME("pitch")), 0.001f);
+	delay_duration = MAX(sample_range(group->delay_range, SNAME("delay")), 0.0f);
 	delay = delay_duration;
 	if (group->mode == AudioStreamGroup::RANDOM || group->mode == AudioStreamGroup::SHUFFLE) {
 		index = group->choose_index();
