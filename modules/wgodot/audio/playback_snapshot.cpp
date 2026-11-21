@@ -1,6 +1,7 @@
 // wgodot-changes::file
 #include "playback_snapshot.h"
 #ifdef TOOLS_ENABLED
+#include "core/io/marshalls.h"
 #include "core/os/thread.h"
 #include "modules/modules_enabled.gen.h"
 #include "scene/2d/audio_stream_player_2d.h"
@@ -9,6 +10,9 @@
 #include "scene/audio/audio_stream_player_internal.h"
 #include "scene/resources/audio/audio_stream_polyphonic.h"
 #include "servers/audio/audio_server.h"
+#ifdef MODULE_VORBIS_ENABLED
+#include "modules/vorbis/audio_stream_ogg_vorbis.h"
+#endif
 #ifdef MODULE_AUDIO_GRAPH_ENABLED
 #include "modules/audio_graph/audio_stream_group.h"
 #endif
@@ -44,6 +48,26 @@ void WAudioPlaybackProbe::append(Snapshot &r_snapshot, const Ref<AudioStream> &p
 	voice.leaf = !p_stream->is_meta_stream();
 	voice.children_supported = voice.leaf;
 	voice.metadata_only = p_playback->is_metadata_only();
+#ifdef MODULE_VORBIS_ENABLED
+	if (Ref<AudioStreamPlaybackOggVorbis> vorbis = p_playback; vorbis.is_valid()) {
+		if (vorbis->info_is_allocated) {
+			voice.input_channels = vorbis->info.channels;
+			voice.sample_rate = vorbis->info.rate;
+		} else if (vorbis->metadata_only && vorbis->vorbis_data.is_valid()) {
+			// Metadata-only playback deliberately has no decoder state. Read
+			// its identification packet with a separate cursor; never touch the
+			// playing cursor or decode waveform data just for an observation.
+			Ref<OggPacketSequencePlayback> reader = vorbis->vorbis_data->instantiate_playback();
+			ogg_packet *packet = nullptr;
+			if (reader->next_ogg_packet(&packet) && packet->bytes >= 30 && memcmp(packet->packet, "\x01vorbis", 7) == 0) {
+				voice.input_channels = packet->packet[11];
+				voice.sample_rate = decode_uint32(packet->packet + 12);
+			} else {
+				r_snapshot.errors.push_back(p_path + ": missing Vorbis identification packet");
+			}
+		}
+	}
+#endif
 	if (AudioServer::get_singleton()->is_metadata_only_enabled() && voice.leaf && !voice.metadata_only) {
 		r_snapshot.errors.push_back(p_path + ": metadata-only decoding is unsupported for " + voice.stream_class);
 	}
@@ -67,6 +91,9 @@ void WAudioPlaybackProbe::append(Snapshot &r_snapshot, const Ref<AudioStream> &p
 #ifdef MODULE_AUDIO_GRAPH_ENABLED
 	else if (Ref<AudioStreamPlaybackGroup> group = p_playback; group.is_valid()) {
 		voice.children_supported = true;
+		voice.group_mode = group->group->mode;
+		voice.group_streams = group->group->streams.size();
+		voice.group_loop = group->group->loop;
 		voice.volume *= group->playback_gain();
 		voice.pitch *= group->pitch;
 		voice.delay = group->delay;
@@ -123,12 +150,38 @@ WAudioPlaybackProbe::Snapshot WAudioPlaybackProbe::player(Node *p_player) {
 	}
 	ERR_FAIL_NULL_V(internal, snapshot);
 	HashSet<ObjectID> ancestors;
-	AudioServer::get_singleton()->lock();
+	AudioServer *server = AudioServer::get_singleton();
+	server->lock();
 	for (int i = 0; i < internal->stream_playbacks.size(); i++) {
-		append(snapshot, internal->stream, internal->stream_playbacks[i], "playback" + itos(i),
+		const String path = "playback" + itos(i);
+		append(snapshot, internal->stream, internal->stream_playbacks[i], path,
 				1.0f, 1.0f, false, false, ancestors);
+		Mixer mixer;
+		mixer.path = path;
+		AudioServer::AudioStreamPlaybackListNode *node = server->_find_playback_list_node(internal->stream_playbacks[i]);
+		if (node) {
+			mixer.state = node->state.load();
+			mixer.pitch = node->pitch_scale.get();
+			mixer.highshelf_gain = node->highshelf_gain.get();
+			mixer.cutoff_hz = node->attenuation_filter_cutoff_hz.get();
+			const AudioServer::AudioStreamPlaybackBusDetails *details = node->bus_details.load();
+			if (details) {
+				for (int bus = 0; bus < AuSC::MAX_BUSES_PER_PLAYBACK; bus++) {
+					if (!details->bus_active[bus]) {
+						continue;
+					}
+					Route route;
+					route.bus = details->bus[bus];
+					for (int channel = 0; channel < AuSC::MAX_CHANNELS_PER_BUS; channel++) {
+						route.gains.append_array({ details->volume[bus][channel].left, details->volume[bus][channel].right });
+					}
+					mixer.routes.push_back(route);
+				}
+			}
+		}
+		snapshot.mixers.push_back(mixer);
 	}
-	AudioServer::get_singleton()->unlock();
+	server->unlock();
 	return snapshot;
 }
 #endif

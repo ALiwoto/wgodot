@@ -203,6 +203,11 @@ private:
 	SafeList<CallbackItem *> listener_changed_callback_list;
 
 	friend class AudioDriver;
+	// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+	friend class WAudioPlaybackProbe;
+#endif
+	// wgodot-changes::end
 	void _driver_process(int p_frames, int32_t *p_buffer);
 
 	LocalVector<Ref<AudioSamplePlayback>> sample_playback_list;

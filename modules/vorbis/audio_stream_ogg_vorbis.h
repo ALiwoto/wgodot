@@ -41,6 +41,9 @@ class AudioStreamOggVorbis;
 
 class AudioStreamPlaybackOggVorbis : public AudioStreamPlaybackResampled {
 	GDCLASS(AudioStreamPlaybackOggVorbis, AudioStreamPlaybackResampled);
+	// wgodot-changes::begin
+	friend class WAudioPlaybackProbe;
+	// wgodot-changes::end
 
 	uint32_t frames_mixed = 0;
 	bool active = false;

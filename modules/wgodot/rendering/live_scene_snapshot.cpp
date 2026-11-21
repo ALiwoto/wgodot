@@ -114,6 +114,24 @@ struct Writer {
 				voice.position, voice.duration, voice.volume, voice.pitch, voice.delay, double(voice.loops), double(voice.selection),
 				double(voice.playing), double(voice.pending), double(voice.finishing), double(voice.leaf), double(voice.children_supported), double(voice.looping), double(voice.metadata_only)
 			});
+			if (voice.group_mode >= 0) {
+				record(NUMERIC, p_path + "#" + voice.path, { "audio_group" }, {
+					double(voice.group_mode), double(voice.group_streams), double(voice.group_loop)
+				});
+			}
+			if (voice.input_channels > 0) {
+				record(NUMERIC, p_path + "#" + voice.path, { "audio_format" }, {
+					double(voice.input_channels), double(voice.sample_rate)
+				});
+			}
+		}
+		for (const WAudioPlaybackProbe::Mixer &mixer : snapshot.mixers) {
+			record(NUMERIC, p_path + "#" + mixer.path, { "audio_mixer", p_path }, {
+				double(mixer.state), mixer.pitch, mixer.highshelf_gain, mixer.cutoff_hz
+			});
+			for (const WAudioPlaybackProbe::Route &route : mixer.routes) {
+				record(NUMERIC, p_path + "#" + mixer.path, { "audio_route", route.bus }, route.gains);
+			}
 		}
 		for (const String &error : snapshot.errors) {
 			record(NUMERIC, p_path, { "audio_error", error }, {});
@@ -237,6 +255,9 @@ PackedByteArray WLiveSceneProbe::snapshot(Node *p_root, Skeleton3D *p_body) {
 				String((listener ? static_cast<Node *>(listener) : static_cast<Node *>(listener_camera))->get_path()) }, values);
 	}
 	AudioServer *audio_server = AudioServer::get_singleton();
+	writer.record(NUMERIC, "@audio/output", { "audio_output" }, {
+		double(audio_server->get_mix_rate()), double(audio_server->get_channel_count()), double(audio_server->get_speaker_mode())
+	});
 	for (int index = 0; index < audio_server->get_bus_count(); index++) {
 		const String name = audio_server->get_bus_name(index);
 		writer.record(NUMERIC, "@audio/bus/" + name, { "audio_bus", name, audio_server->get_bus_send(index) }, {
@@ -400,7 +421,8 @@ PackedByteArray WLiveSceneProbe::snapshot(Node *p_root, Skeleton3D *p_body) {
 			writer.audio(audio_3d, path, 3, audio_3d->get_global_position());
 			writer.record(NUMERIC, path, { "audio_spatial" }, {
 				double(audio_3d->get_attenuation_model()), audio_3d->get_unit_size(), audio_3d->get_max_distance(), audio_3d->get_max_db(),
-				audio_3d->get_panning_strength(), audio_3d->get_attenuation_filter_cutoff_hz(), audio_3d->get_attenuation_filter_db()
+				audio_3d->get_panning_strength(), audio_3d->get_attenuation_filter_cutoff_hz(), audio_3d->get_attenuation_filter_db(),
+				double(audio_3d->is_panning_enabled())
 			});
 		} else if (AudioStreamPlayer2D *audio_2d = Object::cast_to<AudioStreamPlayer2D>(node)) {
 			const Vector2 position = audio_2d->get_global_position();

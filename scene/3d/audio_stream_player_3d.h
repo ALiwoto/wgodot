@@ -126,6 +126,9 @@ private:
 	float _get_attenuation_db(float p_distance) const;
 
 	float panning_strength = 1.0f;
+	// wgodot-changes::begin
+	bool panning_enabled = true;
+	// wgodot-changes::end
 	float cached_global_panning_strength = 0.5f;
 
 	/// Hash map storing the bus volumes during the panning update.
@@ -210,6 +213,10 @@ public:
 	bool get_stream_paused() const;
 
 	void set_panning_strength(float p_panning_strength);
+	// wgodot-changes::begin
+	void set_panning_enabled(bool p_enabled);
+	bool is_panning_enabled() const;
+	// wgodot-changes::end
 	float get_panning_strength() const;
 
 	bool has_stream_playback();

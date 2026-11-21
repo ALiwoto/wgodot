@@ -30,9 +30,27 @@ public:
 		bool children_supported = false;
 		bool looping = false;
 		bool metadata_only = false;
+		int input_channels = 0;
+		int sample_rate = 0;
+		int group_mode = -1;
+		int group_streams = 0;
+		bool group_loop = false;
+	};
+	struct Route {
+		String bus;
+		Vector<double> gains;
+	};
+	struct Mixer {
+		String path;
+		int state = -1;
+		float pitch = 1;
+		float highshelf_gain = 0;
+		float cutoff_hz = 0;
+		Vector<Route> routes;
 	};
 	struct Snapshot {
 		Vector<Voice> voices;
+		Vector<Mixer> mixers;
 		Vector<String> errors;
 	};
 

@@ -514,6 +514,13 @@ Vector<AudioFrame> AudioStreamPlayer3D::_update_panning() {
 			frame = AudioFrame(0, 0);
 		}
 
+		// wgodot-changes::begin
+		if (!panning_enabled) {
+			// Preserve the stream's stereo channels at unity gain. Distance,
+			// filtering, area routing and Doppler still follow the 3D emitter.
+			listener_volume_vector[0] = AudioFrame(1, 1);
+		} else
+		// wgodot-changes::end
 		if (AudioServer::get_singleton()->get_speaker_mode() == AuSE::SPEAKER_MODE_STEREO) {
 			listener_volume_vector[0] = _calc_output_vol_stereo(local_pos, cached_global_panning_strength * panning_strength);
 		} else {
@@ -853,6 +860,17 @@ void AudioStreamPlayer3D::set_panning_strength(float p_panning_strength) {
 	panning_strength = p_panning_strength;
 }
 
+// wgodot-changes::begin
+void AudioStreamPlayer3D::set_panning_enabled(bool p_enabled) {
+	panning_enabled = p_enabled;
+	force_update_panning = true;
+}
+
+bool AudioStreamPlayer3D::is_panning_enabled() const {
+	return panning_enabled;
+}
+// wgodot-changes::end
+
 float AudioStreamPlayer3D::get_panning_strength() const {
 	return panning_strength;
 }
@@ -945,6 +963,10 @@ void AudioStreamPlayer3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_max_polyphony"), &AudioStreamPlayer3D::get_max_polyphony);
 
 	ClassDB::bind_method(D_METHOD("set_panning_strength", "panning_strength"), &AudioStreamPlayer3D::set_panning_strength);
+	// wgodot-changes::begin
+	ClassDB::bind_method(D_METHOD("set_panning_enabled", "enabled"), &AudioStreamPlayer3D::set_panning_enabled);
+	ClassDB::bind_method(D_METHOD("is_panning_enabled"), &AudioStreamPlayer3D::is_panning_enabled);
+	// wgodot-changes::end
 	ClassDB::bind_method(D_METHOD("get_panning_strength"), &AudioStreamPlayer3D::get_panning_strength);
 
 	ClassDB::bind_method(D_METHOD("has_stream_playback"), &AudioStreamPlayer3D::has_stream_playback);
@@ -966,6 +988,9 @@ void AudioStreamPlayer3D::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "max_distance", PROPERTY_HINT_RANGE, "0,4096,0.01,or_greater,suffix:m"), "set_max_distance", "get_max_distance");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "max_polyphony", PROPERTY_HINT_NONE, ""), "set_max_polyphony", "get_max_polyphony");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "panning_strength", PROPERTY_HINT_RANGE, "0,3,0.01,or_greater"), "set_panning_strength", "get_panning_strength");
+	// wgodot-changes::begin
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "panning_enabled"), "set_panning_enabled", "is_panning_enabled");
+	// wgodot-changes::end
 	ADD_PROPERTY(PropertyInfo(Variant::STRING_NAME, "bus", PROPERTY_HINT_AUDIO_BUS), "set_bus", "get_bus");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "area_mask", PROPERTY_HINT_LAYERS_3D_PHYSICS), "set_area_mask", "get_area_mask");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "playback_type", PROPERTY_HINT_ENUM, "Default,Stream,Sample"), "set_playback_type", "get_playback_type");
