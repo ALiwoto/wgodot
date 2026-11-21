@@ -26,6 +26,7 @@ private:
 	Vector2 pitch_range = Vector2(1, 1);
 	Vector2 delay_range;
 	bool delay_uses_rate_scale = true;
+	bool start_children_before_delay = false;
 	bool loop = false;
 	StringName switch_parameter;
 	int switch_offset = 0;
@@ -61,6 +62,8 @@ public:
 	Vector2 get_delay_range() const { return delay_range; }
 	void set_delay_uses_rate_scale(bool p_value) { delay_uses_rate_scale = p_value; }
 	bool get_delay_uses_rate_scale() const { return delay_uses_rate_scale; }
+	void set_start_children_before_delay(bool p_value) { start_children_before_delay = p_value; }
+	bool get_start_children_before_delay() const { return start_children_before_delay; }
 	void set_loop(bool p_value) { loop = p_value; }
 	bool get_loop() const { return loop; }
 	void set_switch_parameter(const StringName &p_value) { switch_parameter = p_value; }

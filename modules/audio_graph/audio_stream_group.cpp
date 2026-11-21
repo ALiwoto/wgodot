@@ -193,10 +193,15 @@ void AudioStreamPlaybackGroup::start(double p_from_pos) {
 	}
 	active = true;
 	children_started = false;
+	if (group->start_children_before_delay) {
+		// Starting selects and prepares real child playbacks. The parent delay
+		// still prevents their mixer clocks from advancing until it expires.
+		start_children();
+	}
 	if (p_from_pos > 0.0) {
 		// A new play samples fresh choices, even when it starts at an offset.
 		advance_to(p_from_pos);
-	} else if (delay <= 0.0) {
+	} else if (delay <= 0.0 && !children_started) {
 		start_children();
 	}
 }
@@ -218,6 +223,9 @@ void AudioStreamPlaybackGroup::reset_for_seek() {
 	delay = delay_duration;
 	loops = 0;
 	children_started = false;
+	if (group->start_children_before_delay) {
+		start_children();
+	}
 }
 
 void AudioStreamPlaybackGroup::seek(double p_time) {
@@ -422,6 +430,9 @@ void AudioStreamGroup::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_delay_uses_rate_scale", "enabled"), &AudioStreamGroup::set_delay_uses_rate_scale);
 	ClassDB::bind_method(D_METHOD("get_delay_uses_rate_scale"), &AudioStreamGroup::get_delay_uses_rate_scale);
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "delay_uses_rate_scale"), "set_delay_uses_rate_scale", "get_delay_uses_rate_scale");
+	ClassDB::bind_method(D_METHOD("set_start_children_before_delay", "enabled"), &AudioStreamGroup::set_start_children_before_delay);
+	ClassDB::bind_method(D_METHOD("get_start_children_before_delay"), &AudioStreamGroup::get_start_children_before_delay);
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "start_children_before_delay"), "set_start_children_before_delay", "get_start_children_before_delay");
 	ClassDB::bind_method(D_METHOD("set_loop", "loop"), &AudioStreamGroup::set_loop);
 	ClassDB::bind_method(D_METHOD("get_loop"), &AudioStreamGroup::get_loop);
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "loop"), "set_loop", "get_loop");

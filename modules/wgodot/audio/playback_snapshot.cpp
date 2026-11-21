@@ -61,7 +61,7 @@ void WAudioPlaybackProbe::append(Snapshot &r_snapshot, const Ref<AudioStream> &p
 			append(r_snapshot, child.stream, child.stream_playback,
 					p_path + "/voice" + itos(i) + ":" + itos(child.id),
 					p_volume * Math::db_to_linear(child.volume_db), p_pitch * child.pitch_scale,
-					child.pending_play.is_set(), child.finish_request.is_set(), r_ancestors);
+					p_pending || child.pending_play.is_set(), p_finishing || child.finish_request.is_set(), r_ancestors);
 		}
 	}
 #ifdef MODULE_AUDIO_GRAPH_ENABLED
@@ -78,7 +78,8 @@ void WAudioPlaybackProbe::append(Snapshot &r_snapshot, const Ref<AudioStream> &p
 					continue;
 				}
 				append(r_snapshot, group->group->streams[i], child, p_path + "/child" + itos(i),
-						voice.volume * group->group->stream_volume(i), voice.pitch, false, false, r_ancestors);
+						voice.volume * group->group->stream_volume(i), voice.pitch,
+						p_pending || group->delay > 0.0, p_finishing, r_ancestors);
 			}
 		}
 	}
@@ -94,8 +95,8 @@ void WAudioPlaybackProbe::append(Snapshot &r_snapshot, const Ref<AudioStream> &p
 			}
 			const int child = r_snapshot.voices.size();
 			append(r_snapshot, state.stream, state.playback, p_path + "/clip" + itos(i),
-					p_volume * state.fade_volume, p_pitch, state.first_mix,
-					state.fade_speed < 0.0, r_ancestors);
+					p_volume * state.fade_volume, p_pitch, p_pending || state.first_mix,
+					p_finishing || state.fade_speed < 0.0, r_ancestors);
 			if (r_snapshot.voices.size() > child) {
 				r_snapshot.voices.write[child].delay += state.fade_wait;
 			}
