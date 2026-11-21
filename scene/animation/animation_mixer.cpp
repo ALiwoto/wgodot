@@ -40,6 +40,10 @@
 #include "animation_mixer.compat.inc"
 
 // wgodot-changes::begin
+#include "core/io/wgodot_method_event.h"
+// wgodot-changes::end
+
+// wgodot-changes::begin
 #include "wgodot_animation_audio.h"
 // wgodot-changes::end
 
@@ -1775,14 +1779,18 @@ void AnimationMixer::_blend_process(double p_delta, bool p_update_only) {
 						}
 						StringName method = a->method_track_get_name(i, idx);
 						Vector<Variant> params = a->method_track_get_params(i, idx);
-						_call_object(t->object_id, method, params, callback_mode_method == ANIMATION_CALLBACK_MODE_METHOD_DEFERRED);
+						// wgodot-changes::begin
+						_call_object(t->object_id, method, params, callback_mode_method == ANIMATION_CALLBACK_MODE_METHOD_DEFERRED, a->method_track_get_target_type(i, idx));
+						// wgodot-changes::end
 					} else {
 						LocalVector<int> indices;
 						a->track_get_key_indices_in_range(i, time, delta, start, end, &indices, looped_flag);
 						for (int &F : indices) {
 							StringName method = a->method_track_get_name(i, F);
 							Vector<Variant> params = a->method_track_get_params(i, F);
-							_call_object(t->object_id, method, params, callback_mode_method == ANIMATION_CALLBACK_MODE_METHOD_DEFERRED);
+							// wgodot-changes::begin
+							_call_object(t->object_id, method, params, callback_mode_method == ANIMATION_CALLBACK_MODE_METHOD_DEFERRED, a->method_track_get_target_type(i, F));
+							// wgodot-changes::end
 						}
 					}
 				} break;
@@ -2131,7 +2139,9 @@ void AnimationMixer::_blend_apply(bool p_apply_shaders) {
 	}
 }
 
-void AnimationMixer::_call_object(ObjectID p_object_id, const StringName &p_method, const Vector<Variant> &p_params, bool p_deferred) {
+// wgodot-changes::begin
+void AnimationMixer::_call_object(ObjectID p_object_id, const StringName &p_method, const Vector<Variant> &p_params, bool p_deferred, const StringName &p_target_type) {
+// wgodot-changes::end
 	// Separate function to use alloca() more efficiently
 	const Variant **argptrs = (const Variant **)alloca(sizeof(Variant *) * p_params.size());
 	const Variant *args = p_params.ptr();
@@ -2143,6 +2153,9 @@ void AnimationMixer::_call_object(ObjectID p_object_id, const StringName &p_meth
 	if (!t_obj) {
 		return;
 	}
+	// wgodot-changes::begin
+	ERR_FAIL_COND_MSG(!WGodotMethodEvent::matches(t_obj, p_target_type), "Animation method event target does not inherit declared type '" + String(p_target_type) + "'.");
+	// wgodot-changes::end
 	if (p_deferred) {
 		Callable(t_obj, p_method).call_deferredp(argptrs, argcount);
 	} else {

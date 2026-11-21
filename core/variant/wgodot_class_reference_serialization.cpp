@@ -3,8 +3,7 @@
 
 #include "core/object/wgodot_class_references.h"
 
-namespace {
-Error read_name(VariantParser::Stream *p_stream, StringName &r_name, int &r_line, String &r_error, bool p_constraint) {
+Error WGodotClassReferenceSerialization::parse_name(VariantParser::Stream *p_stream, StringName &r_name, int &r_line, String &r_error, bool p_constraint) {
 	using Parser = VariantParser;
 	Parser::Token token;
 	RETURN_IF_ERROR(Parser::get_token(p_stream, token, r_line, r_error));
@@ -25,11 +24,10 @@ Error read_name(VariantParser::Stream *p_stream, StringName &r_name, int &r_line
 	}
 	return OK;
 }
-} // namespace
 
 Error WGodotClassReferenceSerialization::parse(VariantParser::Stream *p_stream, Variant &r_value, int &r_line, String &r_error, bool p_syntax_only) {
 	StringName name;
-	RETURN_IF_ERROR(read_name(p_stream, name, r_line, r_error, false));
+	RETURN_IF_ERROR(parse_name(p_stream, name, r_line, r_error, false));
 	if (p_syntax_only) {
 		r_value = Variant();
 		return OK;
@@ -44,7 +42,7 @@ Error WGodotClassReferenceSerialization::parse(VariantParser::Stream *p_stream, 
 
 Error WGodotClassReferenceSerialization::parse_type(VariantParser::Stream *p_stream, StringName &r_constraint, int &r_line, String &r_error, bool p_syntax_only) {
 	StringName name;
-	RETURN_IF_ERROR(read_name(p_stream, name, r_line, r_error, true));
+	RETURN_IF_ERROR(parse_name(p_stream, name, r_line, r_error, true));
 	if (!p_syntax_only && WGodotClassReferences::name(WGodotClassReferences::resolve(name)) == StringName()) {
 		r_error = "Unknown ClassRef base '" + String(name) + "'.";
 		return ERR_PARSE_ERROR;

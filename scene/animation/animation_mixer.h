@@ -407,7 +407,9 @@ protected:
 	void _blend_apply(bool p_apply_shaders = true);
 	// wgodot-changes::end
 	virtual void _blend_post_process();
-	void _call_object(ObjectID p_object_id, const StringName &p_method, const Vector<Variant> &p_params, bool p_deferred);
+	// wgodot-changes::begin
+	void _call_object(ObjectID p_object_id, const StringName &p_method, const Vector<Variant> &p_params, bool p_deferred, const StringName &p_target_type);
+	// wgodot-changes::end
 
 	/* ---- Capture feature ---- */
 	struct CaptureCache {

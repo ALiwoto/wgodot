@@ -492,7 +492,8 @@ Error WGodotResourceValidation::parse(const String &p_name, Token &p_token, Stre
 		const WResourceCodec *codec = WResourceCodec::find(owner_type);
 		if (codec && codec->owns_assignment(p_name)) {
 			handled = true;
-			return codec->check_types(p_token, p_stream, r_line, r_error, p_resources);
+			const WResourceCodec::TypeContext context{ this, method_event };
+			return codec->check_types(p_token, p_stream, r_line, r_error, p_resources, context);
 		}
 	}
 	WResourceCodec::Assignment codec(nullptr, owner_type);
@@ -592,6 +593,16 @@ Error WGodotResourceValidation::parse_external(void *p_self, Stream *p_stream, R
 
 Error WGodotResourceValidation::parse_internal(void *p_self, Stream *p_stream, Ref<Resource> &r_resource, int &r_line, String &r_error) {
 	return static_cast<WGodotResourceValidation *>(p_self)->marker(p_stream, r_resource, r_line, r_error, false);
+}
+
+Error WGodotResourceValidation::method_event(void *p_self, const StringName &p_target, const StringName &p_method, String &r_error) {
+	auto *self = static_cast<WGodotResourceValidation *>(p_self);
+	RETURN_IF_ERROR(self->class_type(p_target, StringName("Node"), r_error));
+	WGodotResourceTypes::Function method;
+	if (!self->types->function(p_target, p_method, false, method, self->result.declarations) || !method.exposed || method.variadic || !method.parameters.is_empty()) {
+		return self->fail("Typed method event requires a declared public parameterless instance method: " + String(p_target) + "." + String(p_method), r_error);
+	}
+	return OK;
 }
 
 void WGodotResourceValidation::configure(VP::ResourceParser &r_resources) {

@@ -35,12 +35,19 @@ The prefix is textual path compression, not a scene root: `.Root` above expands 
 | 2: rotation_3d | x, y, z, w; `RotationKey` |
 | 3: scale_3d | x, y, z; `VectorKey` |
 | 4: blend_shape | weight; `ScalarKey` |
-| 5: method | `{ "method": name, "args": [...] }`; `MethodKey` |
+| 5: method | `{ "method": name, "args": [], "target_type": ClassRef("NodeClass") }`; `MethodKey` |
 | 6: bezier | value, in_x, in_y, out_x, out_y; `BezierKey` |
 | 7: audio | stream reference, optional start/end offsets; `AudioKey` |
 | 8: animation | animation name; `AnimationKey` |
 
 Type/interpolation numbers are Godot's enums; interpolation 5 is WGodot's normalized linear rotation interpolation. Options preserve `flags` (disabled=1, imported=2, no loop wrap=4), `update`, `audio_blend`, `transitions` and Bezier `handles`.
+
+Strict method events require an explicit `ClassRef` target and currently support
+parameterless instance methods. Loading validates the compiled method declaration;
+playback also requires the resolved node to inherit the declared target type.
+Class references participate in resource dependencies, so signature changes
+invalidate resource checks. Text, binary track copies and native factories retain
+the declaration. Non-strict resources may retain legacy events without a target.
 
 Value tracks may supply `curves: PackedVector4Array(...)`, one outgoing normalized Bézier `(x1, y1, x2, y2)` per key; `(-1, 0, 0, 0)` means stepped. Optional `curve_subdivisions` preserves sampled easing: zero evaluates the Bézier, a positive count interpolates that many linear segments. Sample points are cached on load/edit, never rebuilt during playback. Text, binary caches, track copies and typed C++ factories preserve both controls and subdivisions.
 

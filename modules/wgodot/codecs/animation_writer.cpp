@@ -94,7 +94,8 @@ class Writer {
 		for (const Variant &argument : p_key.params) {
 			args.push_back(argument);
 		}
-		return "{\"method\": " + quoted(p_key.method) + ", \"args\": " + variant(args) + "}";
+		const String target = p_key.target_type.is_empty() ? String() : ", \"target_type\": ClassRef(" + quoted(p_key.target_type) + ")";
+		return "{\"method\": " + quoted(p_key.method) + ", \"args\": " + variant(args) + target + "}";
 	}
 
 	String property_type(const LocalVector<WAnimation::ValueKey> &p_keys) {

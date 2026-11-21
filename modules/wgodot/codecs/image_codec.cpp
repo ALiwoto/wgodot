@@ -65,7 +65,7 @@ public:
 	Error read(Resource *p_resource, VariantParser::Token &p_token, VariantParser::Stream *p_stream, int &r_line, String &r_error, VariantParser::ResourceParser *) const override {
 		return read_image(Object::cast_to<Image>(p_resource), p_token, p_stream, r_line, r_error);
 	}
-	Error check_types(VariantParser::Token &p_token, VariantParser::Stream *p_stream, int &r_line, String &r_error, VariantParser::ResourceParser *) const override {
+	Error check_types(VariantParser::Token &p_token, VariantParser::Stream *p_stream, int &r_line, String &r_error, VariantParser::ResourceParser *, const TypeContext &) const override {
 		return read_image(nullptr, p_token, p_stream, r_line, r_error);
 	}
 	Error write(const Resource *, String &r_text, VariantWriter::EncodeResourceFunc, void *) const override {

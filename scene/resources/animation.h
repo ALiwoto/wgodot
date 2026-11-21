@@ -196,6 +196,9 @@ private:
 
 	struct MethodKey : public Key {
 		StringName method;
+		// wgodot-changes::begin
+		StringName target_type;
+		// wgodot-changes::end
 		Vector<Variant> params;
 	};
 
@@ -546,6 +549,9 @@ public:
 
 	Vector<Variant> method_track_get_params(int p_track, int p_key_idx) const;
 	StringName method_track_get_name(int p_track, int p_key_idx) const;
+	// wgodot-changes::begin
+	StringName method_track_get_target_type(int p_track, int p_key_idx) const;
+	// wgodot-changes::end
 
 	void copy_track(int p_track, Ref<Animation> p_to_animation);
 

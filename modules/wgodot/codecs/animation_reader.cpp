@@ -2,6 +2,8 @@
 #include "animation_codec.h"
 #include "animation_constants.h"
 #include "animation_diagnostics.h"
+#include "core/io/wgodot_method_event.h"
+#include "core/variant/wgodot_class_reference_serialization.h"
 
 #ifdef W_ANIMATION_CODEC_DIAGNOSTICS
 #include "core/os/os.h"
@@ -24,6 +26,7 @@ class Reader {
 	WAnimation *animation = nullptr;
 	bool wide_values = false;
 	bool strict_types = false;
+	const WResourceCodec::TypeContext *type_context = nullptr;
 #ifdef W_ANIMATION_CODEC_DIAGNOSTICS
 	WAnimationCodecProfile profile;
 #endif
@@ -227,20 +230,68 @@ class Reader {
 	}
 
 	Error read_method(WAnimation::MethodKey &r_key) {
-		if (strict_types) {
-			return fail("method tracks have no declared target signature for static type checking");
+		RETURN_IF_ERROR(expect(Parser::TK_CURLY_BRACKET_OPEN));
+		HashSet<String> fields;
+		Array arguments;
+		while (true) {
+			RETURN_IF_ERROR(peek());
+			if (token.type == Parser::TK_CURLY_BRACKET_CLOSE) {
+				pending = false;
+				break;
+			}
+			String field;
+			RETURN_IF_ERROR(string(field));
+			if (fields.has(field)) {
+				return fail("duplicate method key field: " + field);
+			}
+			fields.insert(field);
+			RETURN_IF_ERROR(expect(Parser::TK_COLON));
+			if (field == "method") {
+				String method;
+				RETURN_IF_ERROR(string(method));
+				r_key.method = method;
+			} else if (field == "args") {
+				Variant value;
+				RETURN_IF_ERROR(variant(value));
+				if (value.get_type() != Variant::ARRAY) {
+					return fail("method args must be an array");
+				}
+				arguments = value;
+			} else if (field == "target_type") {
+				RETURN_IF_ERROR(peek());
+				if (token.type != Parser::TK_IDENTIFIER || token.value != "ClassRef") {
+					return fail("method target_type must be an explicit ClassRef");
+				}
+				pending = false;
+				RETURN_IF_ERROR(WGodotClassReferenceSerialization::parse_name(stream, r_key.target_type, line, error));
+			} else {
+				return fail("unknown method key field: " + field);
+			}
+			RETURN_IF_ERROR(peek());
+			if (token.type != Parser::TK_CURLY_BRACKET_CLOSE) {
+				RETURN_IF_ERROR(comma());
+			}
 		}
-		Variant value;
-		RETURN_IF_ERROR(variant(value));
-		if (value.get_type() != Variant::DICTIONARY) {
-			return fail("method key must contain method and args");
-		}
-		Dictionary fields = value;
-		if (fields.size() != 2 || !fields.has("method") || !fields.has("args")) {
+		const bool typed = fields.has("target_type");
+		if (!fields.has("method") || !fields.has("args")) {
 			return fail("invalid method key fields");
 		}
-		r_key.method = fields["method"];
-		Array arguments = fields["args"];
+		if (strict_types && !typed) {
+			return fail("method tracks require a declared target_type for static type checking");
+		}
+		if (typed) {
+			String detail;
+			if (!arguments.is_empty()) {
+				return fail("typed method events currently require no arguments");
+			}
+			if (type_context && type_context->method_event) {
+				// Static checking uses its immutable declaration snapshot and
+				// records signature dependencies; no live script loads on workers.
+				RETURN_IF_ERROR(type_context->method_event(type_context->userdata, r_key.target_type, r_key.method, error));
+			} else if (!(resources && resources->syntax_only) && !WGodotMethodEvent::validate_parameterless(r_key.target_type, r_key.method, detail)) {
+				return fail(detail);
+			}
+		}
 		r_key.params.resize(arguments.size());
 		for (int i = 0; i < arguments.size(); i++) {
 			r_key.params.write[i] = arguments[i];
@@ -554,8 +605,8 @@ class Reader {
 	}
 
 public:
-	Reader(Parser::Token p_token, Parser::Stream *p_stream, int &r_line, String &r_error, Parser::ResourceParser *p_resources, bool p_strict_types = false) :
-			stream(p_stream), line(r_line), error(r_error), resources(p_resources), token(p_token), strict_types(p_strict_types) {}
+	Reader(Parser::Token p_token, Parser::Stream *p_stream, int &r_line, String &r_error, Parser::ResourceParser *p_resources, bool p_strict_types = false, const WResourceCodec::TypeContext *p_types = nullptr) :
+			stream(p_stream), line(r_line), error(r_error), resources(p_resources), token(p_token), strict_types(p_strict_types), type_context(p_types) {}
 
 	void report(WAnimation *p_target, Error p_status) {
 #ifdef W_ANIMATION_CODEC_DIAGNOSTICS
@@ -661,7 +712,7 @@ Error WAnimationCodec::read(Resource *p_resource, VariantParser::Token &p_token,
 	return result;
 }
 
-Error WAnimationCodec::check_types(VariantParser::Token &p_token, VariantParser::Stream *p_stream, int &r_line, String &r_error, VariantParser::ResourceParser *p_resources) const {
-	Reader reader(p_token, p_stream, r_line, r_error, p_resources, true);
+Error WAnimationCodec::check_types(VariantParser::Token &p_token, VariantParser::Stream *p_stream, int &r_line, String &r_error, VariantParser::ResourceParser *p_resources, const TypeContext &p_types) const {
+	Reader reader(p_token, p_stream, r_line, r_error, p_resources, true, &p_types);
 	return reader.read(nullptr);
 }

@@ -20,6 +20,7 @@ void native_key(NativeWriter &p_writer, const String &p_key, const T &p_value) {
 void native_key(NativeWriter &p_writer, const String &p_key, const WAnimation::MethodKey &p_value) {
 	const String method = p_writer.value(p_value.method);
 	p_writer.line(p_key + ".method = " + method + ";");
+	p_writer.line(p_key + ".target_type = " + p_writer.value(p_value.target_type) + ";");
 	p_writer.line(p_key + ".params.resize(" + itos(p_value.params.size()) + ");");
 	for (int i = 0; i < p_value.params.size(); i++) {
 		const String argument = p_writer.value(p_value.params[i]);

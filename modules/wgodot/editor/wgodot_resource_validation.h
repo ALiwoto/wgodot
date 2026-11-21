@@ -74,6 +74,7 @@ class WGodotResourceValidation : public VariantParser::AssignmentParser {
 	Error tag_fields(const VariantParser::Tag &p_tag, String &r_error);
 	static Error parse_external(void *p_self, Stream *p_stream, Ref<Resource> &r_resource, int &r_line, String &r_error);
 	static Error parse_internal(void *p_self, Stream *p_stream, Ref<Resource> &r_resource, int &r_line, String &r_error);
+	static Error method_event(void *p_self, const StringName &p_target, const StringName &p_method, String &r_error);
 	Error marker(Stream *p_stream, Ref<Resource> &r_resource, int &r_line, String &r_error, bool p_external);
 
 public:

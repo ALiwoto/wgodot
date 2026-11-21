@@ -41,6 +41,10 @@
 #include "core/io/marshalls.h"
 #include "core/object/class_db.h"
 
+// wgodot-changes::begin
+#include "core/object/wgodot_class_references.h"
+// wgodot-changes::end
+
 bool Animation::_set(const StringName &p_name, const Variant &p_value) {
 	String prop_name = p_name;
 
@@ -1865,6 +1869,9 @@ int Animation::track_insert_key(int p_track, double p_time, const Variant &p_key
 			k.transition = p_transition;
 			k.method = d["method"];
 			k.params = d["args"];
+			// wgodot-changes::begin
+			k.target_type = WGodotClassReferences::name(d.get("target_type", Variant()));
+			// wgodot-changes::end
 
 			ret = _insert(p_time, mt->methods, k);
 
@@ -2024,6 +2031,11 @@ Variant Animation::track_get_key_value(int p_track, int p_key_idx) const {
 			Dictionary d;
 			d["method"] = mt->methods[p_key_idx].method;
 			d["args"] = mt->methods[p_key_idx].params;
+			// wgodot-changes::begin
+			if (!mt->methods[p_key_idx].target_type.is_empty()) {
+				d["target_type"] = WGodotClassReferences::resolve(mt->methods[p_key_idx].target_type);
+			}
+			// wgodot-changes::end
 			return d;
 
 		} break;
@@ -2414,6 +2426,11 @@ void Animation::track_set_key_value(int p_track, int p_key_idx, const Variant &p
 			if (d.has("args")) {
 				mt->methods[p_key_idx].params = d["args"];
 			}
+			// wgodot-changes::begin
+			if (d.has("target_type")) {
+				mt->methods[p_key_idx].target_type = WGodotClassReferences::name(d["target_type"]);
+			}
+			// wgodot-changes::end
 
 		} break;
 		case TYPE_BEZIER: {
@@ -3484,6 +3501,16 @@ StringName Animation::method_track_get_name(int p_track, int p_key_idx) const {
 
 	return pm->methods[p_key_idx].method;
 }
+
+// wgodot-changes::begin
+StringName Animation::method_track_get_target_type(int p_track, int p_key_idx) const {
+	ERR_FAIL_UNSIGNED_INDEX_V((uint32_t)p_track, tracks.size(), StringName());
+	ERR_FAIL_COND_V(tracks[p_track]->type != TYPE_METHOD, StringName());
+	const MethodTrack *track = static_cast<const MethodTrack *>(tracks[p_track]);
+	ERR_FAIL_UNSIGNED_INDEX_V((uint32_t)p_key_idx, track->methods.size(), StringName());
+	return track->methods[p_key_idx].target_type;
+}
+// wgodot-changes::end
 
 Array Animation::make_default_bezier_key(float p_value) {
 	const double max_width = length / 2.0;
