@@ -23,6 +23,7 @@
 #include "scene/main/viewport.h"
 #include "scene/resources/material.h"
 #include "scene/resources/mesh_lod_profile.h"
+#include "servers/audio/audio_server.h"
 #include "servers/rendering/rendering_method.h"
 #include "servers/rendering/rendering_server.h"
 #include "servers/rendering/rendering_server_globals.h"
@@ -225,6 +226,14 @@ PackedByteArray WLiveSceneProbe::snapshot(Node *p_root, Skeleton3D *p_body) {
 	ERR_FAIL_NULL_V(p_root, PackedByteArray());
 	snapshot_root = p_root->get_instance_id();
 	Writer writer;
+	AudioServer *audio_server = AudioServer::get_singleton();
+	for (int index = 0; index < audio_server->get_bus_count(); index++) {
+		const String name = audio_server->get_bus_name(index);
+		writer.record(NUMERIC, "@audio/bus/" + name, { "audio_bus", name, audio_server->get_bus_send(index) }, {
+			double(index), audio_server->get_bus_volume_db(index), double(audio_server->is_bus_mute(index)),
+			double(audio_server->is_bus_solo(index)), double(audio_server->is_bus_bypassing_effects(index)), double(audio_server->get_bus_effect_count(index))
+		});
+	}
 	if (p_body) {
 		writer.record(BODY, String(p_root->get_path_to(p_body)), {}, {});
 	}
