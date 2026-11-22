@@ -396,7 +396,19 @@ Error VariantParser::get_token(Stream *p_stream, Token &r_token, int &r_line, St
 							r_token.type = TK_ERROR;
 							return ERR_PARSE_ERROR;
 						}
-						str += res;
+						// wgodot-changes::begin
+						// File streams contain UTF-8 bytes until the conversion below.
+						// Unicode escapes are already decoded codepoints; encode them
+						// into the same byte stream instead of losing them in ascii().
+						if (p_stream->is_utf8() && (next == 'u' || next == 'U') && res > 0x7f) {
+							const CharString encoded = String::chr(res).utf8();
+							for (int i = 0; i < encoded.length(); i++) {
+								str += uint8_t(encoded[i]);
+							}
+						} else {
+							str += res;
+						}
+						// wgodot-changes::end
 					} else {
 						if (prev != 0) {
 							r_err_str = "Invalid UTF-16 sequence in string, unpaired lead surrogate";

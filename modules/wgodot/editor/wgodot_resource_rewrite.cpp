@@ -2,8 +2,33 @@
 #include "wgodot_resource_rewrite.h"
 
 #include "core/string/string_builder.h"
+#include "core/variant/variant_parser.h"
+#include "modules/gdscript/gdscript_tokenizer.h"
 
 namespace {
+bool decode_string_literal(const String &p_literal, bool p_script, String &r_value) {
+	if (p_script) {
+		GDScriptTokenizerText tokenizer;
+		tokenizer.set_source_code(p_literal);
+		const GDScriptTokenizer::Token token = tokenizer.scan();
+		if (token.type != GDScriptTokenizer::Token::LITERAL || token.literal.get_type() != Variant::STRING) {
+			return false;
+		}
+		r_value = token.literal;
+		return true;
+	}
+	VariantParser::StreamString stream;
+	stream.s = p_literal;
+	Variant value;
+	String error;
+	int line = 0;
+	if (VariantParser::parse(&stream, value, error, line) != OK || value.get_type() != Variant::STRING) {
+		return false;
+	}
+	r_value = value;
+	return true;
+}
+
 PropertyInfo container_element_property(const PropertyInfo &p_container, int p_index = 0) {
 	PropertyInfo property;
 	if (p_container.hint != PROPERTY_HINT_TYPE_STRING && p_container.hint != PROPERTY_HINT_ARRAY_TYPE && p_container.hint != PROPERTY_HINT_DICTIONARY_TYPE) {
@@ -104,6 +129,8 @@ String WGodotResourceRewrite::text(const String &p_text, const String &p_source,
 		const char32_t quote = characters[i];
 		const int quote_length = script && i + 2 < length && characters[i + 1] == quote && characters[i + 2] == quote ? 3 : 1;
 		const int begin = i;
+		const bool raw_string = script && begin > 0 && characters[begin - 1] == 'r';
+		const int literal_begin = raw_string ? begin - 1 : begin;
 		i += quote_length;
 		while (i < length) {
 			if (characters[i] == quote && (quote_length == 1 || (i + 2 < length && characters[i + 1] == quote && characters[i + 2] == quote))) {
@@ -117,8 +144,13 @@ String WGodotResourceRewrite::text(const String &p_text, const String &p_source,
 		if (i >= length) {
 			break;
 		}
-		const String value = p_text.substr(begin + quote_length, i - begin - quote_length).c_unescape();
+		String value = p_text.substr(begin + quote_length, i - begin - quote_length);
 		i += quote_length - 1;
+		// Use the owning language's literal parser for Unicode and escaped
+		// backslashes. Plain path strings need no decoding or parser allocation.
+		if (!raw_string && value.contains("\\") && !decode_string_literal(p_text.substr(literal_begin, i + 1 - literal_begin), script, value)) {
+			continue;
+		}
 		String replacement = value;
 		const int line_begin = p_text.rfind("\n", begin) + 1;
 		const String prefix = p_text.substr(line_begin, begin - line_begin).strip_edges();
@@ -136,9 +168,13 @@ String WGodotResourceRewrite::text(const String &p_text, const String &p_source,
 			replacement = WGodotResourceRewrite::text(value, p_source, p_path);
 		}
 		if (replacement != value) {
-			result += p_text.substr(copied, begin - copied);
+			result += p_text.substr(copied, literal_begin - copied);
 			const String delimiter = String::chr(quote).repeat(quote_length);
-			result += delimiter + replacement.c_escape() + delimiter;
+			String escaped = replacement.c_escape();
+			if (quote == '\'') {
+				escaped = escaped.replace("'", "\\'");
+			}
+			result += delimiter + escaped + delimiter;
 			copied = i + 1;
 		}
 	}

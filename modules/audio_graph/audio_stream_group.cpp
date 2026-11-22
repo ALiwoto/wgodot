@@ -7,23 +7,52 @@
 #include "modules/wgodot/audio/audio_stepper.h"
 #endif
 
+// Seeking discards mixed samples through the ordinary nested stream graph.
+// Its elapsed clip time must not age admission envelopes in any child group.
+static thread_local unsigned int discarded_mix_depth = 0;
+
+void AudioStreamGroup::update_instance_volumes(bool p_admitting) {
+	// Caller holds instance_mutex. Generations follow admission order, including
+	// delayed voices. Removing a voice rebases ages without changing that order.
+	if (instance_volume_scale == 1.0f || (!p_admitting && !instance_volume_recover)) {
+		return;
+	}
+	int age = instances.size() - (p_admitting ? 0 : 1);
+	for (AudioStreamPlaybackGroup *playback : instances) {
+		const float target = Math::pow(instance_volume_scale, float(age--));
+		if (p_admitting && instance_volume_recover && Math::db_to_linear(playback->instance_volume_target_db) < target) {
+			continue;
+		}
+		playback->set_instance_volume_target(target, p_admitting ? instance_volume_attack_time : instance_volume_release_time);
+	}
+}
+
 void AudioStreamGroup::enforce_instance_limit() {
 	// Caller holds instance_mutex. Never call another playback here: its mixer
 	// may be running, and stopping its children would reverse lock ordering.
 	while (instance_limit_mode == STOP_OLDEST && max_instances > 0 && instances.size() > max_instances) {
 		instances.front()->get()->instance_limited.set();
 		instances.pop_front();
+		update_instance_volumes(false);
 	}
 }
 
 bool AudioStreamGroup::admit_instance(AudioStreamPlaybackGroup *p_playback) {
 	MutexLock lock(instance_mutex);
-	instances.erase(p_playback);
+	if (instances.erase(p_playback)) {
+		update_instance_volumes(false);
+	}
 	p_playback->instance_limited.clear();
+	p_playback->instance_volume_start_db = 0.0f;
+	p_playback->instance_volume_target_db = 0.0f;
+	p_playback->instance_volume_elapsed = 0.0;
+	p_playback->instance_volume_duration = 0.0;
+	p_playback->instance_volume_active.clear();
 	if (instance_limit_mode == REJECT_NEW && max_instances > 0 && instances.size() >= max_instances) {
 		p_playback->instance_limited.set();
 		return false;
 	}
+	update_instance_volumes(true);
 	instances.push_back(p_playback);
 	enforce_instance_limit();
 	return true;
@@ -31,7 +60,9 @@ bool AudioStreamGroup::admit_instance(AudioStreamPlaybackGroup *p_playback) {
 
 void AudioStreamGroup::release_instance(AudioStreamPlaybackGroup *p_playback) {
 	MutexLock lock(instance_mutex);
-	instances.erase(p_playback);
+	if (instances.erase(p_playback)) {
+		update_instance_volumes(false);
+	}
 }
 
 void AudioStreamGroup::set_max_instances(int p_value) {
@@ -62,6 +93,75 @@ void AudioStreamGroup::set_instance_limit_mode(InstanceLimitMode p_value) {
 AudioStreamGroup::InstanceLimitMode AudioStreamGroup::get_instance_limit_mode() const {
 	MutexLock lock(instance_mutex);
 	return instance_limit_mode;
+}
+
+void AudioStreamGroup::set_instance_volume_scale(float p_value) {
+	ERR_FAIL_COND(!Math::is_finite(p_value) || p_value < 0.0f || p_value > 1.0f);
+	{
+		MutexLock lock(instance_mutex);
+		instance_volume_scale = p_value;
+	}
+	emit_changed();
+}
+
+float AudioStreamGroup::get_instance_volume_scale() const {
+	MutexLock lock(instance_mutex);
+	return instance_volume_scale;
+}
+
+void AudioStreamGroup::set_instance_volume_attack_time(double p_value) {
+	ERR_FAIL_COND(!Math::is_finite(p_value) || p_value < 0.0);
+	{
+		MutexLock lock(instance_mutex);
+		instance_volume_attack_time = p_value;
+	}
+	emit_changed();
+}
+
+double AudioStreamGroup::get_instance_volume_attack_time() const {
+	MutexLock lock(instance_mutex);
+	return instance_volume_attack_time;
+}
+
+void AudioStreamGroup::set_instance_volume_release_time(double p_value) {
+	ERR_FAIL_COND(!Math::is_finite(p_value) || p_value < 0.0);
+	{
+		MutexLock lock(instance_mutex);
+		instance_volume_release_time = p_value;
+	}
+	emit_changed();
+}
+
+double AudioStreamGroup::get_instance_volume_release_time() const {
+	MutexLock lock(instance_mutex);
+	return instance_volume_release_time;
+}
+
+void AudioStreamGroup::set_instance_volume_recover(bool p_value) {
+	{
+		MutexLock lock(instance_mutex);
+		instance_volume_recover = p_value;
+	}
+	emit_changed();
+}
+
+bool AudioStreamGroup::get_instance_volume_recover() const {
+	MutexLock lock(instance_mutex);
+	return instance_volume_recover;
+}
+
+void AudioStreamGroup::set_instance_volume_floor_db(float p_value) {
+	ERR_FAIL_COND(!Math::is_finite(p_value) || p_value > 0.0f);
+	{
+		MutexLock lock(instance_mutex);
+		instance_volume_floor_db = p_value;
+	}
+	emit_changed();
+}
+
+float AudioStreamGroup::get_instance_volume_floor_db() const {
+	MutexLock lock(instance_mutex);
+	return instance_volume_floor_db;
 }
 
 void AudioStreamGroup::set_streams(const TypedArray<AudioStream> &p_value) {
@@ -327,14 +427,17 @@ void AudioStreamPlaybackGroup::reset_for_seek() {
 			return;
 		}
 	}
-	stop_children();
+	// Preserve active child admissions while replaying the selected branch.
+	// Stopping here would make reset_for_seek() readmit every nested group,
+	// discarding its age and resetting its concurrency envelope.
+	children_mixing.fill(0);
 	active = true;
 	seeking = true;
 	position = 0.0;
 	delay = delay_duration;
 	loops = 0;
 	children_started = false;
-	if (group->start_children_before_delay) {
+	if (group->start_children_before_delay || delay <= 0.0) {
 		start_children();
 	}
 }
@@ -353,8 +456,12 @@ void AudioStreamPlaybackGroup::seek(double p_time) {
 
 void AudioStreamPlaybackGroup::finish_seek() {
 	seeking = false;
-	for (const Ref<AudioStreamPlayback> &child : children) {
-		Ref<AudioStreamPlaybackGroup> child_group = child;
+	for (int i = 0; i < children.size(); i++) {
+		if (!children_mixing[i] && children[i].is_valid()) {
+			children[i]->stop();
+			continue;
+		}
+		Ref<AudioStreamPlaybackGroup> child_group = children[i];
 		if (child_group.is_valid()) {
 			child_group->finish_seek();
 		}
@@ -364,12 +471,14 @@ void AudioStreamPlaybackGroup::finish_seek() {
 void AudioStreamPlaybackGroup::advance_to(double p_time) {
 	AudioFrame discard[256];
 	const double target = MAX(p_time, 0.0);
+	discarded_mix_depth++;
 	while (active && position < target) {
 		const int frames = MIN(256, int(Math::ceil((target - position) * AudioServer::get_singleton()->get_mix_rate())));
 		if (mix(discard, 1.0f, frames) == 0) {
 			break;
 		}
 	}
+	discarded_mix_depth--;
 }
 
 int AudioStreamPlaybackGroup::mix_children(AudioFrame *p_buffer, float p_rate_scale, int p_frames) {
@@ -476,12 +585,38 @@ int AudioStreamPlaybackGroup::mix(AudioFrame *p_buffer, float p_rate_scale, int 
 			start_children();
 		}
 	}
+	if (instance_volume_active.is_set() && discarded_mix_depth == 0) {
+		MutexLock lock(group->instance_mutex);
+		// Ducking follows elapsed output time, independently of clip pitch/seek.
+		instance_volume_elapsed = MIN(instance_volume_elapsed + double(mixed) / AudioServer::get_singleton()->get_mix_rate(), instance_volume_duration);
+		if (instance_volume_elapsed >= instance_volume_duration && instance_volume_target_db == 0.0f) {
+			instance_volume_active.clear();
+		}
+	}
 	const float gain = playback_gain();
 	for (int i = 0; i < mixed; i++) {
 		p_buffer[i] *= gain;
 	}
 	position += mixed * seconds_per_frame;
 	return mixed;
+}
+
+float AudioStreamPlaybackGroup::instance_volume_db() const {
+	// Caller holds group->instance_mutex.
+	if (instance_volume_duration <= 0.0 || instance_volume_elapsed >= instance_volume_duration) {
+		return instance_volume_target_db;
+	}
+	return Math::lerp(instance_volume_start_db, instance_volume_target_db, float(instance_volume_elapsed / instance_volume_duration));
+}
+
+void AudioStreamPlaybackGroup::set_instance_volume_target(float p_gain, double p_duration) {
+	// Caller holds group->instance_mutex. Capture the current envelope so
+	// overlapping admissions and releases continue without a volume jump.
+	instance_volume_start_db = instance_volume_db();
+	instance_volume_target_db = p_gain > 0.0f ? MAX(Math::linear_to_db(p_gain), group->instance_volume_floor_db) : group->instance_volume_floor_db;
+	instance_volume_elapsed = 0.0;
+	instance_volume_duration = p_duration;
+	instance_volume_active.set_to(instance_volume_start_db != 0.0f || instance_volume_target_db != 0.0f);
 }
 
 float AudioStreamPlaybackGroup::playback_gain() const {
@@ -495,6 +630,10 @@ float AudioStreamPlaybackGroup::playback_gain() const {
 		if (group->volume_parameter_cutoff >= 0.0 && input > group->volume_parameter_cutoff) {
 			gain = 0.0;
 		}
+	}
+	if (instance_volume_active.is_set()) {
+		MutexLock lock(group->instance_mutex);
+		gain *= Math::db_to_linear(instance_volume_db());
 	}
 	return gain;
 }
@@ -535,6 +674,21 @@ void AudioStreamGroup::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "instance_limit_mode", PROPERTY_HINT_ENUM, "Stop Oldest,Reject New"), "set_instance_limit_mode", "get_instance_limit_mode");
 	BIND_ENUM_CONSTANT(STOP_OLDEST);
 	BIND_ENUM_CONSTANT(REJECT_NEW);
+	ClassDB::bind_method(D_METHOD("set_instance_volume_scale", "value"), &AudioStreamGroup::set_instance_volume_scale);
+	ClassDB::bind_method(D_METHOD("get_instance_volume_scale"), &AudioStreamGroup::get_instance_volume_scale);
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "instance_volume_scale", PROPERTY_HINT_RANGE, "0,1,0.01"), "set_instance_volume_scale", "get_instance_volume_scale");
+	ClassDB::bind_method(D_METHOD("set_instance_volume_attack_time", "value"), &AudioStreamGroup::set_instance_volume_attack_time);
+	ClassDB::bind_method(D_METHOD("get_instance_volume_attack_time"), &AudioStreamGroup::get_instance_volume_attack_time);
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "instance_volume_attack_time", PROPERTY_HINT_RANGE, "0,10,0.001,or_greater,suffix:s"), "set_instance_volume_attack_time", "get_instance_volume_attack_time");
+	ClassDB::bind_method(D_METHOD("set_instance_volume_release_time", "value"), &AudioStreamGroup::set_instance_volume_release_time);
+	ClassDB::bind_method(D_METHOD("get_instance_volume_release_time"), &AudioStreamGroup::get_instance_volume_release_time);
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "instance_volume_release_time", PROPERTY_HINT_RANGE, "0,10,0.001,or_greater,suffix:s"), "set_instance_volume_release_time", "get_instance_volume_release_time");
+	ClassDB::bind_method(D_METHOD("set_instance_volume_recover", "value"), &AudioStreamGroup::set_instance_volume_recover);
+	ClassDB::bind_method(D_METHOD("get_instance_volume_recover"), &AudioStreamGroup::get_instance_volume_recover);
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "instance_volume_recover"), "set_instance_volume_recover", "get_instance_volume_recover");
+	ClassDB::bind_method(D_METHOD("set_instance_volume_floor_db", "value"), &AudioStreamGroup::set_instance_volume_floor_db);
+	ClassDB::bind_method(D_METHOD("get_instance_volume_floor_db"), &AudioStreamGroup::get_instance_volume_floor_db);
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "instance_volume_floor_db", PROPERTY_HINT_RANGE, "-80,0,0.1,or_less,suffix:dB"), "set_instance_volume_floor_db", "get_instance_volume_floor_db");
 	ClassDB::bind_method(D_METHOD("set_mode", "mode"), &AudioStreamGroup::set_mode);
 	ClassDB::bind_method(D_METHOD("get_mode"), &AudioStreamGroup::get_mode);
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "mode", PROPERTY_HINT_ENUM, "Parallel,Sequential,Random,Shuffle,Switch"), "set_mode", "get_mode");

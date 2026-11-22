@@ -42,6 +42,11 @@ private:
 	Mutex selection_mutex;
 	int max_instances = 0;
 	InstanceLimitMode instance_limit_mode = STOP_OLDEST;
+	float instance_volume_scale = 1.0f;
+	double instance_volume_attack_time = 0.01;
+	double instance_volume_release_time = 0.5;
+	bool instance_volume_recover = false;
+	float instance_volume_floor_db = -80.0f;
 	mutable Mutex instance_mutex;
 	// Non-owning entries are removed before playback destruction. Admission
 	// only sets atomic retirement flags; child playback stays on its mixer.
@@ -49,6 +54,7 @@ private:
 	bool admit_instance(AudioStreamPlaybackGroup *p_playback);
 	void release_instance(AudioStreamPlaybackGroup *p_playback);
 	void enforce_instance_limit();
+	void update_instance_volumes(bool p_admitting);
 
 	int choose_index();
 	float stream_volume(int p_index) const;
@@ -62,6 +68,16 @@ public:
 	int get_max_instances() const;
 	void set_instance_limit_mode(InstanceLimitMode p_value);
 	InstanceLimitMode get_instance_limit_mode() const;
+	void set_instance_volume_scale(float p_value);
+	float get_instance_volume_scale() const;
+	void set_instance_volume_attack_time(double p_value);
+	double get_instance_volume_attack_time() const;
+	void set_instance_volume_release_time(double p_value);
+	double get_instance_volume_release_time() const;
+	void set_instance_volume_recover(bool p_value);
+	bool get_instance_volume_recover() const;
+	void set_instance_volume_floor_db(float p_value);
+	float get_instance_volume_floor_db() const;
 	void set_mode(Mode p_value) { mode = p_value; }
 	Mode get_mode() const { return mode; }
 	void set_streams(const TypedArray<AudioStream> &p_value);
@@ -119,6 +135,7 @@ class AudioStreamPlaybackGroup : public AudioStreamPlayback {
 	mutable Mutex parameter_mutex;
 	bool active = false;
 	SafeFlag instance_limited;
+	SafeFlag instance_volume_active;
 	bool children_started = false;
 	int index = 0;
 	int loops = 0;
@@ -130,6 +147,13 @@ class AudioStreamPlaybackGroup : public AudioStreamPlayback {
 	int64_t cycle_frames = 0;
 	float volume = 1.0;
 	float pitch = 1.0;
+	// Admission, retirement and envelope updates share the resource's mutex.
+	float instance_volume_start_db = 0.0f;
+	float instance_volume_target_db = 0.0f;
+	double instance_volume_elapsed = 0.0;
+	double instance_volume_duration = 0.0;
+	float instance_volume_db() const;
+	void set_instance_volume_target(float p_gain, double p_duration);
 
 	void start_child(int p_index);
 	void stop_children();
