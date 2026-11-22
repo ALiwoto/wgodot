@@ -407,6 +407,19 @@ WGodotCppEmitter::Value WGodotCppEmitter::lower_converted(const Parser::Expressi
 		return result;
 	}
 	const String target = type(p_target, p_target_origin ? p_target_origin : p_expression);
+	if (p_expression->type == Parser::Node::TERNARY_OPERATOR) {
+		const auto *ternary = static_cast<const Parser::TernaryOpNode *>(p_expression);
+		Value when_true = lower_converted(ternary->true_expr, p_target, p_target_origin);
+		Value when_false = lower_converted(ternary->false_expr, p_target, p_target_origin);
+		// C++ needs one branch type even when GDScript inferred Variant. Convert
+		// inside each branch, keeping its setup and evaluation conditional.
+		class_call_headers.insert("modules/wgodot/native/wgodot_native_calls.h");
+		when_true.code = convert_value(when_true, target);
+		when_true.cpp_type = target;
+		when_false.code = convert_value(when_false, target);
+		when_false.cpp_type = target;
+		return Value("(" + truth(ternary->condition) + " ? " + when_true.expression() + " : " + when_false.expression() + ")", target);
+	}
 	if (p_target.wgodot_class_ref && expression_type(p_expression).is_meta_type) {
 		const String name = class_reference_name(expression_type(p_expression), p_expression);
 		Value result(target + "::from_name(" + quoted(name) + ")", target);

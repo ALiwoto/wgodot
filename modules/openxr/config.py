@@ -7,7 +7,11 @@ def can_build(env, platform):
 
 
 def configure(env):
-    pass
+    # wgodot-changes::begin
+    # Native game modules include OpenXR scene headers, which expose Khronos types.
+    if env["builtin_openxr"]:
+        env.AppendUnique(wgodot_public_includes=["#thirdparty/openxr/include"])
+    # wgodot-changes::end
 
 
 def get_doc_classes():

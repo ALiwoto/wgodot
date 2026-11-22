@@ -325,10 +325,12 @@ def native_headers(target, source, env):
     # ClassDB names omit namespaces (for example OS is CoreBind::OS in C++).
     tokens = re.compile(
         r'''(?P<ignored>"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|//[^\n]*|/\*.*?\*/)'''
+        r"|^[ \t]*#(?:[^\n\\]|\\[^\n]|\\\n)*"
         r"|\bnamespace\s+(?P<namespace>[\w:]+)\s*\{"
         r"|\bGD(?:VIRTUAL)?CLASS\(\s*(?P<class>\w+)\s*,\s*\w+\s*\)"
+        r"|\bVARIANT_(?:ENUM|BITFIELD)_CAST_EXT\(\s*(?P<enum>[\w:]+)\s*,\s*(?P<bound>[\w:]+)\s*\)"
         r"|(?P<brace>[{}])",
-        re.DOTALL,
+        re.DOTALL | re.MULTILINE,
     )
     for header in source:
         path = pathlib.Path(str(header)).resolve()
@@ -345,6 +347,12 @@ def native_headers(target, source, env):
             elif token.group("class"):
                 name = token.group("class")
                 qualified = "::".join([scope for scope in scopes if scope] + [name])
+                classes.setdefault(name, []).append((relative, qualified))
+            elif token.group("enum"):
+                name = token.group("bound").replace("::", ".")
+                qualified = token.group("enum")
+                if not qualified.startswith("::"):
+                    qualified = "::".join([scope for scope in scopes if scope] + [qualified])
                 classes.setdefault(name, []).append((relative, qualified))
     # Object uses GDCLASS's underlying machinery directly.
     classes["Object"] = [("core/object/object.h", "Object")]

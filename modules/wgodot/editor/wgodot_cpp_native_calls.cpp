@@ -5,6 +5,7 @@
 
 #include "core/object/class_db.h"
 #include "core/object/wgodot_class_references.h"
+#include "modules/gdscript/gdscript_analyzer.h"
 
 using Parser = GDScriptParser;
 using namespace WGodotCppNames;
@@ -19,7 +20,12 @@ String WGodotCppEmitter::native_argument_type(const PropertyInfo &p_info, const 
 	if (p_info.usage & (PROPERTY_USAGE_CLASS_IS_ENUM | PROPERTY_USAGE_CLASS_IS_BITFIELD)) {
 		String enum_type = p_info.class_name;
 		const int separator = enum_type.find(".");
-		if (separator >= 0) {
+		if (const String *native_type = native_cpp_names.getptr(p_info.class_name)) {
+			const String &header = native_headers[p_info.class_name];
+			used_native_headers.insert(header);
+			class_native_headers.insert(header);
+			enum_type = *native_type;
+		} else if (separator >= 0) {
 			Parser::DataType owner;
 			owner.kind = Parser::DataType::NATIVE;
 			owner.native_type = enum_type.substr(0, separator);
@@ -122,8 +128,8 @@ WGodotCppEmitter::Value WGodotCppEmitter::native_call(const Parser::CallNode *p_
 			return group_call(p_call, p_base, p_base_type);
 		}
 	}
-	if (p_call->function_name == SNAME("call") && !p_base_type.is_meta_type && ClassDB::is_parent_class(base_name, SNAME("JavaScriptObject"))) {
-		return javascript_call(p_call, p_base, p_base_type);
+	if (p_call->function_name == SNAME("call") && !p_base_type.is_meta_type && GDScriptAnalyzer::wgodot_is_foreign_object(base_name)) {
+		return foreign_call(p_call, p_base, p_base_type);
 	}
 	if (p_call->function_name == SNAME("free") && p_call->arguments.is_empty() && !p_base_type.is_meta_type) {
 		class_call_headers.insert("modules/wgodot/native/wgodot_native_calls.h");

@@ -333,6 +333,12 @@ void GDScriptAnalyzer::wgodot_validate_strict_signal_parameter(const GDScriptPar
 }
 #endif
 
+bool GDScriptAnalyzer::wgodot_is_foreign_object(const StringName &p_native_type) {
+	return ClassDB::is_parent_class(p_native_type, SNAME("JavaScriptObject")) ||
+			ClassDB::is_parent_class(p_native_type, SNAME("JavaClass")) ||
+			ClassDB::is_parent_class(p_native_type, SNAME("JavaObject"));
+}
+
 void GDScriptAnalyzer::wgodot_validate_strict_object_call(const GDScriptParser::DataType &p_base_type, const GDScriptParser::CallNode *p_call) {
 	if ((p_call->function_name == SNAME("call_group") || p_call->function_name == SNAME("call_group_flags")) &&
 			ClassDB::is_parent_class(p_base_type.native_type, SNAME("SceneTree")) && wgodot_strict_type_checking_enabled()) {
@@ -348,7 +354,9 @@ void GDScriptAnalyzer::wgodot_validate_strict_object_call(const GDScriptParser::
 	if (!wgodot_strict_type_checking_enabled()) {
 		return;
 	}
-	if (p_call->function_name == SNAME("call") && ClassDB::is_parent_class(p_base_type.native_type, SNAME("JavaScriptObject"))) {
+	// Foreign methods are resolved by their host runtime, outside ClassDB.
+	// Keep the exception confined to explicit foreign-object call boundaries.
+	if (p_call->function_name == SNAME("call") && wgodot_is_foreign_object(p_base_type.native_type)) {
 		return;
 	}
 

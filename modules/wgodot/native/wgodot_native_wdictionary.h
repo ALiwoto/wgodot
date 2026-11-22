@@ -158,15 +158,20 @@ public:
 			return;
 		}
 		const Dictionary source = p_source;
-		const ContainerTypeValidate targets[] = {
-			{ GetTypeInfo<K>::VARIANT_TYPE, GetTypeInfo<K>::get_class_info().class_name, Ref<Script>(), "WDictionary.Key" },
-			{ GetTypeInfo<V>::VARIANT_TYPE, GetTypeInfo<V>::get_class_info().class_name, Ref<Script>(), "WDictionary.Value" },
-		};
-		const ContainerType sources[] = { source.get_key_type(), source.get_value_type() };
+		ContainerTypeValidate targets[2];
+		targets[0].type = GetTypeInfo<K>::VARIANT_TYPE;
+		targets[0].class_name = GetTypeInfo<K>::get_class_info().class_name;
+		targets[0].where = "WDictionary.Key";
+		targets[1].type = GetTypeInfo<V>::VARIANT_TYPE;
+		targets[1].class_name = GetTypeInfo<V>::get_class_info().class_name;
+		targets[1].where = "WDictionary.Value";
 		bool validate_entries[2];
 		for (int i = 0; i < 2; i++) {
-			const auto &target = targets[i];
-			const ContainerTypeValidate source_type{ sources[i].builtin_type, sources[i].class_name, sources[i].script };
+			auto &target = targets[i];
+			if (target.type == Variant::OBJECT) {
+				target.class_ref_base = WGodotClassReferences::constraint_base(target.class_name);
+			}
+			const ContainerTypeValidate &source_type = i == 0 ? source.get_key_validator() : source.get_value_validator();
 			// Match Dictionary.assign's handling of typed sources, including empty
 			// dictionaries and object upcasts/downcasts. Untyped entries are checked below.
 			validate_entries[i] = target != source_type && !(source_type.type == Variant::OBJECT && target.can_reference(source_type));

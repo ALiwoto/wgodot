@@ -608,8 +608,7 @@ String WGodotCppEmitter::leaf_expression(const Parser::ExpressionNode *p_express
 		}
 		case Parser::Node::TERNARY_OPERATOR: {
 			const auto *ternary = static_cast<const Parser::TernaryOpNode *>(p_expression);
-			const auto datatype = expression_type(ternary);
-			return "(" + truth(ternary->condition) + " ? " + converted(ternary->true_expr, datatype) + " : " + converted(ternary->false_expr, datatype) + ")";
+			return lower_converted(ternary, expression_type(ternary)).expression();
 		}
 		case Parser::Node::CAST:
 			return cast(static_cast<const Parser::CastNode *>(p_expression));

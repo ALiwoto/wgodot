@@ -3,8 +3,8 @@
 
 using Parser = GDScriptParser;
 
-WGodotCppEmitter::Value WGodotCppEmitter::javascript_call(const Parser::CallNode *p_call, const Parser::ExpressionNode *p_base, const Parser::DataType &p_base_type) {
-	class_call_headers.insert("modules/wgodot/native/wgodot_native_javascript.h");
+WGodotCppEmitter::Value WGodotCppEmitter::foreign_call(const Parser::CallNode *p_call, const Parser::ExpressionNode *p_base, const Parser::DataType &p_base_type) {
+	class_call_headers.insert("modules/wgodot/native/wgodot_native_foreign_calls.h");
 	Vector<Value> operands;
 	// GDScript evaluates the method name and arguments before the receiver.
 	for (uint32_t i = 0; i < p_call->arguments.size(); i++) {
@@ -21,7 +21,7 @@ WGodotCppEmitter::Value WGodotCppEmitter::javascript_call(const Parser::CallNode
 	for (uint32_t i = 1; i < p_call->arguments.size(); i++) {
 		arguments.push_back(operands[i].code);
 	}
-	result.code = "WGodotNative::javascript_call(" + String(", ").join(arguments) + ")";
+	result.code = "WGodotNative::foreign_call(" + String(", ").join(arguments) + ")";
 	result.cpp_type = "Variant";
 	result.effects = true;
 	return result;

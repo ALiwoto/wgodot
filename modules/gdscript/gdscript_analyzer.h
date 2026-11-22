@@ -298,6 +298,7 @@ class GDScriptAnalyzer {
 
 public:
 	// wgodot-changes::begin
+	static bool wgodot_is_foreign_object(const StringName &p_native_type);
 #ifdef TOOLS_ENABLED
 	const WGodotGDScriptPropertyPath *wgodot_get_tween_property_path(const GDScriptParser::CallNode *p_call) const { return wgodot_tween_property_paths.getptr(p_call); }
 #endif
