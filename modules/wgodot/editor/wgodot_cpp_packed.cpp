@@ -40,6 +40,9 @@ WGodotCppEmitter::Value WGodotCppEmitter::packed_call(const Parser::CallNode *p_
 		receiver_type.wgodot_value = false;
 		operands.push_back(lower_converted(base, receiver_type));
 		Value result = sequence(operands);
+		if (!operands[count].borrowed) {
+			materialize(operands.write[count], result.setup);
+		}
 		Vector<String> arguments;
 		for (int i = 0; i < count; i++) {
 			arguments.push_back(operands[i].code);

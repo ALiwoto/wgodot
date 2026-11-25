@@ -350,6 +350,10 @@ void WGodotCLIEditorPlugin::process_request(PendingConnection &p_connection) {
 		if (options.get("startup_profile", false)) {
 			play_args.push_back("--wgodot-startup-profile");
 		}
+		if (options.has("audio_driver")) {
+			play_args.push_back("--audio-driver");
+			play_args.push_back(options["audio_driver"]);
+		}
 		if (options.has("native_render_capture")) {
 			play_args.push_back("--native-render-capture");
 			play_args.push_back(options["native_render_capture"]);

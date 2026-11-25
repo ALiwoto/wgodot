@@ -10,6 +10,8 @@
 
 class Node;
 class AudioStreamPlayback;
+class AudioStream;
+class AudioStreamPlaybackPolyphonic;
 class AudioStreamPlayerInternal;
 class AudioStreamGroup;
 
@@ -27,6 +29,7 @@ class WAudioStepper : public RefCounted {
 	uint64_t advanced_frames = 0;
 	bool stepping = false;
 	bool releasing = false;
+	double mixing_until = 0;
 	double history_origin = 0;
 	WAudioPlaybackHistory history;
 	struct RandomInput {
@@ -48,6 +51,11 @@ class WAudioStepper : public RefCounted {
 	double clock_seconds() const;
 	void collect(Node *p_node);
 	Error update_players();
+	static bool observing();
+	static void record(Node *p_node, const AudioStreamPlayerInternal &p_player,
+			const Ref<AudioStreamPlayback> &p_playback, const Ref<AudioStream> &p_stream,
+			const char *p_kind, double p_offset, float p_volume_db, float p_pitch,
+			bool p_mixed = false);
 
 protected:
 	static void _bind_methods();
@@ -68,6 +76,10 @@ public:
 	static WAudioPlaybackHistory playback_history();
 	static void observe(Node *p_node, const AudioStreamPlayerInternal &p_player,
 			const Ref<AudioStreamPlayback> &p_playback, const char *p_kind, double p_offset = 0);
+	static void observe_polyphonic(AudioStreamPlaybackPolyphonic *p_parent,
+			const Ref<AudioStreamPlayback> &p_playback, const Ref<AudioStream> &p_stream,
+			const char *p_kind, double p_offset, float p_volume_db, float p_pitch,
+			bool p_mixed = false);
 	uint64_t get_advanced_frames() const { return advanced_frames; }
 	static bool owns(Node *p_node);
 	static bool can_process(Node *p_node);

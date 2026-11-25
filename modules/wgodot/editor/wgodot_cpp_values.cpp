@@ -3,6 +3,7 @@
 #include "wgodot_cpp_names.h"
 
 #include "core/variant/wgodot_text_arguments.h"
+#include "modules/gdscript/wgodot_gd/enum_queries.h"
 
 using Parser = GDScriptParser;
 using namespace WGodotCppNames;
@@ -15,6 +16,31 @@ WGodotCppEmitter::Value WGodotCppEmitter::builtin_call(const Parser::CallNode *p
 	const auto *subscript = static_cast<const Parser::SubscriptNode *>(p_call->callee);
 	const auto *base = subscript->base;
 	auto base_type = expression_type(base);
+	if (const auto *enumeration = WGodotGDScriptEnumQueries::membership_type(p_call)) {
+		const Vector<int64_t> values = WGodotGDScriptEnumQueries::unique_values(*enumeration);
+		Value argument = lower(p_call->arguments[0]);
+		Value result;
+		result.effects = argument.effects;
+		// A getter or function argument must run once even when two comparisons use it.
+		argument.borrowed = false;
+		materialize(argument, result.setup);
+		const String value = convert_value(argument, "int64_t");
+		result.cpp_type = "bool";
+		if (values.is_empty()) {
+			result.code = "false";
+		} else if (values.size() == 1) {
+			result.code = value + " == " + literal(values[0], p_call);
+		} else if (WGodotGDScriptEnumQueries::is_contiguous(values)) {
+			result.code = value + " >= " + literal(values[0], p_call) + " && " + value + " <= " + literal(values[values.size() - 1], p_call);
+		} else {
+			result.code = "([&]() -> bool { switch (" + value + ") {\n";
+			for (int64_t member : values) {
+				result.code += "case " + literal(member, p_call) + ":\n";
+			}
+			result.code += "return true;\ndefault: return false;\n} }())";
+		}
+		return result;
+	}
 	// The analyzer resolves a builtin class name locally for static calls; it
 	// intentionally leaves the receiver IdentifierNode's datatype unresolved.
 	if (base->type == Parser::Node::IDENTIFIER) {

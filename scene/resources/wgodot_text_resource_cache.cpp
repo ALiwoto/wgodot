@@ -4,7 +4,6 @@
 #include "core/config/project_settings.h"
 #include "core/io/dir_access.h"
 #include "core/io/resource_format_binary.h"
-#include "core/io/wgodot_build_fingerprint.h"
 #include "core/io/wgodot_file_stamp.h"
 #include "core/io/wgodot_resource_serialization.h"
 #include "core/io/wgodot_resource_trace.h"
@@ -14,6 +13,9 @@
 
 namespace {
 constexpr uint32_t CACHE_TRAILER = 0x57474331; // WGC1, after the ordinary binary resource.
+// Bump for changes to text interpretation, binary codecs, native resource
+// defaults or this cache's metadata. Unrelated engine builds remain compatible.
+constexpr const char *CACHE_VERSION = "text-resource-v1";
 
 void collect_scripts(const Variant &p_value, Dictionary &r_scripts) {
 	if (p_value.get_type() == Variant::OBJECT) {
@@ -81,12 +83,8 @@ WGodotTextResourceCache::WGodotTextResourceCache(const String &p_source_path) {
 	if (source_hash == "<missing>") {
 		return;
 	}
-	// Loader, codec, scene-type and build-option changes invalidate automatically.
-	const String &version = WGodotBuildFingerprint::get();
-	if (version.is_empty()) {
-		return; // Without a build identity, load the authored text without caching.
-	}
-	cache_path = data_path.path_join("resource_cache").path_join(version).path_join(source_path.get_file() + "-" + source_path.md5_text() + "-" + source_hash + ".res");
+	// One replaceable entry per source; edits must not accumulate old revisions.
+	cache_path = data_path.path_join("resource_cache").path_join(CACHE_VERSION).path_join(source_path.get_file() + "-" + source_path.md5_text() + ".res");
 #endif
 }
 
@@ -114,7 +112,11 @@ Ref<Resource> WGodotTextResourceCache::load(const String &p_original_path, bool 
 	}
 	file->seek(metadata_offset);
 	const Variant metadata = file->get_var(false);
-	if (metadata.get_type() != Variant::DICTIONARY || !scripts_match(metadata)) {
+	if (metadata.get_type() != Variant::DICTIONARY) {
+		return Ref<Resource>();
+	}
+	const Dictionary state = metadata;
+	if (String(state.get("source", "")) != source_hash || !scripts_match(state.get("scripts", Dictionary()))) {
 		return Ref<Resource>();
 	}
 	file->seek(0);
@@ -157,7 +159,10 @@ void WGodotTextResourceCache::store(const Ref<Resource> &p_resource, const WGodo
 	}
 	file->seek_end();
 	const uint64_t metadata_offset = file->get_position();
-	file->store_var(scripts);
+	Dictionary state;
+	state["source"] = source_hash;
+	state["scripts"] = scripts;
+	file->store_var(state);
 	file->store_64(metadata_offset);
 	file->store_32(CACHE_TRAILER);
 	file->flush();

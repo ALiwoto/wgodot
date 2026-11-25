@@ -9,6 +9,7 @@
 
 #include "gdscript.h"
 #include "gdscript_analyzer.h"
+#include "wgodot_gd/enum_queries.h"
 #include "wgodot_gd/inline_constants.h"
 #include "wgodot_gd/interface_helpers.h"
 #include "wgodot_gd/script_resolution.h"
@@ -55,6 +56,28 @@ void GDScriptAnalyzer::wgodot_reduce_enum_query(GDScriptParser::CallNode *p_call
 		return;
 	}
 	const auto *base = static_cast<GDScriptParser::SubscriptNode *>(p_call->callee)->base;
+	if (p_call->function_name == SNAME("has") && WGodotGDScriptEnumQueries::is_values(base)) {
+		push_error("Enum.values().has(value) is forbidden: it allocates an array. Use Enum.has_value(value).", p_call);
+		return;
+	}
+	if (const auto *enumeration = WGodotGDScriptEnumQueries::membership_type(p_call)) {
+		const auto *argument = p_call->arguments[0];
+		const auto &type = argument->type_constraint;
+		if (!((type.kind == GDScriptParser::DataType::ENUM && !type.is_meta_type) ||
+				(type.kind == GDScriptParser::DataType::BUILTIN && type.builtin_type == Variant::INT))) {
+			push_error("Enum.has_value(value) requires an int or enum value.", argument);
+			return;
+		}
+		if (argument->is_constant) {
+			bool found = false;
+			for (const auto &entry : enumeration->enum_values) {
+				found |= entry.value == int64_t(argument->reduced_value);
+			}
+			p_call->is_constant = true;
+			p_call->reduced_value = found;
+		}
+		return;
+	}
 	if (!base || !base->is_constant || base->type_constraint.kind != GDScriptParser::DataType::ENUM || !base->type_constraint.is_meta_type || base->reduced_value.get_type() != Variant::DICTIONARY) {
 		return;
 	}

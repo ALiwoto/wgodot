@@ -2,6 +2,7 @@
 #include "audio_stepper.h"
 
 #ifdef TOOLS_ENABLED
+#include "playback_snapshot.h"
 #include "core/math/math_funcs.h"
 #include "core/object/class_db.h"
 #include "core/os/thread.h"
@@ -13,6 +14,7 @@
 #include "scene/main/scene_tree.h"
 #include "scene/main/window.h"
 #include "scene/resources/audio/audio_stream.h"
+#include "scene/resources/audio/audio_stream_polyphonic.h"
 #include "servers/audio/audio_driver_dummy.h"
 #include "servers/audio/audio_server.h"
 #ifdef MODULE_AUDIO_GRAPH_ENABLED
@@ -51,17 +53,22 @@ Error WAudioStepper::reset_events() {
 	return OK;
 }
 
-void WAudioStepper::observe(Node *p_node, const AudioStreamPlayerInternal &p_player,
-		const Ref<AudioStreamPlayback> &p_playback, const char *p_kind, double p_offset) {
+bool WAudioStepper::observing() {
 	if (!clock_owned.is_set()) {
-		return;
+		return false;
 	}
 	// Never read active, player properties or scene hierarchy on a worker.
 	if (!Thread::is_main_thread()) {
 		event_thread_error.set();
-		return;
+		return false;
 	}
-	if (!owns(p_node) || !active->history.enabled) {
+	return active && active->history.enabled;
+}
+
+void WAudioStepper::record(Node *p_node, const AudioStreamPlayerInternal &p_player,
+		const Ref<AudioStreamPlayback> &p_playback, const Ref<AudioStream> &p_stream,
+		const char *p_kind, double p_offset, float p_volume_db, float p_pitch, bool p_mixed) {
+	if (!owns(p_node)) {
 		return;
 	}
 	WAudioPlaybackHistory &history = active->history;
@@ -81,13 +88,60 @@ void WAudioStepper::observe(Node *p_node, const AudioStreamPlayerInternal &p_pla
 #endif
 	event.player = String(p_node->get_path());
 	event.playback_id = uitos(p_playback->get_instance_id());
-	event.stream = p_player.stream.is_valid() ? p_player.stream->get_path() : String();
+	event.stream = p_stream.is_valid() ? p_stream->get_path() : String();
 	event.bus = p_player.get_bus();
-	event.seconds = active->clock_seconds() - active->history_origin;
+	// Completion is observed at the end of this manual advance, separately
+	// from the precise gameplay request clock. Mixer lookahead is not a trigger.
+	event.seconds = (p_mixed ? active->mixing_until : active->clock_seconds()) - active->history_origin;
 	event.offset = p_offset;
-	event.volume_db = p_player.volume_db;
-	event.pitch = p_player.pitch_scale;
+	event.volume_db = p_player.volume_db + p_volume_db;
+	event.pitch = p_player.pitch_scale * p_pitch;
 	history.events.push_back(event);
+}
+
+void WAudioStepper::observe(Node *p_node, const AudioStreamPlayerInternal &p_player,
+		const Ref<AudioStreamPlayback> &p_playback, const char *p_kind, double p_offset) {
+	if (!observing() || !owns(p_node)) {
+		return;
+	}
+	if (Ref<AudioStreamPlaybackPolyphonic> polyphonic = p_playback; polyphonic.is_valid()) {
+		// The container is not a cue request. Its children retain their own
+		// stream identity and playback ID, including on parent interruption.
+		if (String(p_kind) != "play") {
+			for (const AudioStreamPlaybackPolyphonic::Stream &child : polyphonic->streams) {
+				if (child.active.is_set() && !child.finish_request.is_set()) {
+					record(p_node, p_player, child.stream_playback, child.stream, p_kind,
+							0, child.volume_db, child.pitch_scale);
+				}
+			}
+		}
+		return;
+	}
+	record(p_node, p_player, p_playback, p_player.stream, p_kind, p_offset, 0, 1);
+}
+
+void WAudioStepper::observe_polyphonic(AudioStreamPlaybackPolyphonic *p_parent,
+		const Ref<AudioStreamPlayback> &p_playback, const Ref<AudioStream> &p_stream,
+		const char *p_kind, double p_offset, float p_volume_db, float p_pitch, bool p_mixed) {
+	if (!observing()) {
+		return;
+	}
+	// Resolve current ownership only. Do not retain nodes or audio resources
+	// for inspection, or require a new play after beginning/resetting capture.
+	for (ObjectID id : active->players) {
+		Node *node = Object::cast_to<Node>(ObjectDB::get_instance(id));
+		AudioStreamPlayerInternal *internal = WAudioPlaybackProbe::player_internal(node);
+		if (!internal) {
+			continue;
+		}
+		for (const Ref<AudioStreamPlayback> &playback : internal->stream_playbacks) {
+			if (playback.ptr() == p_parent) {
+				record(node, *internal, p_playback, p_stream, p_kind, p_offset,
+						p_volume_db, p_pitch, p_mixed);
+				return;
+			}
+		}
+	}
 }
 
 WAudioPlaybackHistory WAudioStepper::playback_history() {
@@ -218,6 +272,7 @@ Error WAudioStepper::advance(double p_seconds) {
 	AudioDriverDummy *driver = AudioDriverDummy::get_dummy_singleton();
 	const double exact_frames = fractional_frames + p_seconds * driver->get_mix_rate();
 	const int frames = int(Math::floor(exact_frames));
+	mixing_until = clock_seconds() + p_seconds;
 	const Error error = driver->advance_manual(frames);
 	if (error == OK) {
 		fractional_frames = exact_frames - frames;

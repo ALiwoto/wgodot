@@ -27,6 +27,10 @@ def packed_api(target, source, env):
         expanded = expanded.replace(f"{owner} *p_instance", f"{owner} &p_instance").replace(
             "p_instance->", "p_instance."
         )
+        expanded = expanded.replace(
+            f"packed_{owner}_get({owner} &p_instance",
+            f"packed_{owner}_get(const {owner} &p_instance",
+        )
         accessors.append("\n".join(line.removeprefix("\t").rstrip() for line in expanded.strip("\n").splitlines()))
 
     api = [
@@ -80,9 +84,13 @@ def packed_api(target, source, env):
             else:
                 result, arguments = functions[native_name]
                 function = f"packed_{owner}_{name}"
-                parameters = arguments.replace(f"{owner} *p_instance", f"{owner} &p_instance")
+                readonly = binding == "function"
+                qualifier = "const " if readonly else ""
+                parameters = arguments.replace(f"{owner} *p_instance", f"{qualifier}{owner} &p_instance")
                 forwarded = re.findall(r"\bp_\w+\b", arguments)
-                forwarded[0] = "&" + forwarded[0]
+                # Upstream const bindings still use mutable instance pointers.
+                # Adapt that declared read-only contract without copying the array.
+                forwarded[0] = f"const_cast<{owner} *>(&{forwarded[0]})" if readonly else "&" + forwarded[0]
                 declarations.append(f"{result} {function}({parameters});")
                 definitions.extend([
                     f"{result} {function}({parameters}) {{",

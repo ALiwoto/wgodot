@@ -34,6 +34,13 @@
 #include "core/object/class_db.h"
 #include "servers/audio/audio_server.h"
 
+// wgodot-changes::begin
+#include "modules/modules_enabled.gen.h"
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+#include "modules/wgodot/audio/audio_stepper.h"
+#endif
+// wgodot-changes::end
+
 constexpr uint64_t ID_MASK = 0xFFFFFFFF;
 constexpr uint64_t INDEX_SHIFT = 32;
 
@@ -202,6 +209,14 @@ int AudioStreamPlaybackPolyphonic::mix(AudioFrame *p_buffer, float p_rate_scale,
 
 			if (mixed < to_mix) {
 				// Stream is done.
+				// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+				if (!s.finish_request.is_set()) {
+					WAudioStepper::observe_polyphonic(this, s.stream_playback, s.stream,
+							"finished", 0, s.volume_db, s.pitch_scale, true);
+				}
+#endif
+				// wgodot-changes::end
 				s.active.clear();
 				stream_done = true;
 				break;
@@ -282,6 +297,12 @@ AudioStreamPlaybackPolyphonic::ID AudioStreamPlaybackPolyphonic::play_stream(con
 				AudioServer::get_singleton()->start_sample_playback(sp);
 			}
 
+			// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+			WAudioStepper::observe_polyphonic(this, streams[i].stream_playback, p_stream,
+					"play", p_from_offset, p_volume_db, p_pitch_scale);
+#endif
+			// wgodot-changes::end
 			return (ID(i) << INDEX_SHIFT) | ID(streams[i].id);
 		}
 	}
@@ -344,6 +365,14 @@ void AudioStreamPlaybackPolyphonic::stop_stream(ID p_stream_id) {
 	if (!s) {
 		return;
 	}
+	// wgodot-changes::begin
+#if defined(TOOLS_ENABLED) && defined(MODULE_WGODOT_ENABLED)
+	if (!s->finish_request.is_set()) {
+		WAudioStepper::observe_polyphonic(this, s->stream_playback, s->stream,
+				"stop", 0, s->volume_db, s->pitch_scale);
+	}
+#endif
+	// wgodot-changes::end
 	s->finish_request.set();
 }
 

@@ -2,6 +2,7 @@
 #include "vm_cache.h"
 
 #include "vm_cache_bindings.h"
+#include "core/io/marshalls.h"
 #include "core/io/resource_loader.h"
 #include "core/object/class_db.h"
 #include "core/object/method_bind.h"
@@ -23,6 +24,31 @@ enum ValueKind {
 	NULL_OBJECT,
 };
 
+PackedByteArray pack(const Variant &p_value, bool &r_valid) {
+	int size = 0;
+	if (encode_variant(p_value, nullptr, size, false) != OK) {
+		r_valid = false;
+		return {};
+	}
+	PackedByteArray bytes;
+	bytes.resize(size);
+	if (encode_variant(p_value, bytes.ptrw(), size, false) != OK) {
+		r_valid = false;
+		return {};
+	}
+	return bytes;
+}
+
+Variant unpack(const uint8_t *p_bytes, int p_size, Variant::Type p_type, bool &r_valid) {
+	Variant result;
+	int used = 0;
+	if (decode_variant(result, p_bytes, p_size, &used, false) != OK || used != p_size || result.get_type() != p_type) {
+		r_valid = false;
+		return {};
+	}
+	return result;
+}
+
 template <typename T>
 Array strings(const T &p_values) {
 	Array result;
@@ -43,11 +69,20 @@ PackedInt32Array integers(const Vector<int> &p_values) {
 } // namespace
 
 struct WGodotGDScriptVMCache::Writer {
+	struct ScalarComparator {
+		static bool compare(const Variant &p_left, const Variant &p_right) {
+			return p_left.hash_compare(p_right);
+		}
+	};
+
 	GDScript *root;
 	bool valid = true;
-	Array values;
+	PackedByteArray values;
+	PackedInt64Array value_spans;
 	HashMap<const void *, int> arrays;
 	HashMap<const void *, int> dictionaries;
+	HashMap<Variant, int, HashMapHasherDefault, ScalarComparator> scalar_values;
+	Vector<Variant> containers;
 	HashMap<int, StringName> global_names;
 
 	explicit Writer(GDScript *p_root) : root(p_root) {
@@ -75,7 +110,14 @@ struct WGodotGDScriptVMCache::Writer {
 	}
 
 	int value(const Variant &p_value) {
-		if (p_value.get_type() == Variant::ARRAY) {
+		const Variant::Type kind = p_value.get_type();
+		const bool scalar = kind == Variant::NIL || kind == Variant::BOOL || kind == Variant::INT ||
+				kind == Variant::STRING || kind == Variant::STRING_NAME;
+		if (scalar) {
+			if (const int *found = scalar_values.getptr(p_value)) {
+				return *found;
+			}
+		} else if (p_value.get_type() == Variant::ARRAY) {
 			const Array array = p_value;
 			if (const int *found = arrays.getptr(array.id())) {
 				return *found;
@@ -86,8 +128,13 @@ struct WGodotGDScriptVMCache::Writer {
 				return *found;
 			}
 		}
-		const int index = values.size();
-		values.push_back(Variant());
+		const int index = value_spans.size() / 2;
+		value_spans.resize(value_spans.size() + 2);
+		if (scalar) {
+			// Metadata repeats names, flags and integers on every field. Share
+			// immutable scalars while retaining their exact Variant types.
+			scalar_values.insert(p_value, index);
+		}
 		Array result;
 		switch (p_value.get_type()) {
 			case Variant::OBJECT: {
@@ -108,6 +155,9 @@ struct WGodotGDScriptVMCache::Writer {
 			} break;
 			case Variant::ARRAY: {
 				const Array array = p_value;
+				// Keep identity keys alive throughout encoding, including temporary
+				// metadata containers whose addresses could otherwise be reused.
+				containers.push_back(p_value);
 				arrays.insert(array.id(), index);
 				Array entries;
 				for (const Variant &entry : array) {
@@ -117,6 +167,7 @@ struct WGodotGDScriptVMCache::Writer {
 			} break;
 			case Variant::DICTIONARY: {
 				const Dictionary dictionary = p_value;
+				containers.push_back(p_value);
 				dictionaries.insert(dictionary.id(), index);
 				Array entries;
 				for (const auto &entry : dictionary) {
@@ -150,7 +201,10 @@ struct WGodotGDScriptVMCache::Writer {
 				result = Array{ PLAIN, p_value, p_value.wgodot_is_value_container() };
 				break;
 		}
-		values[index] = result;
+		const PackedByteArray encoded = pack(result, valid);
+		value_spans.set(index * 2, values.size());
+		value_spans.set(index * 2 + 1, encoded.size());
+		values.append_array(encoded);
 		return index;
 	}
 
@@ -177,7 +231,7 @@ struct WGodotGDScriptVMCache::Writer {
 			{ "setter", p_member.setter },
 			{ "getter", p_member.getter },
 			{ "type", type(p_member.data_type) },
-			{ "property", Dictionary(p_member.property_info) },
+			{ "property", value(Dictionary(p_member.property_info)) },
 		};
 	}
 
@@ -295,7 +349,7 @@ struct WGodotGDScriptVMCache::Writer {
 		return result;
 	}
 
-	Dictionary declaration(GDScript *p_script) {
+	PackedByteArray declaration(GDScript *p_script) {
 		Dictionary result;
 #define FIELD(m_name) result[#m_name] = p_script->m_name
 		FIELD(tool);
@@ -387,7 +441,7 @@ struct WGodotGDScriptVMCache::Writer {
 		result["member_default_values_cache"] = defaults;
 		Array properties;
 		for (const auto &property : p_script->members_cache) {
-			properties.push_back(Dictionary(property));
+			properties.push_back(value(Dictionary(property)));
 		}
 		result["members_cache"] = properties;
 		result["exports_cached"] = !p_script->source_changed_cache;
@@ -399,7 +453,9 @@ struct WGodotGDScriptVMCache::Writer {
 		}
 		result["docs"] = docs;
 #endif
-		return result;
+		// Keep each class compact until it is restored. A namespace may contain
+		// thousands of classes; expanding all metadata together dwarfs the VM.
+		return pack(result, valid);
 	}
 };
 
@@ -408,20 +464,24 @@ Dictionary WGodotGDScriptVMCache::encode(GDScript *p_script) {
 	Dictionary result;
 	result["class"] = writer.declaration(p_script);
 	result["values"] = writer.values;
+	result["value_spans"] = writer.value_spans;
 	return writer.valid ? result : Dictionary();
 }
 
 struct WGodotGDScriptVMCache::Reader {
 	GDScript *root;
 	bool valid = true;
-	Array encoded_values;
+	PackedByteArray encoded_values;
+	PackedInt64Array value_spans;
 	Vector<Variant> values;
 	Vector<bool> decoded;
 
 	Reader(GDScript *p_root, const Dictionary &p_snapshot) : root(p_root) {
 		encoded_values = p_snapshot["values"];
-		values.resize(encoded_values.size());
-		decoded.resize(encoded_values.size());
+		value_spans = p_snapshot["value_spans"];
+		valid = value_spans.size() % 2 == 0;
+		values.resize(value_spans.size() / 2);
+		decoded.resize(values.size());
 		decoded.fill(false);
 	}
 
@@ -475,7 +535,16 @@ struct WGodotGDScriptVMCache::Reader {
 			return values[p_index];
 		}
 		decoded.write[p_index] = true;
-		const Array entry = encoded_values[p_index];
+		const int64_t offset = value_spans[p_index * 2];
+		const int64_t length = value_spans[p_index * 2 + 1];
+		if (offset < 0 || length < 0 || offset > encoded_values.size() || length > encoded_values.size() - offset) {
+			valid = false;
+			return {};
+		}
+		const Array entry = unpack(encoded_values.ptr() + offset, length, Variant::ARRAY, valid);
+		if (!valid || entry.is_empty()) {
+			return {};
+		}
 		Variant result;
 		switch (int(entry[0])) {
 			case NULL_OBJECT:
@@ -621,7 +690,7 @@ struct WGodotGDScriptVMCache::Reader {
 		result.setter = p_member["setter"];
 		result.getter = p_member["getter"];
 		result.data_type = type(p_member["type"]);
-		result.property_info = PropertyInfo::from_dict(p_member["property"]);
+		result.property_info = PropertyInfo::from_dict(value(p_member["property"]));
 		return result;
 	}
 
@@ -769,7 +838,11 @@ struct WGodotGDScriptVMCache::Reader {
 		return result;
 	}
 
-	void shape(GDScript *p_script, const Dictionary &p_class) {
+	void shape(GDScript *p_script, const PackedByteArray &p_encoded) {
+		const Dictionary p_class = unpack(p_encoded.ptr(), p_encoded.size(), Variant::DICTIONARY, valid);
+		if (!valid) {
+			return;
+		}
 #define FIELD(m_name) p_script->m_name = p_class[#m_name]
 		FIELD(tool);
 		FIELD(_is_abstract);
@@ -804,7 +877,11 @@ struct WGodotGDScriptVMCache::Reader {
 		}
 	}
 
-	void declaration(GDScript *p_script, const Dictionary &p_class) {
+	void declaration(GDScript *p_script, const PackedByteArray &p_encoded) {
+		const Dictionary p_class = unpack(p_encoded.ptr(), p_encoded.size(), Variant::DICTIONARY, valid);
+		if (!valid) {
+			return;
+		}
 		p_script->base = script(p_class["base"]);
 		if (p_script->base.is_valid() && p_script->base->get_root_script() != root) {
 			Error error = OK;
@@ -895,8 +972,8 @@ struct WGodotGDScriptVMCache::Reader {
 		for (const auto &entry : cached_defaults) {
 			p_script->member_default_values_cache.insert(entry.key, value(entry.value));
 		}
-		for (const Dictionary property : Array(p_class["members_cache"])) {
-			p_script->members_cache.push_back(PropertyInfo::from_dict(property));
+		for (const Variant &property : Array(p_class["members_cache"])) {
+			p_script->members_cache.push_back(PropertyInfo::from_dict(value(property)));
 		}
 		p_script->source_changed_cache = !bool(p_class["exports_cached"]);
 		p_script->base_cache = p_script->base;

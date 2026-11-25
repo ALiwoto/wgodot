@@ -29,6 +29,9 @@
 /**************************************************************************/
 
 #include "gdscript_analyzer.h"
+// wgodot-changes::begin
+#include "wgodot_gd/enum_queries.h"
+// wgodot-changes::end
 
 // wgodot-changes::begin
 #include "core/io/wgodot_named_types.h"
@@ -3549,6 +3552,10 @@ void GDScriptAnalyzer::reduce_binary_op(GDScriptParser::BinaryOpNode *p_binary_o
 	}
 
 	// wgodot-changes::begin
+	if (p_binary_op->variant_op == Variant::OP_IN && WGodotGDScriptEnumQueries::is_values(p_binary_op->right_operand)) {
+		push_error("Membership in Enum.values() is forbidden: it allocates an array. Use Enum.has_value(value).", p_binary_op);
+		return;
+	}
 	if (p_binary_op->variant_op == Variant::OP_EQUAL || p_binary_op->variant_op == Variant::OP_NOT_EQUAL) {
 		if (left_type.wgodot_resource_path) {
 			if (!wgodot_validate_resource_path_argument(p_binary_op->right_operand, left_type)) {
@@ -6037,6 +6044,15 @@ void GDScriptAnalyzer::reduce_ternary_op(GDScriptParser::TernaryOpNode *p_ternar
 		}
 		true_type = p_ternary_op->true_expr->type_constraint;
 	}
+	// A conditional does not contextually type its collection literals. The
+	// permissive compatibility check below can otherwise borrow the typed arm's
+	// contract even though the other arm still constructs an untyped container.
+	for (GDScriptParser::ExpressionNode *branch : { p_ternary_op->true_expr, p_ternary_op->false_expr }) {
+		if (branch && branch->type_constraint.kind == GDScriptParser::DataType::BUILTIN &&
+				(branch->type_constraint.builtin_type == Variant::ARRAY || branch->type_constraint.builtin_type == Variant::DICTIONARY)) {
+			wgodot_validate_strict_datatype(branch->type_constraint, branch, "conditional collection branch; initialize a typed variable before selecting it");
+		}
+	}
 	// wgodot-changes::end
 	if (true_type.is_variant() || false_type.is_variant()) {
 		result.kind = GDScriptParser::DataType::VARIANT;
@@ -6881,6 +6897,16 @@ bool GDScriptAnalyzer::get_function_signature(GDScriptParser::Node *p_source, bo
 		*r_native_class = StringName();
 	}
 	// wgodot-changes::begin
+	if (p_base_type.kind == GDScriptParser::DataType::ENUM && p_base_type.is_meta_type && p_function == SNAME("has_value")) {
+		r_return_type.kind = GDScriptParser::DataType::BUILTIN;
+		r_return_type.type_source = GDScriptParser::DataType::ANNOTATED_EXPLICIT;
+		r_return_type.builtin_type = Variant::BOOL;
+		GDScriptParser::DataType argument = r_return_type;
+		argument.builtin_type = Variant::INT;
+		r_par_types.push_back(argument);
+		r_method_flags.set_flag(METHOD_FLAG_CONST);
+		return true;
+	}
 	if (p_base_type.wgodot_weak_ref) {
 		if (p_function != SNAME("get_ref")) {
 			push_error("WeakRef exposes get_ref(); its target type cannot be erased through Object methods.", p_source);

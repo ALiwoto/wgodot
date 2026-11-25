@@ -31,6 +31,7 @@
 #include "gdscript_compiler.h"
 // wgodot-changes::begin
 #include "wgodot_gd/construction.h"
+#include "wgodot_gd/enum_queries.h"
 // wgodot-changes::end
 // wgodot-changes::begin
 #include "modules/wgodot/serialization/schema.h"
@@ -662,6 +663,7 @@ GDScriptCodeGenerator::Address GDScriptCompiler::_parse_expression(CodeGen &code
 		case GDScriptParser::Node::CALL: {
 			const GDScriptParser::CallNode *call = static_cast<const GDScriptParser::CallNode *>(p_expression);
 			// wgodot-changes::begin
+			const auto *enum_membership = WGodotGDScriptEnumQueries::membership_type(call);
 			if (call->wgodot_mutable_alias) {
 				return _parse_expression(codegen, r_error, call->arguments[1]);
 			}
@@ -676,7 +678,7 @@ GDScriptCodeGenerator::Address GDScriptCompiler::_parse_expression(CodeGen &code
 			// wgodot-changes::end
 			bool is_awaited = p_expression == awaited_node;
 			GDScriptCodeGenerator::Address result;
-			if (p_root) {
+			if (p_root && !enum_membership) {
 				result = GDScriptCodeGenerator::Address(GDScriptCodeGenerator::Address::NIL);
 			} else if (is_awaited) {
 				// When called with await, we need to use an untyped temporary regardless of whether the base
@@ -696,7 +698,30 @@ GDScriptCodeGenerator::Address GDScriptCompiler::_parse_expression(CodeGen &code
 			}
 
 			// wgodot-changes::begin
-			if (call->wgodot_class_ref_constructor) {
+			if (enum_membership) {
+				const Vector<int64_t> values = WGodotGDScriptEnumQueries::unique_values(*enum_membership);
+				if (values.is_empty()) {
+					gen->write_assign(result, codegen.add_constant(false));
+				} else if (values.size() > 1 && WGodotGDScriptEnumQueries::is_contiguous(values)) {
+					gen->write_binary_operator(result, Variant::OP_GREATER_EQUAL, arguments[0], codegen.add_constant(values[0]));
+					gen->write_and_left_operand(result);
+					gen->write_binary_operator(result, Variant::OP_LESS_EQUAL, arguments[0], codegen.add_constant(values[values.size() - 1]));
+					gen->write_and_right_operand(result);
+					gen->write_end_and(result);
+				} else {
+					// Nest short-circuit branches so a match skips all later comparisons.
+					for (int i = 0; i < values.size(); ++i) {
+						gen->write_binary_operator(result, Variant::OP_EQUAL, arguments[0], codegen.add_constant(values[i]));
+						if (i + 1 < values.size()) {
+							gen->write_or_left_operand(result);
+						}
+					}
+					for (int i = 1; i < values.size(); ++i) {
+						gen->write_or_right_operand(result);
+						gen->write_end_or(result);
+					}
+				}
+			} else if (call->wgodot_class_ref_constructor) {
 				const auto *callee = static_cast<const GDScriptParser::SubscriptNode *>(call->callee);
 				const auto receiver = _parse_expression(codegen, r_error, callee->base);
 				if (r_error != OK) {

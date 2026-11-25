@@ -3149,6 +3149,10 @@ static void _register_variant_builtin_methods_array() {
 
 static void _register_variant_builtin_constants() {
 	/* Register constants */
+	// wgodot-changes::begin
+	// Optional spatial values use this sentinel; the origin remains a valid position.
+	_VariantCall::add_variant_constant(Variant::WVECTOR3D, "UNSET", WVector3d(Math::INF, Math::INF, Math::INF));
+	// wgodot-changes::end
 
 	int ncc = Color::get_named_color_count();
 	for (int i = 0; i < ncc; i++) {

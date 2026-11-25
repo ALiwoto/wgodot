@@ -7,6 +7,7 @@
 #include "scene/resources/audio/audio_stream.h"
 
 class Node;
+class AudioStreamPlayerInternal;
 
 // Owned diagnostic records. Capture on the main thread while holding the
 // audio driver lock; no playback pointers escape to a later inspection.
@@ -68,6 +69,7 @@ public:
 	};
 
 	static Snapshot player(Node *p_player);
+	static AudioStreamPlayerInternal *player_internal(Node *p_player);
 	static OutputClock output_clock();
 
 private:

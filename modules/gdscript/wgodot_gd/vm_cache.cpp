@@ -21,7 +21,7 @@
 
 namespace {
 constexpr uint32_t MAGIC = 0x4D564757; // WGVM
-constexpr int FORMAT_VERSION = 2;
+constexpr int FORMAT_VERSION = 5;
 
 struct Header {
 	Dictionary data;
@@ -238,6 +238,7 @@ bool WGodotGDScriptVMCache::prepare(GDScript *p_script) {
 	if (decode_variant(snapshot, payload.ptr(), payload.size(), nullptr, false) != OK || snapshot.get_type() != Variant::DICTIONARY) {
 		return false;
 	}
+	payload.clear();
 	p_script->wgodot_vm_snapshot = snapshot;
 	if (!decode(p_script, p_script->wgodot_vm_snapshot, true)) {
 		p_script->wgodot_vm_snapshot.clear();
@@ -264,6 +265,13 @@ bool WGodotGDScriptVMCache::restore(GDScript *p_script, Error &r_error) {
 		p_script->valid = false;
 		return false;
 	}
+	const bool retain_static = snapshot["retain_static"];
+#ifdef DEBUG_ENABLED
+	const Array warnings = snapshot["warnings"];
+#endif
+	// Dependency restoration can recurse through an entire application. The VM
+	// owns the decoded values now; do not retain every caller's serialized graph.
+	snapshot = Dictionary();
 	for (const auto &dependency : p_script->wgodot_vm_dependencies) {
 		if (dependency.key.get_extension() == "gd" && dependency.key != p_script->path) {
 			Error error = OK;
@@ -279,12 +287,12 @@ bool WGodotGDScriptVMCache::restore(GDScript *p_script, Error &r_error) {
 		return true;
 	}
 	// Preserve the compiler's static lifetime policy, including inner classes.
-	if (bool(snapshot["retain_static"])) {
+	if (retain_static) {
 		GDScriptCache::add_static_script(Ref<GDScript>(p_script));
 	}
 #ifdef DEBUG_ENABLED
 	if (EngineDebugger::is_active()) {
-		for (const Array warning : Array(snapshot["warnings"])) {
+		for (const Array warning : warnings) {
 			Vector<ScriptLanguage::StackInfo> stack;
 			EngineDebugger::get_script_debugger()->send_error("GDScript::reload", warning[0], warning[1], warning[2], warning[3], false, ERR_HANDLER_WARNING, stack);
 		}

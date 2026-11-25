@@ -170,17 +170,22 @@ WAudioPlaybackProbe::OutputClock WAudioPlaybackProbe::output_clock() {
 	return result;
 }
 
+AudioStreamPlayerInternal *WAudioPlaybackProbe::player_internal(Node *p_player) {
+	ERR_FAIL_COND_V(!Thread::is_main_thread(), nullptr);
+	if (AudioStreamPlayer *player = Object::cast_to<AudioStreamPlayer>(p_player)) {
+		return player->internal;
+	} else if (AudioStreamPlayer2D *player_2d = Object::cast_to<AudioStreamPlayer2D>(p_player)) {
+		return player_2d->internal;
+	} else if (AudioStreamPlayer3D *player_3d = Object::cast_to<AudioStreamPlayer3D>(p_player)) {
+		return player_3d->internal;
+	}
+	return nullptr;
+}
+
 WAudioPlaybackProbe::Snapshot WAudioPlaybackProbe::player(Node *p_player) {
 	Snapshot snapshot;
 	ERR_FAIL_COND_V(!Thread::is_main_thread(), snapshot);
-	AudioStreamPlayerInternal *internal = nullptr;
-	if (AudioStreamPlayer *player = Object::cast_to<AudioStreamPlayer>(p_player)) {
-		internal = player->internal;
-	} else if (AudioStreamPlayer2D *player_2d = Object::cast_to<AudioStreamPlayer2D>(p_player)) {
-		internal = player_2d->internal;
-	} else if (AudioStreamPlayer3D *player_3d = Object::cast_to<AudioStreamPlayer3D>(p_player)) {
-		internal = player_3d->internal;
-	}
+	AudioStreamPlayerInternal *internal = player_internal(p_player);
 	ERR_FAIL_NULL_V(internal, snapshot);
 	HashSet<ObjectID> ancestors;
 	AudioServer *server = AudioServer::get_singleton();

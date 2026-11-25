@@ -1677,6 +1677,20 @@ Ref<Resource> ResourceFormatLoaderText::load(const String &p_path, const String 
 		*r_error = ERR_CANT_OPEN;
 	}
 
+	// wgodot-changes::begin
+#ifdef TOOLS_ENABLED
+	// A validated binary hit needs neither a plaintext handle nor header parsing.
+	WGodotTextResourceCache binary_cache(p_path);
+	Ref<Resource> cached = binary_cache.load(ProjectSettings::get_singleton()->localize_path(!p_original_path.is_empty() ? p_original_path : p_path), p_use_sub_threads, r_progress, p_cache_mode);
+	if (cached.is_valid()) {
+		if (r_error) {
+			*r_error = OK;
+		}
+		return cached;
+	}
+#endif
+	// wgodot-changes::end
+
 	Error err;
 
 	Ref<FileAccess> f = FileAccess::open(p_path, FileAccess::READ, &err);
@@ -1710,22 +1724,11 @@ Ref<Resource> ResourceFormatLoaderText::load(const String &p_path, const String 
 #ifdef TOOLS_ENABLED
 	// Keep authored assignments; getters can synthesize defaults from dependencies.
 	// External resources and scripts remain references to their current sources.
-	const bool cache_candidate = loader.error == OK;
-	WGodotTextResourceCache binary_cache(cache_candidate ? p_path : String());
 	WGodotResourceProperties source_properties;
 	WGodotResourceUIDs source_uids;
-	if (cache_candidate) {
-		Ref<Resource> cached = binary_cache.load(loader.local_path, p_use_sub_threads, r_progress, p_cache_mode);
-		if (cached.is_valid()) {
-			if (r_error) {
-				*r_error = OK;
-			}
-			return cached;
-		}
-		if (binary_cache.is_enabled()) {
-			loader.wgodot_source_properties = &source_properties;
-			loader.wgodot_source_uids = &source_uids;
-		}
+	if (loader.error == OK && binary_cache.is_enabled()) {
+		loader.wgodot_source_properties = &source_properties;
+		loader.wgodot_source_uids = &source_uids;
 	}
 #endif
 	// wgodot-changes::end

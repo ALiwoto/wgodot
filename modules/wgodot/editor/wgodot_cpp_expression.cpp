@@ -286,6 +286,17 @@ WGodotCppEmitter::Value WGodotCppEmitter::lower(const Parser::ExpressionNode *p_
 		return constant;
 	}
 	switch (p_expression->type) {
+		case Parser::Node::AWAIT: {
+			const auto *awaited = static_cast<const Parser::AwaitNode *>(p_expression)->to_await;
+			const auto datatype = expression_type(awaited);
+			if (datatype.is_coroutine || (datatype.kind == Parser::DataType::BUILTIN && datatype.builtin_type == Variant::SIGNAL)) {
+				unsupported(p_expression, "suspending await outside coroutine lowering");
+				return Value();
+			}
+			// Awaiting a synchronous value is a passthrough, including when a
+			// surrounding coroutine revisits it for a short-circuit condition.
+			return lower(awaited);
+		}
 		case Parser::Node::ASSIGNMENT:
 			return assignment(static_cast<const Parser::AssignmentNode *>(p_expression));
 		case Parser::Node::CALL:

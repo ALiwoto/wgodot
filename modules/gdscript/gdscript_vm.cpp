@@ -1485,7 +1485,9 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 				GET_VARIANT_PTR(src, 1);
 				const StringName &constraint = _global_names_ptr[_code_ptr[ip + 3]];
 				if (!WGodotClassReferences::accepts(*src, WGodotClassReferences::constraint_base(constraint))) {
+#ifdef DEBUG_ENABLED
 					err_text = "Cannot assign an incompatible class to " + String(constraint);
+#endif
 					OPCODE_BREAK;
 				}
 				*dst = *src;
@@ -1533,13 +1535,17 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 					bool valid = false;
 					*dst = WRecordSchemas::default_value(record_name, valid);
 					if (!valid) {
+#ifdef DEBUG_ENABLED
 						err_text = "Cannot initialize record " + String(record_name);
+#endif
 						OPCODE_BREAK;
 					}
 				} else {
 					const WRecord value = *src;
 					if (src->get_type() != Variant::WRECORD || value.is_empty() || value.schema()->get_name() != record_name) {
+#ifdef DEBUG_ENABLED
 						err_text = "Cannot assign an incompatible value to record " + String(record_name);
+#endif
 						OPCODE_BREAK;
 					}
 					*dst = value;
@@ -2703,7 +2709,9 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 					receiver = WGodotValueAccess::borrow(*receiver, *instruction_args[index]);
 				}
 				if (!receiver) {
+#ifdef DEBUG_ENABLED
 					err_text = "Invalid value assignment path.";
+#endif
 					OPCODE_BREAK;
 				}
 				const Variant &key = *instruction_args[instr_arg_count - 1];
@@ -2721,7 +2729,9 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 					receiver->set(key, *assigned, &valid);
 				}
 				if (!valid) {
+#ifdef DEBUG_ENABLED
 					err_text = "Invalid value assignment at index '" + key.stringify() + "'.";
+#endif
 					OPCODE_BREAK;
 				}
 				ip += 2;
@@ -2753,7 +2763,9 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 					receiver = child;
 				}
 				if (!valid) {
+#ifdef DEBUG_ENABLED
 					err_text = "Invalid value-container receiver path.";
+#endif
 					OPCODE_BREAK;
 				}
 				Callable::CallError error;
@@ -2763,7 +2775,9 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 					*instruction_args[argc + 2 + depth + index] = Variant();
 				}
 				if (error.error != Callable::CallError::CALL_OK) {
+#ifdef DEBUG_ENABLED
 					err_text = Variant::get_call_error_text(method, (const Variant **)instruction_args, argc, error);
+#endif
 					OPCODE_BREAK;
 				}
 				ip += 4;

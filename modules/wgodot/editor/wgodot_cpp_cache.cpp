@@ -10,7 +10,6 @@
 #include "core/io/file_access.h"
 #include "core/io/resource_loader.h"
 #include "core/io/resource_uid.h"
-#include "core/io/wgodot_build_fingerprint.h"
 #include "core/io/wgodot_file_stamp.h"
 #include "core/object/script_language.h"
 #include "core/object/worker_thread_pool.h"
@@ -18,6 +17,12 @@
 
 namespace {
 constexpr const char *CACHE_FILE = ".gd2cpp-cache.bin";
+// Bump when analysis, dependency discovery, generated code/native bindings or
+// cache serialization changes can make previously generated output invalid.
+// Unrelated engine rebuilds must preserve the incremental export cache.
+constexpr const char *CACHE_VERSION = "gd2cpp-v6";
+// Dependency extraction has a separate lifetime from native code generation.
+constexpr const char *DEPENDENCY_CACHE_VERSION = "resource-dependencies-v1";
 
 String input_digest(const String &p_path) {
 	if (p_path.begins_with("uid://")) {
@@ -87,11 +92,7 @@ Error WGodotCppCache::scan(const String &p_directory) {
 Error WGodotCppCache::open(const String &p_directory, const String &p_target, bool p_trace, int p_jobs) {
 	directory = p_directory;
 	jobs = p_jobs;
-	// Rebuilding the compiler invalidates its disposable cache without reading
-	// the executable or every project resource into a hashing function.
-	const String &compiler = WGodotBuildFingerprint::get();
-	ERR_FAIL_COND_V_MSG(compiler.is_empty(), ERR_CANT_OPEN, "Cannot fingerprint the running gd2cpp compiler.");
-	identity = ("metadata-v1\n" + compiler + "\n" + p_target + "\n" + itos(p_trace) + "\n" + itos(bool(GLOBAL_GET("wgodot/gdscript/enforce_resource_paths"))) + "\n" +
+	identity = (String(CACHE_VERSION) + "\n" + p_target + "\n" + itos(p_trace) + "\n" + itos(bool(GLOBAL_GET("wgodot/gdscript/enforce_resource_paths"))) + "\n" +
 			ProjectSettings::get_singleton()->get_resource_path() + "\n" + digest("res://project.godot") + "\n" +
 			digest("res://override.cfg") + "\n" + digest("res://wgodot_targets.cfg") + "\n" + digest("res://export_presets.cfg"))
 					   .sha256_text();
@@ -161,7 +162,7 @@ void WGodotCppCache::prepare_dependencies() {
 			const Variant data = file->get_var(false);
 			if (data.get_type() == Variant::DICTIONARY) {
 				const Dictionary state = data;
-				if (String(state.get("build", "")) == WGodotBuildFingerprint::get() && Dictionary(state.get("named_types", Dictionary())) == named_types) {
+				if (String(state.get("version", "")) == DEPENDENCY_CACHE_VERSION && Dictionary(state.get("named_types", Dictionary())) == named_types) {
 					saved_entries = state.get("entries", Dictionary());
 				}
 			}
@@ -200,7 +201,7 @@ void WGodotCppCache::prepare_dependencies() {
 	}
 	print_line(vformat("Native dependency discovery: %d ms", OS::get_singleton()->get_ticks_msec() - started));
 	Dictionary state;
-	state["build"] = WGodotBuildFingerprint::get();
+	state["version"] = DEPENDENCY_CACHE_VERSION;
 	state["named_types"] = named_types;
 	state["entries"] = entries;
 	if (DirAccess::make_dir_recursive_absolute(dependency_cache.get_base_dir()) == OK) {

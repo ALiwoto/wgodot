@@ -93,6 +93,7 @@ class AudioStreamPlaybackPolyphonic : public AudioStreamPlayback {
 
 	// wgodot-changes::begin
 	friend class WAudioPlaybackProbe;
+	friend class WAudioStepper;
 	// wgodot-changes::end
 	friend class AudioStreamPolyphonic;
 

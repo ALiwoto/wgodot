@@ -224,7 +224,7 @@ void print_cli_help() {
 	print_line("  import                            Refresh/import assets and reload changed scenes in the running editor.");
 	print_line("  move <source> <destination> [...] [--dry-run] [--json]  Move project files/folders and update resource references.");
 	print_line("  status [--json] [--session <id>]  Show the matching editor and running game sessions.");
-	print_line("  run [--current|<scene>] [--windowed|--fullscreen] [--resolution <W>x<H>] [--fixed-fps <fps>] [--native-render-capture <directory>] [--wgodot-startup-profile] [--timeout <seconds>] [--json] [-- <user arguments>]  Run the main, current, or specified scene.");
+	print_line("  run [--current|<scene>] [--windowed|--fullscreen] [--resolution <W>x<H>] [--audio-driver <driver>] [--fixed-fps <fps>] [--native-render-capture <directory>] [--wgodot-startup-profile] [--timeout <seconds>] [--json] [-- <user arguments>]  Run the main, current, or specified scene.");
 	print_line("    run, check and import: --timeout 1..3600 seconds (default 300), including waiting for editor asset work.");
 	print_line("  stop [--json]                     Stop the running game.");
 	print_line("  tree [options]                    Print the running game's scene tree.");
@@ -1296,6 +1296,12 @@ int run_run_command(const Vector<String> &p_arguments) {
 			options["native_render_capture"] = p_arguments[index];
 		} else if (argument == "--wgodot-startup-profile") {
 			options["startup_profile"] = true;
+		} else if (argument == "--audio-driver") {
+			if (++index >= p_arguments.size() || p_arguments[index].is_empty() || p_arguments[index].begins_with("-")) {
+				print_line("wgodot: --audio-driver requires a driver name.");
+				return 2;
+			}
+			options["audio_driver"] = p_arguments[index];
 		} else if (argument == "--windowed" || argument == "--fullscreen") {
 			if (options.has("window_mode")) {
 				print_line("wgodot: specify only one window mode.");

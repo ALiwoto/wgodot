@@ -4,7 +4,6 @@
 
 #include "core/config/project_settings.h"
 #include "core/io/dir_access.h"
-#include "core/io/wgodot_build_fingerprint.h"
 #include "core/io/wgodot_file_stamp.h"
 #include "core/io/wgodot_global_resources.h"
 #include "core/object/class_db.h"
@@ -16,6 +15,10 @@ HashMap<String, WGodotResourceCheck::Entry> WGodotResourceCheck::cache;
 String WGodotResourceCheck::context;
 
 namespace {
+
+// Bump when resource syntax/type-checking rules, native declarations or the
+// serialized check results change. Script declarations are tracked per entry.
+constexpr const char *CACHE_VERSION = "resource-check-v1";
 
 void collect_resources(EditorFileSystemDirectory *p_directory, Vector<String> &r_paths) {
 	for (int index = 0; index < p_directory->get_file_count(); index++) {
@@ -32,7 +35,7 @@ void collect_resources(EditorFileSystemDirectory *p_directory, Vector<String> &r
 String get_class_identity() {
 	LocalVector<StringName> classes;
 	Vector<String> declarations;
-	// Built-in types are covered by the engine fingerprint. Internal editor
+	// Built-in types are covered by CACHE_VERSION. Internal editor
 	// classes register lazily, so the entire runtime ClassDB is not a stable key.
 	ClassDB::get_extensions_class_list(classes);
 	for (const StringName &name : classes) {
@@ -86,12 +89,8 @@ void WGodotResourceCheck::start(const Vector<String> &p_paths, const WGodotResou
 
 void WGodotResourceCheck::start_paths(const Vector<String> &p_paths) {
 	class_identity = get_class_identity();
-	const String &build = WGodotBuildFingerprint::get();
-	if (!build.is_empty()) {
-		// Use the same engine identity and disposable directory as binary resources.
-		cache_path = ProjectSettings::get_singleton()->get_project_data_path().path_join("resource_cache").path_join(build).path_join("typed.bin");
-	}
-	cache_context = ProjectSettings::get_singleton()->get_resource_path() + "\n" + build + "\n" + class_identity;
+	cache_path = ProjectSettings::get_singleton()->get_project_data_path().path_join("resource_cache").path_join(CACHE_VERSION).path_join("typed.bin");
+	cache_context = ProjectSettings::get_singleton()->get_resource_path() + "\n" + CACHE_VERSION + "\n" + class_identity;
 	if (context != cache_context) {
 		context = cache_context;
 		cache.clear();
