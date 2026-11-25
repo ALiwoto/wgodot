@@ -31,9 +31,28 @@
 #include "crypto_resource_format.h"
 
 #include "core/crypto/crypto.h"
+// wgodot-changes::begin
+#include "core/io/wgodot_resource_paths.h"
+
+static String crypto_resource_extension(const ResourceFormatLoaderCrypto &p_loader, const String &p_path) {
+	if (WGodotResourcePaths::is_opaque(p_path)) {
+		List<String> extensions;
+		p_loader.get_recognized_extensions(&extensions);
+		for (const String &extension : extensions) {
+			if (WGodotResourcePaths::recognizes_extension(p_path, extension)) {
+				return extension;
+			}
+		}
+		return String();
+	}
+	return p_path.get_extension().to_lower();
+}
+// wgodot-changes::end
 
 Ref<Resource> ResourceFormatLoaderCrypto::load(const String &p_path, const String &p_original_path, Error *r_error, bool p_use_sub_threads, float *r_progress, CacheMode p_cache_mode) {
-	String el = p_path.get_extension().to_lower();
+	// wgodot-changes::begin
+	String el = crypto_resource_extension(*this, p_path);
+	// wgodot-changes::end
 	if (el == "crt") {
 		X509Certificate *cert = X509Certificate::create();
 		if (cert) {
@@ -67,7 +86,9 @@ bool ResourceFormatLoaderCrypto::handles_type(const String &p_type) const {
 }
 
 String ResourceFormatLoaderCrypto::get_resource_type(const String &p_path) const {
-	String el = p_path.get_extension().to_lower();
+	// wgodot-changes::begin
+	String el = crypto_resource_extension(*this, p_path);
+	// wgodot-changes::end
 	if (el == "crt") {
 		return "X509Certificate";
 	} else if (el == "key" || el == "pub") {

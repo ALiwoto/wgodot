@@ -1667,6 +1667,8 @@ void GDScript::clear() {
 	wgodot_is_interface = false;
 	wgodot_interface_key = String();
 	wgodot_implemented_interfaces.clear();
+	wgodot_default_methods.clear();
+	wgodot_record_schema.unref();
 	// wgodot-changes::end
 
 	if (implicit_initializer) {
@@ -1700,6 +1702,12 @@ void GDScript::clear() {
 	functions_to_clear.clear();
 
 #ifdef TOOLS_ENABLED
+	// wgodot-changes::begin
+	// Typed container defaults retain their element scripts, including this
+	// script itself. Release both caches while breaking script reference cycles.
+	member_default_values.clear();
+	member_default_values_cache.clear();
+	// wgodot-changes::end
 	base_cache = Ref<GDScript>();
 #endif
 	base = Ref<GDScript>();
