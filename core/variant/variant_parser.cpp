@@ -803,6 +803,10 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 			return WGodotRecordSerialization::parse(id, p_stream, r_line, r_err_str, r_value, p_res_parser);
 		}
 		if (id == "GlobalResource") {
+			if (p_res_parser && p_res_parser->require_resolved_values) {
+				r_err_str = "GlobalResource values require normal native generation.";
+				return ERR_UNAVAILABLE;
+			}
 			return WGlobalResources::parse(p_stream, r_line, r_err_str, r_value, p_res_parser && p_res_parser->syntax_only);
 		}
 		if (id == "repeat" && p_res_parser && p_res_parser->syntax_only) {
@@ -824,6 +828,10 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 		// wgodot-changes::end
 		// wgodot-changes::begin
 		if (id == "ClassRef") {
+			if (p_res_parser && p_res_parser->require_resolved_values) {
+				r_err_str = "ClassRef values require normal native generation.";
+				return ERR_UNAVAILABLE;
+			}
 			return WGodotClassReferenceSerialization::parse(p_stream, r_value, r_line, r_err_str, p_res_parser && (p_res_parser->syntax_only || p_res_parser->skip_class_loading));
 		}
 		// wgodot-changes::end
@@ -1079,6 +1087,12 @@ Error VariantParser::parse_value(Token &r_token, Variant &r_value, Stream *p_str
 				return ERR_PARSE_ERROR;
 			}
 		} else if (id == "Object") {
+			// wgodot-changes::begin
+			if (p_res_parser && p_res_parser->require_resolved_values) {
+				r_err_str = "Inline Object values require normal native generation.";
+				return ERR_UNAVAILABLE;
+			}
+			// wgodot-changes::end
 			get_token(p_stream, r_token, r_line, r_err_str);
 			if (r_token.type != TK_PARENTHESIS_OPEN) {
 				r_err_str = "Expected '('";

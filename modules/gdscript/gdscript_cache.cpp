@@ -496,8 +496,13 @@ finish:
 	// Add the script to the resource cache. Usually ResourceLoader would take care of it, but cyclic references can break that sometimes so we do it ourselves.
 	// Resources don't know whether they are cached, so using `set_path()` after `set_path_cache()` does not add the resource to the cache if the path is the same.
 	// We reset the cached path from `get_shallow_script()` so that the subsequent call to `set_path()` caches everything correctly.
+	// wgodot-changes::begin
+	// VM-cache base resolution can pass script->path by reference. Preserve
+	// that identity before set_path_cache() clears both script paths.
+	const String cache_path = p_path;
 	script->set_path_cache(String());
-	script->set_path(p_path, true);
+	script->set_path(cache_path, true);
+	// wgodot-changes::end
 
 	return script;
 }

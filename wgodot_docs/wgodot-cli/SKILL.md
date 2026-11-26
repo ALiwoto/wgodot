@@ -1,6 +1,6 @@
 ---
 name: wgodot-cli
-description: Use WGodot's agent-oriented command-line interface to control a running game and debugger; inspect logs, scene trees, members, and source; edit properties, call methods, and rename GDScript symbols; capture screenshots and inject input; profile script hot paths, sample performance counters, audit texture memory and rendered sizes; and check project GDScript. Use when an agent needs `godot --wg` commands while developing, inspecting, debugging, refactoring, or testing a WGodot project.
+description: Use WGodot's agent-oriented command-line interface to control a running game and debugger; inspect logs, scene trees, members, and source; edit properties, call methods, and rename GDScript symbols; capture screenshots and inject input; profile script hot paths, sample performance counters, audit texture memory and rendered sizes; check project GDScript; and update native resource packs without recompiling. Use when an agent needs `godot --wg` commands while developing, inspecting, debugging, refactoring, packaging, or testing a WGodot project.
 ---
 
 # WGodot CLI
@@ -539,6 +539,38 @@ The validation scan respects `.gdignore` directories. Without an editor, or with
 resource checks share an error limit (default 100); `--errors-limit N` changes it.
 Workers finish in-flight checks but skip queued work once the limit is reached.
 Treat a nonzero exit code as a failed check; rerun after fixing reported errors.
+
+## Native resource updates
+
+Prefer `update-resources` for value edits in existing compiled, named `.tres`
+resources, including array/dictionary growth and shared subresource references.
+Regenerate only affected source resources first. Stop the runtime using the pack;
+this updates files for its next launch, not already loaded objects or pack indexes.
+
+```powershell
+godot --headless --path E:\projects\my_game --wg update-resources E:\wgodot\generated\my_game\server\main_game --pack E:\projects\my_game\bin\my_game.pck
+```
+
+Both the native-module directory and PCK path must be absolute. Reuse the existing
+module directory containing `main_game.json` and `resource_schemas.bin`. Bootstrap
+these through normal `export-cpp` and debug packaging once; the pack must match
+that generation. Recompile native code only if its generation no longer matches
+the template. No running editor is required.
+
+The command checks file revisions, encodes changed resources against saved schemas,
+refreshes `.res` caches, and atomically replaces the PCK while copying unchanged
+entries without rehashing them. It skips script analysis and C++ compilation;
+unchanged inputs cause no payload/cache/pack writes. Never append patch layers or
+manually edit generated manifests to bypass compatibility checks.
+
+Use normal generation/packaging for new resource identities, script/schema/settings
+changes, scenes, or resources using `WRecord`, `ClassRef`, `GlobalResource`, or inline
+`Object()`/`Resource()` values.
+If publication is interrupted or the pack is locked, release the conflicting process
+and retry the same command and pack before starting another native generation.
+
+The schema snapshot and `.res` caches stay on the development machine. Only debug
+packs contain the update identity; release packs omit it and cannot use this path.
 
 ## Performance and texture diagnosis
 

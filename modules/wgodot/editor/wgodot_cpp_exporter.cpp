@@ -6,6 +6,7 @@
 #include "wgodot_cpp_emitter.h"
 #include "wgodot_cpp_memory_profile.h"
 #include "wgodot_cpp_project.h"
+#include "wgodot_native_build_lock.h"
 #include "wgodot_resource_syntax.h"
 #include "wgodot_resource_types.h"
 
@@ -213,6 +214,13 @@ Dictionary WGodotCppExporter::execute(const Dictionary &p_options) {
 	}
 	if (!ProjectSettings::get_singleton()->is_project_loaded()) {
 		return failure("C++ export requires a project.godot.");
+	}
+	WGodotNativeBuildLock lock;
+	if (lock.acquire(output) != OK) {
+		return failure("Another native generation or resource update owns this module. Retry after it completes.");
+	}
+	if (FileAccess::exists(output.path_join(".resource-update/transaction.json"))) {
+		return failure("A resource update is awaiting publication. Retry update-resources with its original pack before generating native code.");
 	}
 	struct ResourcePathSetting {
 		Variant previous = GLOBAL_GET("wgodot/gdscript/enforce_resource_paths");

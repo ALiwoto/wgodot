@@ -66,6 +66,10 @@ public:
 	Error pck_start(const String &p_pck_path, int p_alignment = 32, const String &p_key = "0000000000000000000000000000000000000000000000000000000000000000", bool p_encrypt_directory = false);
 	Error add_file(const String &p_target_path, const String &p_source_path, bool p_encrypt = false);
 	Error add_file_from_buffer(const String &p_target_path, const Vector<uint8_t> &p_data, bool p_encrypt = false);
+	// wgodot-changes::begin
+	// Copy an existing unencrypted pack entry without buffering or rehashing it.
+	Error copy_entry(const String &p_target_path, const Ref<FileAccess> &p_source, uint64_t p_offset, uint64_t p_size, const Vector<uint8_t> &p_md5, Vector<uint8_t> &r_buffer);
+	// wgodot-changes::end
 	Error add_file_removal(const String &p_target_path);
 	Error flush(bool p_verbose = false);
 

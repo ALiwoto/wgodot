@@ -426,6 +426,22 @@ WGodotCppEmitter::Value WGodotCppEmitter::warray_call(const Parser::CallNode *p_
 			case APIType::ARRAY:
 				operands.push_back(lower_converted(source, base_type, base));
 				break;
+			case APIType::COPY_ARRAY: {
+				const auto *outer_source = engine_array_source;
+				if (!is_warray(expression_type(source))) {
+					engine_array_source = source;
+				}
+				Value operand = lower(source);
+				engine_array_source = outer_source;
+				if (!is_warray(expression_type(source))) {
+					// Explicit element copies may consume an engine Array without
+					// preserving its Variant storage or aliases inside the worker.
+					operand.cpp_type = type(base_type, base);
+					operand.code = "WGodotNative::copy_array<" + operand.cpp_type + ">(" + operand.code + ")";
+					operand.effects = true;
+				}
+				operands.push_back(operand);
+			} break;
 			case APIType::OTHER_ARRAY:
 				if (!is_warray(expression_type(source))) {
 					unsupported(source, "native Array type comparison with a dynamic Array");

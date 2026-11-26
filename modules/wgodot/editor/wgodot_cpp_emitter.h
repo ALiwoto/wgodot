@@ -100,6 +100,7 @@ class WGodotCppEmitter {
 	const GDScriptParser::ExpressionNode *iterated_expression = nullptr;
 	// Only this expression may retain an engine Dictionary at an explicit boundary.
 	const GDScriptParser::ExpressionNode *engine_dictionary_source = nullptr;
+	const GDScriptParser::ExpressionNode *engine_array_source = nullptr;
 	bool emitted_array_range = false;
 	const GDScriptParser::CallNode *awaited_call = nullptr;
 	uint64_t temporary_index = 0;

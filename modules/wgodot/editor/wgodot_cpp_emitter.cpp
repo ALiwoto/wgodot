@@ -911,6 +911,9 @@ Error WGodotCppEmitter::write(const String &p_directory) const {
 	manifest["compiled_resources"] = compiled_resources;
 	manifest["compiled_resource_aliases"] = compiled_resource_aliases;
 	manifest["resource_sources"] = resource_sources;
+	// One digest of metadata, never of source file contents. This ties a pack to
+	// its data generation independently of the compiled C++ generation.
+	manifest["resource_generation"] = JSON::stringify(resource_sources, "", true).sha256_text();
 	Dictionary resource_paths;
 	for (const KeyValue<String, int64_t> &entry : resource_ids) {
 		resource_paths[entry.key] = entry.value;

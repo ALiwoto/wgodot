@@ -67,7 +67,7 @@ bool scripts_match(const Dictionary &p_scripts) {
 }
 } // namespace
 
-WGodotTextResourceCache::WGodotTextResourceCache(const String &p_source_path) {
+WGodotTextResourceCache::WGodotTextResourceCache(const String &p_source_path, const String &p_source_revision) {
 #ifdef TOOLS_ENABLED
 	const String extension = p_source_path.get_extension();
 	if (!p_source_path.begins_with("res://") || (extension != "tres" && extension != "tscn") || WGodotResourceSerialization::is_active()) {
@@ -79,7 +79,7 @@ WGodotTextResourceCache::WGodotTextResourceCache(const String &p_source_path) {
 	}
 	source_path = p_source_path;
 	WGodotResourceTrace trace("cache.verify_source", source_path);
-	source_hash = WGodotFileStamp::get(source_path);
+	source_hash = p_source_revision.is_empty() ? WGodotFileStamp::get(source_path) : p_source_revision;
 	if (source_hash == "<missing>") {
 		return;
 	}
@@ -126,15 +126,15 @@ Ref<Resource> WGodotTextResourceCache::load(const String &p_original_path, bool 
 	return loader.load_from_file(file, p_original_path, &error, p_use_sub_threads, r_progress, p_cache_mode);
 }
 
-void WGodotTextResourceCache::store(const Ref<Resource> &p_resource, const WGodotResourceProperties &p_source_properties, const WGodotResourceUIDs &p_source_uids) const {
+Error WGodotTextResourceCache::store(const Ref<Resource> &p_resource, const WGodotResourceProperties &p_source_properties, const WGodotResourceUIDs &p_source_uids, const Dictionary &p_declared_scripts) const {
 	WGodotResourceTrace trace("cache.store", source_path);
 	if (cache_path.is_empty() || WGodotFileStamp::get(source_path) != source_hash) {
-		return;
+		return ERR_BUSY;
 	}
 	if (DirAccess::make_dir_recursive_absolute(cache_path.get_base_dir()) != OK) {
-		return; // A read-only project must still load its source normally.
+		return ERR_CANT_CREATE; // A read-only project must still load its source normally.
 	}
-	Dictionary scripts;
+	Dictionary scripts = p_declared_scripts.duplicate();
 	for (const auto &entry : p_source_properties) {
 		collect_scripts(entry.key, scripts);
 		for (const WGodotResourceProperty &property : entry.value) {
@@ -142,20 +142,21 @@ void WGodotTextResourceCache::store(const Ref<Resource> &p_resource, const WGodo
 		}
 	}
 	if (!scripts_match(scripts)) {
-		return;
+		return ERR_BUSY;
 	}
 	const String temporary = cache_path + "." + itos(OS::get_singleton()->get_process_id()) + "." + uitos(Thread::get_caller_id()) + ".tmp";
 	ResourceFormatSaverBinaryInstance saver;
-	if (saver.save(temporary, p_resource, ResourceSaver::FLAG_COMPRESS, &p_source_properties, &p_source_uids) != OK) {
+	const Error save_error = saver.save(temporary, p_resource, ResourceSaver::FLAG_COMPRESS, &p_source_properties, &p_source_uids);
+	if (save_error != OK) {
 		if (FileAccess::exists(temporary)) {
 			DirAccess::remove_absolute(temporary);
 		}
-		return;
+		return save_error;
 	}
 	Ref<FileAccess> file = FileAccess::open(temporary, FileAccess::READ_WRITE);
 	if (file.is_null()) {
 		DirAccess::remove_absolute(temporary);
-		return;
+		return ERR_FILE_CANT_OPEN;
 	}
 	file->seek_end();
 	const uint64_t metadata_offset = file->get_position();
@@ -170,11 +171,13 @@ void WGodotTextResourceCache::store(const Ref<Resource> &p_resource, const WGodo
 	file.unref();
 	if (!valid) {
 		DirAccess::remove_absolute(temporary);
-		return;
+		return ERR_BUSY;
 	}
 	// Publish only complete payloads. Concurrent editor/game readers never see a
 	// partially written cache, and interrupted writes cannot replace the source.
-	if (DirAccess::rename_absolute(temporary, cache_path) != OK) {
+	const Error publish_error = DirAccess::rename_absolute(temporary, cache_path);
+	if (publish_error != OK) {
 		DirAccess::remove_absolute(temporary);
 	}
+	return publish_error;
 }

@@ -116,6 +116,7 @@ GDScriptDataType GDScriptCompiler::_gdtype_from_datatype(const GDScriptParser::D
 	GDScriptDataType result;
 	// wgodot-changes::begin
 	result.wgodot_value = p_datatype.wgodot_value;
+	result.wgodot_resource_path = p_datatype.wgodot_resource_path;
 	if (p_datatype.wgodot_class_ref) {
 		result.kind = GDScriptDataType::BUILTIN;
 		result.builtin_type = Variant::OBJECT;

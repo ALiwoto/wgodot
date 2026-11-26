@@ -21,7 +21,7 @@
 
 namespace {
 constexpr uint32_t MAGIC = 0x4D564757; // WGVM
-constexpr int FORMAT_VERSION = 5;
+constexpr int FORMAT_VERSION = 6;
 
 struct Header {
 	Dictionary data;

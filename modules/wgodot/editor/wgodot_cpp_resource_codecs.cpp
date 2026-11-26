@@ -2,8 +2,11 @@
 #include "wgodot_cpp_emitter.h"
 #include "wgodot_cpp_names.h"
 #include "wgodot_resource_schema.h"
+#include "wgodot_resource_snapshot.h"
 #include "wgodot_resource_types.h"
 
+#include "core/io/file_access.h"
+#include "core/io/wgodot_file_stamp.h"
 #include "core/object/class_db.h"
 
 using namespace WGodotCppNames;
@@ -13,9 +16,24 @@ void WGodotCppEmitter::emit_resource_codecs() {
 	String registrations;
 	int count = 0;
 	HashSet<uint64_t> identities;
+	Dictionary schemas;
+	Dictionary scripts;
 	WGodotResourceTypes types;
 	for (const auto &game : project.get_classes()) {
 		types.add_class(game.node);
+		if (!game.node->outer) {
+			PackedStringArray identity;
+			identity.push_back(WGodotFileStamp::get(game.script_path));
+			identity.push_back(game.node->get_global_name());
+			scripts[game.script_path] = identity;
+		}
+		if (ClassDB::is_parent_class(native_base(game.node->self_type), SNAME("Resource"))) {
+			const Dictionary schema = WGodotResourceSnapshot::capture_class(game.node, game.script_path, game.cpp_name);
+			schemas[game.node->fqcn] = schema;
+			if (!game.node->get_global_name().is_empty() && game.node->get_global_name() != StringName(game.node->fqcn)) {
+				schemas[game.node->get_global_name()] = schema;
+			}
+		}
 	}
 	for (const auto &game : project.get_classes()) {
 		if (game.node->is_abstract || game.node->wgodot_is_interface || !ClassDB::is_parent_class(native_base(game.node->self_type), SNAME("Resource"))) {
@@ -85,5 +103,17 @@ void WGodotCppEmitter::emit_resource_codecs() {
 	}
 	declarations += "}\n";
 	store_file("game_resource_codecs.cpp", declarations);
+	Dictionary snapshot;
+	snapshot["version"] = WGodotResourceSnapshot::VERSION;
+	snapshot["settings"] = WGodotResourceSnapshot::settings_revisions();
+	snapshot["classes"] = schemas;
+	snapshot["scripts"] = scripts;
+	const Ref<FileAccess> output = FileAccess::open(staging_directory.path_join(WGodotResourceSnapshot::FILENAME), FileAccess::WRITE, &output_error);
+	if (output.is_valid()) {
+		output->store_var(snapshot);
+		output->flush();
+		output_error = output->get_error();
+		files.insert(WGodotResourceSnapshot::FILENAME, String());
+	}
 	current_class = nullptr;
 }

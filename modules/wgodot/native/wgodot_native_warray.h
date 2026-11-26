@@ -347,6 +347,7 @@ public:
 			elements().append_array(p_other.elements());
 		}
 	}
+	// native-array: copy-array
 	template <class U>
 	void assign(const WArray<U> &p_other) {
 		if (!writable()) {

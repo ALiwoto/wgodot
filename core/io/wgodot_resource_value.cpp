@@ -46,6 +46,7 @@ String WGodotResourceDataType::text() const {
 WGodotResourceDataType WGodotResourceDataType::from_property(const PropertyInfo &p_info) {
 	WGodotResourceDataType result;
 	result.builtin = p_info.type;
+	result.resource_path = p_info.type == Variant::STRING && p_info.class_name == SNAME("WResPath");
 	if (result.builtin == Variant::OBJECT || result.builtin == Variant::WRECORD) {
 		result.name = p_info.class_name;
 		if (result.name.is_empty() && (p_info.hint == PROPERTY_HINT_RESOURCE_TYPE || p_info.hint == PROPERTY_HINT_NODE_TYPE)) {
@@ -194,6 +195,18 @@ int WGodotResourceDataType::component_width(Variant::Type p_type) {
 namespace {
 using VP = VariantParser;
 
+bool contains_resource_paths(const WGodotResourceDataType &p_type) {
+	if (p_type.resource_path) {
+		return true;
+	}
+	for (const WGodotResourceDataType &element : p_type.elements) {
+		if (contains_resource_paths(element)) {
+			return true;
+		}
+	}
+	return false;
+}
+
 template <class T>
 Error packed_element(const Variant &p_value, Variant::Type p_element, String &r_error) {
 	if (p_value.get_type() != p_element && !(p_element == Variant::FLOAT && p_value.get_type() == Variant::INT)) {
@@ -302,8 +315,8 @@ Error WGodotResourceValueParser::parse_repeat_count(VP::Stream *p_stream, int &r
 	return OK;
 }
 
-WGodotResourceValueParser::WGodotResourceValueParser(const StringName &p_native, const Ref<Script> &p_script, WGodotNamedTypes::Resolver &p_resolver, VP::AssignmentParser *p_custom) :
-		native_type(p_native), resolver(p_resolver), custom(p_custom) {
+WGodotResourceValueParser::WGodotResourceValueParser(const String &p_path, const StringName &p_native, const Ref<Script> &p_script, WGodotNamedTypes::Resolver &p_resolver, VP::AssignmentParser *p_custom) :
+		native_type(p_native), resolver(p_resolver), custom(p_custom), base_directory(p_path.get_base_dir()) {
 	declaration_source = WGodotNativeResourceFields::dependency(p_native);
 	List<PropertyInfo> properties;
 	if (!p_native.is_empty()) {
@@ -419,6 +432,36 @@ Ref<Script> WGodotResourceValueParser::element_script(const Type &p_type) {
 	return p_type.builtin == Variant::OBJECT && ScriptServer::is_global_class(p_type.name) ? resolver.script(p_type.name) : Ref<Script>();
 }
 
+void WGodotResourceValueParser::resolve_paths(Variant &r_value, const Type &p_type) const {
+	if (!contains_resource_paths(p_type)) {
+		return;
+	}
+	if (p_type.resource_path && r_value.get_type() == Variant::STRING) {
+		const String path = r_value;
+		if (path.begins_with("./") || path.begins_with("../")) {
+			r_value = base_directory.path_join(path).simplify_path();
+		}
+	} else if (p_type.builtin == Variant::ARRAY && p_type.elements.size() == 1 && r_value.get_type() == Variant::ARRAY) {
+		Array values = r_value;
+		for (int i = 0; i < values.size(); i++) {
+			resolve_paths(values[i], p_type.elements[0]);
+		}
+	} else if (p_type.builtin == Variant::DICTIONARY && p_type.elements.size() == 2 && r_value.get_type() == Variant::DICTIONARY) {
+		const Dictionary source = r_value;
+		Dictionary resolved;
+		resolved.set_typed(source.get_typed_key_builtin(), source.get_typed_key_class_name(), source.get_typed_key_script(),
+				source.get_typed_value_builtin(), source.get_typed_value_class_name(), source.get_typed_value_script());
+		for (const KeyValue<Variant, Variant> &entry : source) {
+			Variant key = entry.key;
+			Variant value = entry.value;
+			resolve_paths(key, p_type.elements[0]);
+			resolve_paths(value, p_type.elements[1]);
+			resolved[key] = value;
+		}
+		r_value = resolved;
+	}
+}
+
 Error WGodotResourceValueParser::value(VP::Token &p_token, Variant &r_value, const Type &p_type, VP::Stream *p_stream, int &r_line, String &r_error, VP::ResourceParser *p_resources, int p_depth) {
 	RETURN_IF_ERROR(value_data(p_token, r_value, p_type, p_stream, r_line, r_error, p_resources, p_depth));
 	const Variant::Type actual = r_value.get_type();
@@ -516,7 +559,11 @@ Error WGodotResourceValueParser::value_data(VP::Token &p_token, Variant &r_value
 		return OK;
 	}
 	if (p_token.type != VP::TK_BRACKET_OPEN && p_token.type != VP::TK_CURLY_BRACKET_OPEN) {
-		return VP::parse_value(p_token, r_value, p_stream, r_line, r_error, p_resources, true);
+		RETURN_IF_ERROR(VP::parse_value(p_token, r_value, p_stream, r_line, r_error, p_resources, true));
+		// Literal containers resolve their elements while parsing. Explicit
+		// constructors arrive here as a complete value and need the same treatment.
+		resolve_paths(r_value, p_type);
+		return OK;
 	}
 	if (p_token.type == VP::TK_BRACKET_OPEN && Variant::is_packed_array_type(p_type.builtin)) {
 		const Type element = Type::packed_element(p_type.builtin);

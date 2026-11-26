@@ -163,6 +163,33 @@ Error PCKPacker::add_file_from_buffer(const String &p_target_path, const Vector<
 	return _add_file(p_target_path, "<PackedByteArray>", p_data, p_encrypt);
 }
 
+// wgodot-changes::begin
+Error PCKPacker::copy_entry(const String &p_target_path, const Ref<FileAccess> &p_source, uint64_t p_offset, uint64_t p_size, const Vector<uint8_t> &p_md5, Vector<uint8_t> &r_buffer) {
+	ERR_FAIL_COND_V(file.is_null() || p_source.is_null() || p_md5.size() != 16 || r_buffer.is_empty(), ERR_INVALID_PARAMETER);
+	ERR_FAIL_COND_V(p_offset > p_source->get_length() || p_size > p_source->get_length() - p_offset, ERR_FILE_CORRUPT);
+	File entry;
+	entry.path = p_target_path.simplify_path().trim_prefix("res://");
+	entry.ofs = file->get_position();
+	entry.size = p_size;
+	entry.md5 = p_md5;
+	p_source->seek(p_offset);
+	uint64_t remaining = p_size;
+	while (remaining) {
+		const uint64_t count = MIN(remaining, uint64_t(r_buffer.size()));
+		ERR_FAIL_COND_V(p_source->get_buffer(r_buffer.ptrw(), count) != count, ERR_FILE_CANT_READ);
+		file->store_buffer(r_buffer.ptr(), count);
+		RETURN_IF_ERROR(file->get_error());
+		remaining -= count;
+	}
+	const int pad = _get_pad(alignment, file->get_position());
+	for (int i = 0; i < pad; i++) {
+		file->store_8(0);
+	}
+	files.push_back(entry);
+	return file->get_error();
+}
+// wgodot-changes::end
+
 Error PCKPacker::_add_file(const String &p_target_path, const String &p_source_path, const Vector<uint8_t> &p_data, bool p_encrypt) {
 	ERR_FAIL_COND_V_MSG(file.is_null(), ERR_INVALID_PARAMETER, "File must be opened before use.");
 
@@ -277,8 +304,12 @@ Error PCKPacker::flush(bool p_verbose) {
 		fae.unref();
 	}
 
+	// wgodot-changes::begin
+	file->flush();
+	const Error error = file->get_error();
 	file.unref();
-	return OK;
+	return error;
+	// wgodot-changes::end
 }
 
 PCKPacker::~PCKPacker() {

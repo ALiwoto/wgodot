@@ -375,7 +375,7 @@ Ref<PackedScene> ResourceLoaderText::_parse_node_tag(const Ref<PackedScene> &p_c
 			const WGodotSceneTypes::Type inherited_value_type = inherited_types.resolve(node_path);
 			const StringName value_native_type = declared_type.is_empty() ? inherited_value_type.native : WGodotNamedTypes::native_type(declared_type);
 			WGodotResourceValueParser value_assignment(
-					value_native_type,
+					local_path, value_native_type,
 					named_script.is_valid() ? named_script : inherited_value_type.script, named_types);
 			value_assignment.set_node_paths(path_properties);
 			WGodotSceneShaderFields shader_fields(inherited_value_type.shader_bindings);
@@ -761,9 +761,9 @@ Error ResourceLoaderText::load() {
 		// wgodot-changes::begin
 #ifdef MODULE_WGODOT_ENABLED
 		WResourceCodec::Assignment codec_assignment(res.ptr(), type, do_assign);
-		WGodotResourceValueParser value_assignment(res->get_class(), res->get_script(), named_types, &codec_assignment);
+		WGodotResourceValueParser value_assignment(local_path, res->get_class(), res->get_script(), named_types, &codec_assignment);
 #else
-		WGodotResourceValueParser value_assignment(res->get_class(), res->get_script(), named_types);
+		WGodotResourceValueParser value_assignment(local_path, res->get_class(), res->get_script(), named_types);
 #endif
 		if (wgodot_initializing_owned && !wgodot_source_properties) {
 			value_assignment.initialize_owned(res.ptr());
@@ -968,9 +968,9 @@ Error ResourceLoaderText::load() {
 		// wgodot-changes::begin
 #ifdef MODULE_WGODOT_ENABLED
 		WResourceCodec::Assignment codec_assignment(resource.ptr(), res_type);
-		WGodotResourceValueParser value_assignment(is_scene ? StringName("PackedScene") : StringName(resource->get_class()), is_scene ? Ref<Script>() : Ref<Script>(resource->get_script()), named_types, &codec_assignment);
+		WGodotResourceValueParser value_assignment(local_path, is_scene ? StringName("PackedScene") : StringName(resource->get_class()), is_scene ? Ref<Script>() : Ref<Script>(resource->get_script()), named_types, &codec_assignment);
 #else
-		WGodotResourceValueParser value_assignment(is_scene ? StringName("PackedScene") : StringName(resource->get_class()), is_scene ? Ref<Script>() : Ref<Script>(resource->get_script()), named_types);
+		WGodotResourceValueParser value_assignment(local_path, is_scene ? StringName("PackedScene") : StringName(resource->get_class()), is_scene ? Ref<Script>() : Ref<Script>(resource->get_script()), named_types);
 #endif
 		// Engine-private configuration outside the project (e.g. editor settings)
 		// uses Godot's configuration format, not the compiled resource schema.

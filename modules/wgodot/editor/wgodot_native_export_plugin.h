@@ -2,15 +2,20 @@
 #pragma once
 
 #include "wgodot_export_target.h"
+#include "wgodot_native_build_lock.h"
 #include "wgodot_native_resource_selection.h"
 #include "wgodot_resource_export.h"
 
 #include "editor/export/editor_export_plugin.h"
 
+#include <memory>
+
 class WGodotNativeExportPlugin : public EditorExportPlugin {
 	GDCLASS(WGodotNativeExportPlugin, EditorExportPlugin);
 	bool enabled = false;
 	bool validated = false;
+	bool debug_resource_updates = false;
+	std::unique_ptr<WGodotNativeBuildLock> pack_lock;
 	Dictionary manifest;
 	Dictionary autoloads;
 	HashSet<int64_t> exported_payloads;
@@ -22,6 +27,7 @@ class WGodotNativeExportPlugin : public EditorExportPlugin {
 protected:
 	void _get_export_options(const Ref<EditorExportPlatform> &p_platform, List<EditorExportPlatform::ExportOption> *r_options) const override;
 	void _export_begin(const HashSet<String> &p_features, bool p_debug, const String &p_path, int p_flags) override;
+	void _export_end() override { pack_lock.reset(); }
 	void _export_customize_paths(HashSet<String> &r_paths) override;
 	void _export_paths_ready(const HashSet<String> &p_paths) override;
 	void _export_file(const String &p_path, const String &p_type, const HashSet<String> &p_features) override;

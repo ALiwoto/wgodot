@@ -103,6 +103,7 @@ public:
 		// wgodot-changes::begin
 		bool skip_class_loading = false;
 		bool syntax_only = false;
+		bool require_resolved_values = false;
 		WGodotNamedTypes::Resolver *named_types = nullptr;
 		// wgodot-changes::end
 	};

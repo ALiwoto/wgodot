@@ -43,6 +43,8 @@ private:
 	VariantParser::AssignmentParser *custom;
 	Object *initializing = nullptr;
 	bool declarations_required = true;
+	String base_directory;
+	void resolve_paths(Variant &r_value, const Type &p_type) const;
 	Error value(VariantParser::Token &p_token, Variant &r_value, const Type &p_type, VariantParser::Stream *p_stream, int &r_line, String &r_error, VariantParser::ResourceParser *p_resources, int p_depth = 0);
 	Error value_data(VariantParser::Token &p_token, Variant &r_value, const Type &p_type, VariantParser::Stream *p_stream, int &r_line, String &r_error, VariantParser::ResourceParser *p_resources, int p_depth);
 	Ref<Script> element_script(const Type &p_type);
@@ -50,7 +52,7 @@ private:
 public:
 	static Error infer_constructor(VariantParser::Token &r_token, const Type &p_type, VariantParser::Stream *p_stream, String &r_error);
 	static Error parse_repeat_count(VariantParser::Stream *p_stream, int &r_count, int &r_line, String &r_error);
-	WGodotResourceValueParser(const StringName &p_native, const Ref<Script> &p_script, WGodotNamedTypes::Resolver &p_resolver, VariantParser::AssignmentParser *p_custom = nullptr);
+	WGodotResourceValueParser(const String &p_path, const StringName &p_native, const Ref<Script> &p_script, WGodotNamedTypes::Resolver &p_resolver, VariantParser::AssignmentParser *p_custom = nullptr);
 	void initialize_owned(Object *p_resource) { initializing = p_resource; }
 	void require_declarations(bool p_required) { declarations_required = p_required; }
 	void set_field_resolver(FieldResolver *p_resolver) { field_resolver = p_resolver; }

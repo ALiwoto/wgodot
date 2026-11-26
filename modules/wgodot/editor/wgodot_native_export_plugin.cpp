@@ -2,6 +2,7 @@
 #include "wgodot_native_export_plugin.h"
 
 #include "wgodot_native_resource_policy.h"
+#include "wgodot_resource_snapshot.h"
 
 #include "core/config/project_settings.h"
 #include "core/io/file_access.h"
@@ -32,11 +33,17 @@ void WGodotNativeExportPlugin::_get_export_options(const Ref<EditorExportPlatfor
 
 void WGodotNativeExportPlugin::_export_begin(const HashSet<String> &p_features, bool p_debug, const String &p_path, int p_flags) {
 	enabled = p_features.has("wgodot_native");
+	debug_resource_updates = p_debug;
 	validated = false;
 	manifest.clear();
 	autoloads.clear();
 	exported_payloads.clear();
 	if (!enabled) {
+		return;
+	}
+	pack_lock = std::make_unique<WGodotNativeBuildLock>();
+	if (pack_lock->acquire(p_path.get_base_dir()) != OK) {
+		set_export_error(ERR_BUSY, "Another build is publishing in this pack directory.");
 		return;
 	}
 	if (!GLOBAL_GET("wgodot/gdscript/strict_type_checking")) {
@@ -383,6 +390,9 @@ Error WGodotNativeExportPlugin::_export_pack_finish(HashMap<String, Vector<uint8
 		return error;
 	}
 	r_files.insert(WGodotResourcePaths::CATALOG_PATH, catalog);
+	if (debug_resource_updates) {
+		r_files.insert(WGodotResourceSnapshot::PACK_IDENTITY, WGodotResourceSnapshot::pack_identity(manifest));
+	}
 	if (!bool(manifest["enforce_resource_paths"])) {
 		r_files.insert(WGodotResourcePaths::SOURCE_PATHS, resources.source_paths());
 	}

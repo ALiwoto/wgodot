@@ -5,13 +5,13 @@
 
 #include "wgodot_cli.h"
 
+#include "rendering/capture_pack.h"
 #include "wgodot_debug_cli.h"
 #include "wgodot_format_cli.h"
 #include "wgodot_logs_cli.h"
 #include "wgodot_performance_cli.h"
 #include "wgodot_profiler_cli.h"
 #include "wgodot_rename_cli.h"
-#include "rendering/capture_pack.h"
 
 #include "core/config/project_settings.h"
 #include "core/io/dir_access.h"
@@ -25,6 +25,7 @@
 #include "editor/file_system/editor_paths.h"
 #include "editor/wgodot_cpp_exporter.h"
 #include "editor/wgodot_project_check.h"
+#include "editor/wgodot_resource_update.h"
 
 namespace WGodotCLI {
 
@@ -221,6 +222,7 @@ void print_cli_help() {
 	print_line("Commands:");
 	print_line("  capture-pack --files <file-list> --status <status.ini>  Compress sealed native capture archives after the entire session; one absolute file path per line. Runs locally without an editor connection.");
 	print_line("  export-cpp <directory> [--target client|server] [--jobs N] [--analyze-only] [--profile-memory] [--standalone] [--trace on|off|true|false] Generate native game C++; --profile-memory writes allocation/resource CSV diagnostics; --standalone uses saved files without blocking the editor.");
+	print_line("  update-resources <native-module-directory> --pack <pack.pck> Update existing typed resource data and .res caches without script analysis or C++ compilation.");
 	print_line("  import                            Refresh/import assets and reload changed scenes in the running editor.");
 	print_line("  move <source> <destination> [...] [--dry-run] [--json]  Move project files/folders and update resource references.");
 	print_line("  status [--json] [--session <id>]  Show the matching editor and running game sessions.");
@@ -1426,6 +1428,10 @@ bool execute_if_requested(int &r_exit_code) {
 
 	if (command == "export-cpp") {
 		r_exit_code = WGodotCppExporter::run(arguments);
+		return true;
+	}
+	if (command == "update-resources") {
+		r_exit_code = WGodotResourceUpdate::run(arguments);
 		return true;
 	}
 	if (command == "capture-pack") {

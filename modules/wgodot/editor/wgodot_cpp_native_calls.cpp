@@ -239,7 +239,9 @@ WGodotCppEmitter::Value WGodotCppEmitter::native_invoke(const MethodBind *p_meth
 	result.code = native.code;
 	result.cpp_type = native.cpp_type;
 	const bool array_result = p_method->get_argument_type(-1) == Variant::ARRAY;
-	if (array_result && p_origin == iterated_expression) {
+	if (array_result && p_origin == engine_array_source) {
+		// The explicit Array copy consumer owns conversion of this engine result.
+	} else if (array_result && p_origin == iterated_expression) {
 		result.code = array_iteration_result(result.code, p_origin);
 		result.cpp_type = "WGodotNative::ArrayRange<" + array_iteration_element(static_cast<const Parser::ExpressionNode *>(p_origin)) + ">";
 	} else if (array_result && call.snapshot_result) {

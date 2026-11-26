@@ -213,7 +213,7 @@ struct WGodotGDScriptVMCache::Writer {
 		for (const auto &element : p_type.container_element_types) {
 			elements.push_back(type(element));
 		}
-		return Array{ p_type.kind, p_type.builtin_type, p_type.native_type, script(p_type.script_type), p_type.script_type_ref.is_valid(), p_type.wgodot_scalar, p_type.wgodot_value, p_type.wgodot_class_ref, elements };
+		return Array{ p_type.kind, p_type.builtin_type, p_type.native_type, script(p_type.script_type), p_type.script_type_ref.is_valid(), p_type.wgodot_scalar, p_type.wgodot_value, p_type.wgodot_class_ref, elements, p_type.wgodot_resource_path };
 	}
 
 	Array record_type(const WRecordFieldType &p_type) {
@@ -659,6 +659,7 @@ struct WGodotGDScriptVMCache::Reader {
 		result.wgodot_scalar = WGodotScalar::Type(int(p_type[5]));
 		result.wgodot_value = p_type[6];
 		result.wgodot_class_ref = p_type[7];
+		result.wgodot_resource_path = p_type[9];
 		const Array elements = p_type[8];
 		for (const Array element : elements) {
 			result.container_element_types.push_back(type(element));

@@ -66,6 +66,7 @@ public:
 	WGodotScalar::Type wgodot_scalar = WGodotScalar::NONE;
 	bool wgodot_value = false;
 	bool wgodot_class_ref = false;
+	bool wgodot_resource_path = false;
 	// wgodot-changes::end
 	StringName native_type;
 	Script *script_type = nullptr;
@@ -137,6 +138,7 @@ public:
 				wgodot_scalar == p_other.wgodot_scalar &&
 				wgodot_value == p_other.wgodot_value &&
 				wgodot_class_ref == p_other.wgodot_class_ref &&
+				wgodot_resource_path == p_other.wgodot_resource_path &&
 				script_type == p_other.script_type &&
 				// wgodot-changes::end
 				container_element_types == p_other.container_element_types;
@@ -153,6 +155,7 @@ public:
 		wgodot_scalar = p_other.wgodot_scalar;
 		wgodot_value = p_other.wgodot_value;
 		wgodot_class_ref = p_other.wgodot_class_ref;
+		wgodot_resource_path = p_other.wgodot_resource_path;
 		// wgodot-changes::end
 		native_type = p_other.native_type;
 		script_type = p_other.script_type;

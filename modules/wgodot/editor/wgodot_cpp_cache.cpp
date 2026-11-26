@@ -3,6 +3,7 @@
 
 #include "wgodot_cpp_project.h"
 #include "wgodot_resource_rewrite.h"
+#include "wgodot_resource_snapshot.h"
 
 #include "core/config/project_settings.h"
 #include "core/io/config_file.h"
@@ -20,7 +21,7 @@ constexpr const char *CACHE_FILE = ".gd2cpp-cache.bin";
 // Bump when analysis, dependency discovery, generated code/native bindings or
 // cache serialization changes can make previously generated output invalid.
 // Unrelated engine rebuilds must preserve the incremental export cache.
-constexpr const char *CACHE_VERSION = "gd2cpp-v6";
+constexpr const char *CACHE_VERSION = "gd2cpp-v7";
 // Dependency extraction has a separate lifetime from native code generation.
 constexpr const char *DEPENDENCY_CACHE_VERSION = "resource-dependencies-v1";
 
@@ -365,6 +366,9 @@ bool WGodotCppCache::output_matches(const String &p_name, const String &p_digest
 }
 
 bool WGodotCppCache::up_to_date() {
+	if (!old_outputs.has(WGodotResourceSnapshot::FILENAME)) {
+		return false;
+	}
 	prepare_dependencies();
 	for (const String &path : inventory) {
 		track(path);

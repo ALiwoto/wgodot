@@ -1,10 +1,10 @@
 // wgodot-changes::file
 #include "wgodot_resource_encode.h"
+
 #include "core/variant/wgodot_record.h"
 
 namespace WGodotResourceEncode {
 using namespace WGodotResourceProtobuf;
-using Type = GDScriptParser::DataType;
 using Path = std::function<int64_t(const String &)>;
 
 namespace {
@@ -21,10 +21,10 @@ Error typed_array(Writer &r_writer, const Array &p_array, Context &p_context) {
 }
 
 int wire(const Type &p_type) {
-	if (p_type.wgodot_scalar == WGodotScalar::FLOAT32) {
+	if (p_type.float32) {
 		return 5;
 	}
-	if (p_type.wgodot_resource_path || p_type.kind == Type::ENUM || p_type.builtin_type == Variant::BOOL || p_type.builtin_type == Variant::INT) {
+	if (p_type.wgodot_resource_path || p_type.builtin_type == Variant::BOOL || p_type.builtin_type == Variant::INT) {
 		return 0;
 	}
 	return p_type.builtin_type == Variant::FLOAT ? 1 : 2;
@@ -39,34 +39,28 @@ Error value(Writer &r_writer, const Variant &p_value, const Type &p_type, Contex
 		Value<String>::write(r_writer, name, p_context);
 		return r_writer.valid ? OK : ERR_INVALID_DATA;
 	}
-	if (p_type.kind == Type::CLASS && p_type.class_type->wgodot_record) {
+	if (p_type.builtin_type == Variant::WRECORD) {
 		const WRecord record = p_value;
-		if (record.is_empty() || record.schema()->get_name() != StringName(p_type.class_type->fqcn)) {
+		if (record.is_empty() || record.schema()->get_name() != p_type.name) {
 			return ERR_INVALID_DATA;
 		}
 		Writer contents;
 		uint32_t index = 0;
-		for (const auto &member : p_type.class_type->members) {
-			if (member.type != GDScriptParser::ClassNode::Member::VARIABLE) {
-				continue;
-			}
-			const int slot = record.schema()->find_field(member.variable->identifier->name);
+		for (const StringName &member : p_type.members) {
+			const int slot = record.schema()->find_field(member);
 			ERR_FAIL_COND_V(slot < 0, ERR_INVALID_DATA);
-			RETURN_IF_ERROR(field(contents, ++index, record.get(slot), member.variable->type_constraint, p_context, p_path));
+			RETURN_IF_ERROR(field(contents, index + 1, record.get(slot), p_type.elements[index], p_context, p_path));
+			index++;
 		}
 		message(r_writer, contents);
 		return r_writer.valid ? OK : ERR_INVALID_DATA;
 	}
-	if (p_type.wgodot_scalar == WGodotScalar::FLOAT32) {
+	if (p_type.float32) {
 		Value<float>::write(r_writer, float(p_value), p_context);
 		return r_writer.valid ? OK : ERR_INVALID_DATA;
 	}
 	if (p_type.wgodot_resource_path) {
 		Value<int64_t>::write(r_writer, p_path(p_value), p_context);
-		return OK;
-	}
-	if (p_type.kind == Type::ENUM) {
-		Value<int64_t>::write(r_writer, int64_t(p_value), p_context);
 		return OK;
 	}
 	if (p_type.builtin_type == Variant::ARRAY) {
@@ -206,7 +200,7 @@ Error value(Writer &r_writer, const Variant &p_value, const Type &p_type, Contex
 } //namespace
 
 Error field(Writer &r_writer, uint32_t p_id, const Variant &p_value, const Type &p_type, Context &p_context, const Path &p_path) {
-	if (p_type.is_variant() || !p_type.is_hard_type()) {
+	if (p_type.builtin_type == Variant::NIL) {
 		return ERR_INVALID_DATA;
 	}
 	r_writer.tag(p_id, wire(p_type));

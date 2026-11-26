@@ -143,7 +143,10 @@ def array_api(target, source, env):
         argument_roles = []
         for argument in arguments:
             arg_type = re.sub(r"\s+p_\w+.*$", "", argument.replace("&", " ").replace("const ", "")).strip()
-            argument_roles.append("Type::" + roles.get(arg_type, "BUILTIN"))
+            role = roles.get(arg_type, "BUILTIN")
+            if annotation == "copy-array" and role == "OTHER_ARRAY":
+                role = "COPY_ARRAY"
+            argument_roles.append("Type::" + role)
         result = roles.get(match.group("result").strip(), "BUILTIN")
         if match.group("trailing"):
             if not match.group("trailing").startswith("WArray<"):
